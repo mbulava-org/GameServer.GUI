@@ -1,0 +1,14 @@
+
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  packages: write
+  contents: read
