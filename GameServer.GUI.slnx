@@ -1,1 +1,5 @@
-<Solution />
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="GameServer.Web/GameServer.Web.csproj" Id="92c3ea36-e1bb-45dc-acb5-9b1cdd6821b3" />
+  </Folder>
+</Solution>
