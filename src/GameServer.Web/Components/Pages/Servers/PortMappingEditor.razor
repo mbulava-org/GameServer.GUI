@@ -1,0 +1,163 @@
+﻿@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@using System.Collections.Generic
+@using System.Linq
+@using System.Text.Json
+@using System.Threading.Tasks
+
+<RadzenCard>
+  <ChildContent>
+    @if (Server == null)
+    {
+        <div class="rz-text rz-alert rz-alert-warning">No server model provided.</div>
+    }
+    else
+    {
+        <div style="display:flex;flex-direction:column;gap:8px">
+            @if (Server.Ports == null || Server.Ports.Count == 0)
+            {
+                <div class="rz-text">No port mappings defined.</div>
+            }
+
+            @foreach (var pm in Server.Ports.ToList())
+            {
+                <div class="row">
+                    <div class="col">
+                        <RadzenLabel Text="Host Port" />
+                        <RadzenNumeric TValue="int"
+                                       Value="@pm.PublishedPort"
+                                       Change="@( (val) => OnPublishedChanged(pm, val) )"
+                                       Min="0" Max="65535"
+                                       Style="@GetPublishedStyle(pm)" />
+                        
+                    </div>
+
+                    <div class="col">
+                        <RadzenLabel Text="Container Port" />
+                        <RadzenNumeric TValue="int"
+                                       Value="@pm.ContainerPort"
+                                       Min="1" Max="65535"
+                                       Disabled="true"
+                                       />
+                    </div>
+
+                    <div class="col">
+                        <RadzenLabel Text="Protocol"/>
+                        <RadzenDropDown Value='@pm.Protocol' Data='new[] { "tcp", "udp" }' Change='@(args => pm.Protocol = args.ToString())' Disabled="true" />
+                    </div>
+                        @if (publishedErrors.TryGetValue(pm, out var err) && !string.IsNullOrEmpty(err))
+                        {
+                            <div style="color:#b91c1c;font-size:0.85rem;margin-top:6px">@err</div>
+                        }
+                        
+                </div>
+            }
+        </div>
+    }
+  </ChildContent>
+</RadzenCard>
+
+@code {
+    [Inject] public IPortApi PortApi { get; set; }
+    [Parameter] public GameServer? Server { get; set; }
+    [Parameter] public EventCallback<GameServer> OnChanged { get; set; }
+
+    // Validation state: per-instance error message for PublishedPort
+    Dictionary<PortMapping, string> publishedErrors = new();
+
+    protected override void OnParametersSet()
+    {
+        if (Server != null)
+        {
+            Server.Ports ??= new List<PortMapping>();
+
+            // Default published port to container port when 0, validate and sync settings
+            foreach (var pm in Server.Ports)
+            {
+                if (pm.PublishedPort == 0 && pm.ContainerPort != 0)
+                {
+                    pm.PublishedPort = pm.ContainerPort;
+                }
+            }
+
+            ValidateAllPublished();
+        }
+    }
+
+    // -- Handlers --
+
+    void OnPublishedChanged(PortMapping pm, int value)
+    {
+        if (pm == null || Server == null) return;
+
+        // treat 0 as "default to container port"
+        if (value == 0)
+        {
+            pm.PublishedPort = pm.ContainerPort != 0 ? pm.ContainerPort : 0;
+        }
+        else
+        {
+            pm.PublishedPort = value > 65535 ? 65535 : value;
+        }
+
+        ValidateAllPublished();
+        _ = NotifyChangedAsync();
+    }
+
+
+    // -- Validation --
+
+    void ValidateAllPublished()
+    {
+        publishedErrors.Clear();
+        if (Server == null) return;
+
+        // compute effective published for duplicate detection (Published==0 treated as Container)
+        var effective = Server.Ports.Select(p => new { Instance = p, Value = (p.PublishedPort == 0 ? p.ContainerPort : p.PublishedPort) }).ToList();
+
+        foreach (var e in effective)
+        {
+            // Range check
+            if (e.Value < 1 || e.Value > 65535)
+            {
+                publishedErrors[e.Instance] = "Published port must be between 1 and 65535.";
+                continue;
+            }
+
+            // Duplicates
+            var duplicates = effective.Count(x => x.Value == e.Value);
+            if (duplicates > 1)
+            {
+                publishedErrors[e.Instance] = $"Port {e.Value} is used by multiple mappings.";
+                continue;
+            }
+
+            //Already allocated
+            var isFree = PortApi.CheckAsync(e.Instance.Protocol, e.Value).Result;
+            if (!isFree)
+            {
+                publishedErrors[e.Instance] = $"Port {e.Value} is already in use!";
+                continue;
+            }
+            // valid -> no error
+            // ensure key removed
+            if (publishedErrors.ContainsKey(e.Instance)) publishedErrors.Remove(e.Instance);
+        }
+    }
+
+    string GetPublishedStyle(PortMapping pm)
+    {
+        return publishedErrors.ContainsKey(pm) ? "border-color:#b91c1c" : "";
+    }
+
+    
+
+    // -- Notify changed upstream --
+
+    Task NotifyChangedAsync()
+    {
+        if (Server == null) return Task.CompletedTask;
+        return OnChanged.HasDelegate ? OnChanged.InvokeAsync(Server) : Task.CompletedTask;
+    }
+}

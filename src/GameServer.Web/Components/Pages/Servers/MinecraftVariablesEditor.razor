@@ -1,0 +1,267 @@
+@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@using System.Text.Json
+@inject NotificationService NotificationService
+
+<h3>Minecraft Server Variables (itzg)</h3>
+<RadzenCard>
+    <ChildContent>
+        <div>
+            <div>
+
+                <RadzenCard>
+
+                    <ChildContent>
+                        <h4>General</h4>
+
+                        <div>
+                            <div>
+                                <RadzenLabel Text="Minecraft Version:" />
+                                <RadzenTextBox Value='@(Get("VERSION"))'
+                                               Change='@(args => Set("VERSION", args?.ToString() ?? "LATEST"))'/>
+                            </div>
+                            <div>
+                                <RadzenLabel Text="Server Type:" /> 
+                                <RadzenDropDown Value='Get("TYPE")' Data='new[] { "VANILLA", "SPIGOT", "PAPER", "FABRIC", "FORGE", "BUKKIT" }' Change='@(args => Set("TYPE", args?.ToString() ?? "VANILLA"))' Style="width:100%" />
+                            </div>
+                            <div>
+                                <RadzenLabel Text="Memory:" />
+                                <RadzenTextBox Value='@(Get("MEMORY"))' Change='@(args => Set("MEMORY", args?.ToString() ?? ""))' Placeholder="1024M" />
+                            </div>
+                            <div>
+                                <RadzenLabel Text="Max Players (MAX_PLAYERS)" />
+                                <RadzenNumeric TValue="int" @bind-Value='MaxPlayers' Min="1" Max="512" Change='@(v => Set("MAX_PLAYERS", v.ToString() ?? "20"))' Style="width:100%" />
+                            </div>
+                            <div>
+                                <RadzenLabel Text="Server Port (SERVER_PORT)" />
+                                <RadzenNumeric TValue="uint" @bind-Value='ServerPort' Min="1" Max="65535" Change='@(v => Set("SERVER_PORT", v.ToString() ?? "25565"))' Style="width:100%" />
+                            </div>
+                        </div>
+
+                        <RadzenLabel Text="MOTD (MOTD)" Style="margin-top:8px" />
+                        <RadzenTextBox Value='@(Get("MOTD"))' Change='@(args => Set("MOTD", args.ToString() ?? ""))' Style="width:100%" />
+                        <RadzenCheckBox TValue="bool" Value='GetBool("SNOOPER_ENABLED")' Change='@(v => Set("SNOOPER_ENABLED", v ? "true" : "false"))'>
+                            If set to false, the server will not send data to snoop.minecraft.net server.
+                        </RadzenCheckBox>'
+                        
+                    </ChildContent>
+                </RadzenCard>
+
+                <RadzenCard Style="margin-top:12px">
+                    <ChildContent>
+                        <h4>World</h4>
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <div style="flex:1">
+                                <RadzenLabel Text="Difficulty:" />
+                                <RadzenDropDown Value='Get("DIFFICULTY")' Data='new[] { "peaceful", "easy", "normal", "hard" }' Change='@(args => Set("DIFFICULTY", args?.ToString() ?? "easy"))' Style="width:100%" />
+                            </div>
+                            <div style="width:140px">
+                                <RadzenLabel Text="Game Mode:" />
+                                <RadzenDropDown Value='Get("GAMEMODE")' Data='new[] { "survival", "creative", "adventure", "spectator" }' Change='@(args => Set("GAMEMODE", args?.ToString() ?? "survival"))' Style="width:100%" />
+                            </div>
+                            
+                        </div>
+
+                        <RadzenLabel Text="World Name (LEVEL):" />
+                        <RadzenTextBox Value='@(Get("LEVEL"))' Change='@(args => Set("LEVEL", args?.ToString() ?? ""))' />
+
+                        <RadzenLabel Text="World Generator Seed (SEED)" Style="margin-top:8px" />
+                        <RadzenTextBox Value='@(Get("SEED"))' Change='@(args => Set("SEED", args?.ToString() ?? ""))' />
+
+                        
+                    </ChildContent>
+                </RadzenCard>
+
+                <RadzenCard Style="margin-top:12px">
+
+                    <ChildContent>
+                        <h4>RCON </h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                            <div>
+                                <RadzenCheckBox Tvalue="bool" Value='GetBool("ENABLE_RCON")' Change='@(v => Set("ENABLE_RCON", v ? "true" : "false"))' >
+                                    Enable RCON
+                                </RadzenCheckBox>
+                                <RadzenLabel Text="RCON Port:"/>
+                                <RadzenNumeric Tvalue="int" Value="25575" Min="1" Max="65535" Change='@(v => Set("RCON_PORT", v.ToString() ?? "25575"))'/>
+                                <RadzenLabel Text="RCON Password:" />
+                                <RadzenTextBox Placeholder="RCON password (RCON_PASSWORD)" 
+                                    Value='@(Get("RCON_PASSWORD"))' 
+                                    Change='@(args => Set("RCON_PASSWORD", args?.ToString() ?? ""))' Style="width:100%;margin-top:6px" />
+                            </div>
+
+                        </div>
+                    </ChildContent>
+                </RadzenCard>
+                
+                
+            </div>
+
+            <div>
+                <RadzenCard>
+                    <ChildContent>
+                        <h4>Players / Access Lists</h4>
+                        <RadzenLabel Text="Ops (one per line) - stored as OPS" />
+                        <RadzenTextArea Value="opsText" Style="width:100%;height:160px" />
+                        <RadzenButton Text="Apply Ops" Click="ApplyLists" Style="margin-top:6px" />
+
+                        <hr />
+
+                        <RadzenLabel Text="Whitelist (one per line) - stored as WHITELIST" />
+                        <RadzenTextArea Value="whitelistText" Style="width:100%;height:160px" />
+                        <RadzenButton Text="Apply Whitelist" Click="ApplyLists" Style="margin-top:6px" />
+                       
+                    </ChildContent>
+                </RadzenCard>
+            </div>
+
+
+        </div>
+    </ChildContent>
+
+
+</RadzenCard>
+
+@code {
+    [Parameter] public GameServer? Server { get; set; }
+    [Parameter] public EventCallback<GameServer> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    string newKey = "";
+    string newValue = "";
+    string opsText = "";
+    string whitelistText = "";
+
+    int MaxPlayers
+    {
+        get => int.TryParse(Get("MAX_PLAYERS"), out var v) ? v : 20;
+        set => Set("MAX_PLAYERS", value.ToString());
+    }
+
+    uint ServerPort
+    {
+        get => uint.TryParse(Get("SERVER_PORT"), out var v) ? v : 25565u;
+        set => Set("SERVER_PORT", value.ToString());
+    }
+
+    int QueryPort
+    {
+        get => int.TryParse(Get("QUERY_PORT"), out var v) ? v : 25565;
+        set => Set("QUERY_PORT", value.ToString());
+    }
+
+    int JmxPort
+    {
+        get => int.TryParse(Get("JMX_PORT"), out var v) ? v : 9010;
+        set => Set("JMX_PORT", value.ToString());
+    }
+
+    int ViewDistance
+    {
+        get => int.TryParse(Get("VIEW_DISTANCE"), out var v) ? v : 10;
+        set => Set("VIEW_DISTANCE", value.ToString());
+    }
+
+    protected override void OnParametersSet()
+    {
+        Server ??= new GameServer();
+        Server.Settings ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // ensure common defaults
+        // Ensure("IMAGE", "itzg/minecraft-server");
+        // Ensure("VERSION", "latest");
+        // Ensure("MEMORY", "1024M");
+        // Ensure("MAX_PLAYERS", "20");
+        // Ensure("MOTD", "A Minecraft Server");
+        // Ensure("ONLINE_MODE", "true");
+        // Ensure("LEVEL_NAME", "world");
+        // Ensure("LEVEL_SEED", "");
+        // Ensure("DIFFICULTY", "easy");
+        // Ensure("GAMEMODE", "survival");
+        // Ensure("VIEW_DISTANCE", "10");
+        // Ensure("ENABLE_RCON", "false");
+        // Ensure("RCON_PASSWORD", "");
+        // Ensure("ENABLE_QUERY", "false");
+        // Ensure("QUERY_PORT", "25565");
+        // Ensure("SERVER_PORT", "25565");
+        // Ensure("SNOOPER_ENABLED", "true");
+        // Ensure("ENABLE_AUTO_SAVE", "true");
+        Ensure("EULA", "true");
+
+        // populate list textareas from settings
+        opsText = GetListText("OPS");
+        whitelistText = GetListText("WHITELIST");
+    }
+
+    void Ensure(string key, string defaultValue)
+    {
+        if (!Server!.Settings!.ContainsKey(key))
+            Server.Settings[key] = defaultValue;
+    }
+
+    string Get(string key) => Server?.Settings != null && Server.Settings.TryGetValue(key, out var v) ? v ?? "" : "";
+    void Set(string key, string value)
+    {
+        Server!.Settings ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Server.Settings[key] = value ?? "";
+    }
+
+    bool GetBool(string key) => bool.TryParse(Get(key), out var v) && v;
+
+    // void AddEnv()
+    // {
+    //     if (string.IsNullOrWhiteSpace(newKey)) return;
+    //     Set(newKey.Trim(), newValue ?? "");
+    //     newKey = "";
+    //     newValue = "";
+    //     NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Env added", Duration = 2000 });
+    // }
+
+    void ApplyLists()
+    {
+        var whitelistNew = ToLines(whitelistText);
+        
+        Set("OPS", ToLines(opsText));
+        Set("WHITELIST", ToLines(whitelistText));
+        Set("ENABLE_WHITELIST", string.IsNullOrEmpty(whitelistNew) ? "false" : "true");
+        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Lists applied", Duration = 2000 });
+    }
+
+    string ToLines(string text)
+    {
+        var lines = (text ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+          .Select(s => s.Trim()).Where(s => s.Length > 0);
+        return string.Join("\n", lines);
+    }
+
+    string GetListText(string key)
+    {
+        var raw = Get(key);
+        if (string.IsNullOrEmpty(raw)) return "";
+        // if JSON array, convert to lines
+        if (raw.StartsWith("[") && raw.Contains("]"))
+        {
+            try
+            {
+                var arr = JsonSerializer.Deserialize<string[]>(raw);
+                if (arr != null) return string.Join("\n", arr);
+            }
+            catch { }
+        }
+        return raw.Replace("\r", "");
+    }
+
+    async Task SaveAsync()
+    {
+        ApplyLists();
+
+        if (OnSave.HasDelegate)
+            await OnSave.InvokeAsync(Server!);
+        else
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Saved", Detail = "Minecraft settings updated locally.", Duration = 2000 });
+    }
+
+    Task Cancel() => OnCancel.HasDelegate ? OnCancel.InvokeAsync(null) : Task.CompletedTask;
+
+
+}

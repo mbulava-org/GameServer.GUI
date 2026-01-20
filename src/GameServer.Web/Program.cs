@@ -19,6 +19,18 @@ namespace GameServer.Web
             {
                 client.BaseAddress = new Uri("http://localhost:5164/");
             });
+            builder.Services.AddHttpClient<IGameTypeApi, GameTypeApi>(client =>
+            {
+                client.BaseAddress = new Uri("http://localhost:5164/");
+            });
+            builder.Services.AddHttpClient<IPortApi, PortApi>(client =>
+            {
+                client.BaseAddress = new Uri("http://localhost:5164/");
+            });
+            builder.Services.AddHttpClient<IGameServerApi, GameServerApi>(client =>
+            {
+                client.BaseAddress = new Uri("http://localhost:5164/");
+            });
 
             var app = builder.Build();
 

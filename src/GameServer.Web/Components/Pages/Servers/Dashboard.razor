@@ -1,7 +1,8 @@
 ﻿@page "/servers"
+@rendermode InteractiveServer
 @using GameServer.Docker.Client
 
-<h3>Game Servers Dashboard</h3>
+<PageTitle>Game Servers Dashboard</PageTitle>
 <div class="container mt-4">
 
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -38,12 +39,12 @@
                                     @(server.IsRunning ? "Running" : "Stopped")
                                 </span>
                             </div>
-
+@* 
                             <ul class="list-unstyled small">
                                 <li><strong>Port:</strong> @server.Port</li>
                                 <li><strong>Version:</strong> @server.Version</li>
                             </ul>
-
+ *@
                             <div class="d-flex gap-2 mt-3">
                                 <button class="btn btn-success btn-sm"
                                         @onclick="() => StartServer(server)"

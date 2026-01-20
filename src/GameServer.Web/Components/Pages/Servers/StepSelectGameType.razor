@@ -1,0 +1,21 @@
+﻿@using GameServer.Docker.Client
+<div class="row">
+    @foreach (var type in GameTypes)
+    {
+        <div class="col-md-4 mb-3">
+            <div class="card shadow-sm" @onclick="() => OnSelect.InvokeAsync(type.Key)" style="cursor:pointer;">
+                <div class="card-body">
+                    <h5>@type.DisplayName</h5>
+                    <p class="text-muted">@type.Description</p>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public List<GameTypeDefinition> GameTypes { get; set; } = new();
+    [Parameter]
+    public EventCallback<string> OnSelect { get; set; }
+}
