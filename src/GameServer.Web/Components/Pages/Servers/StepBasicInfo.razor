@@ -6,7 +6,7 @@
 <RadzenCard Style="max-width:900px">
   <ChildContent>
     <h4>@(GameDefinition.DisplayName ?? "Game") Basic Information</h4>
-    <EditForm Model="Server">
+    <EditForm Model="Server" OnValidSubmit="@NextAsync">
       <DataAnnotationsValidator />
 
       <div >
@@ -26,9 +26,13 @@
         </div>
       </div>
     </EditForm>
-    
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+            <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Secondary" Click="@BackAsync" />
+            <RadzenButton Text="Next" ButtonStyle="ButtonStyle.Primary" Click="async() => await NextAsync()" />
+        </div>
   </ChildContent>
 </RadzenCard>
+
 
 @code {
     [Parameter]

@@ -41,6 +41,7 @@
 
                         <RadzenLabel Text="MOTD (MOTD)" Style="margin-top:8px" />
                         <RadzenTextBox Value='@(Get("MOTD"))' Change='@(args => Set("MOTD", args.ToString() ?? ""))' Style="width:100%" />
+                        <RadzenLabel Text="Snooper Enabled"/>
                         <RadzenCheckBox TValue="bool" Value='GetBool("SNOOPER_ENABLED")' Change='@(v => Set("SNOOPER_ENABLED", v ? "true" : "false"))'>
                             If set to false, the server will not send data to snoop.minecraft.net server.
                         </RadzenCheckBox>'
@@ -169,17 +170,17 @@
 
         // ensure common defaults
         // Ensure("IMAGE", "itzg/minecraft-server");
-        // Ensure("VERSION", "latest");
-        // Ensure("MEMORY", "1024M");
+        Ensure("VERSION", "LATEST");
+        Ensure("MEMORY", "4096M");
         // Ensure("MAX_PLAYERS", "20");
-        // Ensure("MOTD", "A Minecraft Server");
+        Ensure("MOTD", "A Minecraft Server");
         // Ensure("ONLINE_MODE", "true");
         // Ensure("LEVEL_NAME", "world");
         // Ensure("LEVEL_SEED", "");
         // Ensure("DIFFICULTY", "easy");
         // Ensure("GAMEMODE", "survival");
         // Ensure("VIEW_DISTANCE", "10");
-        // Ensure("ENABLE_RCON", "false");
+        Ensure("ENABLE_RCON", "false");
         // Ensure("RCON_PASSWORD", "");
         // Ensure("ENABLE_QUERY", "false");
         // Ensure("QUERY_PORT", "25565");
@@ -204,6 +205,8 @@
     {
         Server!.Settings ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         Server.Settings[key] = value ?? "";
+        OnSave.InvokeAsync(Server);
+        
     }
 
     bool GetBool(string key) => bool.TryParse(Get(key), out var v) && v;

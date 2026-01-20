@@ -1,38 +1,43 @@
-﻿@using GameServer.Docker.Client
+﻿@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@using System.Linq
 
-<RazdenPanel AllowCollapse="true" class="rz-my-10 rz-mx-auto" Style="width: 700px;"
+<RadzenPanel AllowCollapse="true" class="rz-my-10 rz-mx-auto" Style="width: 700px;"
+             Collapsed="@((Definition.Key == "minecraft"))"
              Expand=@(() => Change("Panel expanded")) Collapse=@(() => Change("Panel collapsed"))>
 
     <HeaderTemplate>
         <RadzenText TextStyle="TextStyle.H6" class="rz-display-flex rz-align-items-center rz-m-0">
-            <RadzenIcon Icon="account_box" class="rz-me-1" /><b>Orders</b>
+            <RadzenIcon Icon="account_box" class="rz-me-1" /><b>Generic Default Settings Editor</b>
         </RadzenText>
     </HeaderTemplate>
     <ChildContent>
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
             <RadzenDataList PageSize="250" WrapItems="true" AllowPaging="true"
-                            Data="@Definition.DefaultSettings.ToList" 
-                <Template Context="order">
-                    <RadzenCard Style="width: 250px">
-                        <RadzenRow>
-                            <RadzenColumn Size="8" class="rz-text-truncate">
-                                <RadzenBadge BadgeStyle="BadgeStyle.Light" Text=@($"{order.OrderID}") class="rz-me-1" />
-                                <b>@(order.ShipName)</b>
-                            </RadzenColumn>
-                            <RadzenColumn Size="4" class="rz-text-align-end">
-                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text=@($"{String.Format(new System.Globalization.CultureInfo("en-US"), "{0:C}", order.Freight)}") />
-                            </RadzenColumn>
-                        </RadzenRow>
-                        <hr style="border: none; background-color: var(--rz-text-disabled-color); height: 1px; margin: 1rem 0;" />
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
-                            <RadzenImage Path="@order.Employee?.Photo" Style="width: 80px; height: 80px; border-radius: 50%" AlternateText="@(order.Employee?.FirstName + " " + order.Employee?.LastName)" />
-                            <RadzenStack Gap="0">
-                                <RadzenText TextStyle="TextStyle.H6" class="rz-mb-0">@(order.Employee?.FirstName + " " + order.Employee?.LastName)</RadzenText>
-                                <RadzenText TextStyle="TextStyle.Body1">@order.ShipAddress</RadzenText>
-                                <RadzenText TextStyle="TextStyle.Body2">@(order.ShipCity), @(order.ShipCountry)</RadzenText>
-                            </RadzenStack>
-                        </RadzenStack>
-                    </RadzenCard>
+                            Data="@Definition.DefaultSettings" > 
+                <Template Context="setting">
+                    <div>
+                        <RadzenLabel Text="@setting.Key"/>
+                        @if(IsListKey(setting.Key))
+                        {
+                            <RadzenTextArea Style="width:100%;min-height:120px" Value="@GetListText(setting.Key)" Change="@(val => SetListText(setting.Key, val?.ToString() ?? ""))" />
+                            <div class="rz-text" style="font-size:0.8rem;color:var(--rz-secondary)">Enter one item per line.</div>
+                        }
+                        else if (TryParseBool(GetSetting(setting.Key), out var bVal))
+                        {
+                            <RadzenCheckBox TValue="bool" Value="@GetBool(setting.Key)" Change="@(val => SetBool(setting.Key, val))" />
+                        }
+                        else if (TryParseInt(GetSetting(setting.Key), out var _))
+                        {
+                            <RadzenNumeric TValue="int" Value="@GetInt(setting.Key)" Change="@(val => SetInt(setting.Key, val))" Min="0" Max="65535" Placeholder="@setting.Value"/>
+                        }
+                        else
+                        {
+                            <RadzenTextBox Value="@GetSetting(setting.Key)" Change="@(args => SetSetting(setting.Key, args?.ToString() ?? ""))" Placeholder="@setting.Value"/>
+                        }
+                    </div>
+                    
                 </Template>
             </RadzenDataList>
         </RadzenCard>
@@ -42,7 +47,7 @@
             <b>@Definition.DefaultSettings.Count() Settings</b>
         </RadzenCard>
     </SummaryTemplate>
-</RazdenPanel>
+</RadzenPanel>
 
 @code {
 
@@ -52,9 +57,61 @@
     [Parameter]
     public GameTypeDefinition Definition { get; set; } = new();
 
+    [Parameter]
+    public EventCallback<GameServer> OnChange { get; set; }
+
     void Change(string text)
     {
-        console.Log($"{text}");
+        Console.WriteLine($"{text}");
     }
 
+    string GetSetting(string key) => Server.Settings.TryGetValue(key, out var v) ? v : Definition.DefaultSettings[key];
+    void SetSetting(string key, string value) 
+    {
+        Server.Settings[key] = value;
+        OnChange.InvokeAsync(Server);
+    }
+
+    //boolean helpers
+    bool TryParseBool(string? s, out bool value) => bool.TryParse(s, out value);
+    bool GetBool(string key) => bool.TryParse(GetSetting(key), out var v) && v;
+    void SetBool(string key, bool v) => SetSetting(key, v ? "true" : "false");
+
+    //Int helpers
+    bool TryParseInt(string? s, out int value) => int.TryParse(s, out value);
+    int GetInt(string key) => int.TryParse(GetSetting(key), out var v) ? v : 0;
+    void SetInt(string key, int v) => SetSetting(key, v.ToString());
+
+    bool IsListKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        return key.Equals("OPS", StringComparison.InvariantCultureIgnoreCase)
+            || key.Equals("WHITELIST", StringComparison.OrdinalIgnoreCase);  
+
+    }
+
+    string GetListText(string key)
+    {
+        var raw = GetSetting(key);
+        if (string.IsNullOrEmpty(raw)) return "";
+        // If stored as JSON array (unlikely), try to parse a simple representation fallback
+        if (raw.StartsWith("[") && raw.Contains("]"))
+        {
+            try
+            {
+                var arr = System.Text.Json.JsonSerializer.Deserialize<string[]>(raw);
+                return arr == null ? raw : string.Join("\n", arr);
+            }
+            catch { /* ignore parse errors */ }
+        }
+        return raw.Replace("\r", "");
+    }
+
+    void SetListText(string key, string text)
+    {
+        var lines = (text ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
+        // store as newline-separated string so downstream deployer can split
+        SetSetting(key, string.Join("\n", lines));
+    }
 }

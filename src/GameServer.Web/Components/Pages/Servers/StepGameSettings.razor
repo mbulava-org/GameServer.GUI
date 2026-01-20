@@ -17,45 +17,12 @@
         switch(Definition.Key)
         {
             case "minecraft":
-                <MinecraftVariablesEditor Server="Server" OnSave="OnNext" OnCancel="OnBack" />
+                <MinecraftVariablesEditor Server="Server"  />
                 break;
             default:
-                <RadzenCard>
-                    <ChildContent>
-                        @foreach (var kv in Definition.DefaultSettings)
-                        {
-                            var key = kv.Key;
-                            <div class="mb-3" style="margin-bottom:12px">
-                                <label class="rz-label" style="display:block">@key</label>
-
-                                @if (IsListKey(key))
-                                {
-                                    <RadzenTextArea Style="width:100%;min-height:120px" Value="@GetListText(key)" Change="@(val => SetListText(key, val?.ToString() ?? ""))" />
-                                    <div class="rz-text" style="font-size:0.8rem;color:var(--rz-secondary)">Enter one item per line.</div>
-                                }
-                                else if (TryParseBool(GetDefaultSetting(key), out var bVal))
-                                {
-                                    <RadzenCheckBox TValue="bool" Value="@GetBool(key)" Change="@(val => SetBool(key, val))" />
-                                }
-                                else if (TryParseInt(GetDefaultSetting(key), out var _))
-                                {
-                                    <RadzenNumeric TValue="int" Value="@GetInt(key)" Change="@(val => SetInt(key, val))" Min="0" Max="65535" />
-                                }
-                                else
-                                {
-                                    <RadzenTextBox Style="width:100%" Value="@GetSetting(key)" Change="@(args => SetSetting(key, args?.ToString() ?? ""))" Placeholder="@GetDefaultSetting(key)"/>
-                                }
-
-                                @if (!string.IsNullOrWhiteSpace(kv.Value))
-                                {
-                                    <div class="rz-text" style="font-size:0.8rem;color:var(--rz-secondary)">Default: @kv.Value</div>
-                                }
-                            </div>
-                        }
-                    </ChildContent>
-                </RadzenCard>
                 break;
         }
+        <GenericDefaultSettingsOverride Definition="Definition" Server="Server" OnChange="@(s => Server = s)"/>
     }
 
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
@@ -77,7 +44,7 @@
 
     // Helpers for retrieving/storing settings
     string GetDefaultSetting(string key) => Definition.DefaultSettings.TryGetValue(key, out var v) ? v ?? "" : "";
-    string GetSetting(string key) => Server.Settings.TryGetValue(key, out var v) ? v ?? "" : "";
+    string GetSetting(string key) => Server.Settings.TryGetValue(key, out var v) ? v ?? "" : Definition.DefaultSettings[key];
     void SetSetting(string key, string value) => Server.Settings[key] = value ?? "";
 
     // Boolean helpers
