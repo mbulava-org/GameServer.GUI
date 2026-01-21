@@ -3,13 +3,13 @@
 @using GameServer.Docker.Client
 @using System.Linq
 
-<RadzenPanel AllowCollapse="true" class="rz-my-10 rz-mx-auto" Style="width: 700px;"
+<RadzenPanel AllowCollapse="true" class="rz-my-10 rz-mx-auto" 
              Collapsed="@((Definition.Key == "minecraft"))"
              Expand=@(() => Change("Panel expanded")) Collapse=@(() => Change("Panel collapsed"))>
 
     <HeaderTemplate>
         <RadzenText TextStyle="TextStyle.H6" class="rz-display-flex rz-align-items-center rz-m-0">
-            <RadzenIcon Icon="account_box" class="rz-me-1" /><b>Generic Default Settings Editor</b>
+            <RadzenIcon Icon="settings" class="rz-me-1" /><b>Generic Settings Editor</b>
         </RadzenText>
     </HeaderTemplate>
     <ChildContent>
