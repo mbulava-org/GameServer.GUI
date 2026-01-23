@@ -15,167 +15,176 @@
     <ChildContent>
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
             <h4>General</h4>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Minecraft Version"/>
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenDropDown Value='Get("VERSION")' Data='new[] { "LATEST", "PREVIOUS" }' Change='@(args => Set("VERSION", args?.ToString() ?? "LATEST"))' 
                         Style="width:100%" />
                 </div>
             </div>
-            <div class="row" >
-                <div class="col">
+            <div class="row" style="margin:4px" >
+                <div class="col align-content-center">
                     <RadzenLabel Text="Server Type:" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenDropDown Value='Get("TYPE")' Data='new[] { "VANILLA", "SPIGOT", "PAPER", "FABRIC", "FORGE", "BUKKIT" }' 
                     Change='@(args => Set("TYPE", args?.ToString() ?? "VANILLA"))' Style="width:100%" />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Memory (MB):" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenNumeric TValue="int" @bind-Value="@Memory" Step="512" Max="6144"/>
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Max Players" />
                 </div>
-                <div class="col">
-                    <RadzenSlider @bind-Value="@MaxPlayers" TValue="int" Min="10" Max="100" />
+                <div class="col align-content-center">
+                    <RadzenNumeric @bind-Value="@MaxPlayers" TValue="int" Min="10" Max="100" />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Server Port" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenNumeric TValue="uint" @bind-Value='ServerPort' Min="1" Max="65535" 
                     Change='@(v => Set("SERVER_PORT", v.ToString() ?? "25565"))' Style="width:100%" />
                 </div>
-                Changing this value will also change the Container port mapping for the server.
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Message of the day" Style="margin-top:8px" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenTextBox Value='@(Get("MOTD"))' Change='@(args => Set("MOTD", args.ToString() ?? ""))' Style="width:100%" />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
-
-                </div>
-                <div class="col">
-
-                </div>
-            </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Snooper Enabled"/>
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenCheckBox TValue="bool" Value='GetBool("SNOOPER_ENABLED")' Change='@(v => Set("SNOOPER_ENABLED", v ? "true" : "false"))'/>
                 </div>
             </div>
-            
+            @* <div class="row" style="margin:4px">
+                <div class="col align-content-center">
+                </div>
+                <div class="col align-content-center">
+                </div>
+            </div> *@
         </RadzenCard>
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
             <h4>World</h4>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Difficulty:" />
                 </div>
-                <div class="col">
-                    <RadzenDropDown Value='Get("DIFFICULTY")' Data='new[] { "peaceful", "easy", "normal", "hard" }' Change='@(args => Set("DIFFICULTY", args?.ToString() ?? "easy"))' Style="width:100%" />
+                <div class="col align-content-center">
+                    <RadzenDropDown Value='GetDifficulty()' Data='new[] { "peaceful", "easy", "normal", "hard" }' Change='@(args => SetDifficulty((string)args))' Style="width:100%" />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Game Mode:" />
                 </div>
-                <div class="col">
-                    <RadzenDropDown Value='Get("GAMEMODE")' Data='new[] { "survival", "creative", "adventure", "spectator" }' Change='@(args => Set("GAMEMODE", args?.ToString() ?? "survival"))' Style="width:100%" />
+                <div class="col align-content-center">
+                    <RadzenDropDown Value='GetGameMode()' Data='new[] { "survival", "creative", "adventure", "spectator" }' Change='@(args =>SetGameMode((string)args))' Style="width:100%" />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="World Name (LEVEL):" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenTextBox Value='@(Get("LEVEL"))' Change='@(args => Set("LEVEL", args?.ToString() ?? ""))' />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="World Generator Seed (SEED)"/>
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenTextBox Value='@(Get("SEED"))' Change='@(args => Set("SEED", args?.ToString() ?? ""))' />
                 </div>
             </div>
         </RadzenCard>
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
             <h4>RCON</h4>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="Enable RCON" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenCheckBox Tvalue="bool" Value='GetBool("ENABLE_RCON")' Change='@(v => Set("ENABLE_RCON", v ? "true" : "false"))' />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="RCON Port" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenNumeric Tvalue="int" Value="25575" Min="1" Max="65535" Change='@(v => Set("RCON_PORT", v.ToString() ?? "25575"))' />
                 </div>
             </div>
-            <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
                     <RadzenLabel Text="RCON Password" />
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
                     <RadzenTextBox Placeholder="RCON password"
                                    Value='@(Get("RCON_PASSWORD"))'
                                    Change='@(args => Set("RCON_PASSWORD", args?.ToString() ?? ""))' />
                 </div>
             </div>
             @* <div class="row">
-                <div class="col">
+                <div class="col align-content-center">
                 </div>
-                <div class="col">
-                </div>
-            </div> *@
-            @* <div class="row">
-                <div class="col">
-                </div>
-                <div class="col">
+                <div class="col align-content-center">
                 </div>
             </div> *@
             @* <div class="row">
-                <div class="col">
+                <div class="col align-content-center">
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
+                </div>
+            </div> *@
+            @* <div class="row" style="margin:4px">
+                <div class="col align-content-center">
+                </div>
+                <div class="col align-content-center">
                 </div>
             </div> *@
         </RadzenCard>
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
             <h4>Players / Access Lists</h4>
-            @* <div class="row">
-                <div class="col">
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
+                    Allow List
                 </div>
-                <div class="col">
+                <div class="col align-content-center">
+                    <RadzenTextArea Style="width:100%;min-height:120px" Value='@GetListText("WHITELIST")'
+                                    Change='WhiteListChanged'
+                                    Placeholder="one value per line"/>
                 </div>
-            </div> *@
-            
+            </div>
+            <div class="row" style="margin:4px">
+                <div class="col align-content-center">
+                    Operators List
+                </div>
+                <div class="col align-content-center">
+                    <RadzenTextArea Style="width:100%;min-height:120px" Value='@GetListText("OPS")'
+                                    Change='OpsListChanged'
+                                    Placeholder="one value per line"/>
+                </div>
+            </div>
         </RadzenCard>
 
     </ChildContent>
@@ -215,7 +224,7 @@
 @code {
     [Parameter] public GameServer? Server { get; set; }
     [Parameter] public EventCallback<GameServer> OnChange { get; set; }
-    [Parameter] public EventCallback OnCancel { get; set; }
+
 
     string opsText = "";
     string whitelistText = "";
@@ -244,7 +253,59 @@
             Set("MEMORY", $"{value}M");
         }
     }
-    
+
+    public string GetDifficulty()
+    {
+        var val = Get("DIFFICULTY");
+        return val switch
+        {
+            "0" => "peaceful",
+            "1" => "easy",
+            "2" => "normal",
+            "3" => "hard",
+            _ => "easy"
+        };
+    }
+
+    public void SetDifficulty(string difficulty)
+    {
+        var val = difficulty.ToLower() switch
+        {
+            "peaceful" => "0",
+            "easy" => "1",
+            "normal" => "2",
+            "hard" => "3",
+            _ => "1"
+        };
+        Set("DIFFICULTY", val);
+    }
+
+    public string GetGameMode()
+    {
+        var val = Get("MODE");
+        return val switch
+        {
+            "0" => "survival",
+            "1" => "creative",
+            "2" => "adventure",
+            "3" => "spectator",
+            _ => "creative"
+        };
+    }
+
+    public void SetGameMode(string gameMode)
+    {
+        var val = gameMode.ToLower() switch
+        {
+            "survival" => "0",
+            "creative" => "1",
+            "adventure" => "2",
+            "spectator" => "3",
+            _ => "1"
+        };
+        Set("MODE", val);
+    }
+
     protected override void OnParametersSet()
     {
         Server ??= new GameServer();
@@ -277,10 +338,10 @@
         Server!.Settings ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         Server.Settings[key] = value ?? "";
         OnChange.InvokeAsync(Server);
-        
     }
 
     bool GetBool(string key) => bool.TryParse(Get(key), out var v) && v;
+    void SetBool(string key, bool v) => Set(key, v ? "true" : "false");
 
     // void AddEnv()
     // {
@@ -294,7 +355,7 @@
     void ApplyLists()
     {
         var whitelistNew = ToLines(whitelistText);
-        
+
         Set("OPS", ToLines(opsText));
         Set("WHITELIST", ToLines(whitelistText));
         Set("ENABLE_WHITELIST", string.IsNullOrEmpty(whitelistNew) ? "false" : "true");
@@ -325,20 +386,19 @@
         return raw.Replace("\r", "");
     }
 
-    async Task SaveAsync()
-    {
-        ApplyLists();
-
-        if (OnChange.HasDelegate)
-            await OnChange.InvokeAsync(Server!);
-        else
-            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Saved", Detail = "Minecraft settings updated locally.", Duration = 2000 });
-    }
-
-    Task Cancel() => OnCancel.HasDelegate ? OnCancel.InvokeAsync(null) : Task.CompletedTask;
 
     void Change(string text)
     {
         Console.WriteLine($"{text}");
+    }
+    private void WhiteListChanged(string value)
+    {
+        var newWhiteList = ToLines(value);
+        Set("WHITELIST", newWhiteList);
+        SetBool("ENABLE_WHITELIST", newWhiteList.Length > 0);
+    }
+    private void OpsListChanged(string args)
+    {
+        Set("OPS", ToLines(args));
     }
 }

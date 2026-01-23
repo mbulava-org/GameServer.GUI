@@ -1,0 +1,30 @@
+﻿@using GameServer.Docker.Client
+<RadzenPanel AllowCollapse="false" class="rz-my-10 rz-mx-auto" 
+             Collapsed="false">
+             <HeaderTemplate>
+                 <RadzenText TextStyle="TextStyle.H6" class="rz-display-flex rz-align-items-center rz-m-0">
+            <RadzenIcon Icon="advanced" class="rz-me-1" /><h3>Advanced Technical Details</h3>
+                 </RadzenText>
+             </HeaderTemplate>
+             <ChildContent>
+                 <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
+                     <h4>Ports:</h4>
+            <PortMappingEditor PortMappings="Server.Ports.ToList()" OnChanged="@(s=> Server = s)" OnValidityChanged="@(a=> PortsValid = a)" />
+                 </RadzenCard>
+                <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
+                    <h4>Persistent Storage:</h4>
+                    @* <PortMappingEditor Server="Server" OnChanged="@(s => Server = s)" /> *@
+                </RadzenCard>
+             </ChildContent>
+</RadzenPanel>
+
+@code {
+
+    [Parameter]
+    public GameServer Server { get; set; } = new();
+
+
+
+    public bool PortsValid { get; set; } = false;
+    public bool StorageValid { get; set; } = true;
+}

@@ -20,10 +20,10 @@
           <RadzenTextArea @bind-Value="Server.Description" Style="width:100%;height:120px" />
         </div>
 
-        <div>
+        @* <div>
           <RadzenLabel Text="Port Mapping(s)" />
           <PortMappingEditor Server="Server" OnChanged="@( s => Server = s )" />
-        </div>
+        </div> *@
       </div>
     </EditForm>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">

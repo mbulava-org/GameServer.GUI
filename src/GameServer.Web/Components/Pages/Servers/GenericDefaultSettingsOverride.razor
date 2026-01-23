@@ -14,28 +14,32 @@
     </HeaderTemplate>
     <ChildContent>
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
-            <RadzenDataList PageSize="250" WrapItems="true" AllowPaging="true"
+            <RadzenDataList PageSize="250" AllowPaging="true"
                             Data="@Definition.DefaultSettings" > 
                 <Template Context="setting">
-                    <div>
-                        <RadzenLabel Text="@setting.Key"/>
-                        @if(IsListKey(setting.Key))
-                        {
-                            <RadzenTextArea Style="width:100%;min-height:120px" Value="@GetListText(setting.Key)" Change="@(val => SetListText(setting.Key, val?.ToString() ?? ""))" />
-                            <div class="rz-text" style="font-size:0.8rem;color:var(--rz-secondary)">Enter one item per line.</div>
-                        }
-                        else if (TryParseBool(GetSetting(setting.Key), out var bVal))
-                        {
-                            <RadzenCheckBox TValue="bool" Value="@GetBool(setting.Key)" Change="@(val => SetBool(setting.Key, val))" />
-                        }
-                        else if (TryParseInt(GetSetting(setting.Key), out var _))
-                        {
-                            <RadzenNumeric TValue="int" Value="@GetInt(setting.Key)" Change="@(val => SetInt(setting.Key, val))" Min="0" Max="65535" Placeholder="@setting.Value"/>
-                        }
-                        else
-                        {
-                            <RadzenTextBox Value="@GetSetting(setting.Key)" Change="@(args => SetSetting(setting.Key, args?.ToString() ?? ""))" Placeholder="@setting.Value"/>
-                        }
+                    <div class="row" style="margin:4px">
+                        <div class="col align-content-center">
+                            <RadzenLabel Text="@setting.Key" />
+                        </div>
+                        <div class="col align-content-center">
+                            @if(IsListKey(setting.Key))
+                            {
+                                <RadzenTextArea Style="width:100%;min-height:120px" Value="@GetListText(setting.Key)" Change="@(val => SetListText(setting.Key, val?.ToString() ?? ""))" />
+                                <div class="rz-text" style="font-size:0.8rem;color:var(--rz-secondary)">Enter one item per line.</div>
+                            }
+                            else if (TryParseBool(GetSetting(setting.Key), out var bVal))
+                            {
+                                <RadzenCheckBox TValue="bool" Value="@GetBool(setting.Key)" Change="@(val => SetBool(setting.Key, val))" />
+                            }
+                            else if (TryParseInt(GetSetting(setting.Key), out var _))
+                            {
+                                <RadzenNumeric TValue="int" Value="@GetInt(setting.Key)" Change="@(val => SetInt(setting.Key, val))" Min="0" Max="65535" Placeholder="@setting.Value"/>
+                            }
+                            else
+                            {
+                                <RadzenTextBox Value="@GetSetting(setting.Key)" Change="@(args => SetSetting(setting.Key, args?.ToString() ?? ""))" Placeholder="@setting.Value"/>
+                            }
+                        </div>
                     </div>
                     
                 </Template>

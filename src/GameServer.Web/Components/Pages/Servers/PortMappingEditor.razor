@@ -19,39 +19,41 @@
             {
                 <div class="rz-text">No port mappings defined.</div>
             }
-
-            @foreach (var pm in Server.Ports.ToList())
+            else 
             {
-                <div class="row">
-                    <div class="col">
-                        <RadzenLabel Text="Host Port" />
-                        <RadzenNumeric TValue="int"
-                                       Value="@pm.PublishedPort"
-                                       Change="@( (val) => OnPublishedChanged(pm, val) )"
-                                       Min="0" Max="65535"
-                                       Style="@GetPublishedStyle(pm)" />
+                @foreach (var pm in Server.Ports)
+                {
+                    <div class="row">
+                        <div class="col">
+                            <RadzenLabel Text="Host Port" />
+                            <RadzenNumeric TValue="int"
+                                           Value="@pm.PublishedPort"
+                                           Change="@( (val) => OnPublishedChanged(pm, val) )"
+                                           Min="0" Max="65535"
+                                           Style="@GetPublishedStyle(pm)" />
+                        
+                        </div>
+
+                        <div class="col">
+                            <RadzenLabel Text="Container Port" />
+                            <RadzenNumeric TValue="int"
+                                           Value="@pm.ContainerPort"
+                                           Min="1" Max="65535"
+                                           Disabled="true"
+                                           />
+                        </div>
+
+                        <div class="col">
+                            <RadzenLabel Text="Protocol"/>
+                            <RadzenDropDown Value='@pm.Protocol' Data='new[] { "tcp", "udp" }' Change='@(args => pm.Protocol = args.ToString())' Disabled="true" />
+                        </div>
+                            @if (publishedErrors.TryGetValue(pm, out var err) && !string.IsNullOrEmpty(err))
+                            {
+                                <div style="color:#b91c1c;font-size:0.85rem;margin-top:6px">@err</div>
+                            }
                         
                     </div>
-
-                    <div class="col">
-                        <RadzenLabel Text="Container Port" />
-                        <RadzenNumeric TValue="int"
-                                       Value="@pm.ContainerPort"
-                                       Min="1" Max="65535"
-                                       Disabled="true"
-                                       />
-                    </div>
-
-                    <div class="col">
-                        <RadzenLabel Text="Protocol"/>
-                        <RadzenDropDown Value='@pm.Protocol' Data='new[] { "tcp", "udp" }' Change='@(args => pm.Protocol = args.ToString())' Disabled="true" />
-                    </div>
-                        @if (publishedErrors.TryGetValue(pm, out var err) && !string.IsNullOrEmpty(err))
-                        {
-                            <div style="color:#b91c1c;font-size:0.85rem;margin-top:6px">@err</div>
-                        }
-                        
-                </div>
+                }
             }
         </div>
     }
@@ -62,6 +64,7 @@
     [Inject] public IPortApi PortApi { get; set; }
     [Parameter] public GameServer? Server { get; set; }
     [Parameter] public EventCallback<GameServer> OnChanged { get; set; }
+    [Parameter] public EventCallback<bool> OnValidityChanged { get; set; }
 
     // Validation state: per-instance error message for PublishedPort
     Dictionary<PortMapping, string> publishedErrors = new();
@@ -70,7 +73,6 @@
     {
         if (Server != null)
         {
-            Server.Ports ??= new List<PortMapping>();
 
             // Default published port to container port when 0, validate and sync settings
             foreach (var pm in Server.Ports)
@@ -89,7 +91,7 @@
 
     void OnPublishedChanged(PortMapping pm, int value)
     {
-        if (pm == null || Server == null) return;
+        if (pm == null || Server?.Ports == null) return;
 
         // treat 0 as "default to container port"
         if (value == 0)
@@ -144,6 +146,8 @@
             // ensure key removed
             if (publishedErrors.ContainsKey(e.Instance)) publishedErrors.Remove(e.Instance);
         }
+        // Notify validity change
+        OnValidityChanged.InvokeAsync(publishedErrors.Count == 0);  
     }
 
     string GetPublishedStyle(PortMapping pm)

@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="GameServer.Docker.Client" Version="0.0.1.19-beta" />
+    <PackageReference Include="GameServer.Docker.Client" Version="0.0.1.23-beta" />
     <PackageReference Include="Radzen.Blazor" Version="8.6.2" />
   </ItemGroup>
 

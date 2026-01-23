@@ -17,7 +17,7 @@
         switch(Definition.Key)
         {
             case "minecraft":
-                <MinecraftVariablesEditor Server="Server"  />
+                <MinecraftVariablesEditor Server="Server" OnChange="@(s => Server = s)" />
                 break;
             default:
                 break;
