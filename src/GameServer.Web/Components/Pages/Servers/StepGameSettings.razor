@@ -3,18 +3,17 @@
 @using GameServer.Docker.Client
 @using System.Linq
 
-<EditForm Model="Server" OnValidSubmit="@NextAsync">
-    <DataAnnotationsValidator />
-
+<RadzenCard>
     <h4>@(Definition?.DisplayName ?? "Game") Settings</h4>
-
+    <EditForm Model="Server">
+        <DataAnnotationsValidator/>
     @if (Definition?.DefaultSettings == null || !Definition.DefaultSettings.Any())
     {
         <div class="rz-alert rz-alert-info">No predefined settings for this game type. Use Advanced Settings later.</div>
     }
     else
     {
-        switch(Definition.Key)
+        switch (Definition.Key)
         {
             case "minecraft":
                 <MinecraftVariablesEditor Server="Server" OnChange="@(s => Server = s)" />
@@ -22,14 +21,15 @@
             default:
                 break;
         }
-        <GenericDefaultSettingsOverride Definition="Definition" Server="Server" OnChange="@(s => Server = s)"/>
+        <GenericDefaultSettingsOverride Definition="Definition" Server="Server" OnChange="@(s => Server = s)" />
     }
-
+    </EditForm>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
         <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Secondary" Click="@BackAsync" />
-        <RadzenButton Text="Next" ButtonStyle="ButtonStyle.Primary" Type="submit" />
+        <RadzenButton Text="Next" ButtonStyle="ButtonStyle.Primary" Click="async () => await NextAsync()" />
     </div>
-</EditForm>
+</RadzenCard>
+
 
 @code {
     [Parameter] public GameTypeDefinition Definition { get; set; } = new();
@@ -37,58 +37,6 @@
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
 
-    protected override void OnParametersSet()
-    {
-
-    }
-
-    // Helpers for retrieving/storing settings
-    string GetDefaultSetting(string key) => Definition.DefaultSettings.TryGetValue(key, out var v) ? v ?? "" : "";
-    string GetSetting(string key) => Server.Settings.TryGetValue(key, out var v) ? v ?? "" : Definition.DefaultSettings[key];
-    void SetSetting(string key, string value) => Server.Settings[key] = value ?? "";
-
-    // Boolean helpers
-    bool TryParseBool(string? s, out bool value) => bool.TryParse(s, out value);
-    bool GetBool(string key) => bool.TryParse(GetSetting(key), out var v) && v;
-    void SetBool(string key, bool v) => SetSetting(key, v ? "true" : "false");
-
-    // Integer helpers
-    bool TryParseInt(string? s, out int value) => int.TryParse(s, out value);
-    int GetInt(string key) => int.TryParse(GetSetting(key), out var v) ? v : 0;
-    void SetInt(string key, int v) => SetSetting(key, v.ToString());
-
-    // List-like keys are stored as newline-separated strings in Server.Settings
-    bool IsListKey(string key)
-    {
-        if (string.IsNullOrWhiteSpace(key)) return false;
-        var k = key.ToUpperInvariant();
-        return k.Contains("OPS") || k.Contains("WHITELIST") || k.Contains("LIST");
-    }
-
-    string GetListText(string key)
-    {
-        var raw = GetSetting(key);
-        if (string.IsNullOrEmpty(raw)) return "";
-        // If stored as JSON array (unlikely), try to parse a simple representation fallback
-        if (raw.StartsWith("[") && raw.Contains("]"))
-        {
-            try
-            {
-                var arr = System.Text.Json.JsonSerializer.Deserialize<string[]>(raw);
-                return arr == null ? raw : string.Join("\n", arr);
-            }
-            catch { /* ignore parse errors */ }
-        }
-        return raw.Replace("\r", "");
-    }
-
-    void SetListText(string key, string text)
-    {
-        var lines = (text ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
-        // store as newline-separated string so downstream deployer can split
-        SetSetting(key, string.Join("\n", lines));
-    }
 
     async Task NextAsync()
     {
@@ -102,7 +50,7 @@
         {
             if (Definition.DefaultSettings.TryGetValue(s.Key, out var val))
             {
-                if (s.Value == val || val == string.Empty)
+                if (s.Value == val || s.Key == string.Empty)
                 {
                     remove.Add(s.Key);
                 }
