@@ -9,9 +9,9 @@ on:
     branches:
       - main
 
-permissions:
-  packages: write
-  contents: read
+# permissions:
+#   packages: write
+#   contents: write
 
 jobs:
   docker:
