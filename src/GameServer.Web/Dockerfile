@@ -15,7 +15,7 @@ ARG VERSION_NUMBER=1.0.0.0
 WORKDIR /src
 COPY . .
 RUN dotnet restore "./GameServer.Web.csproj"
-RUN dotnet build "./GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "./GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
