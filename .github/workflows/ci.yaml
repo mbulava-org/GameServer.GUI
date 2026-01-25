@@ -12,3 +12,18 @@ on:
 permissions:
   packages: write
   contents: read
+
+jobs:
+  docker:
+    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    secrets: inherit
+    with:
+      dotnet_version: '10.0.x'
+      semantic_version: '0.0.1.0'
+      docker_context: './src/GameServer.Web'
+      primary_branch : 'main'
+      push_output: true
+      push_branch: true
+      version_tag: true
+      semantic_version_rollup_tag: false 
+      target_repo: 'gameserver-web'   

@@ -320,7 +320,7 @@
         Ensure("ENABLE_RCON", "true");
         Ensure("SNOOPER_ENABLED", "false");
         Ensure("EULA", "true");
-
+        Ensure("LEVEL", Server.Name);
         // populate list textareas from settings
         opsText = GetListText("OPS");
         whitelistText = GetListText("WHITELIST");

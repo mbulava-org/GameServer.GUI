@@ -1,0 +1,40 @@
+.management-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.header-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--rz-border-color, #e0e0e0);
+}
+
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-group h2 {
+  margin: 0;
+}
+
+.management-tabs {
+  min-height: calc(100vh - 200px);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 16px;
+}
+
+.error-card {
+  max-width: 600px;
+  margin: 40px auto;
+  text-align: center;
+}

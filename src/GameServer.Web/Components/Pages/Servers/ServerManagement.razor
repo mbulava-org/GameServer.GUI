@@ -1,0 +1,98 @@
+@page "/servers/{ServerId}/manage"
+@rendermode InteractiveServer
+@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@inject IGameServerApi ServerApi
+@inject NavigationManager Nav
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<PageTitle>Manage @(server?.Name ?? "Server")</PageTitle>
+
+@if (loading)
+{
+  <div class="loading-container">
+    <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+    <p>Loading server...</p>
+  </div>
+}
+else if (server == null)
+{
+  <RadzenCard class="error-card">
+    <h3>Server Not Found</h3>
+    <p>The requested server could not be found.</p>
+    <RadzenButton Text="Back to Dashboard" Click='@(() => Nav.NavigateTo("/servers"))' />
+  </RadzenCard>
+}
+else
+{
+  <div class="management-container">
+    <div class="header-section">
+      <div class="title-group">
+        <RadzenButton Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click='@(() => Nav.NavigateTo($"/servers/{ServerId}"))' />
+        <h2>Manage: @server.Name</h2>
+        <RadzenBadge BadgeStyle='@(server.IsRunning ? BadgeStyle.Success : BadgeStyle.Secondary)' 
+                     Text='@(server.IsRunning ? "Running" : "Stopped")' />
+      </div>
+    </div>
+
+    <RadzenTabs @bind-SelectedIndex="selectedTab" class="management-tabs">
+      <Tabs>
+        <RadzenTabsItem Text="Logs">
+          <ServerLogsViewer ServerId="@ServerId" Server="@server" />
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="File Manager">
+          <ServerFileManager ServerId="@ServerId" Server="@server" />
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="Console">
+          <ServerConsole ServerId="@ServerId" Server="@server" />
+        </RadzenTabsItem>
+      </Tabs>
+    </RadzenTabs>
+  </div>
+}
+
+@code {
+  [Parameter] public string ServerId { get; set; } = "";
+
+  GameServer? server;
+  bool loading = true;
+  int selectedTab = 0;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadServerAsync();
+  }
+
+  async Task LoadServerAsync()
+  {
+    loading = true;
+    try
+    {
+      server = await ServerApi.GetAsync(ServerId);
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to load server: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+    finally
+    {
+      loading = false;
+    }
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    // Cleanup handled by child components
+    await Task.CompletedTask;
+  }
+}

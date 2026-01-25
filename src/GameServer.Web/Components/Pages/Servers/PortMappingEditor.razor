@@ -66,6 +66,7 @@
     [Parameter] public EventCallback<GameServer> OnChanged { get; set; }
     [Parameter] public EventCallback<bool> OnValidityChanged { get; set; }
 
+    private bool paramertersSet = false;
     // Validation state: per-instance error message for PublishedPort
     Dictionary<PortMapping, string> publishedErrors = new();
 
@@ -73,7 +74,9 @@
     {
         if (Server != null)
         {
-
+            // only run once
+            if(paramertersSet)
+                return;
             // Default published port to container port when 0, validate and sync settings
             foreach (var pm in Server.Ports)
             {
@@ -82,7 +85,8 @@
                     pm.PublishedPort = pm.ContainerPort;
                 }
             }
-
+            // mark as set
+            paramertersSet = true;
             ValidateAllPublished();
         }
     }

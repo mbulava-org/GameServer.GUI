@@ -1,0 +1,281 @@
+@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@using Microsoft.AspNetCore.Components.Forms
+@inject IGameServerApi ServerApi
+@inject NotificationService NotificationService
+
+<div class="file-manager">
+  <div class="file-toolbar">
+    <RadzenDropDown Data="Server.Volumes" 
+                    @bind-Value="selectedVolume" 
+                    TextProperty="Target" 
+                    Placeholder="Select Volume"
+                    Change="OnVolumeChanged"
+                    Style="width:250px" />
+    <div class="path-breadcrumb">
+      <RadzenBreadCrumb Data="breadcrumbs" />
+    </div>
+    <div class="toolbar-actions">
+      <RadzenButton Icon="create_new_folder" Text="New Folder" Click="CreateFolder" ButtonStyle="ButtonStyle.Light" />
+      <RadzenButton Icon="upload_file" Text="Upload" Click="ShowUploadDialog" ButtonStyle="ButtonStyle.Primary" />
+      <RadzenButton Icon="refresh" Click="RefreshFiles" ButtonStyle="ButtonStyle.Light" />
+    </div>
+  </div>
+
+  @if (loadingFiles)
+  {
+    <div class="loading-indicator">
+      <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+      <span>Loading files...</span>
+    </div>
+  }
+  else
+  {
+    <RadzenDataGrid Data="currentFiles" TItem="FileItem" class="file-grid" AllowSorting="true" AllowFiltering="true">
+      <Columns>
+        <RadzenDataGridColumn TItem="FileItem" Property="Name" Title="Name" Width="50%">
+          <Template Context="file">
+            <div class="file-name-cell" @onclick='@(() => OnFileClick(file))'>
+              <RadzenIcon Icon='@(file.IsDirectory ? "folder" : GetFileIcon(file.Name))' class="file-icon" />
+              <span class="file-name">@file.Name</span>
+            </div>
+          </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="FileItem" Property="Size" Title="Size" Width="15%">
+          <Template Context="file">
+            @FormatFileSize(file.Size)
+          </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="FileItem" Property="Modified" Title="Modified" Width="20%" FormatString="{0:yyyy-MM-dd HH:mm}" />
+        <RadzenDataGridColumn TItem="FileItem" Title="Actions" Width="15%" Sortable="false" Filterable="false">
+          <Template Context="file">
+            <div class="file-actions">
+              @if (!file.IsDirectory)
+              {
+                <RadzenButton Icon="download" Size="ButtonSize.Small" Click='@(() => DownloadFile(file))' ButtonStyle="ButtonStyle.Light" />
+                <RadzenButton Icon="edit" Size="ButtonSize.Small" Click='@(() => EditFile(file))' ButtonStyle="ButtonStyle.Light" />
+              }
+              <RadzenButton Icon="delete" Size="ButtonSize.Small" Click='@(() => DeleteFile(file))' ButtonStyle="ButtonStyle.Danger" />
+            </div>
+          </Template>
+        </RadzenDataGridColumn>
+      </Columns>
+    </RadzenDataGrid>
+  }
+</div>
+
+@code {
+  [Parameter] public string ServerId { get; set; } = "";
+  [Parameter] public GameServer Server { get; set; } = new();
+
+
+
+  VolumeDefinition? selectedVolume;
+  string currentPath = "/";
+  List<FileItem> currentFiles = new();
+  bool loadingFiles = false;
+  List<BreadcrumbItem> breadcrumbs = new();
+
+  async Task OnVolumeChanged()
+  {
+    if (selectedVolume != null)
+    {
+      currentPath = "/";
+      await LoadFilesAsync();
+    }
+  }
+
+  async Task LoadFilesAsync()
+  {
+    if (selectedVolume == null) return;
+
+    loadingFiles = true;
+    try
+    {
+      var files = await ServerApi.GetFilesAsync(ServerId, selectedVolume.Target, currentPath);
+      currentFiles = files.Select(f => new FileItem
+      {
+        Name = f.Name,
+        Path = f.Path,
+        IsDirectory = f.IsDirectory,
+        Size = f.Size,
+        ModifiedTime = f.ModifiedTime
+      }).ToList();
+
+      UpdateBreadcrumbs();
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to load files: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+    finally
+    {
+      loadingFiles = false;
+    }
+  }
+
+  void UpdateBreadcrumbs()
+  {
+    breadcrumbs.Clear();
+    breadcrumbs.Add(new BreadcrumbItem { Text = selectedVolume?.Target ?? "Root", Path = "/" });
+
+    if (currentPath != "/")
+    {
+      var parts = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+      var path = "";
+      foreach (var part in parts)
+      {
+        path += "/" + part;
+        breadcrumbs.Add(new BreadcrumbItem { Text = part, Path = path });
+      }
+    }
+  }
+
+  async Task OnFileClick(FileItem file)
+  {
+    if (file.IsDirectory)
+    {
+      currentPath = file.Path;
+      await LoadFilesAsync();
+    }
+  }
+
+  async Task RefreshFiles()
+  {
+    await LoadFilesAsync();
+  }
+
+  async Task CreateFolder()
+  {
+    // Show dialog to create folder
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Create Folder", 
+      Detail = "Create folder dialog - to be implemented", 
+      Duration = 3000 
+    });
+  }
+
+  async Task ShowUploadDialog()
+  {
+    // Show file upload dialog
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Upload", 
+      Detail = "File upload dialog - to be implemented", 
+      Duration = 3000 
+    });
+  }
+
+  async Task DownloadFile(FileItem file)
+  {
+    try
+    {
+      // Implement file download
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Info, 
+        Summary = "Download", 
+        Detail = $"Downloading {file.Name}...", 
+        Duration = 3000 
+      });
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to download file: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+  }
+
+  async Task EditFile(FileItem file)
+  {
+    // Open file editor
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Edit", 
+      Detail = $"File editor for {file.Name} - to be implemented", 
+      Duration = 3000 
+    });
+  }
+
+  async Task DeleteFile(FileItem file)
+  {
+      //TODO: I'll need to re-look at this later
+        NotificationService.Notify(NotificationSeverity.Info, "Delete", "File deletion - to be implemented", 3000);
+    // var confirmed = await NotificationService.Confirm($"Delete {file.Name}?", "Confirm Delete", new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+    
+    // if (confirmed == true)
+    // {
+    //   try
+    //   {
+    //     await ServerApi.DeleteFileAsync(ServerId, selectedVolume!.Target, file.Path);
+    //     await LoadFilesAsync();
+        
+    //     NotificationService.Notify(new NotificationMessage 
+    //     { 
+    //       Severity = NotificationSeverity.Success, 
+    //       Summary = "Deleted", 
+    //       Detail = $"{file.Name} has been deleted.", 
+    //       Duration = 3000 
+    //     });
+    //   }
+    //   catch (Exception ex)
+    //   {
+    //     NotificationService.Notify(new NotificationMessage 
+    //     { 
+    //       Severity = NotificationSeverity.Error, 
+    //       Summary = "Error", 
+    //       Detail = $"Failed to delete file: {ex.Message}", 
+    //       Duration = 5000 
+    //     });
+    //   }
+    // }
+  }
+
+  string FormatFileSize(long bytes)
+  {
+    string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+    double len = bytes;
+    int order = 0;
+    while (len >= 1024 && order < sizes.Length - 1)
+    {
+      order++;
+      len = len / 1024;
+    }
+    return $"{len:0.##} {sizes[order]}";
+  }
+
+  string GetFileIcon(string fileName)
+  {
+    var ext = System.IO.Path.GetExtension(fileName).ToLower();
+    return ext switch
+    {
+      ".txt" or ".log" => "description",
+      ".json" or ".xml" or ".yml" or ".yaml" => "code",
+      ".zip" or ".tar" or ".gz" => "archive",
+      ".jpg" or ".png" or ".gif" => "image",
+      _ => "insert_drive_file"
+    };
+  }
+
+  class BreadcrumbItem
+  {
+    public string Text { get; set; } = "";
+    public string Path { get; set; } = "";
+  }
+}

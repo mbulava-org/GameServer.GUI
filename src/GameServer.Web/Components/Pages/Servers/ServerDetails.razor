@@ -1,0 +1,372 @@
+﻿@page "/servers/{ServerId}"
+@rendermode InteractiveServer
+@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@using System.Text.Json
+@inject IGameServerApi ServerApi
+@inject IDashboardApi DashboardApi
+@inject NavigationManager Nav
+@inject NotificationService NotificationService
+
+<PageTitle>@(server?.Name ?? "Server Details")</PageTitle>
+
+@if (loading)
+{
+  <div class="loading-container">
+    <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+    <p>Loading server details...</p>
+  </div>
+}
+else if (server == null)
+{
+  <RadzenCard class="error-card">
+    <h3>Server Not Found</h3>
+    <p>The requested server could not be found.</p>
+    <RadzenButton Text="Back to Dashboard" Click='@(() => Nav.NavigateTo("/servers"))' />
+  </RadzenCard>
+}
+else
+{
+  <div class="details-container">
+    <div class="header-section">
+      <div class="title-group">
+        <h2>@server.Name</h2>
+        <RadzenBadge BadgeStyle='@(server.IsRunning ? BadgeStyle.Success : BadgeStyle.Secondary)' 
+                     Text='@(server.IsRunning ? "Running" : "Stopped")' />
+      </div>
+      <div class="actions-group">
+        <RadzenButton Text="Edit" Icon="edit" Click="EditServer" ButtonStyle="ButtonStyle.Secondary" />
+        <RadzenButton Text='@(server.IsRunning ? "Stop" : "Start")' 
+                      Icon='@(server.IsRunning ? "stop" : "play_arrow")' 
+                      Click="ToggleServerState" 
+                      ButtonStyle='@(server.IsRunning ? ButtonStyle.Warning : ButtonStyle.Success)' 
+                      Disabled="@actionInProgress" />
+        <RadzenButton Text="Delete" Icon="delete" Click="DeleteServer" ButtonStyle="ButtonStyle.Danger" Disabled="@actionInProgress" />
+        <RadzenButton Text="Manage" Icon="settings" Click='@(() => Nav.NavigateTo($"/servers/{ServerId}/manage"))' ButtonStyle="ButtonStyle.Primary" />
+      </div>
+    </div>
+
+    <div class="details-grid">
+      <div class="column-left">
+                <h4>Overview</h4>
+        <RadzenCard class="info-card">
+          
+          <ChildContent>
+                        
+            <div class="info-row">
+              <span class="label">Server ID:</span>
+              <span class="value">@server.ServerId</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Game Type:</span>
+              <span class="value">@server.GameType</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Service Name:</span>
+              <span class="value">@server.ServiceName</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Description:</span>
+              <span class="value">@server.Description</span>
+            </div>
+          </ChildContent>
+        </RadzenCard>
+
+                <h4>Network Information</h4>
+        <RadzenCard class="info-card">
+          
+          <ChildContent>
+                        
+            @if (server.Ports?.Any() == true)
+            {
+              @foreach (var port in server.Ports)
+              {
+                <div class="port-row">
+                  <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort} → {port.ContainerPort}")' />
+                  <span class="protocol">@port.Protocol</span>
+                </div>
+              }
+              <div class="connection-info">
+                <span class="label">Connect to:</span>
+                <code class="connection-string">@GetConnectionString()</code>
+                <RadzenButton Icon="content_copy" Size="ButtonSize.Small" Click="CopyConnectionString" />
+              </div>
+            }
+            else
+            {
+              <p class="no-data">No port mappings configured</p>
+            }
+          </ChildContent>
+        </RadzenCard>
+                <h4>Volumes</h4>
+        <RadzenCard class="info-card">
+          
+          <ChildContent>
+            @if (server.Volumes?.Any() == true)
+            {
+              @foreach (var vol in server.Volumes)
+              {
+                <div class="volume-row">
+                  <div class="volume-path">
+                    <strong>Host:</strong> <code>@vol.Source</code>
+                  </div>
+                  <div class="volume-arrow">→</div>
+                  <div class="volume-path">
+                    <strong>Container:</strong> <code>@vol.Target</code>
+                  </div>
+                </div>
+              }
+            }
+            else
+            {
+              <p class="no-data">No volumes configured</p>
+            }
+          </ChildContent>
+        </RadzenCard>
+      </div>
+
+      <div class="column-right">
+                <h4>Environment Variables</h4>
+        <RadzenCard class="settings-card">
+          <ChildContent>
+            @if (server.Settings?.Any() == true)
+            {
+              <div class="settings-search">
+                <RadzenTextBox @bind-Value="settingsFilter" Placeholder="Filter settings..." class="filter-input" />
+              </div>
+              <div class="settings-list">
+                @foreach (var kvp in GetFilteredSettings())
+                {
+                  <div class="setting-row">
+                    <span class="setting-key">@kvp.Key</span>
+                    <span class="setting-value">@kvp.Value</span>
+                  </div>
+                }
+              </div>
+            }
+            else
+            {
+              <p class="no-data">No environment variables configured</p>
+            }
+          </ChildContent>
+        </RadzenCard>
+
+                <h4>Server Logs</h4>
+        <RadzenCard class="info-card">
+          <ChildContent>
+            <div class="logs-container">
+              <RadzenButton Text="View Logs" Icon="article" Click="ViewLogs" class="mb-2" />
+              <RadzenButton Text="Download Logs" Icon="download" Click="DownloadLogs" ButtonStyle="ButtonStyle.Secondary" />
+            </div>
+          </ChildContent>
+        </RadzenCard>
+      </div>
+    </div>
+  </div>
+}
+
+@code {
+  [Parameter] public string ServerId { get; set; } = "";
+
+  GameServer? server;
+  bool loading = true;
+  bool actionInProgress = false;
+  string settingsFilter = "";
+  string? publicIp;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadServerAsync();
+    await LoadPublicIpAsync();
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (!string.IsNullOrEmpty(ServerId))
+    {
+      await LoadServerAsync();
+    }
+  }
+
+  async Task LoadServerAsync()
+  {
+    loading = true;
+    try
+    {
+      server = await ServerApi.GetAsync(ServerId);
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to load server: {ex.Message}", 
+        Duration = 5000 
+      });
+      server = null;
+    }
+    finally
+    {
+      loading = false;
+    }
+  }
+
+  async Task LoadPublicIpAsync()
+  {
+    try
+    {
+      using var http = new HttpClient();
+      publicIp = await http.GetStringAsync("https://api.ipify.org");
+    }
+    catch
+    {
+      publicIp = "localhost";
+    }
+  }
+
+  string GetConnectionString()
+  {
+    var port = server?.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
+    var host = publicIp ?? "localhost";
+    return port > 0 ? $"{host}:{port}" : "N/A";
+  }
+
+  IEnumerable<KeyValuePair<string, string>> GetFilteredSettings()
+  {
+    if (server?.Settings == null) return Enumerable.Empty<KeyValuePair<string, string>>();
+    
+    var settings = server.Settings.AsEnumerable();
+    if (!string.IsNullOrWhiteSpace(settingsFilter))
+    {
+      settings = settings.Where(kvp => 
+        kvp.Key.Contains(settingsFilter, StringComparison.OrdinalIgnoreCase) ||
+        kvp.Value.Contains(settingsFilter, StringComparison.OrdinalIgnoreCase));
+    }
+    return settings.OrderBy(kvp => kvp.Key);
+  }
+
+  async Task ToggleServerState()
+  {
+    if (server == null) return;
+    
+    actionInProgress = true;
+    try
+    {
+      if (server.IsRunning)
+      {
+                await DashboardApi.StopAsync(ServerId);
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Success, 
+          Summary = "Server Stopped", 
+          Detail = $"{server.Name} has been stopped.", 
+          Duration = 3000 
+        });
+      }
+      else
+      {
+                await DashboardApi.StartAsync(ServerId);
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Success, 
+          Summary = "Server Started", 
+          Detail = $"{server.Name} has been started.", 
+          Duration = 3000 
+        });
+      }
+      
+      await LoadServerAsync();
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to change server state: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+    finally
+    {
+      actionInProgress = false;
+    }
+  }
+
+  void EditServer()
+  {
+    Nav.NavigateTo($"/servers/edit/{ServerId}");
+  }
+
+  async Task DeleteServer()
+  {
+    if (server == null) return;
+    
+    //var confirmed = await NotificationService.Confirm($"Are you sure you want to delete '{server.Name}'?", "Delete Server", new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+    
+    if (true == true)
+    {
+      actionInProgress = true;
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Info, 
+        Summary = "Info", 
+        Detail = "Server deletion feature is currently disabled.", 
+        Duration = 3000 
+      });
+      // try
+      // {
+      //   await ServerApi.RemoveServer(ServerId);
+      //   NotificationService.Notify(new NotificationMessage 
+      //   { 
+      //     Severity = NotificationSeverity.Success, 
+      //     Summary = "Server Deleted", 
+      //     Detail = $"{server.Name} has been deleted.", 
+      //     Duration = 3000 
+      //   });
+      //   Nav.NavigateTo("/servers");
+      // }
+      // catch (Exception ex)
+      // {
+      //   NotificationService.Notify(new NotificationMessage 
+      //   { 
+      //     Severity = NotificationSeverity.Error, 
+      //     Summary = "Error", 
+      //     Detail = $"Failed to delete server: {ex.Message}", 
+      //     Duration = 5000 
+      //   });
+        actionInProgress = false;
+      }
+    
+  }
+
+  async Task CopyConnectionString()
+  {
+    // Would require JS interop for clipboard - simplified notification for now
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Connection String", 
+      Detail = GetConnectionString(), 
+      Duration = 5000 
+    });
+  }
+
+  void ViewLogs()
+  {
+    Nav.NavigateTo($"/servers/{ServerId}/logs");
+  }
+
+  async Task DownloadLogs()
+  {
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Download", 
+      Detail = "Log download feature coming soon.", 
+      Duration = 3000 
+    });
+  }
+}

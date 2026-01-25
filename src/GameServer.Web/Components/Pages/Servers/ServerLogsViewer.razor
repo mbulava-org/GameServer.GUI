@@ -1,0 +1,298 @@
+﻿@using Radzen
+@using Radzen.Blazor
+@using GameServer.Docker.Client
+@using GameServer.Web.Services
+@using System.Text
+@inject IGameServerApi ServerApi
+@inject GameServerWebSocketService WebSocketService
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<div class="logs-viewer">
+  <div class="logs-toolbar">
+    <div class="toolbar-left">
+      <RadzenButton Icon='@(isStreaming ? "pause" : "play_arrow")' 
+                    Text='@(isStreaming ? "Pause" : "Stream Logs")' 
+                    Click="ToggleStreaming" 
+                    ButtonStyle='@(isStreaming ? ButtonStyle.Warning : ButtonStyle.Success)' />
+      <RadzenButton Icon="refresh" Text="Refresh" Click="RefreshLogs" />
+      <RadzenButton Icon="delete_sweep" Text="Clear" Click="ClearLogs" ButtonStyle="ButtonStyle.Secondary" />
+    </div>
+    <div class="toolbar-right">
+      <RadzenCheckBox @bind-Value="autoScroll" />
+      <RadzenLabel Text="Auto-scroll" class="ml-2" />
+      <RadzenNumeric @bind-Value="maxLines" Min="100" Max="10000" Step="100" class="ml-3" Style="width:120px" />
+      <RadzenLabel Text="Max Lines" class="ml-2" />
+      <RadzenButton Icon="download" Text="Download" Click="DownloadLogs" ButtonStyle="ButtonStyle.Light" />
+    </div>
+  </div>
+
+  <div class="logs-filter">
+    <RadzenTextBox @bind-Value="filterText" Placeholder="Filter logs..." class="filter-input" />
+    <RadzenDropDown Data="logLevels" @bind-Value="selectedLogLevel" AllowClear="true" Placeholder="All Levels" class="ml-2" Style="width:150px" />
+  </div>
+
+  <div class="logs-content" @ref="logsContentRef">
+    @if (loadingLogs)
+    {
+      <div class="loading-indicator">
+        <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" />
+        <span>Loading logs...</span>
+      </div>
+    }
+    else if (!logLines.Any())
+    {
+      <div class="no-logs">No logs available</div>
+    }
+    else
+    {
+      <div class="log-lines">
+        @foreach (var line in GetFilteredLogs())
+        {
+          <div class='@GetLogLineClass(line)'>
+            <span class="log-timestamp">@line.Timestamp.ToString("HH:mm:ss.fff")</span>
+            <span class="log-level">[@line.Level]</span>
+            <span class="log-message">@line.Message</span>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="logs-footer">
+    <span>Total: @logLines.Count lines | Filtered: @GetFilteredLogs().Count() lines</span>
+    @if (isStreaming)
+    {
+      <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="● Live" />
+    }
+  </div>
+</div>
+
+@code {
+  [Parameter] public string ServerId { get; set; } = "";
+  [Parameter] public GameServer Server { get; set; } = new();
+
+  class LogLine
+  {
+    public DateTime Timestamp { get; set; }
+    public string Level { get; set; } = "INFO";
+    public string Message { get; set; } = "";
+  }
+
+  List<LogLine> logLines = new();
+  bool loadingLogs = false;
+  bool isStreaming = false;
+  bool autoScroll = true;
+  int maxLines = 1000;
+  string filterText = "";
+  string? selectedLogLevel;
+  string[] logLevels = new[] { "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
+  ElementReference logsContentRef;
+  IDisposable? logSubscription;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadLogsAsync();
+  }
+
+  async Task LoadLogsAsync()
+  {
+    loadingLogs = true;
+    try
+    {
+       var logs = await ServerApi.StreamLogsAsync(ServerId, false, 1000);
+       using (var sr = new StreamReader(logs.Stream))
+       logLines = ParseLogs(sr.ReadToEnd());
+    }
+    catch (Exception ex)    
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to load logs: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+    finally
+    {
+      loadingLogs = false;
+    }
+  }
+
+  async Task ToggleStreaming()
+  {
+    if (isStreaming)
+    {
+      await StopStreaming();
+    }
+    else
+    {
+      await StartStreaming();
+    }
+  }
+
+  async Task StartStreaming()
+  {
+    try
+    {
+      logSubscription = await WebSocketService.SubscribeToLogsAsync(
+        ServerId,
+        OnLogMessageReceived);
+      
+      isStreaming = true;
+
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Success, 
+        Summary = "Connected", 
+        Detail = "Live log streaming started", 
+        Duration = 3000 
+      });
+    }
+    catch (Exception ex)
+    {
+      isStreaming = false;
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Connection Error", 
+        Detail = $"Failed to start log streaming: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+  }
+
+  async Task OnLogMessageReceived(string message)
+  {
+    var line = ParseLogLine(message);
+    
+    await InvokeAsync(() =>
+    {
+      logLines.Add(line);
+      
+      if (logLines.Count > maxLines)
+      {
+        logLines.RemoveAt(0);
+      }
+      
+      StateHasChanged();
+    });
+  }
+
+  async Task StopStreaming()
+  {
+    logSubscription?.Dispose();
+    logSubscription = null;
+    isStreaming = false;
+  }
+
+  async Task RefreshLogs()
+  {
+    await LoadLogsAsync();
+  }
+
+  void ClearLogs()
+  {
+    logLines.Clear();
+  }
+
+  async Task DownloadLogs()
+  {
+    try
+    {
+      var sb = new StringBuilder();
+      foreach (var line in logLines)
+      {
+        sb.AppendLine($"[{line.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{line.Level}] {line.Message}");
+      }
+      
+      var content = sb.ToString();
+      var fileName = $"{Server.Name}_logs_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+      
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Info, 
+        Summary = "Download", 
+        Detail = $"Preparing download: {fileName}", 
+        Duration = 3000 
+      });
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error", 
+        Detail = $"Failed to download logs: {ex.Message}", 
+        Duration = 5000 
+      });
+    }
+  }
+
+  List<LogLine> ParseLogs(string logs)
+  {
+    if (string.IsNullOrEmpty(logs)) return new List<LogLine>();
+    
+    var lines = logs.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+    return lines.Select(ParseLogLine).ToList();
+  }
+
+  LogLine ParseLogLine(string line)
+  {
+    var timestamp = DateTime.Now;
+    var level = "INFO";
+    var message = line;
+
+    // Parse: [2024-01-24 10:30:45.123] [INFO] Message
+    var match = System.Text.RegularExpressions.Regex.Match(
+      line, 
+      @"\[(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(?:\.\d{3})?)\]\s*\[(\w+)\]\s*(.*)");
+    
+    if (match.Success)
+    {
+      DateTime.TryParse(match.Groups[1].Value, out timestamp);
+      level = match.Groups[2].Value;
+      message = match.Groups[3].Value;
+    }
+
+    return new LogLine { Timestamp = timestamp, Level = level, Message = message };
+  }
+
+  IEnumerable<LogLine> GetFilteredLogs()
+  {
+    var filtered = logLines.AsEnumerable();
+
+    if (!string.IsNullOrWhiteSpace(filterText))
+    {
+      filtered = filtered.Where(l => l.Message.Contains(filterText, StringComparison.OrdinalIgnoreCase));
+    }
+
+    if (!string.IsNullOrWhiteSpace(selectedLogLevel))
+    {
+      filtered = filtered.Where(l => l.Level.Equals(selectedLogLevel, StringComparison.OrdinalIgnoreCase));
+    }
+
+    return filtered;
+  }
+
+  string GetLogLineClass(LogLine line)
+  {
+    var baseClass = "log-line";
+    return line.Level.ToUpper() switch
+    {
+      "ERROR" or "FATAL" => $"{baseClass} log-error",
+      "WARN" or "WARNING" => $"{baseClass} log-warn",
+      "DEBUG" => $"{baseClass} log-debug",
+      _ => baseClass
+    };
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    if (isStreaming)
+    {
+      await StopStreaming();
+    }
+  }
+}

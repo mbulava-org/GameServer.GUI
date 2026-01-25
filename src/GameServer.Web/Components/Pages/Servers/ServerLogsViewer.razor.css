@@ -1,0 +1,128 @@
+.logs-viewer {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 250px);
+  background: var(--rz-base-background-color, #fff);
+  border: 1px solid var(--rz-border-color, #e0e0e0);
+  border-radius: 4px;
+}
+
+.logs-toolbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--rz-border-color, #e0e0e0);
+  background: var(--rz-base-background-color, #f8f9fa);
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logs-filter {
+  display: flex;
+  padding: 8px 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--rz-border-color, #e0e0e0);
+}
+
+.filter-input {
+  flex: 1;
+}
+
+.logs-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: #888;
+}
+
+.no-logs {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.log-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+.log-line {
+  padding: 4px 8px;
+  border-bottom: 1px solid #2d2d2d;
+  line-height: 1.5;
+}
+
+.log-line:hover {
+  background: #2d2d2d;
+}
+
+.log-timestamp {
+  color: #858585;
+  margin-right: 8px;
+}
+
+.log-level {
+  font-weight: 600;
+  margin-right: 8px;
+  min-width: 60px;
+  display: inline-block;
+}
+
+.log-error {
+  color: #f48771;
+}
+
+.log-error .log-level {
+  color: #f14c4c;
+}
+
+.log-warn {
+  color: #dcdcaa;
+}
+
+.log-warn .log-level {
+  color: #cca700;
+}
+
+.log-debug {
+  color: #858585;
+}
+
+.log-message {
+  word-wrap: break-word;
+}
+
+.logs-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--rz-border-color, #e0e0e0);
+  background: var(--rz-base-background-color, #f8f9fa);
+  font-size: 0.9rem;
+}
+
+.ml-2 {
+  margin-left: 8px;
+}
+
+.ml-3 {
+  margin-left: 12px;
+}
