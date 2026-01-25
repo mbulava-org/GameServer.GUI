@@ -10,7 +10,7 @@ on:
       - main
 
 permissions:
-  packages: read-write
+  packages: write
   contents: read
 
 jobs:
