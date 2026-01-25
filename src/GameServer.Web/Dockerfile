@@ -12,8 +12,10 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
+ARG GITHUB_TOKEN
 WORKDIR /src
 COPY . .
+RUN sed -i "s|\${GITHUB_TOKEN}|${GITHUB_TOKEN}|g" nuget.config
 RUN dotnet restore "./GameServer.Web.csproj"
 RUN dotnet build "./GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
