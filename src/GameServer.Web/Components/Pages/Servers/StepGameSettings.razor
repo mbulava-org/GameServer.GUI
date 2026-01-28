@@ -2,6 +2,7 @@
 @using Radzen.Blazor
 @using GameServer.Docker.Client
 @using System.Linq
+@inject NotificationService NotificationService
 
 <RadzenCard>
     <h4>@(Definition?.DisplayName ?? "Game") Settings</h4>
@@ -50,13 +51,14 @@
         {
             if (Definition.DefaultSettings.TryGetValue(s.Key, out var val))
             {
-                if (s.Value == val || s.Key == string.Empty)
+                if (s.Value == val || s.Value == string.Empty)
                 {
                     remove.Add(s.Key);
                 }
             }
             else
             {
+                NotificationService.Notify(NotificationSeverity.Warning, "Warning", $"Setting {s.Key} is not recognized for game type {Definition.DisplayName} and will be removed.");
                 remove.Add(s.Key);
             }
         }

@@ -62,7 +62,13 @@
 
     protected async Task SelectGameType(string key)
     {
-        SelectedDefinition = GameTypes.First(x => x.Key == key);
+        SelectedDefinition = GameTypes.FirstOrDefault(x => x.Key == key);
+        if (SelectedDefinition == null)
+        {
+            // Handle error - show notification, return, etc.
+            return;
+        }
+
         Server = new GameServer();
         Server.GameType = key;
 

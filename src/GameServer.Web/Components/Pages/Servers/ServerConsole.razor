@@ -1,15 +1,18 @@
+@using Microsoft.AspNetCore.SignalR.Client
 @using Radzen
 @using Radzen.Blazor
 @using GameServer.Docker.Client
-@using GameServer.Web.Services
-@inject GameServerWebSocketService WebSocketService
+@using GameServer.Docker.Client.Interfaces
+@using GameServer.Docker.Client.Services
+@inject IConfiguration Configuration
 @inject NotificationService NotificationService
+@inject ILoggerFactory LoggerFactory
 @implements IAsyncDisposable
 
 <div class="console-container">
   <div class="console-toolbar">
-    <RadzenBadge BadgeStyle='@(isConnected ? BadgeStyle.Success : BadgeStyle.Secondary)' 
-                 Text='@(isConnected ? "Connected" : "Disconnected")' />
+    <RadzenBadge BadgeStyle='@GetConnectionBadgeStyle()' 
+                 Text='@GetConnectionStatusText()' />
     <RadzenButton Icon="clear" Text="Clear" Click="ClearConsole" ButtonStyle="ButtonStyle.Secondary" class="ml-auto" />
   </div>
 
@@ -29,11 +32,11 @@
                    Placeholder="Enter command..." 
                    class="command-input" 
                    @onkeydown="OnKeyDown"
-                   Disabled="@(!isConnected)" />
+                   Disabled="@(!IsConnected())" />
     <RadzenButton Text="Send" 
                   Icon="send" 
                   Click="SendCommand" 
-                  Disabled="@(!isConnected || string.IsNullOrWhiteSpace(commandInput))" />
+                  Disabled="@(!IsConnected() || string.IsNullOrWhiteSpace(commandInput))" />
   </div>
 </div>
 
@@ -41,69 +44,221 @@
   [Parameter] public string ServerId { get; set; } = "";
   [Parameter] public GameServer Server { get; set; } = new();
 
-  List<string> consoleLines = new();
-  List<string> commandHistory = new();
-  int historyIndex = -1;
-  string commandInput = "";
-  bool isConnected = false;
-  ElementReference consoleOutputRef;
-  IDisposable? consoleSubscription;
+  private IServerConsoleClient? consoleClient;
+  private List<string> consoleLines = new();
+  private List<string> commandHistory = new();
+  private int historyIndex = -1;
+  private string commandInput = "";
+  private ElementReference consoleOutputRef;
+
+  protected override void OnInitialized()
+  {
+    InitializeConsoleClient();
+  }
 
   protected override async Task OnInitializedAsync()
   {
     await ConnectToConsole();
   }
 
-  async Task ConnectToConsole()
+  protected override async Task OnParametersSetAsync()
   {
+    // Recreate client if server ID changes
+    if (consoleClient != null)
+    {
+      await DisconnectFromConsole();
+      consoleLines.Clear();
+      await ConnectToConsole();
+    }
+  }
+
+  private void InitializeConsoleClient()
+  {
+    if (string.IsNullOrWhiteSpace(ServerId))
+    {
+      return;
+    }
+
+    var apiBaseUrl = Configuration["GameServerDockerApi:BaseUri"]?.TrimEnd('/') ?? "http://localhost:5164";
+    var hubUrl = $"{apiBaseUrl}/hubs/console";
+
+    consoleClient = new ServerConsoleClient(
+      hubUrl,
+      builder => builder
+        .WithAutomaticReconnect(new[] 
+        { 
+          TimeSpan.Zero, 
+          TimeSpan.FromSeconds(2), 
+          TimeSpan.FromSeconds(5), 
+          TimeSpan.FromSeconds(10) 
+        }),
+      LoggerFactory.CreateLogger<ServerConsoleClient>());
+
+    // Wire up events
+    consoleClient.ConsoleOutput += OnConsoleOutputReceived;
+    consoleClient.ConsoleError += OnConsoleErrorReceived;
+    consoleClient.ConsoleStarted += OnConsoleStarted;
+    consoleClient.ConsoleEnded += OnConsoleEnded;
+    consoleClient.ConsoleStopped += OnConsoleStopped;
+    consoleClient.StateChanged += OnStateChanged;
+  }
+
+  private async Task ConnectToConsole()
+  {
+    if (string.IsNullOrWhiteSpace(ServerId))
+    {
+      NotificationService.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Warning,
+        Summary = "Invalid Server",
+        Detail = "Server ID is required",
+        Duration = 3000
+      });
+      return;
+    }
+
+    if (consoleClient == null)
+    {
+      InitializeConsoleClient();
+    }
+
+    if (consoleClient == null)
+    {
+      return;
+    }
+
     try
     {
-      consoleSubscription = await WebSocketService.SubscribeToConsoleAsync(
-        ServerId,
-        OnConsoleMessageReceived,
-        null);
-      
-      isConnected = true;
+      // Connect to the hub
+      await consoleClient.ConnectAsync();
+
+      // Start console session
+      await consoleClient.StartConsoleAsync(ServerId);
+
       consoleLines.Add($"[{DateTime.Now:HH:mm:ss}] Connected to server console");
+
+      NotificationService.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Success,
+        Summary = "Connected",
+        Detail = "Console connection established",
+        Duration = 3000
+      });
     }
     catch (Exception ex)
     {
-      NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Error, 
-        Summary = "Connection Error", 
-        Detail = $"Failed to connect to console: {ex.Message}", 
-        Duration = 5000 
+      NotificationService.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Error,
+        Summary = "Connection Error",
+        Detail = $"Failed to connect to console: {ex.Message}",
+        Duration = 5000
       });
       consoleLines.Add($"[ERROR] Failed to connect: {ex.Message}");
     }
   }
 
-  async Task OnConsoleMessageReceived(string message)
+  private async Task DisconnectFromConsole()
   {
-    await InvokeAsync(() =>
+    if (consoleClient != null)
     {
-      consoleLines.Add(message);
-      
-      if (consoleLines.Count > 1000)
+      try
+      {
+        await consoleClient.StopConsoleAsync();
+        await consoleClient.DisconnectAsync();
+      }
+      catch (Exception ex)
+      {
+        NotificationService.Notify(new NotificationMessage
+        {
+          Severity = NotificationSeverity.Warning,
+          Summary = "Disconnect Warning",
+          Detail = $"Error disconnecting: {ex.Message}",
+          Duration = 3000
+        });
+      }
+    }
+  }
+
+  private void OnConsoleOutputReceived(object? sender, string output)
+  {
+    InvokeAsync(() =>
+    {
+      consoleLines.Add(output);
+
+      // Limit console lines
+      while (consoleLines.Count > 1000)
       {
         consoleLines.RemoveAt(0);
       }
-      
+
       StateHasChanged();
     });
   }
 
-  async Task SendCommand()
+  private void OnConsoleErrorReceived(object? sender, string error)
   {
-    if (string.IsNullOrWhiteSpace(commandInput) || !isConnected) 
+    InvokeAsync(() =>
+    {
+      consoleLines.Add($"[ERROR] {error}");
+      NotificationService.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Error,
+        Summary = "Console Error",
+        Detail = error,
+        Duration = 5000
+      });
+      StateHasChanged();
+    });
+  }
+
+  private void OnConsoleStarted(object? sender, string serverId)
+  {
+    InvokeAsync(() =>
+    {
+      consoleLines.Add($"[{DateTime.Now:HH:mm:ss}] Console session started for server: {serverId}");
+      StateHasChanged();
+    });
+  }
+
+  private void OnConsoleEnded(object? sender, EventArgs e)
+  {
+    InvokeAsync(() =>
+    {
+      consoleLines.Add($"[{DateTime.Now:HH:mm:ss}] Console session ended");
+      StateHasChanged();
+    });
+  }
+
+  private void OnConsoleStopped(object? sender, EventArgs e)
+  {
+    InvokeAsync(() =>
+    {
+      consoleLines.Add($"[{DateTime.Now:HH:mm:ss}] Console session stopped");
+      StateHasChanged();
+    });
+  }
+
+  private void OnStateChanged(object? sender, ConnectionState state)
+  {
+    InvokeAsync(() =>
+    {
+      StateHasChanged();
+    });
+  }
+
+  private async Task SendCommand()
+  {
+    if (string.IsNullOrWhiteSpace(commandInput) || !IsConnected())
+    {
       return;
+    }
 
     try
     {
       var command = commandInput.Trim();
       consoleLines.Add($"> {command}");
-      
+
       // Add to history
       if (commandHistory.Count == 0 || commandHistory[^1] != command)
       {
@@ -115,25 +270,25 @@
       }
       historyIndex = commandHistory.Count;
 
-      // Send command via WebSocket service
-      await WebSocketService.SendConsoleCommandAsync(ServerId, command);
+      // Send command via console client
+      await consoleClient!.SendInputAsync(command);
 
       commandInput = "";
     }
     catch (Exception ex)
     {
-      NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Error, 
-        Summary = "Command Error", 
-        Detail = $"Failed to send command: {ex.Message}", 
-        Duration = 5000 
+      NotificationService.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Error,
+        Summary = "Command Error",
+        Detail = $"Failed to send command: {ex.Message}",
+        Duration = 5000
       });
       consoleLines.Add($"[ERROR] Failed to send command: {ex.Message}");
     }
   }
 
-  async Task OnKeyDown(KeyboardEventArgs e)
+  private async Task OnKeyDown(KeyboardEventArgs e)
   {
     if (e.Key == "Enter")
     {
@@ -162,15 +317,51 @@
     }
   }
 
-  void ClearConsole()
+  private void ClearConsole()
   {
     consoleLines.Clear();
   }
 
+  private bool IsConnected()
+  {
+    return consoleClient?.State == ConnectionState.Connected;
+  }
+
+  private BadgeStyle GetConnectionBadgeStyle()
+  {
+    return consoleClient?.State switch
+    {
+      ConnectionState.Connected => BadgeStyle.Success,
+      ConnectionState.Connecting => BadgeStyle.Info,
+      ConnectionState.Reconnecting => BadgeStyle.Warning,
+      _ => BadgeStyle.Secondary
+    };
+  }
+
+  private string GetConnectionStatusText()
+  {
+    return consoleClient?.State switch
+    {
+      ConnectionState.Connected => "Connected",
+      ConnectionState.Connecting => "Connecting...",
+      ConnectionState.Reconnecting => "Reconnecting...",
+      _ => "Disconnected"
+    };
+  }
+
   public async ValueTask DisposeAsync()
   {
-    consoleSubscription?.Dispose();
-    consoleSubscription = null;
-    isConnected = false;
+    if (consoleClient != null)
+    {
+      // Unwire events
+      consoleClient.ConsoleOutput -= OnConsoleOutputReceived;
+      consoleClient.ConsoleError -= OnConsoleErrorReceived;
+      consoleClient.ConsoleStarted -= OnConsoleStarted;
+      consoleClient.ConsoleEnded -= OnConsoleEnded;
+      consoleClient.ConsoleStopped -= OnConsoleStopped;
+      consoleClient.StateChanged -= OnStateChanged;
+
+      await consoleClient.DisposeAsync();
+    }
   }
 }

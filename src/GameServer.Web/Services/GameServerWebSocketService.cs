@@ -30,7 +30,7 @@ public class GameServerWebSocketService : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var key = $"logs-{serverId}";
-        var connection = await GetOrCreateConnectionAsync(key, $"api/server/{serverId}/ws/logs", cancellationToken);
+        var connection = await GetOrCreateConnectionAsync(key, $"api/servers/{serverId}/ws/logs", cancellationToken);
         
         var subscription = new Subscription(onMessageReceived);
         connection.AddSubscriber(subscription);
@@ -55,7 +55,7 @@ public class GameServerWebSocketService : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var key = $"console-{serverId}";
-        var connection = await GetOrCreateConnectionAsync(key, $"api/server/{serverId}/ws/console", cancellationToken);
+        var connection = await GetOrCreateConnectionAsync(key, $"api/servers/{serverId}/ws/console", cancellationToken);
         
         var subscription = new Subscription(onMessageReceived, sendCommandAsync);
         connection.AddSubscriber(subscription);
@@ -97,22 +97,31 @@ public class GameServerWebSocketService : IAsyncDisposable
             return existingConnection;
         }
 
-        var baseUrl = _configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/" +"";
-        var wsUrl = baseUrl.Replace("http://", "ws://").Replace("https://", "wss://") + relativePath;
+        var baseUrl = _configuration["GameServerDockerApi:BaseUri"]?.TrimEnd('/') ?? "http://localhost:5164";
+        var wsUrl = $"{baseUrl.Replace("http://", "ws://").Replace("https://", "wss://")}/{relativePath}";
         
         var connection = new WebSocketConnection(wsUrl, _logger);
-        
-        if (_connections.TryAdd(key, connection))
+
+        try
         {
             await connection.ConnectAsync(cancellationToken);
-            return connection;
+            
+            if (_connections.TryAdd(key, connection))
+            {
+                return connection;
+            }
+            
+            // Another thread created it
+            await connection.DisposeAsync();
+            if (_connections.TryGetValue(key, out var existingConnection1))
+            {
+                return existingConnection1;
+            }
         }
-
-        // Another thread created it first
-        if (_connections.TryGetValue(key, out var newConnection))
+        catch
         {
             await connection.DisposeAsync();
-            return newConnection;
+            throw;
         }
 
         throw new InvalidOperationException("Failed to create connection");

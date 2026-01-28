@@ -1,4 +1,5 @@
 using GameServer.Docker.Client;
+using GameServer.Docker.Client.Interfaces;
 using GameServer.Web.Components;
 using GameServer.Web.Services;
 using Radzen;
@@ -42,6 +43,8 @@ namespace GameServer.Web
             {
                 client.BaseAddress = new Uri(apiBaseUrl);
             });
+
+            
 
             var app = builder.Build();
 
