@@ -57,7 +57,7 @@
             @(file.IsDirectory ? "-" : FormatFileSize(file.Size))
           </Template>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="FileItem" Property="ModifiedTime" Title="Modified" Width="20%" FormatString="{0:yyyy-MM-dd HH:mm}" />
+        <RadzenDataGridColumn TItem="FileItem" Property="LastModified" Title="Modified" Width="20%" FormatString="{0:yyyy-MM-dd HH:mm}" />
         <RadzenDataGridColumn TItem="FileItem" Title="Actions" Width="15%" Sortable="false" Filterable="false">
           <Template Context="file">
             <div class="file-actions">
@@ -285,41 +285,74 @@
           await JSRuntime.InvokeVoidAsync("downloadFile", file.Name, base64);
       }
 
-      NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Success, 
-        Summary = "Download Complete", 
-        Detail = $"{file.Name} has been downloaded.", 
-        Duration = 3000 
-      });
+      // NotificationService.Notify(new NotificationMessage 
+      // { 
+      //   Severity = NotificationSeverity.Success, 
+      //   Summary = "Download Complete", 
+      //   Detail = $"{file.Name} has been downloaded.", 
+      //   Duration = 3000 
+      // });
     }
     catch (Exception ex)
     {
-      NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Error, 
-        Summary = "Download Failed", 
-        Detail = $"Failed to download file: {ex.Message}", 
-        Duration = 5000 
-      });
+      // NotificationService.Notify(new NotificationMessage 
+      // { 
+      //   Severity = NotificationSeverity.Error, 
+      //   Summary = "Download Failed", 
+      //   Detail = $"Failed to download file: {ex.Message}", 
+      //   Duration = 5000 
+      // });
     }
   }
 
   private async Task EditFile(FileItem file)
   {
-    NotificationService.Notify(new NotificationMessage 
-    { 
-      Severity = NotificationSeverity.Info, 
-      Summary = "Edit", 
-      Detail = $"File editor for {file.Name} - requires text editor component implementation", 
-      Duration = 3000 
-    });
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    // Check file size first
+    const long maxEditableSize = 5 * 1024; // 5KB
     
-    // TODO: Implement file editor
-    // This would require:
-    // - Download file content
-    // - Show in a text editor dialog (Monaco Editor or similar)
-    // - Save changes back to server
+    if (file.Size > maxEditableSize)
+    {
+      var confirmed = await DialogService.Confirm(
+        $"This file is {FormatFileSize(file.Size)}. Files larger than 5KB cannot be edited in the browser.\n\nWould you like to download it instead?",
+        "File Too Large",
+        new ConfirmOptions { OkButtonText = "Download", CancelButtonText = "Cancel" });
+      
+      if (confirmed == true)
+      {
+        await DownloadFile(file);
+      }
+      return;
+    }
+
+    // Open file editor dialog
+    var result = await DialogService.OpenAsync<FileEditorDialog>(
+      $"Edit: {file.Name}",
+      new Dictionary<string, object>
+      {
+        { "ServerId", ServerId },
+        { "VolumeTarget", selectedVolume.Target },
+        { "FilePath", file.Path },
+        { "FileName", file.Name },
+        { "FileSize", file.Size }
+      },
+      new DialogOptions
+      {
+        Width = "900px",
+        Height = "700px",
+        Resizable = true,
+        Draggable = true
+      });
+
+    // Refresh file list if file was saved
+    if (result is true)
+    {
+      await LoadFilesAsync();
+    }
   }
 
   private async Task DeleteFile(FileItem file)
