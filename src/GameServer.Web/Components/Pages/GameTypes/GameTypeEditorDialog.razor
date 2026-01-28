@@ -1,4 +1,4 @@
-@using GameServer.Docker.Client
+    @using GameServer.Docker.Client
 @using Radzen
 @using Radzen.Blazor
 @inject IGameTypeApi GameTypeApi
@@ -41,7 +41,32 @@
                         <RadzenTextBox @bind-Value="@GameType.Image" 
                                        class="w-100" 
                                        Placeholder="itzg/minecraft-server:latest" />
-                        <small class="text-muted">Full Docker image name, can include ':tag' but defaulting to latest is recomended</small>
+                        <small class="text-muted">Full Docker image name with tag</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Thumbnail URL</label>
+                        <RadzenTextBox @bind-Value="@GameType.ThumbnailUrl" 
+                                       class="w-100" 
+                                       Placeholder="https://example.com/minecraft-thumb.png" />
+                        <small class="text-muted">URL to a thumbnail image (optional, recommended 128x128 or larger)</small>
+                        @if (!string.IsNullOrWhiteSpace(GameType.ThumbnailUrl))
+                        {
+                            <div class="mt-2">
+                                <img src="@GameType.ThumbnailUrl" 
+                                     alt="Thumbnail preview" 
+                                     style="max-width: 128px; max-height: 128px; border: 1px solid var(--rz-border-color); border-radius: 4px;" 
+                                     onerror="this.style.display='none'" />
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Documentation URL</label>
+                        <RadzenTextBox @bind-Value="@GameType.DocumentationUrl" 
+                                       class="w-100" 
+                                       Placeholder="https://hub.docker.com/r/itzg/minecraft-server" />
+                        <small class="text-muted">Link to Docker Hub or documentation (optional)</small>
                     </div>
                 </EditForm>
             </div>
@@ -57,11 +82,7 @@
                                   ButtonStyle="ButtonStyle.Primary" 
                                   Click="AddPort" />
                 </div>
-                <div class="mb-3">
-                    <p>These are the ports the game needs open to function.
-                        You shouldn't edit these values unless you understand the services networking, changing these values may require one or Environment Variables to be set to a the matching value.
-                    </p>
-                </div>
+
                 @if (!GameType.Ports.Any())
                 {
                     <div class="alert alert-info">
@@ -84,13 +105,6 @@
                                                     class="w-100" />
                                 </Template>
                             </RadzenDataGridColumn>
-                            @* <RadzenDataGridColumn TItem="PortDefinition" Title="Description">
-                                <Template Context="port">
-                                    <RadzenTextBox @bind-Value="@port.Description" 
-                                                   class="w-100" 
-                                                   Placeholder="Game server port, RCON, etc." />
-                                </Template>
-                            </RadzenDataGridColumn> *@
                             <RadzenDataGridColumn TItem="PortDefinition" Title="" Width="80px">
                                 <Template Context="port">
                                     <RadzenButton Icon="delete" 
@@ -114,11 +128,8 @@
                                   Size="ButtonSize.Small"
                                   ButtonStyle="ButtonStyle.Primary" 
                                   Click="AddVolume" />
-                    
                 </div>
-                <div class="mb-3">
-                    <p>Persistent storage will be allocated for each Target when when the game is provisioned.</p>
-                </div>
+
                 @if (!GameType.Volumes.Any())
                 {
                     <div class="alert alert-info">
@@ -127,15 +138,13 @@
                 }
                 else
                 {
-                    
                     <RadzenDataGrid Data="@GameType.Volumes" TItem="VolumeDefinition" AllowRowSelectOnRowClick="false">
                         <Columns>
                             <RadzenDataGridColumn TItem="VolumeDefinition" Title="Source (Host Path)" Width="40%">
                                 <Template Context="volume">
                                     <RadzenTextBox @bind-Value="@volume.Source" 
                                                    class="w-100" 
-                                                   Disabled="true"
-                                                   Placeholder="Leave blank.." />
+                                                   Placeholder="/data/servers/{serverId}/world" />
                                 </Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="VolumeDefinition" Title="Target (Container Path)" Width="40%">
@@ -169,11 +178,7 @@
                                   ButtonStyle="ButtonStyle.Primary" 
                                   Click="AddSetting" />
                 </div>
-                <div class="mb-3">
-                    <p>Any and all Environment Variables the image defines. 
-                        Environment Variables will filter out values that match the "default" value.
-                    </p>
-                </div>
+
                 @if (GameType.DefaultSettings == null || !GameType.DefaultSettings.Any())
                 {
                     <div class="alert alert-info">
@@ -184,18 +189,18 @@
                 {
                     <RadzenDataGrid Data="@settingsList" TItem="SettingEntry" AllowRowSelectOnRowClick="false">
                         <Columns>
-                            <RadzenDataGridColumn TItem="SettingEntry" Title="Variable" Width="35%">
+                            <RadzenDataGridColumn TItem="SettingEntry" Title="Key" Width="35%">
                                 <Template Context="setting">
                                     <RadzenTextBox @bind-Value="@setting.Key" 
                                                    class="w-100" 
-                                                   Placeholder="EULA, MAX_MEMORY, SERVER_PORT, MISC_URL, etc." />
+                                                   Placeholder="EULA, MAX_MEMORY, etc." />
                                 </Template>
                             </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="SettingEntry" Title="Default Value" Width="55%">
+                            <RadzenDataGridColumn TItem="SettingEntry" Title="Value" Width="55%">
                                 <Template Context="setting">
                                     <RadzenTextBox @bind-Value="@setting.Value" 
                                                    class="w-100" 
-                                                   Placeholder="true, 4G, 1234, http://someserver.com/api/function, etc." />
+                                                   Placeholder="true, 4G, etc." />
                                 </Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="SettingEntry" Title="" Width="80px">
@@ -246,13 +251,11 @@
     private void AddPort()
     {
         GameType.Ports.Add(new PortDefinition { Port = 25565, Protocol = "tcp" });
-        StateHasChanged();
     }
 
     private void RemovePort(PortDefinition port)
     {
         GameType.Ports.Remove(port);
-        StateHasChanged();
     }
 
     private void AddVolume()

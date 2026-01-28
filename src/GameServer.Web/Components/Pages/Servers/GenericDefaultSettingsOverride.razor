@@ -13,6 +13,22 @@
         </RadzenText>
     </HeaderTemplate>
     <ChildContent>
+        @if (!string.IsNullOrWhiteSpace(Definition.DocumentationUrl))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="rz-mb-3">
+                <div class="d-flex align-items-center">
+                    <RadzenIcon Icon="info" class="me-2" />
+                    <span>
+                        Need help with these settings? 
+                        <a href="@Definition.DocumentationUrl" target="_blank" rel="noopener noreferrer" class="fw-bold">
+                            Check the documentation <RadzenIcon Icon="open_in_new" Style="font-size: 0.9rem;" />
+                        </a> 
+                        for more details on each setting.
+                    </span>
+                </div>
+            </RadzenAlert>
+        }
+        
         <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
             <RadzenDataList PageSize="250" AllowPaging="true"
                             Data="@Definition.DefaultSettings" > 

@@ -50,11 +50,32 @@
                         PageSize="10"
                         class="game-types-grid">
             <Columns>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="Key" Title="Key" Width="150px" />
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="DisplayName" Title="Display Name" Width="200px" />
-                @* <RadzenDataGridColumn TItem="GameTypeDefinition" Property="Description" Title="Description" /> *@
+                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Thumbnail" Width="80px" Sortable="false" Filterable="false">
+                    <Template Context="gameType">
+                        @if (!string.IsNullOrWhiteSpace(gameType.ThumbnailUrl))
+                        {
+                            <img src="@gameType.ThumbnailUrl" alt="@gameType.DisplayName" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px;" />
+                        }
+                        else
+                        {
+                            <RadzenIcon Icon="sports_esports" Style="font-size: 2.5rem; color: var(--rz-text-disabled-color);" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="Key" Title="Key" Width="120px" />
+                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="DisplayName" Title="Display Name" Width="180px" />
                 <RadzenDataGridColumn TItem="GameTypeDefinition" Property="Image" Title="Docker Image" Width="250px" />
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Ports" Width="150px" Sortable="false" Filterable="false">
+                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Links" Width="100px" Sortable="false" Filterable="false">
+                    <Template Context="gameType">
+                        @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
+                        {
+                            <a href="@gameType.DocumentationUrl" target="_blank" title="Documentation">
+                                <RadzenIcon Icon="description" />
+                            </a>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Ports" Width="120px" Sortable="false" Filterable="false">
                     <Template Context="gameType">
                         <RadzenBadge Text="@gameType.Ports.Count.ToString()" BadgeStyle="BadgeStyle.Info" />
                         @if (gameType.Ports.Any())
@@ -63,7 +84,7 @@
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Volumes" Width="100px" Sortable="false" Filterable="false">
+                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Volumes" Width="80px" Sortable="false" Filterable="false">
                     <Template Context="gameType">
                         <RadzenBadge Text="@gameType.Volumes.Count.ToString()" BadgeStyle="BadgeStyle.Secondary" />
                     </Template>
@@ -141,8 +162,8 @@
             },
             new DialogOptions
             {
-                Width = "800px",
-                Height = "80vh",
+                Width = "900px",
+                Height = "85vh",
                 Resizable = true,
                 Draggable = true
             });
@@ -161,6 +182,8 @@
             DisplayName = $"{gameType.DisplayName} (Copy)",
             Description = gameType.Description,
             Image = gameType.Image,
+            ThumbnailUrl = gameType.ThumbnailUrl,
+            DocumentationUrl = gameType.DocumentationUrl,
             Ports = new List<PortDefinition>(gameType.Ports),
             Volumes = new List<VolumeDefinition>(gameType.Volumes),
             DefaultSettings = new Dictionary<string, string>(gameType.DefaultSettings ?? new Dictionary<string,string>())
