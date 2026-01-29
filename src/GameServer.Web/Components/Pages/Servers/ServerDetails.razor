@@ -127,40 +127,7 @@ else
       </div>
 
       <div class="column-right">
-                <h4>Environment Variables</h4>
-        <RadzenCard class="settings-card">
-          <ChildContent>
-            @if (server.Settings?.Any() == true)
-            {
-              <div class="settings-search">
-                <RadzenTextBox @bind-Value="settingsFilter" Placeholder="Filter settings..." class="filter-input" />
-              </div>
-              <div class="settings-list">
-                @foreach (var kvp in GetFilteredSettings())
-                {
-                  <div class="setting-row">
-                    <span class="setting-key">@kvp.Key</span>
-                    <span class="setting-value">@kvp.Value</span>
-                  </div>
-                }
-              </div>
-            }
-            else
-            {
-              <p class="no-data">No environment variables configured</p>
-            }
-          </ChildContent>
-        </RadzenCard>
-
-                <h4>Server Logs</h4>
-        <RadzenCard class="info-card">
-          <ChildContent>
-            <div class="logs-container">
-              <RadzenButton Text="View Logs" Icon="article" Click="ViewLogs" class="mb-2" />
-              <RadzenButton Text="Download Logs" Icon="download" Click="DownloadLogs" ButtonStyle="ButtonStyle.Secondary" />
-            </div>
-          </ChildContent>
-        </RadzenCard>
+                <LiveResourceMonitor ServerId="@ServerId"/>
       </div>
     </div>
   </div>
