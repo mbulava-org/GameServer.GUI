@@ -35,9 +35,10 @@
     [Parameter] public EventCallback OnBack { get; set; }
 
 
+
     public bool PortsValid { get; set; } = false;
     public bool StorageValid { get; set; } = true;
 
-    async Task NextAsync() => OnNext.InvokeAsync().Wait();
-    async Task BackAsync() => OnBack.InvokeAsync().Wait();  
+    async Task NextAsync() => await OnNext.InvokeAsync();
+    async Task BackAsync() => await OnBack.InvokeAsync();  
 }

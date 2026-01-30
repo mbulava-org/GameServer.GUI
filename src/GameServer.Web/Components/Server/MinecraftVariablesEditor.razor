@@ -1,6 +1,6 @@
 @using Radzen
 @using Radzen.Blazor
-@using GameServer.Docker.Client
+@using global::GameServer.Docker.Client
 @using System.Text.Json
 @inject NotificationService NotificationService
 
@@ -123,7 +123,7 @@
                     <RadzenLabel Text="Enable RCON" />
                 </div>
                 <div class="col align-content-center">
-                    <RadzenCheckBox Tvalue="bool" Value='GetBool("ENABLE_RCON")' Change='@(v => Set("ENABLE_RCON", v ? "true" : "false"))' />
+                    <RadzenCheckBox TValue="bool" Value='GetBool("ENABLE_RCON")' Change='@(v => Set("ENABLE_RCON", v ? "true" : "false"))' />
                 </div>
             </div>
             <div class="row" style="margin:4px">
@@ -131,7 +131,7 @@
                     <RadzenLabel Text="RCON Port" />
                 </div>
                 <div class="col align-content-center">
-                    <RadzenNumeric Tvalue="int" Value="25575" Min="1" Max="65535" Change='@(v => Set("RCON_PORT", v.ToString() ?? "25575"))' />
+                    <RadzenNumeric TValue="int" Value="25575" Min="1" Max="65535" Change='@(v => Set("RCON_PORT", v.ToString() ?? "25575"))' />
                 </div>
             </div>
             <div class="row" style="margin:4px">

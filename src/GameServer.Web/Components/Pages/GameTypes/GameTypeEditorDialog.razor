@@ -1,4 +1,4 @@
-    @using GameServer.Docker.Client
+@using global::GameServer.Docker.Client
 @using Radzen
 @using Radzen.Blazor
 @inject IGameTypeApi GameTypeApi
@@ -288,7 +288,8 @@
                 Severity = NotificationSeverity.Warning,
                 Summary = "Validation Error",
                 Detail = "Key is required",
-                Duration = 3000
+                Duration = 3000,
+                CloseOnClick = true
             });
             return;
         }
@@ -300,7 +301,8 @@
                 Severity = NotificationSeverity.Warning,
                 Summary = "Validation Error",
                 Detail = "Display Name is required",
-                Duration = 3000
+                Duration = 3000,
+                CloseOnClick = true
             });
             return;
         }
@@ -312,7 +314,8 @@
                 Severity = NotificationSeverity.Warning,
                 Summary = "Validation Error",
                 Detail = "Docker Image is required",
-                Duration = 3000
+                Duration = 3000,
+                CloseOnClick = true
             });
             return;
         }
@@ -332,7 +335,8 @@
                     Severity = NotificationSeverity.Success,
                     Summary = "Game Type Created",
                     Detail = $"'{GameType.DisplayName}' has been created successfully.",
-                    Duration = 3000
+                    Duration = 3000,
+                    CloseOnClick = true
                 });
             }
             else
@@ -343,7 +347,8 @@
                     Severity = NotificationSeverity.Success,
                     Summary = "Game Type Updated",
                     Detail = $"'{GameType.DisplayName}' has been updated successfully.",
-                    Duration = 3000
+                    Duration = 3000,
+                    CloseOnClick = true
                 });
             }
 
@@ -356,7 +361,8 @@
                 Severity = NotificationSeverity.Error,
                 Summary = $"{(IsNew ? "Create" : "Update")} Failed",
                 Detail = $"Failed to {(IsNew ? "create" : "update")} game type: {ex.Message}",
-                Duration = 5000
+                Duration = 5000,
+                CloseOnClick = true
             });
         }
     }

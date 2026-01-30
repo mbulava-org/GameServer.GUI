@@ -1,6 +1,6 @@
 @using Radzen
 @using Radzen.Blazor
-@using GameServer.Docker.Client
+@using global::GameServer.Docker.Client
 @using Microsoft.AspNetCore.Components.Forms
 @inject IGameServerApi ServerApi
 @inject NotificationService NotificationService
@@ -146,7 +146,8 @@
         Severity = NotificationSeverity.Error, 
         Summary = "Error Loading Files", 
         Detail = $"Failed to load files: {ex.Message}", 
-        Duration = 5000 
+        Duration = 5000 ,
+            CloseOnClick = true
       });
     }
     finally
@@ -215,7 +216,8 @@
           Severity = NotificationSeverity.Success, 
           Summary = "Folder Created", 
           Detail = $"Folder '{folderName}' has been created.", 
-          Duration = 3000 
+          Duration = 3000 ,
+            CloseOnClick = true
         });
 
         await LoadFilesAsync();
@@ -245,7 +247,8 @@
       Severity = NotificationSeverity.Info, 
       Summary = "Upload", 
       Detail = "File upload functionality requires additional implementation with InputFile component", 
-      Duration = 3000 
+      Duration = 3000 ,
+            CloseOnClick = true
     });
     
     // TODO: Implement file upload with InputFile component
@@ -269,7 +272,8 @@
         Severity = NotificationSeverity.Info, 
         Summary = "Download Starting", 
         Detail = $"Downloading {file.Name}...", 
-        Duration = 3000 
+        Duration = 3000 ,
+            CloseOnClick = true
       });
 
       var response = await ServerApi.DownloadFileAsync(ServerId, selectedVolume.Target, file.Path);
@@ -384,7 +388,8 @@
           Severity = NotificationSeverity.Success, 
           Summary = "Deleted", 
           Detail = $"{file.Name} has been deleted.", 
-          Duration = 3000 
+          Duration = 3000 ,
+            CloseOnClick = true
         });
       }
       catch (Exception ex)
@@ -394,7 +399,8 @@
           Severity = NotificationSeverity.Error, 
           Summary = "Delete Failed", 
           Detail = $"Failed to delete file: {ex.Message}", 
-          Duration = 5000 
+          Duration = 5000 ,
+            CloseOnClick = true
         });
       }
     }

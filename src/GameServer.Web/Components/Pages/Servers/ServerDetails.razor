@@ -1,11 +1,12 @@
 ﻿@page "/servers/{ServerId}"
 @rendermode InteractiveServer
+@using GameServer.Web.Components.Server
 @using Radzen
 @using Radzen.Blazor
-@using GameServer.Docker.Client
+@using global::GameServer.Docker.Client
 @using System.Text.Json
 @inject IGameServerApi ServerApi
-@inject IDashboardApi DashboardApi
+@inject IGameTypeApi GameTypeApi
 @inject NavigationManager Nav
 @inject NotificationService NotificationService
 
@@ -13,7 +14,7 @@
 
 @if (loading)
 {
-  <div class="loading-container">
+  <div class="loading-container text-center py-5">
     <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
     <p>Loading server details...</p>
   </div>
@@ -21,126 +22,275 @@
 else if (server == null)
 {
   <RadzenCard class="error-card">
-    <h3>Server Not Found</h3>
-    <p>The requested server could not be found.</p>
-    <RadzenButton Text="Back to Dashboard" Click='@(() => Nav.NavigateTo("/servers"))' />
+    <div class="text-center py-5">
+      <RadzenIcon Icon="error" Style="font-size: 4rem; color: var(--rz-danger);" />
+      <h3 class="mt-3">Server Not Found</h3>
+      <p>The requested server could not be found.</p>
+      <RadzenButton Text="Back to Dashboard" Click='@(() => Nav.NavigateTo("/servers"))' />
+    </div>
   </RadzenCard>
 }
 else
 {
   <div class="details-container">
-    <div class="header-section">
-      <div class="title-group">
-        <h2>@server.Name</h2>
-        <RadzenBadge BadgeStyle='@(server.IsRunning ? BadgeStyle.Success : BadgeStyle.Secondary)' 
-                     Text='@(server.IsRunning ? "Running" : "Stopped")' />
-      </div>
-      <div class="actions-group">
-        <RadzenButton Text="Edit" Icon="edit" Click="EditServer" ButtonStyle="ButtonStyle.Secondary" />
-        <RadzenButton Text='@(server.IsRunning ? "Stop" : "Start")' 
-                      Icon='@(server.IsRunning ? "stop" : "play_arrow")' 
-                      Click="ToggleServerState" 
-                      ButtonStyle='@(server.IsRunning ? ButtonStyle.Warning : ButtonStyle.Success)' 
-                      Disabled="@actionInProgress" />
-        <RadzenButton Text="Delete" Icon="delete" Click="DeleteServer" ButtonStyle="ButtonStyle.Danger" Disabled="@actionInProgress" />
-        <RadzenButton Text="Manage" Icon="settings" Click='@(() => Nav.NavigateTo($"/servers/{ServerId}/manage"))' ButtonStyle="ButtonStyle.Primary" />
-      </div>
-    </div>
-
-    <div class="details-grid">
-      <div class="column-left">
-                <h4>Overview</h4>
-        <RadzenCard class="info-card">
-          
-          <ChildContent>
-                        
-            <div class="info-row">
-              <span class="label">Server ID:</span>
-              <span class="value">@server.ServerId</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Game Type:</span>
-              <span class="value">@server.GameType</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Service Name:</span>
-              <span class="value">@server.ServiceName</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Description:</span>
-              <span class="value">@server.Description</span>
-            </div>
-          </ChildContent>
-        </RadzenCard>
-
-                <h4>Network Information</h4>
-        <RadzenCard class="info-card">
-          
-          <ChildContent>
-                        
-            @if (server.Ports?.Any() == true)
-            {
-              @foreach (var port in server.Ports)
+    <RadzenCard class="mb-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-3">
+          <RadzenButton Icon="arrow_back" 
+                        ButtonStyle="ButtonStyle.Light" 
+                        Click='@(() => Nav.NavigateTo("/servers"))' 
+                        Size="ButtonSize.Small" />
+          <div>
+            <h2 class="mb-1">@server.Name</h2>
+            <div class="d-flex align-items-center gap-2">
+              <RadzenBadge BadgeStyle='@(server.IsRunning ? BadgeStyle.Success : BadgeStyle.Secondary)' 
+                           Text='@(server.IsRunning ? "● Running" : "○ Stopped")' />
+              @if (!string.IsNullOrWhiteSpace(server.ServiceName))
               {
-                <div class="port-row">
-                  <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort} → {port.ContainerPort}")' />
-                  <span class="protocol">@port.Protocol</span>
-                </div>
+                <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@server.ServiceName" Variant="Variant.Outlined" />
               }
-              <div class="connection-info">
-                <span class="label">Connect to:</span>
-                <code class="connection-string">@GetConnectionString()</code>
-                <RadzenButton Icon="content_copy" Size="ButtonSize.Small" Click="CopyConnectionString" />
-              </div>
-            }
-            else
-            {
-              <p class="no-data">No port mappings configured</p>
-            }
-          </ChildContent>
-        </RadzenCard>
-                <h4>Volumes</h4>
-        <RadzenCard class="info-card">
-          
-          <ChildContent>
-            @if (server.Volumes?.Any() == true)
-            {
-              @foreach (var vol in server.Volumes)
-              {
-                <div class="volume-row">
-                  <div class="volume-path">
-                    <strong>Host:</strong> <code>@vol.Source</code>
-                  </div>
-                  <div class="volume-arrow">→</div>
-                  <div class="volume-path">
-                    <strong>Container:</strong> <code>@vol.Target</code>
-                  </div>
-                </div>
-              }
-            }
-            else
-            {
-              <p class="no-data">No volumes configured</p>
-            }
-          </ChildContent>
-        </RadzenCard>
+            </div>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <RadzenButton Text="Edit" 
+                        Icon="edit" 
+                        ButtonStyle="ButtonStyle.Primary" 
+                        Click="@(() => Nav.NavigateTo($"/servers/{ServerId}/edit"))" />
+          <RadzenButton Text='@(server.IsRunning ? "Stop" : "Start")' 
+                        Icon='@(server.IsRunning ? "stop" : "play_arrow")' 
+                        Click="ToggleServerState" 
+                        ButtonStyle='@(server.IsRunning ? ButtonStyle.Warning : ButtonStyle.Success)' 
+                        Disabled="@actionInProgress" />
+          <RadzenButton Text="Delete" 
+                        Icon="delete" 
+                        Click="DeleteServer" 
+                        ButtonStyle="ButtonStyle.Danger" 
+                        Disabled="@actionInProgress" />
+        </div>
       </div>
+    </RadzenCard>
 
-      <div class="column-right">
-                <LiveResourceMonitor ServerId="@ServerId"/>
-      </div>
-    </div>
+    <RadzenTabs @bind-SelectedIndex="selectedTab">
+      <Tabs>
+        <RadzenTabsItem Text="Overview">
+          <div class="tab-content">
+            <div class="details-grid">
+              <div class="column-left">
+                <RadzenCard class="mb-3">
+                  <div class="card-header">
+                    <h4><RadzenIcon Icon="info" /> Server Information</h4>
+                  </div>
+                <div class="info-row">
+                  <span class="label">Server ID:</span>
+                  <span class="value">@server.ServerId</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Game Type:</span>
+                  <span class="value">@server.GameType</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Service Name:</span>
+                  <span class="value">@server.ServiceName</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(server.Description))
+                {
+                  <div class="info-row">
+                    <span class="label">Description:</span>
+                    <span class="value">@server.Description</span>
+                  </div>
+                }
+              </RadzenCard>
+
+              <RadzenCard class="mb-3">
+                <div class="card-header">
+                  <h4><RadzenIcon Icon="settings_ethernet" /> Network</h4>
+                </div>
+                @if (server.Ports?.Any() == true)
+                {
+                  @foreach (var port in server.Ports)
+                  {
+                    <div class="port-row mb-2">
+                      <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort} → {port.ContainerPort}")' />
+                      <span class="protocol ms-2">@port.Protocol</span>
+                    </div>
+                  }
+                  <div class="connection-info mt-3 pt-3 border-top">
+                    <span class="label">Connect to:</span>
+                    <code class="connection-string ms-2">@GetConnectionString()</code>
+                    <RadzenButton Icon="content_copy" 
+                                  Size="ButtonSize.Small" 
+                                  Click="CopyConnectionString" 
+                                  class="ms-2" />
+                  </div>
+                }
+                else
+                {
+                  <p class="no-data">No port mappings configured</p>
+                }
+              </RadzenCard>
+
+              <RadzenCard>
+                <div class="card-header">
+                  <h4><RadzenIcon Icon="storage" /> Volumes</h4>
+                </div>
+                @if (server.Volumes?.Any() == true)
+                {
+                  @foreach (var vol in server.Volumes)
+                  {
+                    <div class="volume-row mb-2">
+                      <div class="volume-path">
+                        <strong>Host:</strong> <code>@vol.Source</code>
+                      </div>
+                      <div class="volume-arrow">→</div>
+                      <div class="volume-path">
+                        <strong>Container:</strong> <code>@vol.Target</code>
+                      </div>
+                    </div>
+                  }
+                }
+                else
+                {
+                  <p class="no-data">No volumes configured</p>
+                }
+              </RadzenCard>
+            </div>
+
+            <div class="column-right">
+              <ServerResourceMonitor ServerId="@ServerId" AutoStart="true" />
+            </div>
+          </div>
+          </div>
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="Logs">
+          <div class="tab-content">
+            <ServerLogsViewer ServerId="@ServerId" Server="@server" />
+          </div>
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="Files">
+          <div class="tab-content">
+            <ServerFileManager ServerId="@ServerId" Server="@server" />
+          </div>
+        </RadzenTabsItem>
+      </Tabs>
+    </RadzenTabs>
   </div>
 }
 
-@code {
-  [Parameter] public string ServerId { get; set; } = "";
+<style>
+  .details-container {
+    padding: 1rem;
+  }
 
-  GameServer? server;
-  bool loading = true;
-  bool actionInProgress = false;
-  string settingsFilter = "";
-  string? publicIp;
+  .tab-content {
+    padding: 1rem 0;
+  }
+
+  .details-grid {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 1rem;
+  }
+
+  @@media (max-width: 1200px) {
+    .details-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .card-header {
+    border-bottom: 1px solid var(--rz-border-color);
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .card-header h4 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--rz-border-color);
+  }
+
+  .info-row:last-child {
+    border-bottom: none;
+  }
+
+  .label {
+    font-weight: 600;
+    color: var(--rz-text-secondary-color);
+  }
+
+  .value {
+    color: var(--rz-text-color);
+    text-align: right;
+  }
+
+  .port-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .volume-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--rz-base-100);
+    border-radius: 4px;
+  }
+
+  .volume-path {
+    flex: 1;
+  }
+
+  .volume-path code {
+    background: var(--rz-base-200);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+  }
+
+  .connection-info {
+    background: var(--rz-base-50);
+    padding: 0.75rem;
+    border-radius: 4px;
+  }
+
+  .connection-string {
+    background: var(--rz-base-200);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .no-data {
+    text-align: center;
+    color: var(--rz-text-secondary-color);
+    padding: 2rem;
+    font-style: italic;
+  }
+</style>
+
+@code {
+[Parameter] public string ServerId { get; set; } = "";
+
+private GameServer? server;
+private GameTypeDefinition? gameType;
+private bool loading = true;
+private bool actionInProgress = false;
+private int selectedTab = 0;
+private string? publicIp;
 
   protected override async Task OnInitializedAsync()
   {
@@ -156,12 +306,19 @@ else
     }
   }
 
-  async Task LoadServerAsync()
+  private async Task LoadServerAsync()
   {
     loading = true;
     try
     {
       server = await ServerApi.GetAsync(ServerId);
+      
+      if (server != null && !string.IsNullOrWhiteSpace(server.GameType))
+      {
+        // Load the game type definition to get thumbnail
+        var allGameTypes = await GameTypeApi.GetAllAsync();
+        gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
+      }
     }
     catch (Exception ex)
     {
@@ -180,7 +337,7 @@ else
     }
   }
 
-  async Task LoadPublicIpAsync()
+  private async Task LoadPublicIpAsync()
   {
     try
     {
@@ -193,56 +350,39 @@ else
     }
   }
 
-  string GetConnectionString()
+  private string GetConnectionString()
   {
     var port = server?.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
     var host = publicIp ?? "localhost";
     return port > 0 ? $"{host}:{port}" : "N/A";
   }
 
-  IEnumerable<KeyValuePair<string, string>> GetFilteredSettings()
-  {
-    if (server?.Settings == null) return Enumerable.Empty<KeyValuePair<string, string>>();
-    
-    var settings = server.Settings.AsEnumerable();
-    if (!string.IsNullOrWhiteSpace(settingsFilter))
-    {
-      settings = settings.Where(kvp => 
-        kvp.Key.Contains(settingsFilter, StringComparison.OrdinalIgnoreCase) ||
-        kvp.Value.Contains(settingsFilter, StringComparison.OrdinalIgnoreCase));
-    }
-    return settings.OrderBy(kvp => kvp.Key);
-  }
-
-  async Task ToggleServerState()
+  private async Task ToggleServerState()
   {
     if (server == null) return;
     
     actionInProgress = true;
     try
     {
-      if (server.IsRunning)
-      {
-                await DashboardApi.StopAsync(ServerId);
-        NotificationService.Notify(new NotificationMessage 
-        { 
-          Severity = NotificationSeverity.Success, 
-          Summary = "Server Stopped", 
-          Detail = $"{server.Name} has been stopped.", 
-          Duration = 3000 
-        });
-      }
-      else
-      {
-                await DashboardApi.StartAsync(ServerId);
-        NotificationService.Notify(new NotificationMessage 
-        { 
-          Severity = NotificationSeverity.Success, 
-          Summary = "Server Started", 
-          Detail = $"{server.Name} has been started.", 
-          Duration = 3000 
-        });
-      }
+      // Note: Start/Stop functionality may need to be implemented via Docker service API
+      // For now, show a notification that this feature is not yet implemented
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Info, 
+        Summary = "Not Implemented", 
+        Detail = "Server start/stop functionality is being updated for the new API version.", 
+        Duration = 3000 
+      });
+      
+      // TODO: Update this when the new API methods are available
+      // if (server.IsRunning)
+      // {
+      //   await ServerApi.StopServiceAsync(ServerId);
+      // }
+      // else
+      // {
+      //   await ServerApi.StartServiceAsync(ServerId);
+      // }
       
       await LoadServerAsync();
     }
@@ -262,78 +402,29 @@ else
     }
   }
 
-  void EditServer()
-  {
-    Nav.NavigateTo($"/servers/edit/{ServerId}");
-  }
-
-  async Task DeleteServer()
+  private async Task DeleteServer()
   {
     if (server == null) return;
     
-    //var confirmed = await NotificationService.Confirm($"Are you sure you want to delete '{server.Name}'?", "Delete Server", new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Info", 
+      Detail = "Server deletion feature is currently disabled.", 
+      Duration = 3000 
+    });
     
-    if (true == true)
-    {
-      actionInProgress = true;
-      NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Info, 
-        Summary = "Info", 
-        Detail = "Server deletion feature is currently disabled.", 
-        Duration = 3000 
-      });
-      // try
-      // {
-      //   await ServerApi.RemoveServer(ServerId);
-      //   NotificationService.Notify(new NotificationMessage 
-      //   { 
-      //     Severity = NotificationSeverity.Success, 
-      //     Summary = "Server Deleted", 
-      //     Detail = $"{server.Name} has been deleted.", 
-      //     Duration = 3000 
-      //   });
-      //   Nav.NavigateTo("/servers");
-      // }
-      // catch (Exception ex)
-      // {
-      //   NotificationService.Notify(new NotificationMessage 
-      //   { 
-      //     Severity = NotificationSeverity.Error, 
-      //     Summary = "Error", 
-      //     Detail = $"Failed to delete server: {ex.Message}", 
-      //     Duration = 5000 
-      //   });
-        actionInProgress = false;
-      }
-    
+    actionInProgress = false;
   }
 
-  async Task CopyConnectionString()
+  private async Task CopyConnectionString()
   {
-    // Would require JS interop for clipboard - simplified notification for now
     NotificationService.Notify(new NotificationMessage 
     { 
       Severity = NotificationSeverity.Info, 
       Summary = "Connection String", 
       Detail = GetConnectionString(), 
       Duration = 5000 
-    });
-  }
-
-  void ViewLogs()
-  {
-    Nav.NavigateTo($"/servers/{ServerId}/logs");
-  }
-
-  async Task DownloadLogs()
-  {
-    NotificationService.Notify(new NotificationMessage 
-    { 
-      Severity = NotificationSeverity.Info, 
-      Summary = "Download", 
-      Detail = "Log download feature coming soon.", 
-      Duration = 3000 
     });
   }
 }

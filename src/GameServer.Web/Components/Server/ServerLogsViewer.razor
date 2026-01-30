@@ -1,0 +1,328 @@
+﻿@using Radzen
+@using Radzen.Blazor
+@using global::GameServer.Docker.Client
+@using System.Text
+@inject IGameServerApi ServerApi
+@implements IAsyncDisposable
+
+<div class="logs-viewer">
+  <div class="logs-toolbar">
+    <div class="toolbar-left">
+      <RadzenButton Icon='@(isStreaming ? "pause" : "play_arrow")' 
+                    Text='@(isStreaming ? "Stop" : "Stream Logs")' 
+                    Click="ToggleStreaming" 
+                    ButtonStyle='@(isStreaming ? ButtonStyle.Warning : ButtonStyle.Success)' />
+      <RadzenButton Icon="refresh" Text="Refresh" Click="RefreshLogs" Disabled="@isStreaming" />
+      <RadzenButton Icon="delete_sweep" Text="Clear" Click="ClearLogs" ButtonStyle="ButtonStyle.Secondary" />
+    </div>
+    <div class="toolbar-right">
+      <RadzenCheckBox @bind-Value="autoScroll" />
+      <RadzenLabel Text="Auto-scroll" class="ml-2" />
+      <RadzenNumeric @bind-Value="maxLines" Min="100" Max="10000" Step="100" class="ml-3" Style="width:120px" />
+      <RadzenLabel Text="Max Lines" class="ml-2" />
+      <RadzenNumeric @bind-Value="tailLines" Min="10" Max="1000" Step="10" class="ml-3" Style="width:120px" />
+      <RadzenLabel Text="Tail Lines" class="ml-2" />
+      <RadzenNumeric @bind-Value="refreshInterval" Min="1" Max="30" Step="1" class="ml-3" Style="width:100px" Disabled="@(!isStreaming)" />
+      <RadzenLabel Text="Refresh (sec)" class="ml-2" />
+      <RadzenButton Icon="download" Text="Download" Click="DownloadLogs" ButtonStyle="ButtonStyle.Light" />
+    </div>
+  </div>
+
+  <div class="logs-filter">
+    <RadzenTextBox @bind-Value="filterText" Placeholder="Filter logs..." class="filter-input" />
+    <RadzenDropDown Data="logLevels" @bind-Value="selectedLogLevel" AllowClear="true" Placeholder="All Levels" class="ml-2" Style="width:150px" />
+  </div>
+
+  <div class="logs-content" @ref="logsContentRef">
+    @if (loadingLogs)   
+    {
+      <div class="loading-indicator">
+        <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" />
+        <span>Loading logs...</span>
+      </div>
+    }
+    else if (!logLines.Any())
+    {
+      <div class="no-logs">No logs available</div>
+    }
+    else
+    {
+      <div class="log-lines">
+        @foreach (var line in GetFilteredLogs())
+        {
+          <div class='@GetLogLineClass(line)'>
+            <span class="log-timestamp">@line.Timestamp.ToString("HH:mm:ss.fff")</span>
+            <span class="log-level">[@line.Level]</span>
+            <span class="log-message">@line.Message</span>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="logs-footer">
+    <span>Total: @logLines.Count lines | Filtered: @GetFilteredLogs().Count() lines</span>
+    @if (isStreaming)
+    {
+      <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="● Live Polling" />
+      <span class="ms-2 text-muted">Next update: @nextUpdateIn seconds</span>
+    }
+    else
+    {
+      <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="○ Stopped" />
+    }
+  </div>
+</div>
+
+@code {
+  [Parameter] public string ServerId { get; set; } = "";
+  [Parameter] public GameServer Server { get; set; } = new();
+
+  class LogLine
+  {
+    public DateTime Timestamp { get; set; }
+    public string Level { get; set; } = "INFO";
+    public string Message { get; set; } = "";
+  }
+
+  private List<LogLine> logLines = new();
+  private bool loadingLogs = false;
+  private bool isStreaming = false;
+  private bool autoScroll = true;
+  private int maxLines = 10000;
+  private int tailLines = 100;
+  private int refreshInterval = 5; // seconds
+  private int nextUpdateIn = 0;
+  private string filterText = "";
+  private string? selectedLogLevel;
+  private string[] logLevels = new[] { "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
+  private ElementReference logsContentRef;
+  
+  private CancellationTokenSource? pollingCts;
+  private Task? pollingTask;
+
+  protected override void OnInitialized()
+  {
+    // Auto-start if server ID is provided
+    if (!string.IsNullOrWhiteSpace(ServerId))
+    {
+      _ = StartStreaming();
+    }
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    // Restart streaming if server ID changes
+    if (isStreaming)
+    {
+      await StopStreaming();
+      logLines.Clear();
+      await StartStreaming();
+    }
+  }
+
+  private async Task ToggleStreaming()
+  {
+    if (isStreaming)
+    {
+      await StopStreaming();
+    }
+    else
+    {
+      await StartStreaming();
+    }
+  }
+
+  private async Task StartStreaming()
+  {
+    if (string.IsNullOrWhiteSpace(ServerId))
+    {
+      return;
+    }
+
+    isStreaming = true;
+    pollingCts = new CancellationTokenSource();
+
+    // Start the polling loop
+    pollingTask = PollLogsAsync(pollingCts.Token);
+  }
+
+  private async Task PollLogsAsync(CancellationToken cancellationToken)
+  {
+    while (!cancellationToken.IsCancellationRequested)
+    {
+      try
+      {
+        await LoadLogsAsync();
+        await InvokeAsync(StateHasChanged);
+
+        // Countdown timer for UI feedback
+        for (int i = refreshInterval; i > 0; i--)
+        {
+          if (cancellationToken.IsCancellationRequested)
+            break;
+
+          nextUpdateIn = i;
+          await InvokeAsync(StateHasChanged);
+          await Task.Delay(1000, cancellationToken);
+        }
+      }
+      catch (OperationCanceledException)
+      {
+        // Expected when stopping
+        break;
+      }
+      catch (Exception ex)
+      {
+        // Wait before retrying on error
+        await Task.Delay(refreshInterval * 1000, cancellationToken);
+      }
+    }
+  }
+
+  private async Task LoadLogsAsync()
+  {
+    if (string.IsNullOrWhiteSpace(ServerId))
+    {
+      return;
+    }
+
+    loadingLogs = true;
+    try
+    {
+      var logs = await ServerApi.GetServiceLogsAsync(ServerId, tailLines);
+
+      if (logs != null && logs.Any())
+      {
+        // Clear existing logs if not streaming (manual refresh)
+        if (!isStreaming)
+        {
+          logLines.Clear();
+        }
+
+        // Track existing log messages to avoid duplicates
+        var existingMessages = new HashSet<string>(logLines.Select(l => l.Message));
+
+        // Add new logs
+        foreach (var log in logs)
+        {
+          if (!existingMessages.Contains(log))
+          {
+            logLines.Add(ParseLogLine(log));
+          }
+        }
+
+        // Trim to max lines
+        while (logLines.Count > maxLines)
+        {
+          logLines.RemoveAt(0);
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      // Silent error handling
+    }
+    finally
+    {
+      loadingLogs = false;
+    }
+  }
+
+  private async Task StopStreaming()
+  {
+    isStreaming = false;
+    
+    if (pollingCts != null)
+    {
+      pollingCts.Cancel();
+      
+      if (pollingTask != null)
+      {
+        try
+        {
+          await pollingTask;
+        }
+        catch (OperationCanceledException)
+        {
+          // Expected
+        }
+      }
+      
+      pollingCts.Dispose();
+      pollingCts = null;
+      pollingTask = null;
+    }
+
+  }
+
+  private async Task RefreshLogs()
+  {
+    if (isStreaming)
+    {
+      return;
+    }
+
+    await LoadLogsAsync();
+  }
+
+  private void ClearLogs()
+  {
+    logLines.Clear();
+  }
+
+  private Task DownloadLogs()
+  {
+    var content = string.Join(Environment.NewLine, logLines.Select(l =>
+      $"[{l.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{l.Level}] {l.Message}"));
+    
+    var fileName = $"server-{ServerId}-logs-{DateTime.Now:yyyyMMdd-HHmmss}.txt";
+
+    // TODO: Implement actual download using JS Interop
+
+    return Task.CompletedTask;
+  }
+
+  private LogLine ParseLogLine(string message)
+  {
+    var line = new LogLine { Timestamp = DateTime.Now, Message = message };
+    var lower = message.ToLowerInvariant();
+
+    line.Level = lower switch
+    {
+      _ when lower.Contains("[error]") || lower.Contains("error:") => "ERROR",
+      _ when lower.Contains("[warn]") || lower.Contains("warning:") => "WARN",
+      _ when lower.Contains("[debug]") => "DEBUG",
+      _ when lower.Contains("[fatal]") => "FATAL",
+      _ => "INFO"
+    };
+
+    return line;
+  }
+
+  private IEnumerable<LogLine> GetFilteredLogs()
+  {
+    var filtered = logLines.AsEnumerable();
+
+    if (!string.IsNullOrWhiteSpace(filterText))
+      filtered = filtered.Where(l => l.Message.Contains(filterText, StringComparison.OrdinalIgnoreCase));
+
+    if (!string.IsNullOrWhiteSpace(selectedLogLevel))
+      filtered = filtered.Where(l => l.Level == selectedLogLevel);
+
+    return filtered;
+  }
+
+  private string GetLogLineClass(LogLine line) => line.Level.ToLowerInvariant() switch
+  {
+    "error" or "fatal" => "log-line log-line-error",
+    "warn" => "log-line log-line-warning",
+    "debug" => "log-line log-line-debug",
+    _ => "log-line log-line-info"
+  };
+
+  public async ValueTask DisposeAsync()
+  {
+    await StopStreaming();
+  }
+}

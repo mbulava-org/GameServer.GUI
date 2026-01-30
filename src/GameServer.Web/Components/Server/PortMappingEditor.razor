@@ -1,6 +1,6 @@
 ﻿@using Radzen
 @using Radzen.Blazor
-@using GameServer.Docker.Client
+@using global::GameServer.Docker.Client
 @using System.Collections.Generic
 @using System.Linq
 @using System.Text.Json
@@ -87,7 +87,7 @@
             }
             // mark as set
             paramertersSet = true;
-            ValidateAllPublished();
+            _ = ValidateAllPublishedAsync();
         }
     }
 
@@ -107,14 +107,14 @@
             pm.PublishedPort = value > 65535 ? 65535 : value;
         }
 
-        ValidateAllPublished();
+        _ = ValidateAllPublishedAsync();
         _ = NotifyChangedAsync();
     }
 
 
     // -- Validation --
 
-    void ValidateAllPublished()
+    async Task ValidateAllPublishedAsync()
     {
         publishedErrors.Clear();
         if (Server == null) return;
@@ -140,7 +140,7 @@
             }
 
             //Already allocated
-            var isFree = PortApi.CheckAsync(e.Instance.Protocol, e.Value).Result;
+            var isFree = await PortApi.CheckAsync(e.Instance.Protocol, e.Value);
             if (!isFree)
             {
                 publishedErrors[e.Instance] = $"Port {e.Value} is already in use!";
@@ -151,7 +151,7 @@
             if (publishedErrors.ContainsKey(e.Instance)) publishedErrors.Remove(e.Instance);
         }
         // Notify validity change
-        OnValidityChanged.InvokeAsync(publishedErrors.Count == 0);  
+        await OnValidityChanged.InvokeAsync(publishedErrors.Count == 0);  
     }
 
     string GetPublishedStyle(PortMapping pm)

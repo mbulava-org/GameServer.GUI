@@ -1,5 +1,5 @@
-﻿@using GameServer.Docker.Client
-@using GameServer.Web.Components.Pages.GameTypes
+﻿@using GameServer.Web.Components.Pages.GameTypes
+@using global::GameServer.Docker.Client
 @inject IGameTypeApi GameTypeApi
 @inject NotificationService NotificationService
 @inject DialogService DialogService
@@ -84,7 +84,8 @@
                 Severity = NotificationSeverity.Error,
                 Summary = "Error Loading Game Types",
                 Detail = $"Failed to load game types: {ex.Message}",
-                Duration = 5000
+                Duration = 5000,
+                CloseOnClick = true
             });
         }
         finally
@@ -155,7 +156,8 @@
                     Severity = NotificationSeverity.Success,
                     Summary = "Game Type Deleted",
                     Detail = $"'{gameType.DisplayName}' has been deleted successfully.",
-                    Duration = 3000
+                    Duration = 3000,
+                    CloseOnClick = true
                 });
 
                 await LoadGameTypesAsync();
@@ -167,7 +169,8 @@
                     Severity = NotificationSeverity.Error,
                     Summary = "Delete Failed",
                     Detail = $"Failed to delete game type: {ex.Message}",
-                    Duration = 5000
+                    Duration = 5000,
+                    CloseOnClick = true
                 });
             }
         }

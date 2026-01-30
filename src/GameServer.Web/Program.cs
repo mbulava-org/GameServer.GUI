@@ -1,7 +1,5 @@
 using GameServer.Docker.Client;
-using GameServer.Docker.Client.Interfaces;
 using GameServer.Web.Components;
-using GameServer.Web.Services;
 using Radzen;
 
 namespace GameServer.Web
@@ -22,7 +20,7 @@ namespace GameServer.Web
 
 
             // Register WebSocket service as singleton
-            builder.Services.AddSingleton<GameServerWebSocketService>();
+            //builder.Services.AddSingleton<GameServerWebSocketService>();
             builder.Services.AddHttpClient();
 
             var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
