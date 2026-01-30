@@ -40,11 +40,22 @@ else
                         ButtonStyle="ButtonStyle.Light" 
                         Click='@(() => Nav.NavigateTo("/servers"))' 
                         Size="ButtonSize.Small" />
+          @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+          {
+            <div class="game-thumbnail">
+              <img src="@gameType.ThumbnailUrl" 
+                   alt="@gameType.DisplayName"
+                   onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+              <div class="thumbnail-fallback" style="display: none;">
+                <RadzenIcon Icon="sports_esports" Style="font-size: 2rem;" />
+              </div>
+            </div>
+          }
           <div>
             <h2 class="mb-1">@server.Name</h2>
             <div class="d-flex align-items-center gap-2">
-              <RadzenBadge BadgeStyle='@(server.IsRunning ? BadgeStyle.Success : BadgeStyle.Secondary)' 
-                           Text='@(server.IsRunning ? "● Running" : "○ Stopped")' />
+              <RadzenBadge BadgeStyle='@GetStatusBadgeStyle(server.Status)' 
+                           Text='@GetStatusText(server.Status)' />
               @if (!string.IsNullOrWhiteSpace(server.ServiceName))
               {
                 <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@server.ServiceName" Variant="Variant.Outlined" />
@@ -57,10 +68,10 @@ else
                         Icon="edit" 
                         ButtonStyle="ButtonStyle.Primary" 
                         Click="@(() => Nav.NavigateTo($"/servers/{ServerId}/edit"))" />
-          <RadzenButton Text='@(server.IsRunning ? "Stop" : "Start")' 
-                        Icon='@(server.IsRunning ? "stop" : "play_arrow")' 
+          <RadzenButton Text='@(IsServerRunning(server.Status) ? "Stop" : "Start")' 
+                        Icon='@(IsServerRunning(server.Status) ? "stop" : "play_arrow")' 
                         Click="ToggleServerState" 
-                        ButtonStyle='@(server.IsRunning ? ButtonStyle.Warning : ButtonStyle.Success)' 
+                        ButtonStyle='@(IsServerRunning(server.Status) ? ButtonStyle.Warning : ButtonStyle.Success)' 
                         Disabled="@actionInProgress" />
           <RadzenButton Text="Delete" 
                         Icon="delete" 
@@ -123,6 +134,14 @@ else
                                   Click="CopyConnectionString" 
                                   class="ms-2" />
                   </div>
+                                        <div class="connection-info mt-3 pt-3 border-top">
+                                            <span class="label">Connect to:</span>
+                                            <code class="connection-string ms-2">@GetConnectionString(VanityDomain)</code>
+                                            <RadzenButton Icon="content_copy"
+                                                          Size="ButtonSize.Small"
+                                                          Click="CopyVanityConnectionString"
+                                                          class="ms-2" />
+                                        </div>
                 }
                 else
                 {
@@ -280,151 +299,211 @@ else
     padding: 2rem;
     font-style: italic;
   }
+
+  .game-thumbnail {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--rz-border-color);
+    position: relative;
+  }
+
+  .game-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .thumbnail-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--rz-base-100);
+  }
 </style>
 
 @code {
-[Parameter] public string ServerId { get; set; } = "";
+    [Parameter] public string ServerId { get; set; } = "";
 
-private GameServer? server;
-private GameTypeDefinition? gameType;
-private bool loading = true;
-private bool actionInProgress = false;
-private int selectedTab = 0;
-private string? publicIp;
+    private string VanityDomain => "games.dev.bulavafamily.com";
 
-  protected override async Task OnInitializedAsync()
-  {
-    await LoadServerAsync();
-    await LoadPublicIpAsync();
-  }
+    private GameServer? server;
+    private GameTypeDefinition? gameType;
+    private bool loading = true;
+    private bool actionInProgress = false;
+    private int selectedTab = 0;
+    private string? publicIp;
 
-  protected override async Task OnParametersSetAsync()
-  {
-    if (!string.IsNullOrEmpty(ServerId))
+    protected override async Task OnInitializedAsync()
     {
-      await LoadServerAsync();
+        await LoadServerAsync();
+        await LoadPublicIpAsync();
     }
-  }
 
-  private async Task LoadServerAsync()
-  {
-    loading = true;
-    try
+    protected override async Task OnParametersSetAsync()
     {
-      server = await ServerApi.GetAsync(ServerId);
-      
-      if (server != null && !string.IsNullOrWhiteSpace(server.GameType))
-      {
-        // Load the game type definition to get thumbnail
-        var allGameTypes = await GameTypeApi.GetAllAsync();
-        gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
-      }
+        if (!string.IsNullOrEmpty(ServerId))
+        {
+            await LoadServerAsync();
+        }
     }
-    catch (Exception ex)
+
+    private async Task LoadServerAsync()
     {
-      NotificationService.Notify(new NotificationMessage 
+        loading = true;
+        try
+        {
+            server = await ServerApi.GetAsync(ServerId);
+
+            if (server != null && !string.IsNullOrWhiteSpace(server.GameType))
+            {
+                // Load the game type definition to get thumbnail
+                var allGameTypes = await GameTypeApi.GetAllAsync();
+                gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage 
       { 
         Severity = NotificationSeverity.Error, 
         Summary = "Error", 
         Detail = $"Failed to load server: {ex.Message}", 
         Duration = 5000 
       });
-      server = null;
+            server = null;
+        }
+        finally
+        {
+            loading = false;
+        }
     }
-    finally
-    {
-      loading = false;
-    }
-  }
 
-  private async Task LoadPublicIpAsync()
-  {
-    try
+    private async Task LoadPublicIpAsync()
     {
-      using var http = new HttpClient();
-      publicIp = await http.GetStringAsync("https://api.ipify.org");
+        try
+        {
+            using var http = new HttpClient();
+            publicIp = await http.GetStringAsync("https://api.ipify.org");
+        }
+        catch
+        {
+            publicIp = "localhost";
+        }
     }
-    catch
-    {
-      publicIp = "localhost";
-    }
-  }
 
-  private string GetConnectionString()
-  {
-    var port = server?.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
-    var host = publicIp ?? "localhost";
-    return port > 0 ? $"{host}:{port}" : "N/A";
-  }
-
-  private async Task ToggleServerState()
-  {
-    if (server == null) return;
-    
-    actionInProgress = true;
-    try
+    private string GetConnectionString(string? vanity=null)
     {
-      // Note: Start/Stop functionality may need to be implemented via Docker service API
-      // For now, show a notification that this feature is not yet implemented
-      NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Info, 
-        Summary = "Not Implemented", 
-        Detail = "Server start/stop functionality is being updated for the new API version.", 
-        Duration = 3000 
-      });
-      
-      // TODO: Update this when the new API methods are available
-      // if (server.IsRunning)
-      // {
-      //   await ServerApi.StopServiceAsync(ServerId);
-      // }
-      // else
-      // {
-      //   await ServerApi.StartServiceAsync(ServerId);
-      // }
-      
-      await LoadServerAsync();
+        var port = server?.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
+        var host = vanity ?? publicIp ?? "localhost";
+        return port > 0 ? $"{host}:{port}" : "N/A";
     }
-    catch (Exception ex)
+
+    private async Task ToggleServerState()
     {
-      NotificationService.Notify(new NotificationMessage 
+        if (server == null) return;
+
+        actionInProgress = true;
+        try
+        {
+            if (server.IsRunning)
+            {
+                await ServerApi.StopServerAsync(server.ServerId);
+            }
+            else
+            {
+                await ServerApi.StartServerAsync(server.ServerId);
+            }
+
+            await LoadServerAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage 
       { 
         Severity = NotificationSeverity.Error, 
         Summary = "Error", 
         Detail = $"Failed to change server state: {ex.Message}", 
         Duration = 5000 
       });
+        }
+        finally
+        {
+            actionInProgress = false;
+        }
     }
-    finally
-    {
-      actionInProgress = false;
-    }
-  }
 
-  private async Task DeleteServer()
-  {
-    if (server == null) return;
-    
-    NotificationService.Notify(new NotificationMessage 
+    private async Task DeleteServer()
+    {
+        if (server == null) return;
+
+        NotificationService.Notify(new NotificationMessage 
     { 
       Severity = NotificationSeverity.Info, 
       Summary = "Info", 
       Detail = "Server deletion feature is currently disabled.", 
       Duration = 3000 
     });
-    
-    actionInProgress = false;
-  }
 
-  private async Task CopyConnectionString()
-  {
-    NotificationService.Notify(new NotificationMessage 
-    { 
-      Severity = NotificationSeverity.Info, 
-      Summary = "Connection String", 
-      Detail = GetConnectionString(), 
-      Duration = 5000 
-    });
-  }
+        actionInProgress = false;
+    }
+
+    private async Task CopyConnectionString()
+    {
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Info, 
+          Summary = "Connection String", 
+          Detail = GetConnectionString(), 
+          Duration = 5000 
+        });
+    }
+
+    private void CopyVanityConnectionString(MouseEventArgs args)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Info,
+            Summary = "Connection String",
+            Detail = GetConnectionString(VanityDomain),
+            Duration = 5000
+        });
+    }
+
+
+    private bool IsServerRunning(string? status)
+    {
+        return status?.ToLowerInvariant() == "running";
+    }
+
+    private BadgeStyle GetStatusBadgeStyle(string? status)
+    {
+        return status?.ToLowerInvariant() switch
+        {
+            "running" => BadgeStyle.Success,
+            "starting" => BadgeStyle.Info,
+            "stopped" => BadgeStyle.Secondary,
+            "stopping" => BadgeStyle.Warning,
+            "failed" => BadgeStyle.Danger,
+            _ => BadgeStyle.Secondary
+        };
+    }
+
+    private string GetStatusText(string? status)
+    {
+        return status?.ToLowerInvariant() switch
+        {
+            "running" => "● Running",
+            "starting" => "◐ Starting",
+            "stopped" => "○ Stopped",
+            "stopping" => "◑ Stopping",
+            "failed" => "✕ Failed",
+            _ => status ?? "Unknown"
+        };
+    }
+    
+
 }

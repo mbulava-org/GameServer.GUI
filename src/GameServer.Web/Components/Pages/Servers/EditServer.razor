@@ -72,38 +72,91 @@
             <Tabs>
                 <RadzenTabsItem Text="Basic Info">
                     <div class="p-3">
-                        <RadzenCard>
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label fw-bold">Server Name</label>
-                                    <RadzenTextBox @bind-Value="server.Name" 
-                                                   class="w-100" 
-                                                   Placeholder="My Awesome Server" />
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label fw-bold">Server ID</label>
-                                    <RadzenTextBox Value="@server.ServerId" 
-                                                   class="w-100" 
-                                                   Disabled="true" />
-                                    <small class="text-muted">Server ID cannot be changed</small>
-                                </div>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <RadzenCard>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-bold">Server Name</label>
+                                            <RadzenTextBox @bind-Value="server.Name" 
+                                                           class="w-100" 
+                                                           Placeholder="My Awesome Server" />
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-bold">Server ID</label>
+                                            <RadzenTextBox Value="@server.ServerId" 
+                                                           class="w-100" 
+                                                           Disabled="true" />
+                                            <small class="text-muted">Server ID cannot be changed</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Description</label>
+                                        <RadzenTextArea @bind-Value="server.Description" 
+                                                        class="w-100" 
+                                                        Rows="3"
+                                                        Placeholder="Optional server description" />
+                                    </div>
+                                </RadzenCard>
                             </div>
 
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Game Type</label>
-                                <RadzenTextBox Value="@gameType?.DisplayName" 
-                                               class="w-100" 
-                                               Disabled="true" />
-                                <small class="text-muted">Game type cannot be changed after creation</small>
-                            </div>
+                            <div class="col-md-4">
+                                <RadzenCard>
+                                    <h6 class="mb-3">Game Type</h6>
+                                    @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+                                    {
+                                        <div class="game-type-thumbnail-large mb-3">
+                                            <img src="@gameType.ThumbnailUrl" 
+                                                 alt="@gameType.DisplayName"
+                                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                            <div class="thumbnail-fallback-large" style="display: none;">
+                                                <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="game-type-thumbnail-large mb-3">
+                                            <div class="thumbnail-fallback-large">
+                                                <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                                            </div>
+                                        </div>
+                                    }
+                                    
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">Display Name</label>
+                                        <RadzenTextBox Value="@gameType?.DisplayName" 
+                                                       class="w-100" 
+                                                       Disabled="true" />
+                                    </div>
 
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Docker Image</label>
-                                <RadzenTextBox Value="@gameType?.Image" 
-                                               class="w-100" 
-                                               Disabled="true" />
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">Docker Image</label>
+                                        <RadzenTextBox Value="@gameType?.Image" 
+                                                       class="w-100" 
+                                                       Disabled="true" />
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(gameType?.DocumentationUrl))
+                                    {
+                                        <div class="mt-3">
+                                            <RadzenButton Text="Documentation" 
+                                                          Icon="description" 
+                                                          ButtonStyle="ButtonStyle.Light" 
+                                                          Size="ButtonSize.Small"
+                                                          Click="@(() => OpenUrl(gameType.DocumentationUrl))"
+                                                          class="w-100" />
+                                        </div>
+                                    }
+
+                                    <small class="text-muted d-block mt-3">
+                                        <RadzenIcon Icon="info" Style="font-size: 0.9rem;" />
+                                        Game type cannot be changed after creation
+                                    </small>
+                                </RadzenCard>
                             </div>
-                        </RadzenCard>
+                        </div>
                     </div>
                 </RadzenTabsItem>
 
@@ -495,6 +548,14 @@
         if (server == null) return;
         server.Settings[key] = value;
     }
+
+    private void OpenUrl(string? url)
+    {
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            Navigation.NavigateTo(url, true);
+        }
+    }
 }
 
 <style>
@@ -514,6 +575,31 @@
     }
 
     .thumbnail-fallback-small {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--rz-base-100);
+    }
+
+    .game-type-thumbnail-large {
+        width: 100%;
+        height: 200px;
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+        border: 2px solid var(--rz-border-color);
+        background: var(--rz-base-50);
+    }
+
+    .game-type-thumbnail-large img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .thumbnail-fallback-large {
         width: 100%;
         height: 100%;
         display: flex;

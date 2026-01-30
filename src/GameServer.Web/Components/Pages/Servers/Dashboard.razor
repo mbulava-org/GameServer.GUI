@@ -51,13 +51,25 @@
             {
                 <div class="col-lg-4 col-md-6 mb-4">
                     <RadzenCard class="server-card h-100" Style="cursor: pointer;" @onclick="@(() => NavigateToServer(server.ServerId))">
+                        @if (GetGameTypeThumbnail(server.GameType) != null)
+                        {
+                            <div class="server-thumbnail">
+                                <img src="@GetGameTypeThumbnail(server.GameType)" 
+                                     alt="@server.GameType"
+                                     class="thumbnail-image"
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                <div class="thumbnail-fallback" style="display: none;">
+                                    <RadzenIcon Icon="sports_esports" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                                </div>
+                            </div>
+                        }
                         <div class="server-card-header">
                             <div class="d-flex align-items-start justify-content-between">
                                 <div class="flex-grow-1">
                                     <h5 class="mb-1">@server.Name</h5>
                                     <div class="d-flex align-items-center gap-2 mt-2">
-                                        <RadzenBadge BadgeStyle='@GetStatusBadgeStyle(server.IsRunning)' 
-                                                     Text='@GetStatusText(server.IsRunning)' />
+                                        <RadzenBadge BadgeStyle='@GetStatusBadgeStyle(server.Status)' 
+                                                     Text='@GetStatusText(server.Status)' />
                                         @if (!string.IsNullOrWhiteSpace(server.ServiceName))
                                         {
                                             <RadzenBadge BadgeStyle="BadgeStyle.Info" 
@@ -230,13 +242,38 @@
         Navigation.NavigateTo("/servers/new");
     }
 
-    private BadgeStyle GetStatusBadgeStyle(bool isRunning)
+    private BadgeStyle GetStatusBadgeStyle(string? status)
     {
-        return isRunning ? BadgeStyle.Success : BadgeStyle.Secondary;
+        return status?.ToLowerInvariant() switch
+        {
+            "running" => BadgeStyle.Success,
+            "starting" => BadgeStyle.Info,
+            "stopped" => BadgeStyle.Secondary,
+            "stopping" => BadgeStyle.Warning,
+            "failed" => BadgeStyle.Danger,
+            _ => BadgeStyle.Secondary
+        };
     }
 
-    private string GetStatusText(bool isRunning)
+    private string GetStatusText(string? status)
     {
-        return isRunning ? "● Running" : "○ Stopped";
+        return status?.ToLowerInvariant() switch
+        {
+            "running" => "● Running",
+            "starting" => "◐ Starting",
+            "stopped" => "○ Stopped",
+            "stopping" => "◑ Stopping",
+            "failed" => "✕ Failed",
+            _ => status ?? "Unknown"
+        };
+    }
+
+    private string? GetGameTypeThumbnail(string? gameTypeKey)
+    {
+        if (string.IsNullOrWhiteSpace(gameTypeKey))
+            return null;
+
+        var gameType = gameTypes.FirstOrDefault(gt => gt.Key == gameTypeKey);
+        return !string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl) ? gameType.ThumbnailUrl : null;
     }
 }
