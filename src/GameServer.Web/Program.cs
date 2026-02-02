@@ -57,6 +57,7 @@ namespace GameServer.Web
             app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
             app.UseHttpsRedirection();
 
+            app.UseStaticFiles(); // Add explicit static files middleware
             app.UseAntiforgery();
 
             app.MapStaticAssets();

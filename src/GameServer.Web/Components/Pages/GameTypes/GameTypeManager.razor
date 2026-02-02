@@ -6,16 +6,20 @@
 @inject IGameTypeApi GameTypeApi
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject NavigationManager Navigation
 
 <PageTitle>Game Type Manager</PageTitle>
 
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Game Type Manager</h2>
+        <div>
+            <h2>Game Types</h2>
+            <p class="text-muted mb-0">Manage game server templates and configurations</p>
+        </div>
         <RadzenButton Text="Add Game Type" 
                       Icon="add" 
                       ButtonStyle="ButtonStyle.Primary" 
-                      Click="@(() => ShowGameTypeDialog(null))" />
+                      Click="@CreateNewGameType" />
     </div>
 
     @if (isLoading)
@@ -35,85 +39,236 @@
                 <RadzenButton Text="Add Game Type" 
                               Icon="add" 
                               ButtonStyle="ButtonStyle.Primary" 
-                              Click="@(() => ShowGameTypeDialog(null))" 
+                              Click="@CreateNewGameType" 
                               class="mt-3" />
             </div>
         </RadzenCard>
     }
     else
     {
-        <RadzenDataGrid Data="@gameTypes" 
-                        TItem="GameTypeDefinition" 
-                        AllowFiltering="true" 
-                        AllowSorting="true" 
-                        AllowPaging="true"
-                        PageSize="10"
-                        class="game-types-grid">
-            <Columns>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Thumbnail" Width="80px" Sortable="false" Filterable="false">
-                    <Template Context="gameType">
+        <div class="row">
+            @foreach (var gameType in gameTypes)
+            {
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="gametype-card h-100" Style="cursor: pointer;" @onclick="@(() => NavigateToGameType(gameType.Key))">
                         @if (!string.IsNullOrWhiteSpace(gameType.ThumbnailUrl))
                         {
-                            <img src="@gameType.ThumbnailUrl" alt="@gameType.DisplayName" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px;" />
+                            <div class="gametype-thumbnail">
+                                <img src="@gameType.ThumbnailUrl" 
+                                     alt="@gameType.DisplayName"
+                                     class="thumbnail-image"
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                <div class="thumbnail-fallback" style="display: none;">
+                                    <RadzenIcon Icon="sports_esports" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                                </div>
+                            </div>
                         }
                         else
                         {
-                            <RadzenIcon Icon="sports_esports" Style="font-size: 2.5rem; color: var(--rz-text-disabled-color);" />
+                            <div class="gametype-thumbnail">
+                                <div class="thumbnail-fallback">
+                                    <RadzenIcon Icon="sports_esports" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                                </div>
+                            </div>
                         }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="Key" Title="Key" Width="120px" />
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="DisplayName" Title="Display Name" Width="180px" />
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Property="Image" Title="Docker Image" Width="250px" />
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Links" Width="100px" Sortable="false" Filterable="false">
-                    <Template Context="gameType">
-                        @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
-                        {
-                            <a href="@gameType.DocumentationUrl" target="_blank" title="Documentation">
-                                <RadzenIcon Icon="description" />
-                            </a>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Ports" Width="120px" Sortable="false" Filterable="false">
-                    <Template Context="gameType">
-                        <RadzenBadge Text="@gameType.Ports.Count.ToString()" BadgeStyle="BadgeStyle.Info" />
-                        @if (gameType.Ports.Any())
-                        {
-                            <span class="ms-2 text-muted">@string.Join(", ", gameType.Ports.Select(p => p.Port))</span>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Volumes" Width="80px" Sortable="false" Filterable="false">
-                    <Template Context="gameType">
-                        <RadzenBadge Text="@gameType.Volumes.Count.ToString()" BadgeStyle="BadgeStyle.Secondary" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="GameTypeDefinition" Title="Actions" Width="150px" Sortable="false" Filterable="false">
-                    <Template Context="gameType">
-                        <div class="d-flex gap-2">
-                            <RadzenButton Icon="edit" 
-                                          Size="ButtonSize.Small" 
-                                          ButtonStyle="ButtonStyle.Light" 
-                                          Click="@(() => ShowGameTypeDialog(gameType))"
-                                          title="Edit" />
-                            <RadzenButton Icon="content_copy" 
-                                          Size="ButtonSize.Small" 
-                                          ButtonStyle="ButtonStyle.Light" 
-                                          Click="@(() => DuplicateGameType(gameType))"
-                                          title="Duplicate" />
-                            <RadzenButton Icon="delete" 
-                                          Size="ButtonSize.Small" 
-                                          ButtonStyle="ButtonStyle.Danger" 
-                                          Click="@(() => DeleteGameType(gameType))"
-                                          title="Delete" />
+                        
+                        <div class="gametype-card-header">
+                            <div class="d-flex align-items-start justify-content-between">
+                                <div class="flex-grow-1">
+                                    <h5 class="mb-1">@gameType.DisplayName</h5>
+                                    <div class="d-flex align-items-center gap-2 mt-2">
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Info" 
+                                                     Text="@gameType.Key" 
+                                                     Variant="Variant.Outlined" />
+                                    </div>
+                                </div>
+                                <RadzenIcon Icon="chevron_right" Style="font-size: 1.5rem; color: var(--rz-text-disabled-color);" />
+                            </div>
                         </div>
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-        </RadzenDataGrid>
+
+                        <div class="gametype-card-body mt-3">
+                            @if (!string.IsNullOrWhiteSpace(gameType.Description))
+                            {
+                                <p class="text-muted mb-3 description-text">@gameType.Description</p>
+                            }
+
+                            <div class="gametype-info">
+                                <div class="info-item">
+                                    <RadzenIcon Icon="code" class="info-icon" />
+                                    <div>
+                                        <small class="text-muted d-block">Docker Image</small>
+                                        <span class="fw-semibold text-truncate d-block" title="@gameType.Image">@gameType.Image</span>
+                                    </div>
+                                </div>
+
+                                <div class="info-stats">
+                                    <div class="stat-badge">
+                                        <RadzenIcon Icon="settings_ethernet" Style="font-size: 1rem;" />
+                                        <span>@gameType.Ports.Count Port@(gameType.Ports.Count != 1 ? "s" : "")</span>
+                                    </div>
+                                    <div class="stat-badge">
+                                        <RadzenIcon Icon="folder" Style="font-size: 1rem;" />
+                                        <span>@gameType.Volumes.Count Volume@(gameType.Volumes.Count != 1 ? "s" : "")</span>
+                                    </div>
+                                    <div class="stat-badge">
+                                        <RadzenIcon Icon="settings" Style="font-size: 1rem;" />
+                                        <span>@(gameType.DefaultSettings?.Count ?? 0) Setting@((gameType.DefaultSettings?.Count ?? 0) != 1 ? "s" : "")</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="gametype-card-footer mt-auto pt-3 border-top">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <RadzenIcon Icon="touch_app" Style="font-size: 0.9rem;" />
+                                    Click to edit
+                                </small>
+                                <div class="card-actions" @onclick:stopPropagation="true">
+                                    <RadzenButton Icon="content_copy" 
+                                                  Size="ButtonSize.Small" 
+                                                  ButtonStyle="ButtonStyle.Light" 
+                                                  Click="@(() => DuplicateGameType(gameType))"
+                                                  title="Duplicate"
+                                                  class="me-2" />
+                                    <RadzenButton Icon="delete" 
+                                                  Size="ButtonSize.Small" 
+                                                  ButtonStyle="ButtonStyle.Danger" 
+                                                  Click="@(() => DeleteGameType(gameType))"
+                                                  title="Delete" />
+                                </div>
+                            </div>
+                        </div>
+                    </RadzenCard>
+                </div>
+            }
+        </div>
     }
 </div>
+
+<style>
+    .gametype-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: 1px solid var(--rz-border-color);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .gametype-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15) !important;
+        border-color: var(--rz-primary);
+    }
+
+    .gametype-thumbnail {
+        width: 100%;
+        height: 200px;
+        background: linear-gradient(135deg, var(--rz-base-100) 0%, var(--rz-base-200) 100%);
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .thumbnail-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .thumbnail-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    .gametype-card-header h5 {
+        color: var(--rz-text-color);
+        margin-bottom: 0;
+        font-weight: 600;
+    }
+
+    .gametype-card-body {
+        flex: 1;
+    }
+
+    .description-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-height: 3em;
+    }
+
+    .gametype-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .info-item {
+        display: flex;
+        gap: 0.75rem;
+        align-items: start;
+    }
+
+    .info-icon {
+        font-size: 1.25rem;
+        color: var(--rz-primary);
+        flex-shrink: 0;
+        margin-top: 0.25rem;
+    }
+
+    .info-item small {
+        font-size: 0.75rem;
+    }
+
+    .info-item span {
+        font-size: 0.875rem;
+    }
+
+    .info-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .stat-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        background: var(--rz-base-100);
+        border-radius: 20px;
+        font-size: 0.8rem;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .gametype-card-footer {
+        margin-top: auto;
+    }
+
+    .card-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    @@media (max-width: 768px) {
+        .gametype-card-footer {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .card-actions {
+            justify-content: flex-end;
+        }
+    }
+</style>
 
 @code {
     private List<GameTypeDefinition> gameTypes = new();
@@ -127,10 +282,12 @@
     private async Task LoadGameTypesAsync()
     {
         isLoading = true;
+        StateHasChanged(); // Force UI update
+        
         try
         {
             var data = await GameTypeApi.GetAllAsync();
-            gameTypes = data.ToList();
+            gameTypes = data?.ToList() ?? new List<GameTypeDefinition>();
         }
         catch (Exception ex)
         {
@@ -142,55 +299,70 @@
                 Duration = 5000,
                 CloseOnClick = true
             });
+            gameTypes = new List<GameTypeDefinition>();
         }
         finally
         {
             isLoading = false;
+            StateHasChanged(); // Force UI update
         }
     }
 
-    private async Task ShowGameTypeDialog(GameTypeDefinition? gameType)
+    private void CreateNewGameType()
     {
-        var isNew = gameType == null;
-        var dialogTitle = isNew ? "Add Game Type" : $"Edit Game Type: {gameType!.DisplayName}";
-        
-        var result = await DialogService.OpenAsync<GameTypeEditorDialog>(
-            dialogTitle,
-            new Dictionary<string, object>
-            {
-                { "GameType", gameType ?? new GameTypeDefinition() },
-                { "IsNew", isNew }
-            },
-            new DialogOptions
-            {
-                Width = "900px",
-                Height = "85vh",
-                Resizable = true,
-                Draggable = true
-            });
+        Navigation.NavigateTo("/gametypes/new");
+    }
 
-        if (result is bool success && success)
-        {
-            await LoadGameTypesAsync();
-        }
+    private void NavigateToGameType(string key)
+    {
+        // URL encode the key to handle special characters
+        var encodedKey = Uri.EscapeDataString(key);
+        Navigation.NavigateTo($"/gametypes/{encodedKey}");
     }
 
     private async Task DuplicateGameType(GameTypeDefinition gameType)
     {
-        var duplicate = new GameTypeDefinition
+        try
         {
-            Key = $"{gameType.Key}_copy",
-            DisplayName = $"{gameType.DisplayName} (Copy)",
-            Description = gameType.Description,
-            Image = gameType.Image,
-            ThumbnailUrl = gameType.ThumbnailUrl,
-            DocumentationUrl = gameType.DocumentationUrl,
-            Ports = new List<PortDefinition>(gameType.Ports),
-            Volumes = new List<VolumeDefinition>(gameType.Volumes),
-            DefaultSettings = new Dictionary<string, string>(gameType.DefaultSettings ?? new Dictionary<string,string>())
-        };
+            // Create a duplicate with a new key
+            var duplicate = new GameTypeDefinition
+            {
+                Key = $"{gameType.Key}_copy_{DateTime.Now.Ticks}",
+                DisplayName = $"{gameType.DisplayName} (Copy)",
+                Description = gameType.Description,
+                Image = gameType.Image,
+                ThumbnailUrl = gameType.ThumbnailUrl,
+                DocumentationUrl = gameType.DocumentationUrl,
+                Ports = new List<PortDefinition>(gameType.Ports ?? new List<PortDefinition>()),
+                Volumes = new List<VolumeDefinition>(gameType.Volumes ?? new List<VolumeDefinition>()),
+                DefaultSettings = new Dictionary<string, string>(gameType.DefaultSettings ?? new Dictionary<string, string>())
+            };
 
-        await ShowGameTypeDialog(duplicate);
+            await GameTypeApi.SaveAsync(duplicate);
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Game Type Duplicated",
+                Detail = $"'{gameType.DisplayName}' has been duplicated successfully.",
+                Duration = 3000,
+                CloseOnClick = true
+            });
+
+            // Reload to show the new duplicate
+            await LoadGameTypesAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Duplicate Failed",
+                Detail = $"Failed to duplicate game type: {ex.Message}",
+                Duration = 5000,
+                CloseOnClick = true
+            });
+        }
     }
 
     private async Task DeleteGameType(GameTypeDefinition gameType)
@@ -215,6 +387,7 @@
                     CloseOnClick = true
                 });
 
+                // Reload the list after deletion
                 await LoadGameTypesAsync();
             }
             catch (Exception ex)

@@ -1,0 +1,498 @@
+﻿@page "/gametypes/{Key}"
+@page "/gametypes/new"
+@rendermode InteractiveServer
+@using global::GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+@inject IGameTypeApi GameTypeApi
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+
+<PageTitle>@(isNew ? "Create Game Type" : gameType?.DisplayName ?? "Game Type")</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <RadzenButton Icon="arrow_back" 
+                          ButtonStyle="ButtonStyle.Light" 
+                          Size="ButtonSize.Small"
+                          Click="@GoBack" 
+                          class="me-3" />
+            <h2 class="d-inline">@(isNew ? "Create New Game Type" : $"Edit: {gameType?.DisplayName}")</h2>
+        </div>
+        <div class="d-flex gap-2">
+            <RadzenButton Text="Cancel" 
+                          Icon="close" 
+                          ButtonStyle="ButtonStyle.Light" 
+                          Click="@GoBack" />
+            <RadzenButton Text="Save" 
+                          Icon="save" 
+                          ButtonStyle="ButtonStyle.Success" 
+                          Click="@SaveGameType"
+                          Disabled="@(!IsValid() || isSaving)" />
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            <p class="mt-3">Loading game type...</p>
+        </div>
+    }
+    else if (gameType != null)
+    {
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="Basic Information">
+                    <div class="p-4">
+                        <RadzenCard>
+                            <h5 class="mb-4">Basic Information</h5>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Key" Variant="@Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="@gameType.Key" 
+                                                       Disabled="@(!isNew)"
+                                                       Placeholder="e.g., minecraft"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                    @if (isNew)
+                                    {
+                                        <small class="text-muted">Unique identifier (cannot be changed later)</small>
+                                    }
+                                </div>
+
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Display Name" Variant="@Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="@gameType.DisplayName" 
+                                                       Placeholder="e.g., Minecraft Server"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+
+                                <div class="col-12">
+                                    <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
+                                        <RadzenTextArea @bind-Value="@gameType.Description" 
+                                                        Rows="3"
+                                                        Placeholder="Brief description of this game server type"
+                                                        class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+
+                                <div class="col-12">
+                                    <RadzenFormField Text="Docker Image" Variant="@Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="@gameType.Image" 
+                                                       Placeholder="e.g., itzg/minecraft-server:latest"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                    <small class="text-muted">Full Docker image name including tag</small>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Thumbnail URL" Variant="@Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="@gameType.ThumbnailUrl" 
+                                                       Placeholder="https://example.com/image.png"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Documentation URL" Variant="@Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="@gameType.DocumentationUrl" 
+                                                       Placeholder="https://docs.example.com"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                            </div>
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Ports">
+                    <div class="p-4">
+                        <RadzenCard>
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h5 class="mb-0">Port Definitions</h5>
+                                <RadzenButton Text="Add Port" 
+                                              Icon="add" 
+                                              Size="ButtonSize.Small"
+                                              Click="@AddPort" />
+                            </div>
+
+                            @if (gameType.Ports == null || !gameType.Ports.Any())
+                            {
+                                <p class="text-muted text-center py-4">No ports configured. Add a port to get started.</p>
+                            }
+                            else
+                            {
+                                <div class="port-list">
+                                    @foreach (var port in gameType.Ports.ToList())
+                                    {
+                                        <div class="port-item mb-3 p-3 border rounded">
+                                            <div class="row g-2 align-items-center">
+                                                <div class="col-md-5">
+                                                    <RadzenFormField Text="Port Number" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenNumeric @bind-Value="@port.Port" 
+                                                                       Min="1" 
+                                                                       Max="65535"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenDropDown @bind-Value="@port.Protocol" 
+                                                                        Data="@(new[] { "tcp", "udp" })"
+                                                                        class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                                <div class="col-md-2 text-end">
+                                                    <RadzenButton Icon="delete" 
+                                                                  ButtonStyle="ButtonStyle.Danger" 
+                                                                  Size="ButtonSize.Small"
+                                                                  Click="@(() => RemovePort(port))" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Volumes">
+                    <div class="p-4">
+                        <RadzenCard>
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <div class="flex-grow-1">
+                                    <h5 class="mb-1">Volume Definitions</h5>
+                                    <small class="text-muted">Define container mount points. Volume sources are managed by the server deployment.</small>
+                                </div>
+                                <RadzenButton Text="Add Volume" 
+                                              Icon="add" 
+                                              Size="ButtonSize.Small"
+                                              Click="@AddVolume" />
+                            </div>
+
+                            @if (gameType.Volumes == null || !gameType.Volumes.Any())
+                            {
+                                <p class="text-muted text-center py-4">No volumes configured. Add a volume to get started.</p>
+                            }
+                            else
+                            {
+                                <div class="volume-list">
+                                    @foreach (var volume in gameType.Volumes.ToList())
+                                    {
+                                        <div class="volume-item mb-3 p-3 border rounded">
+                                            <div class="row g-2 align-items-center">
+                                                <div class="col-md-10">
+                                                    <RadzenFormField Text="Target (Container Path)" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@volume.Target" 
+                                                                       Placeholder="/data"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                    <small class="text-muted">The path inside the container where data will be mounted</small>
+                                                </div>
+                                                <div class="col-md-2 text-end">
+                                                    <RadzenButton Icon="delete" 
+                                                                  ButtonStyle="ButtonStyle.Danger" 
+                                                                  Size="ButtonSize.Small"
+                                                                  Click="@(() => RemoveVolume(volume))" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Default Settings">
+                    <div class="p-4">
+                        <RadzenCard>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div class="flex-grow-1">
+                                    <h5 class="mb-1">Default Environment Variables</h5>
+                                    <small class="text-muted">Define default configuration values for this game type.</small>
+                                </div>
+                                <RadzenButton Text="Add Setting" 
+                                              Icon="add" 
+                                              Size="ButtonSize.Small"
+                                              Click="@AddSetting" />
+                            </div>
+
+                            @if (settingsList == null || !settingsList.Any())
+                            {
+                                <p class="text-muted text-center py-4">No settings configured. Add a setting to get started.</p>
+                            }
+                            else
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <RadzenIcon Icon="info" Style="font-size: 1.25rem;" />
+                                        <div>
+                                            <strong>Smart Input Detection:</strong>
+                                            <p class="mb-1 mt-1">Default values will automatically determine the input control type in the server creation wizard:</p>
+                                            <ul class="mb-0 ps-3">
+                                                <li><code>true</code> or <code>false</code> → Toggle/Checkbox</li>
+                                                <li>Numeric values (e.g., <code>25565</code>, <code>100</code>) → Number input</li>
+                                                <li>Memory format (e.g., <code>1024M</code>, <code>2G</code>, <code>4096M</code>) → Memory input</li>
+                                                <li>Other text → Text input</li>
+                                                <li>Empty value → Text input</li>
+                                                <li>TODO: List detection/handling, Required, etc...</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </RadzenAlert>
+                                
+                                <div class="settings-list">
+                                    @foreach (var setting in settingsList.ToList())
+                                    {
+                                        <div class="setting-item mb-3 p-3 border rounded">
+                                            <div class="row </li></li>g-2 align-items-center">
+                                                <div class="col-md-5">
+                                                    <RadzenFormField Text="Key" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@setting.Key" 
+                                                                       Placeholder="SETTING_NAME"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <RadzenFormField Text="Default Value" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@setting.Value" 
+                                                                       Placeholder="true, 25565, 2G, etc."
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                                <div class="col-md-2 text-end">
+                                                    <RadzenButton Icon="delete" 
+                                                                  ButtonStyle="ButtonStyle.Danger" 
+                                                                  Size="ButtonSize.Small"
+                                                                  Click="@(() => RemoveSetting(setting))" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    }
+</div>
+
+@code {
+[Parameter] public string? Key { get; set; }
+
+private GameTypeDefinition? gameType;
+private List<SettingItem> settingsList = new();
+private bool isNew = false;
+private bool isLoading = true;
+private bool isSaving = false;
+
+protected override async Task OnInitializedAsync()
+{
+    await LoadGameTypeAsync();
+}
+
+protected override async Task OnParametersSetAsync()
+{
+    await LoadGameTypeAsync();
+}
+
+private async Task LoadGameTypeAsync()
+{
+    isLoading = true;
+    StateHasChanged(); // Force UI update
+        
+    try
+    {
+        // Determine if we're creating new or editing existing
+        if (string.IsNullOrEmpty(Key) || Key.Equals("new", StringComparison.OrdinalIgnoreCase))
+        {
+            // Creating a new game type
+            isNew = true;
+            gameType = new GameTypeDefinition
+            {
+                Key = "",
+                DisplayName = "",
+                Description = "",
+                Image = "",
+                Ports = new List<PortDefinition>(),
+                Volumes = new List<VolumeDefinition>(),
+                DefaultSettings = new Dictionary<string, string>()
+            };
+            settingsList = new List<SettingItem>();
+                
+            Console.WriteLine("GameTypeDetails: Creating new game type");
+        }
+        else
+        {
+            // Loading existing game type
+            isNew = false;
+                
+            Console.WriteLine($"GameTypeDetails: Loading game type with key: {Key}");
+                
+            gameType = await GameTypeApi.GetAsync(Key);
+                
+            if (gameType == null)
+            {
+                throw new Exception($"Game type '{Key}' not found");
+            }
+                
+            Console.WriteLine($"GameTypeDetails: Loaded game type: {gameType.DisplayName}");
+                
+            // Initialize collections if null
+            gameType.Ports ??= new List<PortDefinition>();
+            gameType.Volumes ??= new List<VolumeDefinition>();
+            gameType.DefaultSettings ??= new Dictionary<string, string>();
+                
+            // Convert DefaultSettings dictionary to list for editing
+            settingsList = gameType.DefaultSettings
+                .Select(kvp => new SettingItem { Key = kvp.Key, Value = kvp.Value })
+                .ToList();
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"GameTypeDetails: Error loading game type: {ex.Message}");
+            
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Error,
+            Summary = "Error Loading Game Type",
+            Detail = $"Failed to load game type: {ex.Message}",
+            Duration = 5000,
+            CloseOnClick = true
+        });
+            
+        // Navigate back on error
+        Navigation.NavigateTo("/gametypes");
+    }
+    finally
+    {
+        isLoading = false;
+        StateHasChanged(); // Force UI update
+    }
+}
+
+    private void AddPort()
+    {
+        gameType!.Ports.Add(new PortDefinition { Port = 25565, Protocol = "tcp" });
+        StateHasChanged();
+    }
+
+    private void RemovePort(PortDefinition port)
+    {
+        gameType!.Ports.Remove(port);
+        StateHasChanged();
+    }
+
+    private void AddVolume()
+    {
+        gameType!.Volumes.Add(new VolumeDefinition { Source = null, Target = "" });
+        StateHasChanged();
+    }
+
+    private void RemoveVolume(VolumeDefinition volume)
+    {
+        gameType!.Volumes.Remove(volume);
+        StateHasChanged();
+    }
+
+    private void AddSetting()
+    {
+        settingsList.Add(new SettingItem { Key = "", Value = "" });
+        StateHasChanged();
+    }
+
+    private void RemoveSetting(SettingItem setting)
+    {
+        settingsList.Remove(setting);
+        StateHasChanged();
+    }
+
+    private bool IsValid()
+    {
+        if (gameType == null) return false;
+        if (string.IsNullOrWhiteSpace(gameType.Key)) return false;
+        if (string.IsNullOrWhiteSpace(gameType.DisplayName)) return false;
+        if (string.IsNullOrWhiteSpace(gameType.Image)) return false;
+        
+        return true;
+    }
+
+    private async Task SaveGameType()
+    {
+        if (!IsValid() || isSaving) return;
+
+        isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            // Convert settings list back to dictionary
+            gameType!.DefaultSettings = settingsList
+                .Where(s => !string.IsNullOrWhiteSpace(s.Key))
+                .ToDictionary(s => s.Key!, s => s.Value ?? "");
+
+            if (isNew)
+            {
+                await GameTypeApi.SaveAsync(gameType);
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Game Type Created",
+                    Detail = $"'{gameType.DisplayName}' has been created successfully.",
+                    Duration = 3000,
+                    CloseOnClick = true
+                });
+            }
+            else
+            {
+                await GameTypeApi.SaveAsync(gameType);
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Game Type Updated",
+                    Detail = $"'{gameType.DisplayName}' has been updated successfully.",
+                    Duration = 3000,
+                    CloseOnClick = true
+                });
+            }
+
+            // Navigate back to list
+            Navigation.NavigateTo("/gametypes");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Save Failed",
+                Detail = $"Failed to save game type: {ex.Message}",
+                Duration = 5000,
+                CloseOnClick = true
+            });
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/gametypes");
+    }
+
+    private class SettingItem
+    {
+        public string? Key { get; set; }
+        public string? Value { get; set; }
+    }
+}
