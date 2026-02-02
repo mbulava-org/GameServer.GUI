@@ -176,7 +176,7 @@ else
             </div>
 
             <div class="column-right">
-              <ServerResourceMonitor ServerId="@ServerId" AutoStart="true" />
+              <ResourceMonitor ServerId="@ServerId" AutoStart="true" />
             </div>
           </div>
           </div>
@@ -417,7 +417,7 @@ else
             {
                 await ServerApi.StartServerAsync(server.ServerId);
             }
-
+            await Task.Delay(2000); // Wait a moment for state to update    
             await LoadServerAsync();
         }
         catch (Exception ex)
