@@ -1,0 +1,178 @@
+﻿@using GameServer.Web.Components.Pages.GameTypes
+@using global::GameServer.Docker.Client
+@inject IGameTypeApi GameTypeApi
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="row">
+    @foreach (var type in GameTypes)
+    {
+        <div class="col-md-4 col-lg-3 mb-3">
+            <div class="card shadow-sm h-100 game-type-card" @onclick="() => OnSelect.InvokeAsync(type.Key)" style="cursor:pointer;">
+                @if (!string.IsNullOrWhiteSpace(type.ThumbnailUrl))
+                {
+                    <img src="@type.ThumbnailUrl"
+                         class="card-img-top"
+                         alt="@type.DisplayName"
+                         style="height: 150px; object-fit: cover;"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                    <div class="card-img-top d-none" style="height: 150px; display: flex; align-items: center; justify-content: center; background: var(--rz-base-100);">
+                        <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                    </div>
+                }
+                else
+                {
+                    <div class="card-img-top" style="height: 150px; display: flex; align-items: center; justify-content: center; background: var(--rz-base-100);">
+                        <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                    </div>
+                }
+                <div class="card-body">
+                    <h5 class="card-title">@type.DisplayName</h5>
+                    <p class="card-text text-muted">@type.Description</p>
+                    @if (!string.IsNullOrWhiteSpace(type.DocumentationUrl))
+                    {
+                        <a href="@type.DocumentationUrl"
+                           target="_blank"
+                           class="btn btn-sm btn-outline-primary"
+                           @onclick:stopPropagation="true">
+                            <RadzenIcon Icon="description" /> Documentation
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .game-type-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+        .game-type-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2) !important;
+        }
+</style>
+@code {
+    private List<GameTypeDefinition> gameTypes = new();
+    private bool isLoading = true;
+
+    [Parameter]
+    public List<GameTypeDefinition> GameTypes { get; set; } = new();
+    
+    [Parameter]
+    public EventCallback<string> OnSelect { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGameTypesAsync();
+    }
+
+    private async Task LoadGameTypesAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var data = await GameTypeApi.GetAllAsync();
+            gameTypes = data.ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error Loading Game Types",
+                Detail = $"Failed to load game types: {ex.Message}",
+                Duration = 5000,
+                CloseOnClick = true
+            });
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ShowGameTypeDialog(GameTypeDefinition? gameType)
+    {
+        var isNew = gameType == null;
+        var dialogTitle = isNew ? "Add Game Type" : $"Edit Game Type: {gameType!.DisplayName}";
+        
+        var result = await DialogService.OpenAsync<GameTypeEditorDialog>(
+            dialogTitle,
+            new Dictionary<string, object>
+            {
+                { "GameType", gameType ?? new GameTypeDefinition() },
+                { "IsNew", isNew }
+            },
+            new DialogOptions
+            {
+                Width = "900px",
+                Height = "85vh",
+                Resizable = true,
+                Draggable = true
+            });
+
+        if (result is bool success && success)
+        {
+            await LoadGameTypesAsync();
+        }
+    }
+
+    private async Task DuplicateGameType(GameTypeDefinition gameType)
+    {
+        var duplicate = new GameTypeDefinition
+        {
+            Key = $"{gameType.Key}_copy",
+            DisplayName = $"{gameType.DisplayName} (Copy)",
+            Description = gameType.Description,
+            Image = gameType.Image,
+            ThumbnailUrl = gameType.ThumbnailUrl,
+            DocumentationUrl = gameType.DocumentationUrl,
+            Ports = new List<PortDefinition>(gameType.Ports),
+            Volumes = new List<VolumeDefinition>(gameType.Volumes),
+            DefaultSettings = new Dictionary<string, string>(gameType.DefaultSettings ?? new Dictionary<string,string>())
+        };
+
+        await ShowGameTypeDialog(duplicate);
+    }
+
+    private async Task DeleteGameType(GameTypeDefinition gameType)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Are you sure you want to delete '{gameType.DisplayName}'? This action cannot be undone.",
+            "Delete Game Type",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed == true)
+        {
+            try
+            {
+                await GameTypeApi.DeleteAsync(gameType.Key);
+                
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Game Type Deleted",
+                    Detail = $"'{gameType.DisplayName}' has been deleted successfully.",
+                    Duration = 3000,
+                    CloseOnClick = true
+                });
+
+                await LoadGameTypesAsync();
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Delete Failed",
+                    Detail = $"Failed to delete game type: {ex.Message}",
+                    Duration = 5000,
+                    CloseOnClick = true
+                });
+            }
+        }
+    }
+}

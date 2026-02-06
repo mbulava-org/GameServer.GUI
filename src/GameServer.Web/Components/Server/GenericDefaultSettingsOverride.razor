@@ -1,0 +1,137 @@
+﻿@using Radzen
+@using Radzen.Blazor
+@using global::GameServer.Docker.Client
+@using System.Linq
+
+<RadzenPanel AllowCollapse="true" class="rz-my-10 rz-mx-auto" 
+             Collapsed="@((Definition.Key == "minecraft"))"
+             Expand=@(() => Change("Panel expanded")) Collapse=@(() => Change("Panel collapsed"))>
+
+    <HeaderTemplate>
+        <RadzenText TextStyle="TextStyle.H6" class="rz-display-flex rz-align-items-center rz-m-0">
+            <RadzenIcon Icon="settings" class="rz-me-1" /><b>Generic Settings Editor</b>
+        </RadzenText>
+    </HeaderTemplate>
+    <ChildContent>
+        @if (!string.IsNullOrWhiteSpace(Definition.DocumentationUrl))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="rz-mb-3">
+                <div class="d-flex align-items-center">
+                    <RadzenIcon Icon="info" class="me-2" />
+                    <span>
+                        Need help with these settings? 
+                        <a href="@Definition.DocumentationUrl" target="_blank" rel="noopener noreferrer" class="fw-bold">
+                            Check the documentation <RadzenIcon Icon="open_in_new" Style="font-size: 0.9rem;" />
+                        </a> 
+                        for more details on each setting.
+                    </span>
+                </div>
+            </RadzenAlert>
+        }
+        
+        <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
+            <RadzenDataList PageSize="250" AllowPaging="true"
+                            Data="@Definition.DefaultSettings" > 
+                <Template Context="setting">
+                    <div class="row" style="margin:4px">
+                        <div class="col align-content-center">
+                            <RadzenLabel Text="@setting.Key" />
+                        </div>
+                        <div class="col align-content-center">
+                            @if(IsListKey(setting.Key))
+                            {
+                                <RadzenTextArea Style="width:100%;min-height:120px" Value="@GetListText(setting.Key)" Change="@(val => SetListText(setting.Key, val?.ToString() ?? ""))" />
+                                <div class="rz-text" style="font-size:0.8rem;color:var(--rz-secondary)">Enter one item per line.</div>
+                            }
+                            else if (TryParseBool(GetSetting(setting.Key), out var bVal))
+                            {
+                                <RadzenCheckBox TValue="bool" Value="@GetBool(setting.Key)" Change="@(val => SetBool(setting.Key, val))" />
+                            }
+                            else if (TryParseInt(GetSetting(setting.Key), out var _))
+                            {
+                                <RadzenNumeric TValue="int" Value="@GetInt(setting.Key)" Change="@(val => SetInt(setting.Key, val))" Min="0" Max="65535" Placeholder="@setting.Value"/>
+                            }
+                            else
+                            {
+                                <RadzenTextBox Value="@GetSetting(setting.Key)" Change="@(args => SetSetting(setting.Key, args?.ToString() ?? ""))" Placeholder="@setting.Value"/>
+                            }
+                        </div>
+                    </div>
+                    
+                </Template>
+            </RadzenDataList>
+        </RadzenCard>
+    </ChildContent>
+    <SummaryTemplate>
+        <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
+            <b>@Definition.DefaultSettings.Count() Settings</b>
+        </RadzenCard>
+    </SummaryTemplate>
+</RadzenPanel>
+
+@code {
+
+    [Parameter]
+    public GameServer Server { get; set; } = new();
+
+    [Parameter]
+    public GameTypeDefinition Definition { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<GameServer> OnChange { get; set; }
+
+    void Change(string text)
+    {
+        Console.WriteLine($"{text}");
+    }
+
+    string GetSetting(string key) => Server.Settings.TryGetValue(key, out var v) ? v : Definition.DefaultSettings[key];
+    void SetSetting(string key, string value) 
+    {
+        Server.Settings[key] = value;
+        OnChange.InvokeAsync(Server);
+    }
+
+    //boolean helpers
+    bool TryParseBool(string? s, out bool value) => bool.TryParse(s, out value);
+    bool GetBool(string key) => bool.TryParse(GetSetting(key), out var v) && v;
+    void SetBool(string key, bool v) => SetSetting(key, v ? "true" : "false");
+
+    //Int helpers
+    bool TryParseInt(string? s, out int value) => int.TryParse(s, out value);
+    int GetInt(string key) => int.TryParse(GetSetting(key), out var v) ? v : 0;
+    void SetInt(string key, int v) => SetSetting(key, v.ToString());
+
+    bool IsListKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        return key.Equals("OPS", StringComparison.InvariantCultureIgnoreCase)
+            || key.Equals("WHITELIST", StringComparison.OrdinalIgnoreCase);  
+
+    }
+
+    string GetListText(string key)
+    {
+        var raw = GetSetting(key);
+        if (string.IsNullOrEmpty(raw)) return "";
+        // If stored as JSON array (unlikely), try to parse a simple representation fallback
+        if (raw.StartsWith("[") && raw.Contains("]"))
+        {
+            try
+            {
+                var arr = System.Text.Json.JsonSerializer.Deserialize<string[]>(raw);
+                return arr == null ? raw : string.Join("\n", arr);
+            }
+            catch { /* ignore parse errors */ }
+        }
+        return raw.Replace("\r", "");
+    }
+
+    void SetListText(string key, string text)
+    {
+        var lines = (text ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
+        // store as newline-separated string so downstream deployer can split
+        SetSetting(key, string.Join("\n", lines));
+    }
+}

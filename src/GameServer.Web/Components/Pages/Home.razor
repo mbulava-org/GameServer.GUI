@@ -1,0 +1,336 @@
+﻿@page "/"
+@using Radzen
+@using Radzen.Blazor
+@inject NavigationManager Navigation
+
+<PageTitle>Game Server Manager</PageTitle>
+
+<div class="home-container">
+    <div class="hero-section">
+        <div class="hero-content">
+            <div class="hero-icon">
+                <RadzenIcon Icon="dns" Style="font-size: 5rem; color: var(--rz-primary);" />
+            </div>
+            <h1 class="hero-title">Game Server Manager</h1>
+            <p class="hero-subtitle">Deploy, manage, and monitor game servers with ease using Docker Swarm</p>
+            <div class="hero-actions">
+                <RadzenButton Text="View Servers" 
+                              Icon="dns" 
+                              ButtonStyle="ButtonStyle.Primary" 
+                              Size="ButtonSize.Large"
+                              Click='@(() => Navigation.NavigateTo("/servers"))' />
+                <RadzenButton Text="Create Server" 
+                              Icon="add" 
+                              ButtonStyle="ButtonStyle.Success" 
+                              Size="ButtonSize.Large"
+                              Click='@(() => Navigation.NavigateTo("/servers/new"))' />
+            </div>
+        </div>
+    </div>
+
+    <div class="features-section">
+        <div class="container-fluid">
+            <h2 class="section-title">What Does This Application Do?</h2>
+            <p class="section-description">
+                Game Server Manager is a comprehensive web application for deploying and managing game servers 
+                in a Docker Swarm cluster. It provides an intuitive interface to handle complex server configurations 
+                without requiring command-line expertise.
+            </p>
+
+            <div class="row mt-5">
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="add_circle" Style="font-size: 3rem; color: var(--rz-success);" />
+                        </div>
+                        <h3>Easy Deployment</h3>
+                        <p>
+                            Deploy game servers with just a few clicks using our guided wizard. Select from 
+                            pre-configured game types including Minecraft, Valheim, and more. Configure ports, 
+                            volumes, and environment variables through an intuitive interface.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="settings" Style="font-size: 3rem; color: var(--rz-primary);" />
+                        </div>
+                        <h3>Server Management</h3>
+                        <p>
+                            Start, stop, and configure your game servers from a centralized dashboard. 
+                            Edit server settings, manage port mappings, and update environment variables 
+                            without touching configuration files or Docker commands.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="monitoring" Style="font-size: 3rem; color: var(--rz-info);" />
+                        </div>
+                        <h3>Real-Time Monitoring</h3>
+                        <p>
+                            Monitor your servers with real-time resource usage metrics including replica health, 
+                            service status, and task information. View live logs and track server performance 
+                            to ensure optimal operation.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="folder" Style="font-size: 3rem; color: var(--rz-warning);" />
+                        </div>
+                        <h3>File Management</h3>
+                        <p>
+                            Browse, upload, download, and edit server files directly from your browser. 
+                            Manage configuration files, world data, and plugins without needing SSH or 
+                            SFTP access to your Docker host.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="sports_esports" Style="font-size: 3rem; color: var(--rz-secondary);" />
+                        </div>
+                        <h3>Game Type Templates</h3>
+                        <p>
+                            Manage game type definitions with pre-configured Docker images, default settings, 
+                            port mappings, and volume configurations. Create custom templates for your 
+                            favorite games or modify existing ones.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="cloud" Style="font-size: 3rem; color: var(--rz-primary);" />
+                        </div>
+                        <h3>Docker Swarm Integration</h3>
+                        <p>
+                            Leverages Docker Swarm for high availability and orchestration. Automatically 
+                            manages service deployments, replica management, and ensures your game servers 
+                            stay running even during host failures.
+                        </p>
+                    </RadzenCard>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tech-section">
+        <div class="container-fluid">
+            <h2 class="section-title">Technology Stack</h2>
+            
+            <div class="row mt-4">
+                <div class="col-md-6 mb-4">
+                    <RadzenCard>
+                        <h4 class="mb-3">
+                            <RadzenIcon Icon="web" class="me-2" />
+                            Frontend
+                        </h4>
+                        <ul class="tech-list">
+                            <li><strong>Blazor Server (.NET 10)</strong> - Interactive web UI with real-time updates</li>
+                            <li><strong>Radzen Blazor Components</strong> - Professional UI component library</li>
+                            <li><strong>SignalR</strong> - Real-time communication for live updates</li>
+                        </ul>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-md-6 mb-4">
+                    <RadzenCard>
+                        <h4 class="mb-3">
+                            <RadzenIcon Icon="storage" class="me-2" />
+                            Backend
+                        </h4>
+                        <ul class="tech-list">
+                            <li><strong>Docker Swarm</strong> - Container orchestration and management</li>
+                            <li><strong>GameServer.Docker.Client</strong> - REST API client library</li>
+                            <li><strong>ASP.NET Core</strong> - Web server and API integration</li>
+                        </ul>
+                    </RadzenCard>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="getting-started-section">
+        <div class="container-fluid">
+            <RadzenCard class="getting-started-card">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-3">Ready to Get Started?</h2>
+                        <p class="mb-0">
+                            Create your first game server in minutes. Our guided wizard will walk you through 
+                            selecting a game type, configuring settings, and deploying to your Docker Swarm cluster.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <RadzenButton Text="Create Your First Server" 
+                                      Icon="rocket_launch" 
+                                      ButtonStyle="ButtonStyle.Success" 
+                                      Size="ButtonSize.Large"
+                                      Click='@(() => Navigation.NavigateTo("/servers/new"))' />
+                    </div>
+                </div>
+            </RadzenCard>
+        </div>
+    </div>
+</div>
+
+<style>
+    .home-container {
+        padding: 0;
+    }
+
+    .hero-section {
+        background: linear-gradient(135deg, var(--rz-primary) 0%, var(--rz-secondary) 100%);
+        padding: 4rem 2rem;
+        text-align: center;
+        color: white;
+    }
+
+    .hero-content {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .hero-icon {
+        margin-bottom: 1rem;
+    }
+
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: white;
+    }
+
+    .hero-subtitle {
+        font-size: 1.5rem;
+        margin-bottom: 2rem;
+        opacity: 0.95;
+    }
+
+    .hero-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .features-section {
+        padding: 4rem 2rem;
+        background: var(--rz-base-50);
+    }
+
+    .section-title {
+        text-align: center;
+        font-size: 2.5rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--rz-text-color);
+    }
+
+    .section-description {
+        text-align: center;
+        font-size: 1.2rem;
+        max-width: 900px;
+        margin: 0 auto;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .feature-card {
+        text-align: center;
+        padding: 2rem;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+
+    .feature-icon {
+        margin-bottom: 1rem;
+    }
+
+    .feature-card h3 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: var(--rz-text-color);
+    }
+
+    .feature-card p {
+        color: var(--rz-text-secondary-color);
+        line-height: 1.6;
+    }
+
+    .tech-section {
+        padding: 4rem 2rem;
+        background: var(--rz-base-background-color);
+    }
+
+    .tech-list {
+        list-style: none;
+        padding: 0;
+    }
+
+    .tech-list li {
+        padding: 0.5rem 0;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .tech-list li strong {
+        color: var(--rz-text-color);
+    }
+
+    .getting-started-section {
+        padding: 4rem 2rem;
+        background: var(--rz-base-50);
+    }
+
+    .getting-started-card {
+        background: linear-gradient(135deg, var(--rz-success-light) 0%, var(--rz-primary-light) 100%);
+        padding: 3rem;
+    }
+
+    .getting-started-card h2 {
+        color: var(--rz-text-color);
+    }
+
+    .getting-started-card p {
+        font-size: 1.1rem;
+        color: var(--rz-text-secondary-color);
+    }
+
+    @@media (max-width: 768px) {
+        .hero-title {
+            font-size: 2rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1.2rem;
+        }
+
+        .section-title {
+            font-size: 2rem;
+        }
+
+        .getting-started-card {
+            text-align: center;
+        }
+
+        .getting-started-card .text-end {
+            text-align: center !important;
+            margin-top: 1rem;
+        }
+    }
+</style>

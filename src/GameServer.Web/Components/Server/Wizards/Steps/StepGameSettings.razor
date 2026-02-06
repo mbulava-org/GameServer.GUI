@@ -1,0 +1,78 @@
+﻿@using Radzen
+@using Radzen.Blazor
+@using global::GameServer.Docker.Client
+@using System.Linq
+@inject NotificationService NotificationService
+
+<RadzenCard>
+    <h4>@(Definition?.DisplayName ?? "Game") Settings</h4>
+    <EditForm Model="Server">
+        <DataAnnotationsValidator/>
+    @if (Definition?.DefaultSettings == null || !Definition.DefaultSettings.Any())
+    {
+        <div class="rz-alert rz-alert-info">No predefined settings for this game type. Use Advanced Settings later.</div>
+    }
+    else
+    {
+        switch (Definition.Key)
+        {
+            case "minecraft":
+                <MinecraftVariablesEditor Server="Server" OnChange="@(s => Server = s)" />
+                break;
+            default:
+                break;
+        }
+        <GenericDefaultSettingsOverride Definition="Definition" Server="Server" OnChange="@(s => Server = s)" />
+    }
+    </EditForm>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+        <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Secondary" Click="@BackAsync" />
+        <RadzenButton Text="Next" ButtonStyle="ButtonStyle.Primary" Click="async () => await NextAsync()" />
+    </div>
+</RadzenCard>
+
+
+@code {
+    [Parameter] public GameTypeDefinition Definition { get; set; } = new();
+    [Parameter] public GameServer Server { get; set; } = new();
+    [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+
+
+    async Task NextAsync()
+    {
+        if (Definition.Key == "minecraft")
+        {
+            Console.WriteLine("Now What?");
+        }
+        List<string> remove = new();
+        //make a list of settings to remove that are default, or empty
+        foreach(var s in Server.Settings)
+        {
+            if (Definition.DefaultSettings.TryGetValue(s.Key, out var val))
+            {
+                if (s.Value == val || s.Value == string.Empty)
+                {
+                    remove.Add(s.Key);
+                }
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Warning", $"Setting {s.Key} is not recognized for game type {Definition.DisplayName} and will be removed.");
+                remove.Add(s.Key);
+            }
+        }
+        //remove them from server settings
+        foreach(var r in remove)
+        {
+            Server.Settings.Remove(r);
+        }
+        
+
+        await OnNext.InvokeAsync(null);
+    }
+
+    Task BackAsync() => OnBack.InvokeAsync(null);
+
+ 
+}

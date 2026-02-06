@@ -1,0 +1,44 @@
+﻿@using GameServer.Docker.Client
+<EditForm Model="Server" OnValidSubmit="@NextAsync">
+    <DataAnnotationsValidator />
+    <RadzenPanel AllowCollapse="false" class="rz-my-10 rz-mx-auto" 
+                 Collapsed="false">
+                 <HeaderTemplate>
+                     <RadzenText TextStyle="TextStyle.H6" class="rz-display-flex rz-align-items-center rz-m-0">
+                <RadzenIcon Icon="build" class="rz-me-1" /><h3>Advanced Technical Details</h3>
+                     </RadzenText>
+                 </HeaderTemplate>
+                 <ChildContent>
+                     <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
+                         <h4>Ports:</h4>
+                <PortMappingEditor Server="Server" OnChanged="@(s=> Server = s)" OnValidityChanged="@(a=> PortsValid = a)" />
+                     </RadzenCard>
+                    <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
+                        <h4>Persistent Storage:</h4>
+                        <h3>Coming soon??? Maybe???</h3>
+                        @* <PortMappingEditor Server="Server" OnChanged="@(s => Server = s)" /> *@
+                    </RadzenCard>
+                 </ChildContent>
+    </RadzenPanel>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+        <RadzenButton Text="Back" ButtonStyle="ButtonStyle.Secondary" Click="@BackAsync" />
+        <RadzenButton Text="Next" ButtonStyle="ButtonStyle.Primary" Click="async () => await NextAsync()" 
+                      Disabled="@(!(PortsValid && StorageValid))" />
+    </div>
+</EditForm>
+
+@code {
+
+    [Parameter]
+    public GameServer Server { get; set; } = new();
+    [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+
+
+
+    public bool PortsValid { get; set; } = false;
+    public bool StorageValid { get; set; } = true;
+
+    async Task NextAsync() => await OnNext.InvokeAsync();
+    async Task BackAsync() => await OnBack.InvokeAsync();  
+}

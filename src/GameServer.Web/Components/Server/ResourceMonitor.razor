@@ -1,0 +1,780 @@
+@using global::GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+@implements IAsyncDisposable
+@inject IGameServerApi ServerApi
+@inject NotificationService NotificationService
+
+<RadzenCard class="resource-monitor">
+    <div class="monitor-header">
+        <div class="header-left">
+            <RadzenIcon Icon="monitor_heart" Style="font-size: 1.5rem; color: var(--rz-primary);" />
+            <h4>Resource Monitor</h4>
+        </div>
+        <div class="header-right">
+            @if (isMonitoring)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="? LIVE" />
+                <span class="text-muted small">Next update: @nextUpdateIn s</span>
+            }
+            else
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="? OFFLINE" />
+            }
+        </div>
+    </div>
+
+    @if (currentUsage != null && string.IsNullOrEmpty(errorMessage))
+    {
+        @if (currentUsage.HasRealTimeStats && currentUsage.RealTimeStats != null)
+        {
+            <div class="metrics-grid">
+                @* CPU Usage Gauge *@
+                <RadzenCard class="metric-card">
+                    <div class="card-header">
+                        <RadzenIcon Icon="speed" class="header-icon cpu-icon" />
+                        <h5>CPU Usage</h5>
+                    </div>
+                    <div class="card-content">
+                        <div class="gauge-container">
+                            <RadzenArcGauge Style="width: 100%; height: 180px;">
+                                <RadzenArcGaugeScale Min="0" Max="100" Y="0.8" Radius="1.8">
+                                    <RadzenArcGaugeScaleValue Value="@currentUsage.RealTimeStats.CpuUsagePercent" 
+                                                              Fill="@GetCpuColor(currentUsage.RealTimeStats.CpuUsagePercent)" 
+                                                              FormatString="{0:F1}%" />
+                                    <RadzenArcGaugeScaleRange From="0" To="60" Fill="#4ade80" />
+                                    <RadzenArcGaugeScaleRange From="60" To="80" Fill="#3b82f6" />
+                                    <RadzenArcGaugeScaleRange From="80" To="90" Fill="#fb923c" />
+                                    <RadzenArcGaugeScaleRange From="90" To="100" Fill="#ef4444" />
+                                </RadzenArcGaugeScale>
+                            </RadzenArcGauge>
+                        </div>
+                        <div class="metric-details">
+                            <div class="detail-row">
+                                <span class="detail-label">Online CPUs:</span>
+                                <span class="detail-value">@currentUsage.RealTimeStats.OnlineCpus</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Total Usage:</span>
+                                <span class="detail-value">@FormatCpuNano(currentUsage.RealTimeStats.CpuTotalUsage)</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">System Usage:</span>
+                                <span class="detail-value">@FormatCpuNano(currentUsage.RealTimeStats.CpuSystemUsage)</span>
+                            </div>
+                        </div>
+                    </div>
+                </RadzenCard>
+
+                @* Memory Usage Gauge *@
+                <RadzenCard class="metric-card">
+                    <div class="card-header">
+                        <RadzenIcon Icon="memory" class="header-icon memory-icon" />
+                        <h5>Memory Usage</h5>
+                    </div>
+                    <div class="card-content">
+                        <div class="gauge-container">
+                            <RadzenArcGauge Style="width: 100%; height: 180px;">
+                                <RadzenArcGaugeScale Min="0" Max="100" Y="0.8" Radius="1.8">
+                                    <RadzenArcGaugeScaleValue Value="@currentUsage.RealTimeStats.MemoryUsagePercent" 
+                                                              Fill="@GetMemoryColor(currentUsage.RealTimeStats.MemoryUsagePercent)" 
+                                                              FormatString="{0:F1}%" />
+                                    <RadzenArcGaugeScaleRange From="0" To="60" Fill="#4ade80" />
+                                    <RadzenArcGaugeScaleRange From="60" To="80" Fill="#3b82f6" />
+                                    <RadzenArcGaugeScaleRange From="80" To="90" Fill="#fb923c" />
+                                    <RadzenArcGaugeScaleRange From="90" To="100" Fill="#ef4444" />
+                                </RadzenArcGaugeScale>
+                            </RadzenArcGauge>
+                        </div>
+                        <div class="metric-details">
+                            <div class="detail-row">
+                                <span class="detail-label">Used:</span>
+                                <span class="detail-value">@FormatBytes((long)currentUsage.RealTimeStats.MemoryUsageBytes)</span>
+                            </div>
+                            @if (currentUsage.RealTimeStats.MemoryLimitBytes > 0)
+                            {
+                                <div class="detail-row">
+                                    <span class="detail-label">Limit:</span>
+                                    <span class="detail-value">@FormatBytes((long)currentUsage.RealTimeStats.MemoryLimitBytes)</span>
+                                </div>
+                            }
+                            <div class="detail-row">
+                                <span class="detail-label">Peak:</span>
+                                <span class="detail-value">@FormatBytes((long)currentUsage.RealTimeStats.MemoryMaxUsageBytes)</span>
+                            </div>
+                        </div>
+                    </div>
+                </RadzenCard>
+
+                @* Network I/O *@
+                <RadzenCard class="metric-card">
+                    <div class="card-header">
+                        <RadzenIcon Icon="settings_ethernet" class="header-icon network-icon" />
+                        <h5>Network I/O</h5>
+                    </div>
+                    <div class="card-content">
+                        <div class="io-stats">
+                            <div class="io-stat">
+                                <div class="io-direction">
+                                    <RadzenIcon Icon="arrow_downward" class="rx-icon" />
+                                    <span>Received</span>
+                                </div>
+                                <div class="io-value">
+                                    <div class="io-number">@FormatBytes(currentUsage.RealTimeStats.NetworkRxBytes)</div>
+                                    <div class="io-total">Total</div>
+                                </div>
+                            </div>
+                            <div class="io-divider"></div>
+                            <div class="io-stat">
+                                <div class="io-direction">
+                                    <RadzenIcon Icon="arrow_upward" class="tx-icon" />
+                                    <span>Transmitted</span>
+                                </div>
+                                <div class="io-value">
+                                    <div class="io-number">@FormatBytes(currentUsage.RealTimeStats.NetworkTxBytes)</div>
+                                    <div class="io-total">Total</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="metric-note">
+                            <small class="text-muted">
+                                <RadzenIcon Icon="info" Style="font-size: 0.875rem;" />
+                                Cumulative totals since container start
+                            </small>
+                        </div>
+                    </div>
+                </RadzenCard>
+
+                @* Block I/O *@
+                <RadzenCard class="metric-card">
+                    <div class="card-header">
+                        <RadzenIcon Icon="storage" class="header-icon disk-icon" />
+                        <h5>Block I/O</h5>
+                    </div>
+                    <div class="card-content">
+                        <div class="io-stats">
+                            <div class="io-stat">
+                                <div class="io-direction">
+                                    <RadzenIcon Icon="file_download" class="read-icon" />
+                                    <span>Read</span>
+                                </div>
+                                <div class="io-value">
+                                    <div class="io-number">@FormatBytes(currentUsage.RealTimeStats.BlockReadBytes)</div>
+                                    <div class="io-total">Total</div>
+                                </div>
+                            </div>
+                            <div class="io-divider"></div>
+                            <div class="io-stat">
+                                <div class="io-direction">
+                                    <RadzenIcon Icon="file_upload" class="write-icon" />
+                                    <span>Write</span>
+                                </div>
+                                <div class="io-value">
+                                    <div class="io-number">@FormatBytes(currentUsage.RealTimeStats.BlockWriteBytes)</div>
+                                    <div class="io-total">Total</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="metric-details mt-3">
+                            <div class="detail-row">
+                                <span class="detail-label">Container ID:</span>
+                                <code class="detail-code">@(currentUsage.RealTimeStats.ContainerId.Length > 12 ? currentUsage.RealTimeStats.ContainerId.Substring(0, 12) : currentUsage.RealTimeStats.ContainerId)</code>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">PIDs:</span>
+                                <span class="detail-value">@currentUsage.RealTimeStats.Pids</span>
+                            </div>
+                        </div>
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <div class="monitor-footer">
+                <small class="text-muted">
+                    <RadzenIcon Icon="update" Style="font-size: 0.875rem;" />
+                    Container stats from: @currentUsage.RealTimeStats.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")
+                </small>
+            </div>
+        }
+        else
+        {
+            <div class="no-stats-message">
+                <RadzenIcon Icon="info_outline" Style="font-size: 3rem; color: var(--rz-info);" />
+                <h5>Real-time container stats not available</h5>
+                <p>The container is either not running or stats collection is not enabled.</p>
+                <div class="service-summary mt-3">
+                    <RadzenCard>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <span class="summary-label">Status:</span>
+                                <RadzenBadge Text="@currentUsage.ServiceStatus" BadgeStyle="@GetStatusBadgeStyle(currentUsage.ServiceStatus)" />
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Replicas:</span>
+                                <span class="summary-value">@currentUsage.RunningReplicas / @currentUsage.DesiredReplicas</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Health:</span>
+                                <span class="summary-value">@currentUsage.ReplicaHealthPercent.ToString("F1")%</span>
+                            </div>
+                        </div>
+                    </RadzenCard>
+                </div>
+            </div>
+        }
+    }
+    else if (isMonitoring && string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="loading-state">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+            <p>Fetching resource data...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="error-state">
+            <RadzenIcon Icon="error_outline" Style="font-size: 3rem; color: var(--rz-danger);" />
+            <p class="error-message">@errorMessage</p>
+            <RadzenButton Text="Retry" 
+                          Icon="refresh"
+                          Click="StartMonitoring" 
+                          ButtonStyle="ButtonStyle.Danger"
+                          Size="ButtonSize.Small" />
+        </div>
+    }
+    else
+    {
+        <div class="idle-state">
+            <RadzenIcon Icon="show_chart" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+            <p>Resource monitoring is offline</p>
+            @if (!string.IsNullOrEmpty(ServerId))
+            {
+                <RadzenButton Text="Start Monitoring" 
+                              Icon="play_arrow"
+                              Click="StartMonitoring" 
+                              ButtonStyle="ButtonStyle.Success"
+                              Size="ButtonSize.Small" />
+            }
+        </div>
+    }
+
+    @if (isMonitoring && !string.IsNullOrEmpty(ServerId))
+    {
+        <div class="monitor-controls">
+            <div class="controls-content">
+                <div class="control-group">
+                    <RadzenLabel Text="Refresh Interval:" class="mb-0" />
+                    <RadzenNumeric @bind-Value="refreshInterval" Min="1" Max="60" Step="1" Style="width:70px" />
+                    <RadzenLabel Text="sec" class="mb-0" />
+                </div>
+                <RadzenButton Icon="stop" 
+                              Text="Stop Monitoring" 
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Danger" 
+                              Click="StopMonitoring" />
+            </div>
+        </div>
+    }
+</RadzenCard>
+
+<style>
+    .resource-monitor {
+        margin-top: 1rem;
+    }
+
+    .monitor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid var(--rz-border-color);
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .header-left h4 {
+        margin: 0;
+        font-weight: 600;
+    }
+
+    .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .metric-card {
+        border: 1px solid var(--rz-border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        background: linear-gradient(135deg, var(--rz-base-50) 0%, var(--rz-base-background-color) 100%);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--rz-border-color);
+    }
+
+    .card-header h5 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .header-icon {
+        font-size: 1.5rem;
+    }
+
+    .cpu-icon {
+        color: #3b82f6;
+    }
+
+    .memory-icon {
+        color: #8b5cf6;
+    }
+
+    .network-icon {
+        color: #10b981;
+    }
+
+    .disk-icon {
+        color: #f59e0b;
+    }
+
+    .card-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .gauge-container {
+        margin-bottom: 1rem;
+    }
+
+    .metric-details {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--rz-border-color);
+    }
+
+    .detail-row:last-child {
+        border-bottom: none;
+    }
+
+    .detail-label {
+        font-size: 0.875rem;
+        color: var(--rz-text-secondary-color);
+        font-weight: 500;
+    }
+
+    .detail-value {
+        font-size: 0.875rem;
+        color: var(--rz-text-color);
+        font-weight: 600;
+    }
+
+    .detail-code {
+        font-size: 0.75rem;
+        font-family: 'Courier New', monospace;
+        background: var(--rz-base-100);
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        color: var(--rz-text-color);
+    }
+
+    .io-stats {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .io-stat {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .io-direction {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .rx-icon {
+        color: #10b981;
+        font-size: 1.25rem;
+    }
+
+    .tx-icon {
+        color: #3b82f6;
+        font-size: 1.25rem;
+    }
+
+    .read-icon {
+        color: #8b5cf6;
+        font-size: 1.25rem;
+    }
+
+    .write-icon {
+        color: #f59e0b;
+        font-size: 1.25rem;
+    }
+
+    .io-value {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .io-number {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--rz-text-color);
+    }
+
+    .io-total {
+        font-size: 0.75rem;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .io-divider {
+        width: 1px;
+        background: var(--rz-border-color);
+    }
+
+    .metric-note {
+        text-align: center;
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--rz-border-color);
+    }
+
+    .monitor-footer {
+        text-align: center;
+        padding-top: 1rem;
+        border-top: 1px solid var(--rz-border-color);
+    }
+
+    .no-stats-message, .loading-state, .error-state, .idle-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 3rem 2rem;
+        text-align: center;
+    }
+
+    .no-stats-message h5 {
+        margin: 0;
+        color: var(--rz-text-color);
+    }
+
+    .no-stats-message p {
+        margin: 0;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .service-summary {
+        width: 100%;
+        max-width: 600px;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+
+    .summary-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+
+    .summary-label {
+        font-size: 0.875rem;
+        color: var(--rz-text-secondary-color);
+        font-weight: 500;
+    }
+
+    .summary-value {
+        font-size: 1rem;
+        color: var(--rz-text-color);
+        font-weight: 600;
+    }
+
+    .loading-state p, .idle-state p {
+        color: var(--rz-text-secondary-color);
+        margin: 0;
+    }
+
+    .error-state {
+        color: var(--rz-danger);
+    }
+
+    .error-message {
+        margin: 0;
+        font-weight: 500;
+    }
+
+    .monitor-controls {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--rz-border-color);
+    }
+
+    .controls-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .control-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    @@media (max-width: 768px) {
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .io-stats {
+            flex-direction: column;
+        }
+
+        .io-divider {
+            height: 1px;
+            width: 100%;
+        }
+
+        .controls-content {
+            flex-direction: column;
+            align-items: stretch;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public string? ServerId { get; set; }
+    [Parameter] public bool AutoStart { get; set; } = true;
+
+    private ServerResourceUsage? currentUsage;
+    private bool isMonitoring = false;
+    private string? errorMessage;
+    private int refreshInterval = 2;
+    private int nextUpdateIn = 0;
+
+    private CancellationTokenSource? pollingCts;
+    private Task? pollingTask;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AutoStart && !string.IsNullOrEmpty(ServerId))
+        {
+            await StartMonitoring();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (isMonitoring && !string.IsNullOrEmpty(ServerId))
+        {
+            await StopMonitoring();
+            await StartMonitoring();
+        }
+    }
+
+    private async Task StartMonitoring()
+    {
+        if (string.IsNullOrEmpty(ServerId))
+        {
+            errorMessage = "Server ID is required";
+            return;
+        }
+
+        isMonitoring = true;
+        errorMessage = null;
+        pollingCts = new CancellationTokenSource();
+        pollingTask = PollResourcesAsync(pollingCts.Token);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PollResourcesAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                currentUsage = await ServerApi.GetResourceUsageAsync(ServerId!, cancellationToken);
+                errorMessage = null;
+
+                await InvokeAsync(StateHasChanged);
+
+                for (int i = refreshInterval; i > 0; i--)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
+
+                    nextUpdateIn = i;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(1000, cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Failed to fetch resource data: {ex.Message}";
+                currentUsage = null;
+                
+                await InvokeAsync(() =>
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Resource Monitor Error",
+                        Detail = errorMessage,
+                        Duration = 5000
+                    });
+                    StateHasChanged();
+                });
+
+                try
+                {
+                    await Task.Delay(refreshInterval * 1000, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private async Task StopMonitoring()
+    {
+        isMonitoring = false;
+        
+        if (pollingCts != null)
+        {
+            pollingCts.Cancel();
+            
+            if (pollingTask != null)
+            {
+                try
+                {
+                    await pollingTask;
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+            
+            pollingCts.Dispose();
+            pollingCts = null;
+            pollingTask = null;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string GetCpuColor(double percent)
+    {
+        if (percent >= 90) return "#ef4444";
+        if (percent >= 80) return "#fb923c";
+        if (percent >= 60) return "#3b82f6";
+        return "#4ade80";
+    }
+
+    private string GetMemoryColor(double percent)
+    {
+        if (percent >= 90) return "#ef4444";
+        if (percent >= 80) return "#fb923c";
+        if (percent >= 60) return "#3b82f6";
+        return "#4ade80";
+    }
+
+    private BadgeStyle GetStatusBadgeStyle(string? status)
+    {
+        return status?.ToLowerInvariant() switch
+        {
+            "running" => BadgeStyle.Success,
+            "starting" => BadgeStyle.Info,
+            "stopped" => BadgeStyle.Secondary,
+            "stopping" => BadgeStyle.Warning,
+            "failed" => BadgeStyle.Danger,
+            _ => BadgeStyle.Secondary
+        };
+    }
+
+    private string FormatBytes(long bytes)
+    {
+        if (bytes == 0) return "0 B";
+        if (bytes < 0) return "N/A";
+
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string FormatCpuNano(ulong nanoCpus)
+    {
+        // Convert nanoseconds to seconds
+        double seconds = nanoCpus / 1_000_000_000.0;
+        return $"{seconds:0.##}s";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopMonitoring();
+    }
+}

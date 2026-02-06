@@ -1,0 +1,115 @@
+﻿@using GameServer.Web.Components.Server.Wizards.Steps
+@using global::GameServer.Docker.Client
+@page "/servers/new"
+@rendermode InteractiveServer
+
+
+<PageTitle>Create New Game Server</PageTitle>
+<div class="container mt-4">
+
+    <h2>Create New Game Server</h2>
+    <hr />
+
+    @if (Step == 1)
+    {
+        <StepSelectGameType GameTypes="GameTypes" OnSelect="SelectGameType" />
+    }
+    else if (Step == 2)
+    {
+        <StepBasicInfo Server="Server" 
+            GameDefinition="SelectedDefinition"
+            OnNext="Next" OnBack="Back" />
+    }
+    else if (Step == 3)
+    {
+        <StepGameSettings Server="Server"
+                          Definition="SelectedDefinition"
+                          OnNext="Next"
+                          OnBack="Back" />
+    }
+    else if (Step == 4)
+    {
+        <StepTechnicalDetails Server="Server"
+                              OnNext="Next"
+                              OnBack="Back" />
+    }
+    else if (Step == 5)
+    {
+        <StepReview Server="Server"
+                    Definition="SelectedDefinition"
+                    OnCreate="CreateServer"
+                    OnBack="Back" />
+    }
+</div>
+
+
+@code {
+    protected int Step { get; set; } = 1;
+
+    protected GameServer Server { get; set; } = new();
+    protected List<GameTypeDefinition> GameTypes { get; set; } = new();
+    protected GameTypeDefinition? SelectedDefinition { get; set; }
+
+    [Inject] public IGameTypeApi GameTypeApi { get; set; } = default!;
+    [Inject] public IGameServerApi ServerApi { get; set; } = default!;
+    [Inject] public IPortApi PortApi { get; set; } = default!;
+    [Inject] public NavigationManager Nav { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var data = await GameTypeApi.GetAllAsync();
+        GameTypes = data.ToList();
+    }
+
+
+    protected async Task SelectGameType(string key)
+    {
+        SelectedDefinition = GameTypes.FirstOrDefault(x => x.Key == key);
+        if (SelectedDefinition == null)
+        {
+            // Handle error - show notification, return, etc.
+            return;
+        }
+
+        Server = new GameServer();
+        Server.GameType = key;
+
+        // Auto-assign port using PortAllocator
+        //Server.Port = 0;//await PortApi.AllocateAsync();
+
+        // Initialize settings and lists
+        Server.Settings = new Dictionary<string, string>();
+        Server.Ports = new List<PortMapping>();
+        foreach(var p in SelectedDefinition.Ports)
+        {
+            Server.Ports.Add(new()
+                {
+                    Protocol = p.Protocol,
+                    ContainerPort = p.Port,
+                    PublishedPort = p.Port
+                });
+
+        }
+        Server.Volumes = new List<VolumeDefinition>();
+        foreach(var v in SelectedDefinition.Volumes)
+        {
+            Server.Volumes.Add(new VolumeDefinition
+            {
+                Source = v.Source,
+                Target = v.Target   
+            });
+        }
+        
+        Step = 2;
+    }
+
+    protected void Next() => Step++;
+    protected void Back() => Step--;
+
+    protected async Task CreateServer()
+    {
+        await ServerApi.DeployAsync(Server);
+        Nav.NavigateTo("/servers");
+    }
+
+}

@@ -1,0 +1,610 @@
+@page "/servers/{ServerId}/edit"
+@rendermode InteractiveServer
+@using global::GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+@inject IGameServerApi ServerApi
+@inject IGameTypeApi GameTypeApi
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+@inject DialogService DialogService
+
+<PageTitle>Edit Server - @server?.Name</PageTitle>
+
+<div class="container-fluid mt-4">
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            <p class="mt-3">Loading server details...</p>
+        </div>
+    }
+    else if (server == null)
+    {
+        <RadzenCard>
+            <div class="text-center py-5">
+                <RadzenIcon Icon="error" Style="font-size: 4rem; color: var(--rz-danger);" />
+                <h4 class="mt-3">Server Not Found</h4>
+                <p class="text-muted">The server you're trying to edit could not be found.</p>
+                <RadzenButton Text="Back to Servers" 
+                              Icon="arrow_back" 
+                              Click="@(() => Navigation.NavigateTo("/servers"))" />
+            </div>
+        </RadzenCard>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex align-items-center gap-3">
+                @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+                {
+                    <div class="game-thumbnail-small">
+                        <img src="@gameType.ThumbnailUrl" 
+                             alt="@gameType.DisplayName"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                        <div class="thumbnail-fallback-small" style="display: none;">
+                            <RadzenIcon Icon="sports_esports" Style="font-size: 2rem;" />
+                        </div>
+                    </div>
+                }
+                <div>
+                    <h2>Edit Server: @server.Name</h2>
+                    <p class="text-muted mb-0">
+                        <RadzenBadge Text="@gameType?.DisplayName" BadgeStyle="BadgeStyle.Info" />
+                        <span class="ms-2">ID: @server.ServerId</span>
+                    </p>
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <RadzenButton Text="Cancel" 
+                              Icon="cancel" 
+                              ButtonStyle="ButtonStyle.Light" 
+                              Click="@(() => Navigation.NavigateTo($"/servers/{ServerId}"))" />
+                <RadzenButton Text="Save Changes" 
+                              Icon="save" 
+                              ButtonStyle="ButtonStyle.Primary" 
+                              Click="SaveServer"
+                              Disabled="@saving" />
+            </div>
+        </div>
+
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="Basic Info">
+                    <div class="p-3">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <RadzenCard>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-bold">Server Name</label>
+                                            <RadzenTextBox @bind-Value="server.Name" 
+                                                           class="w-100" 
+                                                           Placeholder="My Awesome Server" />
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-bold">Server ID</label>
+                                            <RadzenTextBox Value="@server.ServerId" 
+                                                           class="w-100" 
+                                                           Disabled="true" />
+                                            <small class="text-muted">Server ID cannot be changed</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Description</label>
+                                        <RadzenTextArea @bind-Value="server.Description" 
+                                                        class="w-100" 
+                                                        Rows="3"
+                                                        Placeholder="Optional server description" />
+                                    </div>
+                                </RadzenCard>
+                            </div>
+
+                            <div class="col-md-4">
+                                <RadzenCard>
+                                    <h6 class="mb-3">Game Type</h6>
+                                    @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+                                    {
+                                        <div class="game-type-thumbnail-large mb-3">
+                                            <img src="@gameType.ThumbnailUrl" 
+                                                 alt="@gameType.DisplayName"
+                                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                            <div class="thumbnail-fallback-large" style="display: none;">
+                                                <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="game-type-thumbnail-large mb-3">
+                                            <div class="thumbnail-fallback-large">
+                                                <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                                            </div>
+                                        </div>
+                                    }
+                                    
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">Display Name</label>
+                                        <RadzenTextBox Value="@gameType?.DisplayName" 
+                                                       class="w-100" 
+                                                       Disabled="true" />
+                                    </div>
+
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">Docker Image</label>
+                                        <RadzenTextBox Value="@gameType?.Image" 
+                                                       class="w-100" 
+                                                       Disabled="true" />
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(gameType?.DocumentationUrl))
+                                    {
+                                        <div class="mt-3">
+                                            <RadzenButton Text="Documentation" 
+                                                          Icon="description" 
+                                                          ButtonStyle="ButtonStyle.Light" 
+                                                          Size="ButtonSize.Small"
+                                                          Click="@(() => OpenUrl(gameType.DocumentationUrl))"
+                                                          class="w-100" />
+                                        </div>
+                                    }
+
+                                    <small class="text-muted d-block mt-3">
+                                        <RadzenIcon Icon="info" Style="font-size: 0.9rem;" />
+                                        Game type cannot be changed after creation
+                                    </small>
+                                </RadzenCard>
+                            </div>
+                        </div>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Ports">
+                    <div class="p-3">
+                        <RadzenCard>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="mb-0">Port Mappings</h6>
+                                <RadzenButton Text="Add Port" 
+                                              Icon="add" 
+                                              Size="ButtonSize.Small"
+                                              ButtonStyle="ButtonStyle.Primary" 
+                                              Click="AddPort" />
+                            </div>
+
+                            @if (!server.Ports.Any())
+                            {
+                                <div class="alert alert-info">
+                                    No port mappings configured.
+                                </div>
+                            }
+                            else
+                            {
+                                <RadzenDataGrid Data="@server.Ports" TItem="PortMapping" AllowRowSelectOnRowClick="false">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="PortMapping" Title="Container Port" Width="25%">
+                                            <Template Context="port">
+                                                <RadzenNumeric @bind-Value="@port.ContainerPort" 
+                                                               Min="1" Max="65535" 
+                                                               class="w-100"
+                                                               Disabled="true" />
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="PortMapping" Title="Published Port" Width="25%">
+                                            <Template Context="port">
+                                                <RadzenNumeric @bind-Value="@port.PublishedPort" 
+                                                               Min="0" Max="65535" 
+                                                               class="w-100" />
+                                                <small class="text-muted">0 = Use container port</small>
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="PortMapping" Title="Protocol" Width="20%">
+                                            <Template Context="port">
+                                                <RadzenDropDown @bind-Value="@port.Protocol" 
+                                                                Data="@protocols" 
+                                                                class="w-100" />
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="PortMapping" Title="" Width="80px">
+                                            <Template Context="port">
+                                                <RadzenButton Icon="delete" 
+                                                              Size="ButtonSize.Small"
+                                                              ButtonStyle="ButtonStyle.Danger" 
+                                                              Click="@(() => RemovePort(port))" />
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                            }
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Volumes">
+                    <div class="p-3">
+                        <RadzenCard>
+                            <div class="mb-3">
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat">
+                                    <div class="d-flex align-items-center">
+                                        <RadzenIcon Icon="lock" class="me-2" />
+                                        <span>Volume mappings are <strong>immutable</strong> and cannot be changed after server creation to prevent data loss.</span>
+                                    </div>
+                                </RadzenAlert>
+                            </div>
+
+                            @if (!server.Volumes.Any())
+                            {
+                                <div class="alert alert-warning">
+                                    No volume mappings configured. Data will not be persisted.
+                                </div>
+                            }
+                            else
+                            {
+                                <RadzenDataGrid Data="@server.Volumes" TItem="VolumeDefinition" AllowRowSelectOnRowClick="false">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="VolumeDefinition" Title="Source (Host Path)" Width="45%">
+                                            <Template Context="volume">
+                                                <RadzenTextBox Value="@volume.Source" 
+                                                               class="w-100" 
+                                                               Disabled="true" />
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="VolumeDefinition" Title="Target (Container Path)" Width="45%">
+                                            <Template Context="volume">
+                                                <RadzenTextBox Value="@volume.Target" 
+                                                               class="w-100" 
+                                                               Disabled="true" />
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="VolumeDefinition" Title="Status" Width="10%">
+                                            <Template Context="volume">
+                                                <RadzenBadge Text="Locked" BadgeStyle="BadgeStyle.Secondary" />
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                            }
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Settings">
+                    <div class="p-3">
+                        <RadzenCard>
+                            @if (gameType != null && gameType.DefaultSettings.Any())
+                            {
+                                @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
+                                        <div class="d-flex align-items-center">
+                                            <RadzenIcon Icon="info" class="me-2" />
+                                            <span>
+                                                Need help with these settings? 
+                                                <a href="@gameType.DocumentationUrl" target="_blank" rel="noopener noreferrer" class="fw-bold">
+                                                    Check the documentation <RadzenIcon Icon="open_in_new" Style="font-size: 0.9rem;" />
+                                                </a> 
+                                                for more details on each setting.
+                                            </span>
+                                        </div>
+                                    </RadzenAlert>
+                                }
+
+                                <div class="mb-3">
+                                    <h6>Available Settings</h6>
+                                    <p class="text-muted">Only settings defined by the game type can be modified. You can add or update existing values.</p>
+                                </div>
+
+                                <RadzenDataList Data="@gameType.DefaultSettings" TItem="KeyValuePair<string, string>">
+                                    <Template Context="defaultSetting">
+                                        <div class="row mb-3 p-2 border-bottom">
+                                            <div class="col-md-4">
+                                                <label class="form-label fw-bold">@defaultSetting.Key</label>
+                                                <div>
+                                                    <small class="text-muted">Default: @defaultSetting.Value</small>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-8">
+                                                @if (IsListSetting(defaultSetting.Key))
+                                                {
+                                                    <RadzenTextArea Value="@GetListSettingValue(defaultSetting.Key)" 
+                                                                    Change="@(val => SetListSettingValue(defaultSetting.Key, val?.ToString() ?? ""))"
+                                                                    Style="width:100%;min-height:100px" 
+                                                                    Placeholder="@defaultSetting.Value" />
+                                                    <small class="text-muted">Enter one item per line</small>
+                                                }
+                                                else if (IsBoolSetting(defaultSetting.Value))
+                                                {
+                                                    <RadzenCheckBox TValue="bool" 
+                                                                    Value="@GetBoolSetting(defaultSetting.Key, defaultSetting.Value)" 
+                                                                    Change="@(val => SetBoolSetting(defaultSetting.Key, val))" />
+                                                }
+                                                else if (IsIntSetting(defaultSetting.Value))
+                                                {
+                                                    <RadzenNumeric TValue="int" 
+                                                                   Value="@GetIntSetting(defaultSetting.Key, defaultSetting.Value)" 
+                                                                   Change="@(val => SetIntSetting(defaultSetting.Key, val))" 
+                                                                   Min="0" 
+                                                                   class="w-100"
+                                                                   Placeholder="@defaultSetting.Value" />
+                                                }
+                                                else
+                                                {
+                                                    <RadzenTextBox Value="@GetStringSetting(defaultSetting.Key, defaultSetting.Value)" 
+                                                                   Change="@(val => SetStringSetting(defaultSetting.Key, val?.ToString() ?? ""))" 
+                                                                   class="w-100"
+                                                                   Placeholder="@defaultSetting.Value" />
+                                                }
+                                            </div>
+                                        </div>
+                                    </Template>
+                                </RadzenDataList>
+                            }
+                            else
+                            {
+                                <div class="alert alert-info">
+                                    No configurable settings available for this game type.
+                                </div>
+                            }
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    }
+</div>
+
+@code {
+    [Parameter] public string ServerId { get; set; } = "";
+
+    private GameServer? server;
+    private GameTypeDefinition? gameType;
+    private bool loading = true;
+    private bool saving = false;
+    private List<string> protocols = new() { "tcp", "udp", "tcp/udp" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadServerAsync();
+    }
+
+    private async Task LoadServerAsync()
+    {
+        loading = true;
+        try
+        {
+            server = await ServerApi.GetAsync(ServerId);
+            
+            if (server != null)
+            {
+                // Load game type definition
+                var allGameTypes = await GameTypeApi.GetAllAsync();
+                gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
+
+                // Initialize collections if null
+                server.Settings ??= new Dictionary<string, string>();
+                server.Ports ??= new List<PortMapping>();
+                server.Volumes ??= new List<VolumeDefinition>();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error Loading Server",
+                Detail = $"Failed to load server: {ex.Message}",
+                Duration = 5000,
+                CloseOnClick = true
+            });
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task SaveServer()
+    {
+        if (server == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(server.Name))
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "Validation Error",
+                Detail = "Server name is required",
+                Duration = 3000,
+                CloseOnClick = true
+            });
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            await ServerApi.DeployAsync(server);
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Server Updated",
+                Detail = $"'{server.Name}' has been updated successfully.",
+                Duration = 3000,
+                CloseOnClick = true
+            });
+
+            Navigation.NavigateTo($"/servers/{ServerId}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Update Failed",
+                Detail = $"Failed to update server: {ex.Message}",
+                Duration = 5000,
+                CloseOnClick = true
+            });
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    // Port management
+    private void AddPort()
+    {
+        server?.Ports.Add(new PortMapping { ContainerPort = 25565, PublishedPort = 0, Protocol = "tcp" });
+    }
+
+    private void RemovePort(PortMapping port)
+    {
+        server?.Ports.Remove(port);
+    }
+
+    // Setting helpers
+    private bool IsListSetting(string key)
+    {
+        return key.Equals("OPS", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("WHITELIST", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsBoolSetting(string defaultValue)
+    {
+        return bool.TryParse(defaultValue, out _);
+    }
+
+    private bool IsIntSetting(string defaultValue)
+    {
+        return int.TryParse(defaultValue, out _);
+    }
+
+    private string GetListSettingValue(string key)
+    {
+        if (server?.Settings.TryGetValue(key, out var value) == true && !string.IsNullOrEmpty(value))
+        {
+            return value.Replace("\r", "");
+        }
+        return "";
+    }
+
+    private void SetListSettingValue(string key, string value)
+    {
+        if (server == null) return;
+        
+        var lines = (value ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0);
+        
+        server.Settings[key] = string.Join("\n", lines);
+    }
+
+    private bool GetBoolSetting(string key, string defaultValue)
+    {
+        if (server?.Settings.TryGetValue(key, out var value) == true)
+        {
+            return bool.TryParse(value, out var result) && result;
+        }
+        return bool.TryParse(defaultValue, out var defaultResult) && defaultResult;
+    }
+
+    private void SetBoolSetting(string key, bool value)
+    {
+        if (server == null) return;
+        server.Settings[key] = value.ToString().ToLower();
+    }
+
+    private int GetIntSetting(string key, string defaultValue)
+    {
+        if (server?.Settings.TryGetValue(key, out var value) == true && int.TryParse(value, out var result))
+        {
+            return result;
+        }
+        return int.TryParse(defaultValue, out var defaultResult) ? defaultResult : 0;
+    }
+
+    private void SetIntSetting(string key, int value)
+    {
+        if (server == null) return;
+        server.Settings[key] = value.ToString();
+    }
+
+    private string GetStringSetting(string key, string defaultValue)
+    {
+        if (server?.Settings.TryGetValue(key, out var value) == true)
+        {
+            return value;
+        }
+        return defaultValue;
+    }
+
+    private void SetStringSetting(string key, string value)
+    {
+        if (server == null) return;
+        server.Settings[key] = value;
+    }
+
+    private void OpenUrl(string? url)
+    {
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            Navigation.NavigateTo(url, true);
+        }
+    }
+}
+
+<style>
+    .game-thumbnail-small {
+        width: 64px;
+        height: 64px;
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+        border: 1px solid var(--rz-border-color);
+    }
+
+    .game-thumbnail-small img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .thumbnail-fallback-small {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--rz-base-100);
+    }
+
+    .game-type-thumbnail-large {
+        width: 100%;
+        height: 200px;
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+        border: 2px solid var(--rz-border-color);
+        background: var(--rz-base-50);
+    }
+
+    .game-type-thumbnail-large img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .thumbnail-fallback-large {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--rz-base-100);
+    }
+</style>

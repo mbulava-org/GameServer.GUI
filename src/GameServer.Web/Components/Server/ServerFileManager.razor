@@ -1,0 +1,444 @@
+@using Radzen
+@using Radzen.Blazor
+@using global::GameServer.Docker.Client
+@using Microsoft.AspNetCore.Components.Forms
+@inject IGameServerApi ServerApi
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<div class="file-manager">
+  <div class="file-toolbar">
+    <RadzenDropDown Data="Server.Volumes" 
+                    @bind-Value="selectedVolume" 
+                    TextProperty="Target" 
+                    Placeholder="Select Volume"
+                    Change="OnVolumeChanged"
+                    Style="width:250px" />
+    <div class="path-breadcrumb">
+      <RadzenBreadCrumb Data="breadcrumbs" />
+    </div>
+    <div class="toolbar-actions">
+      <RadzenButton Icon="create_new_folder" Text="New Folder" Click="CreateFolder" ButtonStyle="ButtonStyle.Light" />
+      <RadzenButton Icon="upload_file" Text="Upload" Click="ShowUploadDialog" ButtonStyle="ButtonStyle.Primary" />
+      <RadzenButton Icon="refresh" Click="RefreshFiles" ButtonStyle="ButtonStyle.Light" />
+    </div>
+  </div>
+
+  @if (loadingFiles)
+  {
+    <div class="loading-indicator">
+      <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+      <span>Loading files...</span>
+    </div>
+  }
+  else if (!currentFiles.Any() && selectedVolume != null)
+  {
+    <div class="no-files">
+      <RadzenIcon Icon="folder_open" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+      <h4 class="mt-3">No Files Found</h4>
+      <p class="text-muted">This directory is empty.</p>
+    </div>
+  }
+  else if (selectedVolume != null)
+  {
+    <RadzenDataGrid Data="currentFiles" TItem="FileItem" class="file-grid" AllowSorting="true" AllowFiltering="true">
+      <Columns>
+        <RadzenDataGridColumn TItem="FileItem" Property="Name" Title="Name" Width="50%">
+          <Template Context="file">
+            <div class="file-name-cell" @onclick='@(() => OnFileClick(file))' style="cursor: pointer;">
+              <RadzenIcon Icon='@(file.IsDirectory ? "folder" : GetFileIcon(file.Name))' class="file-icon" />
+              <span class="file-name">@file.Name</span>
+            </div>
+          </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="FileItem" Property="Size" Title="Size" Width="15%">
+          <Template Context="file">
+            @(file.IsDirectory ? "-" : FormatFileSize(file.Size))
+          </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="FileItem" Property="LastModified" Title="Modified" Width="20%" FormatString="{0:yyyy-MM-dd HH:mm}" />
+        <RadzenDataGridColumn TItem="FileItem" Title="Actions" Width="15%" Sortable="false" Filterable="false">
+          <Template Context="file">
+            <div class="file-actions">
+              @if (!file.IsDirectory)
+              {
+                <RadzenButton Icon="download" 
+                              Size="ButtonSize.Small" 
+                              Click='@(() => DownloadFile(file))' 
+                              ButtonStyle="ButtonStyle.Light" 
+                              title="Download" />
+                <RadzenButton Icon="edit" 
+                              Size="ButtonSize.Small" 
+                              Click='@(() => EditFile(file))' 
+                              ButtonStyle="ButtonStyle.Light"
+                              title="Edit" />
+              }
+              <RadzenButton Icon="delete" 
+                            Size="ButtonSize.Small" 
+                            Click='@(() => DeleteFile(file))' 
+                            ButtonStyle="ButtonStyle.Danger"
+                            title="Delete" />
+            </div>
+          </Template>
+        </RadzenDataGridColumn>
+      </Columns>
+    </RadzenDataGrid>
+  }
+  else
+  {
+    <div class="no-volume-selected">
+      <RadzenIcon Icon="storage" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+      <h4 class="mt-3">Select a Volume</h4>
+      <p class="text-muted">Choose a volume from the dropdown to browse files.</p>
+    </div>
+  }
+</div>
+
+@code {
+  [Parameter] public string ServerId { get; set; } = "";
+  [Parameter] public GameServer Server { get; set; } = new();
+
+  private VolumeDefinition? selectedVolume;
+  private string currentPath = "/";
+  private List<FileItem> currentFiles = new();
+  private bool loadingFiles = false;
+  private List<BreadcrumbItem> breadcrumbs = new();
+
+  public string NewFolderName { get; set; } = "";
+
+  private async Task OnVolumeChanged()
+  {
+    if (selectedVolume != null)
+    {
+      currentPath = "/";
+      await LoadFilesAsync();
+    }
+  }
+
+  private async Task LoadFilesAsync()
+  {
+    if (selectedVolume == null || string.IsNullOrWhiteSpace(ServerId))
+    {
+      return;
+    }
+
+    loadingFiles = true;
+    try
+    {
+      var files = await ServerApi.GetFilesAsync(ServerId, selectedVolume.Target, currentPath);
+      currentFiles = files.Select(f => new FileItem
+      {
+        Name = f.Name,
+        Path = f.Path,
+        IsDirectory = f.IsDirectory,
+        Size = f.Size,
+        LastModified = f.LastModified,
+        Permissions = f.Permissions
+      }).ToList();
+
+      UpdateBreadcrumbs();
+    }
+    catch (Exception ex)
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Error, 
+        Summary = "Error Loading Files", 
+        Detail = $"Failed to load files: {ex.Message}", 
+        Duration = 5000 ,
+            CloseOnClick = true
+      });
+    }
+    finally
+    {
+      loadingFiles = false;
+    }
+  }
+
+  private void UpdateBreadcrumbs()
+  {
+    breadcrumbs.Clear();
+    breadcrumbs.Add(new BreadcrumbItem { Text = selectedVolume?.Target ?? "Root", Path = "/" });
+
+    if (currentPath != "/")
+    {
+      var parts = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+      var path = "";
+      foreach (var part in parts)
+      {
+        path += "/" + part;
+        breadcrumbs.Add(new BreadcrumbItem { Text = part, Path = path });
+      }
+    }
+  }
+
+  private async Task OnFileClick(FileItem file)
+  {
+    if (file.IsDirectory)
+    {
+      currentPath = file.Path;
+      await LoadFilesAsync();
+    }
+  }
+
+  private async Task RefreshFiles()
+  {
+    await LoadFilesAsync();
+  }
+
+  private async Task CreateFolder()
+  {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    var folderName = await DialogService.OpenAsync("Create Folder", ds =>
+      @<div>
+        <RadzenTextBox @bind-Value="NewFolderName" Placeholder="Folder name" Style="width: 100%; margin-bottom: 20px;" />
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <RadzenButton Text="Cancel" Click="() => ds.Close(false)" ButtonStyle="ButtonStyle.Light" />
+          <RadzenButton Text="Create" Click="() => ds.Close(true)" ButtonStyle="ButtonStyle.Primary" Disabled="@string.IsNullOrWhiteSpace(NewFolderName)" />
+        </div>
+      </div>
+    );
+
+    if (folderName is true && !string.IsNullOrWhiteSpace(folderName.ToString()))
+    {
+      try
+      {
+        var directoryPath = currentPath == "/" ? $"/{folderName}" : $"{currentPath}/{folderName}";
+        await ServerApi.CreateDirectoryAsync(ServerId, selectedVolume.Target, directoryPath);
+        
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Success, 
+          Summary = "Folder Created", 
+          Detail = $"Folder '{folderName}' has been created.", 
+          Duration = 3000 ,
+            CloseOnClick = true
+        });
+
+        await LoadFilesAsync();
+      }
+      catch (Exception ex)
+      {
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Error, 
+          Summary = "Error Creating Folder", 
+          Detail = $"Failed to create folder: {ex.Message}", 
+          Duration = 5000 
+        });
+      }
+    }
+  }
+
+  private async Task ShowUploadDialog()
+  {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Upload", 
+      Detail = "File upload functionality requires additional implementation with InputFile component", 
+      Duration = 3000 ,
+            CloseOnClick = true
+    });
+    
+    // TODO: Implement file upload with InputFile component
+    // This would require a dialog with:
+    // - InputFile component to select files
+    // - Progress indicator
+    // - Call to ServerApi.UploadFileAsync
+  }
+
+  private async Task DownloadFile(FileItem file)
+  {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    try
+    {
+      NotificationService.Notify(new NotificationMessage 
+      { 
+        Severity = NotificationSeverity.Info, 
+        Summary = "Download Starting", 
+        Detail = $"Downloading {file.Name}...", 
+        Duration = 3000 ,
+            CloseOnClick = true
+      });
+
+      var response = await ServerApi.DownloadFileAsync(ServerId, selectedVolume.Target, file.Path);
+      
+      // Trigger browser download using JS Interop
+      using (var memoryStream = new MemoryStream())
+      {
+          await response.Stream.CopyToAsync(memoryStream);
+          var bytes = memoryStream.ToArray();
+          
+          var base64 = Convert.ToBase64String(bytes);
+          
+          await JSRuntime.InvokeVoidAsync("downloadFile", file.Name, base64);
+      }
+
+      // NotificationService.Notify(new NotificationMessage 
+      // { 
+      //   Severity = NotificationSeverity.Success, 
+      //   Summary = "Download Complete", 
+      //   Detail = $"{file.Name} has been downloaded.", 
+      //   Duration = 3000 
+      // });
+    }
+    catch (Exception ex)
+    {
+      // NotificationService.Notify(new NotificationMessage 
+      // { 
+      //   Severity = NotificationSeverity.Error, 
+      //   Summary = "Download Failed", 
+      //   Detail = $"Failed to download file: {ex.Message}", 
+      //   Duration = 5000 
+      // });
+    }
+  }
+
+  private async Task EditFile(FileItem file)
+  {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    // Check file size first
+    const long maxEditableSize = 5 * 1024; // 5KB
+    
+    if (file.Size > maxEditableSize)
+    {
+      var confirmed = await DialogService.Confirm(
+        $"This file is {FormatFileSize(file.Size)}. Files larger than 5KB cannot be edited in the browser.\n\nWould you like to download it instead?",
+        "File Too Large",
+        new ConfirmOptions { OkButtonText = "Download", CancelButtonText = "Cancel" });
+      
+      if (confirmed == true)
+      {
+        await DownloadFile(file);
+      }
+      return;
+    }
+
+    // Open file editor dialog
+    var result = await DialogService.OpenAsync<FileEditorDialog>(
+      $"Edit: {file.Name}",
+      new Dictionary<string, object>
+      {
+        { "ServerId", ServerId },
+        { "VolumeTarget", selectedVolume.Target },
+        { "FilePath", file.Path },
+        { "FileName", file.Name },
+        { "FileSize", file.Size }
+      },
+      new DialogOptions
+      {
+        Width = "900px",
+        Height = "700px",
+        Resizable = true,
+        Draggable = true
+      });
+
+    // Refresh file list if file was saved
+    if (result is true)
+    {
+      await LoadFilesAsync();
+    }
+  }
+
+  private async Task DeleteFile(FileItem file)
+  {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    var confirmed = await DialogService.Confirm(
+      $"Are you sure you want to delete '{file.Name}'? This action cannot be undone.",
+      "Confirm Delete",
+      new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+    
+    if (confirmed == true)
+    {
+      try
+      {
+        await ServerApi.DeleteFileAsync(
+          ServerId, 
+          selectedVolume.Target, 
+          file.Path, 
+          file.IsDirectory ? true : null); // recursive delete for directories
+        
+        await LoadFilesAsync();
+        
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Success, 
+          Summary = "Deleted", 
+          Detail = $"{file.Name} has been deleted.", 
+          Duration = 3000 ,
+            CloseOnClick = true
+        });
+      }
+      catch (Exception ex)
+      {
+        NotificationService.Notify(new NotificationMessage 
+        { 
+          Severity = NotificationSeverity.Error, 
+          Summary = "Delete Failed", 
+          Detail = $"Failed to delete file: {ex.Message}", 
+          Duration = 5000 ,
+            CloseOnClick = true
+        });
+      }
+    }
+  }
+
+  private string FormatFileSize(long bytes)
+  {
+    string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+    double len = bytes;
+    int order = 0;
+    while (len >= 1024 && order < sizes.Length - 1)
+    {
+      order++;
+      len = len / 1024;
+    }
+    return $"{len:0.##} {sizes[order]}";
+  }
+
+  private string GetFileIcon(string fileName)
+  {
+    var ext = System.IO.Path.GetExtension(fileName).ToLower();
+    return ext switch
+    {
+      ".txt" or ".log" => "description",
+      ".json" or ".xml" or ".yml" or ".yaml" => "code",
+      ".zip" or ".tar" or ".gz" => "archive",
+      ".jpg" or ".png" or ".gif" or ".bmp" => "image",
+      ".mp4" or ".avi" or ".mkv" => "video_file",
+      ".mp3" or ".wav" or ".ogg" => "audio_file",
+      ".pdf" => "picture_as_pdf",
+      ".sh" or ".bat" or ".cmd" => "terminal",
+      _ => "insert_drive_file"
+    };
+  }
+
+  private class BreadcrumbItem
+  {
+    public string Text { get; set; } = "";
+    public string Path { get; set; } = "";
+  }
+}
