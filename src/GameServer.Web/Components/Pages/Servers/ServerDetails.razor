@@ -92,93 +92,94 @@ else
                   <div class="card-header">
                     <h4><RadzenIcon Icon="info" /> Server Information</h4>
                   </div>
-                <div class="info-row">
-                  <span class="label">Server ID:</span>
-                  <span class="value">@server.ServerId</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">Game Type:</span>
-                  <span class="value">@server.GameType</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">Service Name:</span>
-                  <span class="value">@server.ServiceName</span>
-                </div>
-                @if (!string.IsNullOrWhiteSpace(server.Description))
-                {
-                  <div class="info-row">
-                    <span class="label">Description:</span>
-                    <span class="value">@server.Description</span>
+                  
+                  <div class="info-section">
+                    <div class="info-row">
+                      <span class="label">Server ID:</span>
+                      <span class="value">@server.ServerId</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="label">Game Type:</span>
+                      <span class="value">@server.GameType</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="label">Service Name:</span>
+                      <span class="value">@server.ServiceName</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(server.Description))
+                    {
+                      <div class="info-row-full">
+                        <span class="label">Description:</span>
+                        <div class="description-value">@server.Description</div>
+                      </div>
+                    }
                   </div>
-                }
-              </RadzenCard>
+                </RadzenCard>
 
-              <RadzenCard class="mb-3">
-                <div class="card-header">
-                  <h4><RadzenIcon Icon="settings_ethernet" /> Network</h4>
-                </div>
-                @if (server.Ports?.Any() == true)
-                {
-                  @foreach (var port in server.Ports)
+                <RadzenCard class="mb-3">
+                  <div class="card-header">
+                    <h4><RadzenIcon Icon="settings_ethernet" /> Network</h4>
+                  </div>
+                  @if (server.Ports?.Any() == true)
                   {
-                    <div class="port-row mb-2">
-                      <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort} → {port.ContainerPort}")' />
-                      <span class="protocol ms-2">@port.Protocol</span>
+                    <div class="ports-grid">
+                      @foreach (var port in server.Ports)
+                      {
+                        <div class="port-item">
+                          <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort}")' />
+                          <span class="port-arrow">→</span>
+                          <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text='@($"{port.ContainerPort}")' />
+                          <RadzenBadge BadgeStyle="BadgeStyle.Light" Text='@port.Protocol.ToUpper()' />
+                        </div>
+                      }
+                    </div>
+                    
+                    <div class="connection-section">
+                      <div class="connection-info">
+                        <span class="connection-label">
+                          <RadzenIcon Icon="link" Style="font-size: 1rem;" />
+                          Connect to:
+                        </span>
+                        <div class="connection-value">
+                          <code class="connection-string">@GetConnectionString()</code>
+                          <RadzenButton Icon="content_copy" 
+                                        Size="ButtonSize.Small" 
+                                        ButtonStyle="ButtonStyle.Light"
+                                        Click="CopyConnectionString" 
+                                        title="Copy to clipboard" />
+                        </div>
+                      </div>
+                      
+                      @if (!string.IsNullOrWhiteSpace(VanityDomain))
+                      {
+                        <div class="connection-info">
+                          <span class="connection-label">
+                            <RadzenIcon Icon="public" Style="font-size: 1rem;" />
+                            Vanity URL:
+                          </span>
+                          <div class="connection-value">
+                            <code class="connection-string">@GetConnectionString(VanityDomain)</code>
+                            <RadzenButton Icon="content_copy" 
+                                          Size="ButtonSize.Small" 
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Click="CopyVanityConnectionString" 
+                                          title="Copy to clipboard" />
+                          </div>
+                        </div>
+                      }
                     </div>
                   }
-                  <div class="connection-info mt-3 pt-3 border-top">
-                    <span class="label">Connect to:</span>
-                    <code class="connection-string ms-2">@GetConnectionString()</code>
-                    <RadzenButton Icon="content_copy" 
-                                  Size="ButtonSize.Small" 
-                                  Click="CopyConnectionString" 
-                                  class="ms-2" />
-                  </div>
-                                        <div class="connection-info mt-3 pt-3 border-top">
-                                            <span class="label">Connect to:</span>
-                                            <code class="connection-string ms-2">@GetConnectionString(VanityDomain)</code>
-                                            <RadzenButton Icon="content_copy"
-                                                          Size="ButtonSize.Small"
-                                                          Click="CopyVanityConnectionString"
-                                                          class="ms-2" />
-                                        </div>
-                }
-                else
-                {
-                  <p class="no-data">No port mappings configured</p>
-                }
-              </RadzenCard>
-
-              <RadzenCard>
-                <div class="card-header">
-                  <h4><RadzenIcon Icon="storage" /> Volumes</h4>
-                </div>
-                @if (server.Volumes?.Any() == true)
-                {
-                  @foreach (var vol in server.Volumes)
+                  else
                   {
-                    <div class="volume-row mb-2">
-                      <div class="volume-path">
-                        <strong>Host:</strong> <code>@vol.Source</code>
-                      </div>
-                      <div class="volume-arrow">→</div>
-                      <div class="volume-path">
-                        <strong>Container:</strong> <code>@vol.Target</code>
-                      </div>
-                    </div>
+                    <p class="no-data">No port mappings configured</p>
                   }
-                }
-                else
-                {
-                  <p class="no-data">No volumes configured</p>
-                }
-              </RadzenCard>
-            </div>
+                </RadzenCard>
+              </div>
 
-            <div class="column-right">
-              <ResourceMonitor ServerId="@ServerId" AutoStart="true" />
+              <div class="column-right">
+                <ResourceMonitor ServerId="@ServerId" AutoStart="true" />
+              </div>
             </div>
-          </div>
           </div>
         </RadzenTabsItem>
 
@@ -222,7 +223,7 @@ else
   .card-header {
     border-bottom: 1px solid var(--rz-border-color);
     padding-bottom: 0.75rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
   }
 
   .card-header h4 {
@@ -234,9 +235,16 @@ else
     font-weight: 600;
   }
 
+  .info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
   .info-row {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--rz-border-color);
   }
@@ -245,68 +253,125 @@ else
     border-bottom: none;
   }
 
+  .info-row-full {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--rz-border-color);
+  }
+
+  .info-row-full:last-child {
+    border-bottom: none;
+  }
+
   .label {
     font-weight: 600;
     color: var(--rz-text-secondary-color);
+    font-size: 0.875rem;
   }
 
   .value {
     color: var(--rz-text-color);
+    font-weight: 500;
     text-align: right;
   }
 
-  .port-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .description-value {
+    color: var(--rz-text-color);
+    font-weight: 400;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background: var(--rz-base-100);
+    padding: 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--rz-border-color);
   }
 
-  .volume-row {
+  /* Ports Grid */
+  .ports-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .port-item {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem;
-    background: var(--rz-base-100);
-    border-radius: 4px;
+    background: var(--rz-base-50);
+    border-radius: 6px;
+    border: 1px solid var(--rz-border-color);
   }
 
-  .volume-path {
-    flex: 1;
+  .port-arrow {
+    color: var(--rz-text-secondary-color);
+    font-weight: 600;
   }
 
-  .volume-path code {
-    background: var(--rz-base-200);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.875rem;
+  /* Connection Section */
+  .connection-section {
+    border-top: 1px solid var(--rz-border-color);
+    padding-top: 1rem;
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
 
   .connection-info {
-    background: var(--rz-base-50);
-    padding: 0.75rem;
-    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .connection-label {
+    font-weight: 600;
+    color: var(--rz-text-secondary-color);
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .connection-value {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
   .connection-string {
-    background: var(--rz-base-200);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
+    flex: 1;
+    background: var(--rz-base-100);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--rz-border-color);
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    color: var(--rz-primary);
+    word-break: break-all;
   }
 
   .no-data {
     text-align: center;
     color: var(--rz-text-secondary-color);
     padding: 2rem;
-    font-style: italic;
+    margin: 0;
   }
 
   .game-thumbnail {
-    width: 64px;
-    height: 64px;
+    width: 60px;
+    height: 60px;
     border-radius: 8px;
     overflow: hidden;
-    border: 2px solid var(--rz-border-color);
-    position: relative;
+    background: var(--rz-base-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .game-thumbnail img {
@@ -321,7 +386,14 @@ else
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--rz-base-100);
+    color: var(--rz-text-disabled-color);
+  }
+
+  @@media (max-width: 768px) {
+    .connection-value {
+      flex-direction: column;
+      align-items: stretch;
+    }
   }
 </style>
 

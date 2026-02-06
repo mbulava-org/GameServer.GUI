@@ -1,4 +1,4 @@
-﻿@using Radzen
+﻿ @using Radzen
 @using Radzen.Blazor
 @using global::GameServer.Docker.Client
 @using System.Collections.Generic
@@ -120,30 +120,34 @@
         if (Server == null) return;
 
         // compute effective published for duplicate detection (Published==0 treated as Container)
-        var effective = Server.Ports.Select(p => new { Instance = p, Value = (p.PublishedPort == 0 ? p.ContainerPort : p.PublishedPort) }).ToList();
+        var effective = Server.Ports.Select(p => new { 
+            Instance = p, 
+            Port = (p.PublishedPort == 0 ? p.ContainerPort : p.PublishedPort),
+            Protocol = p.Protocol
+        }).ToList();
 
         foreach (var e in effective)
         {
             // Range check
-            if (e.Value < 1 || e.Value > 65535)
+            if (e.Port < 1 || e.Port > 65535)
             {
                 publishedErrors[e.Instance] = "Published port must be between 1 and 65535.";
                 continue;
             }
 
-            // Duplicates
-            var duplicates = effective.Count(x => x.Value == e.Value);
+            // Duplicates - same port AND same protocol
+            var duplicates = effective.Count(x => x.Port == e.Port && x.Protocol == e.Protocol);
             if (duplicates > 1)
             {
-                publishedErrors[e.Instance] = $"Port {e.Value} is used by multiple mappings.";
+                publishedErrors[e.Instance] = $"Port {e.Port}/{e.Protocol} is used by multiple mappings.";
                 continue;
             }
 
-            //Already allocated
-            var isFree = await PortApi.CheckAsync(e.Instance.Protocol, e.Value);
+            // Already allocated - check with protocol
+            var isFree = await PortApi.CheckAsync(e.Protocol, e.Port);
             if (!isFree)
             {
-                publishedErrors[e.Instance] = $"Port {e.Value} is already in use!";
+                publishedErrors[e.Instance] = $"Port {e.Port}/{e.Protocol} is already in use!";
                 continue;
             }
             // valid -> no error
