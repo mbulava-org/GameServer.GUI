@@ -33,6 +33,10 @@ namespace GameServer.Web
             {
                 client.BaseAddress = new Uri(apiBaseUrl);
             });
+            builder.Services.AddHttpClient<IGameTypeExtendedMetadataApi, GameTypeExtendedMetadataApi>(client =>
+            {
+                client.BaseAddress = new Uri(apiBaseUrl);
+            });
             builder.Services.AddHttpClient<IPortApi, PortApi>(client =>
             {
                 client.BaseAddress = new Uri(apiBaseUrl);

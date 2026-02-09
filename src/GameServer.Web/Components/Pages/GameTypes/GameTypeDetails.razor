@@ -5,6 +5,7 @@
 @using Radzen
 @using Radzen.Blazor
 @inject IGameTypeApi GameTypeApi
+@inject IGameTypeExtendedMetadataApi MetadataApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 
@@ -214,7 +215,7 @@
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <div class="flex-grow-1">
                                     <h5 class="mb-1">Default Environment Variables</h5>
-                                    <small class="text-muted">Define default configuration values for this game type.</small>
+                                    <small class="text-muted">Define default values and configure metadata for the server creation wizard.</small>
                                 </div>
                                 <RadzenButton Text="Add Setting" 
                                               Icon="add" 
@@ -233,14 +234,12 @@
                                         <RadzenIcon Icon="info" Style="font-size: 1.25rem;" />
                                         <div>
                                             <strong>Smart Input Detection:</strong>
-                                            <p class="mb-1 mt-1">Default values will automatically determine the input control type in the server creation wizard:</p>
+                                            <p class="mb-1 mt-1">Default values automatically determine the input control type. Configure extended metadata below for more control:</p>
                                             <ul class="mb-0 ps-3">
                                                 <li><code>true</code> or <code>false</code> → Toggle/Checkbox</li>
                                                 <li>Numeric values (e.g., <code>25565</code>, <code>100</code>) → Number input</li>
-                                                <li>Memory format (e.g., <code>1024M</code>, <code>2G</code>, <code>4096M</code>) → Memory input</li>
-                                                <li>Other text → Text input</li>
-                                                <li>Empty value → Text input</li>
-                                                <li>TODO: List detection/handling, Required, etc...</li>
+                                                <li>Memory format (e.g., <code>1024M</code>, <code>2G</code>) → Memory input</li>
+                                                <li>Click a setting to configure validation, dropdowns, descriptions, and more!</li>
                                             </ul>
                                         </div>
                                     </div>
@@ -249,34 +248,230 @@
                                 <div class="settings-list">
                                     @foreach (var setting in settingsList.ToList())
                                     {
-                                        <div class="setting-item mb-3 p-3 border rounded">
-                                            <div class="row </li></li>g-2 align-items-center">
-                                                <div class="col-md-5">
-                                                    <RadzenFormField Text="Key" Variant="@Variant.Outlined" class="w-100">
-                                                        <RadzenTextBox @bind-Value="@setting.Key" 
-                                                                       Placeholder="SETTING_NAME"
-                                                                       class="w-100" />
-                                                    </RadzenFormField>
+                                        var metadata = GetSettingMetadata(setting.Key);
+                                        var isExpanded = expandedSettingsKeys.Contains(setting.Key);
+                                        
+                                        <RadzenCard class="setting-card mb-3">
+                                            <div class="setting-header" @onclick="@(() => ToggleSettingExpansion(setting.Key))">
+                                                <div class="setting-header-left">
+                                                    <RadzenIcon Icon="@(isExpanded ? "expand_less" : "expand_more")" 
+                                                                class="expand-icon" />
+                                                    <div class="setting-info">
+                                                        <div class="setting-title">
+                                                            <code class="setting-key">@setting.Key</code>
+                                                            @if (metadata?.IsRequired == true)
+                                                            {
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Required" Size="BadgeSize.Small" />
+                                                            }
+                                                            @if (!string.IsNullOrWhiteSpace(metadata?.DataType))
+                                                            {
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Info" 
+                                                                             Text="@metadata.DataType" 
+                                                                             Variant="Variant.Outlined"
+                                                                             Size="BadgeSize.Small" />
+                                                            }
+                                                            @if (metadata?.MapsToContainerPort == true)
+                                                            {
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" 
+                                                                             Text="Port" 
+                                                                             Size="BadgeSize.Small" />
+                                                            }
+                                                            @if (!string.IsNullOrWhiteSpace(metadata?.Category))
+                                                            {
+                                                                <RadzenBadge BadgeStyle="BadgeStyle.Secondary" 
+                                                                             Text="@metadata.Category" 
+                                                                             Variant="Variant.Outlined"
+                                                                             Size="BadgeSize.Small" />
+                                                            }
+                                                        </div>
+                                                        <div class="setting-basic-info">
+                                                            <span class="text-muted">Default:</span>
+                                                            <code class="setting-value">@(string.IsNullOrEmpty(setting.Value) ? "(empty)" : setting.Value)</code>
+                                                            @if (!string.IsNullOrWhiteSpace(metadata?.Description))
+                                                            {
+                                                                <span class="ms-2">• @metadata.Description</span>
+                                                            }
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="col-md-5">
-                                                    <RadzenFormField Text="Default Value" Variant="@Variant.Outlined" class="w-100">
-                                                        <RadzenTextBox @bind-Value="@setting.Value" 
-                                                                       Placeholder="true, 25565, 2G, etc."
-                                                                       class="w-100" />
-                                                    </RadzenFormField>
-                                                </div>
-                                                <div class="col-md-2 text-end">
+                                                <div class="setting-header-right" @onclick:stopPropagation="true">
                                                     <RadzenButton Icon="delete" 
-                                                                  ButtonStyle="ButtonStyle.Danger" 
-                                                                  Size="ButtonSize.Small"
-                                                                  Click="@(() => RemoveSetting(setting))" />
+                                                                  Size="ButtonSize.Small" 
+                                                                  ButtonStyle="ButtonStyle.Danger"
+                                                                  Click="@(() => RemoveSetting(setting))"
+                                                                  title="Delete" />
                                                 </div>
                                             </div>
-                                        </div>
+
+                                            @if (isExpanded)
+                                            {
+                                                <div class="setting-editor">
+                                                    <RadzenStack Gap="1rem">
+                                                        <div class="section-title">Basic Settings</div>
+                                                        <div class="row g-3">
+                                                            <div class="col-md-6">
+                                                                <RadzenFormField Text="Key" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextBox @bind-Value="@setting.Key" 
+                                                                                   Placeholder="SETTING_NAME"
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                                <small class="text-muted">Environment variable name</small>
+                                                            </div>
+
+                                                            <div class="col-md-6">
+                                                                <RadzenFormField Text="Default Value" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextBox @bind-Value="@setting.Value" 
+                                                                                   Placeholder="true, 25565, 2G, etc."
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                                <small class="text-muted">Default value in wizard</small>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="section-title mt-3">Extended Metadata (Optional)</div>
+                                                        <div class="row g-3">
+                                                            <div class="col-md-6">
+                                                                <RadzenFormField Text="Data Type" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenDropDown @bind-Value="@metadata.DataType"
+                                                                                    Data="@dataTypes"
+                                                                                    AllowClear="true"
+                                                                                    Placeholder="Auto-detect"
+                                                                                    class="w-100" />
+                                                                </RadzenFormField>
+                                                                <small class="text-muted">Override automatic type detection</small>
+                                                            </div>
+
+                                                            <div class="col-md-6">
+                                                                <RadzenFormField Text="Category" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextBox @bind-Value="@metadata.Category" 
+                                                                                   Placeholder="General, Network, Gameplay..."
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                                <small class="text-muted">Group settings in wizard</small>
+                                                            </div>
+
+                                                            <div class="col-12">
+                                                                <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextArea @bind-Value="@metadata.Description" 
+                                                                                    Rows="2"
+                                                                                    Placeholder="User-friendly description for the wizard"
+                                                                                    class="w-100" />
+                                                                </RadzenFormField>
+                                                            </div>
+
+                                                            <div class="col-md-4">
+                                                                <RadzenFormField Text="Display Order" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenNumeric @bind-Value="@metadata.DisplayOrder" 
+                                                                                   Min="0"
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                            </div>
+
+                                                            <div class="col-md-4">
+                                                                <RadzenFormField Text="Placeholder" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextBox @bind-Value="@metadata.Placeholder" 
+                                                                                   Placeholder="Hint text"
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                            </div>
+
+                                                            <div class="col-md-4 d-flex align-items-end">
+                                                                <div class="w-100">
+                                                                    <div class="checkbox-group mb-2">
+                                                                        <RadzenCheckBox @bind-Value="@metadata.IsRequired" />
+                                                                        <RadzenLabel Text="Required" class="ms-2" />
+                                                                    </div>
+                                                                    <div class="checkbox-group">
+                                                                        <RadzenCheckBox @bind-Value="@metadata.CannotBeEmpty" />
+                                                                        <RadzenLabel Text="Cannot Be Empty" class="ms-2" />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            @if (metadata.DataType == "enum")
+                                                            {
+                                                                <div class="col-12">
+                                                                    <RadzenFormField Text="Allowed Values (comma-separated)" Variant="@Variant.Outlined" class="w-100">
+                                                                        <RadzenTextBox Value="@GetAllowedValuesString(metadata)" 
+                                                                                       ValueChanged="@((string value) => SetAllowedValues(metadata, value))"
+                                                                                       Placeholder="easy,normal,hard"
+                                                                                       class="w-100" />
+                                                                    </RadzenFormField>
+                                                                    <small class="text-muted">Dropdown options for this setting</small>
+                                                                </div>
+
+                                                                <div class="col-12">
+                                                                    <RadzenFormField Text="Value Mappings (JSON format)" Variant="@Variant.Outlined" class="w-100">
+                                                                        <RadzenTextArea Value="@GetValueMappingsJson(metadata)"
+                                                                                        ValueChanged="@((string value) => SetValueMappings(metadata, value))"
+                                                                                        Rows="3"
+                                                                                        Placeholder='{"easy": "Easy - Reduced difficulty", "normal": "Normal", "hard": "Hard - Challenging"}'
+                                                                                        class="w-100" />
+                                                                    </RadzenFormField>
+                                                                    <small class="text-muted">Display descriptions for each value</small>
+                                                                </div>
+                                                            }
+
+                                                            @if (metadata.DataType == "port")
+                                                            {
+                                                                <div class="col-md-6">
+                                                                    <div class="checkbox-group mb-2">
+                                                                        <RadzenCheckBox @bind-Value="@metadata.MapsToContainerPort" />
+                                                                        <RadzenLabel Text="Maps to Container Port" class="ms-2" />
+                                                                    </div>
+                                                                    <small class="text-muted">This setting controls a port mapping</small>
+                                                                </div>
+
+                                                                @if (metadata.MapsToContainerPort)
+                                                                {
+                                                                    <div class="col-md-3">
+                                                                        <RadzenFormField Text="Linked Container Port" Variant="@Variant.Outlined" class="w-100">
+                                                                            <RadzenNumeric @bind-Value="@metadata.LinkedContainerPort" 
+                                                                                           Min="1" Max="65535"
+                                                                                           class="w-100" />
+                                                                        </RadzenFormField>
+                                                                    </div>
+
+                                                                    <div class="col-md-3">
+                                                                        <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
+                                                                            <RadzenDropDown @bind-Value="@metadata.PortProtocol"
+                                                                                            Data="@(new[] { "tcp", "udp" })"
+                                                                                            class="w-100" />
+                                                                        </RadzenFormField>
+                                                                    </div>
+                                                                }
+                                                            }
+
+                                                            <div class="col-md-6">
+                                                                <RadzenFormField Text="Validation Pattern (Regex)" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextBox @bind-Value="@metadata.ValidationPattern" 
+                                                                                   Placeholder="^[0-9]+$"
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                            </div>
+
+                                                            <div class="col-md-6">
+                                                                <RadzenFormField Text="Validation Message" Variant="@Variant.Outlined" class="w-100">
+                                                                    <RadzenTextBox @bind-Value="@metadata.ValidationMessage" 
+                                                                                   Placeholder="Error message"
+                                                                                   class="w-100" />
+                                                                </RadzenFormField>
+                                                            </div>
+                                                        </div>
+                                                    </RadzenStack>
+                                                </div>
+                                            }
+                                        </RadzenCard>
                                     }
                                 </div>
                             }
                         </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Extended Metadata">
+                    <div class="p-4">
+                        <ExtendedMetadataEditor GameTypeKey="@(gameType.Key ?? "")" />
                     </div>
                 </RadzenTabsItem>
             </Tabs>
@@ -284,11 +479,124 @@
     }
 </div>
 
+<style>
+    .setting-card {
+        border: 1px solid var(--rz-border-color);
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .setting-card:hover {
+        border-color: var(--rz-primary);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .setting-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        user-select: none;
+        padding: 0.5rem;
+        margin: -0.75rem;
+        margin-bottom: 0;
+        border-radius: 6px;
+        transition: background-color 0.2s;
+    }
+
+    .setting-header:hover {
+        background-color: var(--rz-base-50);
+    }
+
+    .setting-header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex: 1;
+    }
+
+    .setting-header-right {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .expand-icon {
+        font-size: 1.5rem;
+        color: var(--rz-text-secondary-color);
+        transition: transform 0.2s;
+    }
+
+    .setting-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        flex: 1;
+    }
+
+    .setting-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .setting-key {
+        font-size: 1rem;
+        font-weight: 600;
+        font-family: 'Courier New', monospace;
+        color: var(--rz-primary);
+        background: var(--rz-base-100);
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+    }
+
+    .setting-basic-info {
+        font-size: 0.875rem;
+        color: var(--rz-text-secondary-color);
+        line-height: 1.4;
+    }
+
+    .setting-value {
+        background: var(--rz-base-100);
+        padding: 0.125rem 0.375rem;
+        border-radius: 3px;
+        font-size: 0.875rem;
+    }
+
+    .setting-editor {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 2px solid var(--rz-border-color);
+    }
+
+    .section-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--rz-primary);
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--rz-border-color);
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+    }
+
+    @@media (max-width: 768px) {
+        .setting-header-left {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+
 @code {
 [Parameter] public string? Key { get; set; }
 
 private GameTypeDefinition? gameType;
 private List<SettingItem> settingsList = new();
+private Dictionary<string, SettingMetadata> settingsMetadata = new();
+private HashSet<string> expandedSettingsKeys = new();
+private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port" };
 private bool isNew = false;
 private bool isLoading = true;
 private bool isSaving = false;
@@ -354,6 +662,30 @@ private async Task LoadGameTypeAsync()
             settingsList = gameType.DefaultSettings
                 .Select(kvp => new SettingItem { Key = kvp.Key, Value = kvp.Value })
                 .ToList();
+
+            // Try to load extended metadata
+            try
+            {
+                var extendedMetadata = await MetadataApi.GetAsync(Key);
+                if (extendedMetadata?.SettingsMetadata != null)
+                {
+                    // Load existing metadata
+                    settingsMetadata = new Dictionary<string, SettingMetadata>(extendedMetadata.SettingsMetadata);
+                    Console.WriteLine($"GameTypeDetails: Loaded extended metadata with {settingsMetadata.Count} settings");
+                }
+                else
+                {
+                    // No metadata exists yet, initialize empty
+                    settingsMetadata = new Dictionary<string, SettingMetadata>();
+                    Console.WriteLine("GameTypeDetails: No extended metadata found, starting fresh");
+                }
+            }
+            catch (Exception metadataEx)
+            {
+                // Extended metadata is optional, don't fail if it doesn't exist
+                Console.WriteLine($"GameTypeDetails: Could not load extended metadata: {metadataEx.Message}");
+                settingsMetadata = new Dictionary<string, SettingMetadata>();
+            }
         }
     }
     catch (Exception ex)
@@ -405,14 +737,112 @@ private async Task LoadGameTypeAsync()
 
     private void AddSetting()
     {
-        settingsList.Add(new SettingItem { Key = "", Value = "" });
+        var newSetting = new SettingItem { Key = "", Value = "" };
+        settingsList.Add(newSetting);
+        
+        // Create metadata for new setting
+        var metadata = new SettingMetadata
+        {
+            Key = "",
+            DisplayOrder = settingsMetadata.Count
+        };
+        settingsMetadata[""] = metadata;
+        
         StateHasChanged();
     }
 
     private void RemoveSetting(SettingItem setting)
     {
         settingsList.Remove(setting);
+        settingsMetadata.Remove(setting.Key);
+        expandedSettingsKeys.Remove(setting.Key);
         StateHasChanged();
+    }
+
+    private void ToggleSettingExpansion(string key)
+    {
+        if (expandedSettingsKeys.Contains(key))
+        {
+            expandedSettingsKeys.Remove(key);
+        }
+        else
+        {
+            expandedSettingsKeys.Add(key);
+        }
+        StateHasChanged();
+    }
+
+    private SettingMetadata GetSettingMetadata(string key)
+    {
+        if (!settingsMetadata.ContainsKey(key))
+        {
+            settingsMetadata[key] = new SettingMetadata
+            {
+                Key = key,
+                DisplayOrder = settingsMetadata.Count
+            };
+        }
+        return settingsMetadata[key];
+    }
+
+    private string GetAllowedValuesString(SettingMetadata setting)
+    {
+        return setting.AllowedValues != null ? string.Join(",", setting.AllowedValues) : "";
+    }
+
+    private void SetAllowedValues(SettingMetadata setting, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            setting.AllowedValues = null;
+        }
+        else
+        {
+            setting.AllowedValues = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        }
+        StateHasChanged();
+    }
+
+    private string GetValueMappingsJson(SettingMetadata setting)
+    {
+        if (setting.ValueMappings == null || !setting.ValueMappings.Any())
+            return "";
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Serialize(setting.ValueMappings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private void SetValueMappings(SettingMetadata setting, string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            setting.ValueMappings = null;
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var mappings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            setting.ValueMappings = mappings;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Invalid JSON",
+                Detail = "Value mappings must be valid JSON format.",
+                Duration = 3000
+            });
+        }
     }
 
     private bool IsValid()
@@ -439,9 +869,62 @@ private async Task LoadGameTypeAsync()
                 .Where(s => !string.IsNullOrWhiteSpace(s.Key))
                 .ToDictionary(s => s.Key!, s => s.Value ?? "");
 
+            // Save the game type first
             if (isNew)
             {
                 await GameTypeApi.SaveAsync(gameType);
+            }
+            else
+            {
+                await GameTypeApi.SaveAsync(gameType);
+            }
+
+            // Save extended metadata if any settings have metadata configured
+            if (settingsMetadata.Any(kvp => HasMetadataConfigured(kvp.Value)))
+            {
+                // Clean up metadata - only keep settings that exist in DefaultSettings
+                var cleanedMetadata = settingsMetadata
+                    .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && 
+                                  gameType.DefaultSettings.ContainsKey(kvp.Key))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+                // Update the Key property to match dictionary key (in case it changed)
+                foreach (var kvp in cleanedMetadata)
+                {
+                    kvp.Value.Key = kvp.Key;
+                }
+
+                var extendedMetadata = new GameTypeExtendedMetadata
+                {
+                    GameTypeKey = gameType.Key,
+                    EnableTTY = false, // TODO: Add UI for this if needed
+                    SettingsMetadata = cleanedMetadata,
+                    CustomProperties = new Dictionary<string, string>()
+                };
+
+                try
+                {
+                    await MetadataApi.SaveAsync(extendedMetadata);
+                    Console.WriteLine($"GameTypeDetails: Saved extended metadata with {cleanedMetadata.Count} settings");
+                }
+                catch (Exception metadataEx)
+                {
+                    Console.WriteLine($"GameTypeDetails: Failed to save extended metadata: {metadataEx.Message}");
+                    // Don't fail the whole save if metadata fails, just warn
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Warning,
+                        Summary = "Metadata Save Warning",
+                        Detail = "Game type saved, but extended metadata may not have been saved completely.",
+                        Duration = 4000,
+                        CloseOnClick = true
+                    });
+                }
+            }
+
+            // Show success notification
+            if (isNew)
+            {
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Success,
@@ -453,7 +936,6 @@ private async Task LoadGameTypeAsync()
             }
             else
             {
-                await GameTypeApi.SaveAsync(gameType);
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Success,
@@ -469,6 +951,7 @@ private async Task LoadGameTypeAsync()
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"GameTypeDetails: Save failed: {ex.Message}");
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
@@ -483,6 +966,22 @@ private async Task LoadGameTypeAsync()
             isSaving = false;
             StateHasChanged();
         }
+    }
+
+    private bool HasMetadataConfigured(SettingMetadata metadata)
+    {
+        // Check if any meaningful metadata is configured beyond defaults
+        return !string.IsNullOrWhiteSpace(metadata.Description) ||
+               !string.IsNullOrWhiteSpace(metadata.DataType) ||
+               !string.IsNullOrWhiteSpace(metadata.Category) ||
+               metadata.IsRequired ||
+               metadata.CannotBeEmpty ||
+               metadata.MapsToContainerPort ||
+               (metadata.AllowedValues?.Any() ?? false) ||
+               (metadata.ValueMappings?.Any() ?? false) ||
+               !string.IsNullOrWhiteSpace(metadata.ValidationPattern) ||
+               !string.IsNullOrWhiteSpace(metadata.ValidationMessage) ||
+               !string.IsNullOrWhiteSpace(metadata.Placeholder);
     }
 
     private void GoBack()

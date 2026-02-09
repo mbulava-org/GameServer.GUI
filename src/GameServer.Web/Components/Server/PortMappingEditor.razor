@@ -26,9 +26,9 @@
                     <div class="row">
                         <div class="col">
                             <RadzenLabel Text="Host Port" />
-                            <RadzenNumeric TValue="int"
-                                           Value="@pm.PublishedPort"
-                                           Change="@( (val) => OnPublishedChanged(pm, val) )"
+                            <RadzenNumeric TValue="uint"
+                                           Value="@((uint)pm.PublishedPort)"
+                                           Change="@( (uint val) => OnPublishedChanged(pm, val) )"
                                            Min="0" Max="65535"
                                            Style="@GetPublishedStyle(pm)" />
                         
@@ -36,8 +36,8 @@
 
                         <div class="col">
                             <RadzenLabel Text="Container Port" />
-                            <RadzenNumeric TValue="int"
-                                           Value="@pm.ContainerPort"
+                            <RadzenNumeric TValue="uint"
+                                           Value="@((uint)pm.ContainerPort)"
                                            Min="1" Max="65535"
                                            Disabled="true"
                                            />
@@ -93,18 +93,18 @@
 
     // -- Handlers --
 
-    void OnPublishedChanged(PortMapping pm, int value)
+    void OnPublishedChanged(PortMapping pm, uint value)
     {
         if (pm == null || Server?.Ports == null) return;
 
         // treat 0 as "default to container port"
         if (value == 0)
         {
-            pm.PublishedPort = pm.ContainerPort != 0 ? pm.ContainerPort : 0;
+            pm.PublishedPort = (int)(pm.ContainerPort != 0 ? pm.ContainerPort : 0);
         }
         else
         {
-            pm.PublishedPort = value > 65535 ? 65535 : value;
+            pm.PublishedPort = (int)(value > 65535 ? 65535 : value);
         }
 
         _ = ValidateAllPublishedAsync();
