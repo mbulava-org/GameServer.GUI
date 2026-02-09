@@ -1,0 +1,273 @@
+@using global::GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+@inject DialogService DialogService
+
+<RadzenStack Gap="1rem">
+  <RadzenTabs>
+    <Tabs>
+      <RadzenTabsItem Text="Basic">
+        <div class="p-3">
+          <RadzenStack Gap="0.75rem">
+            <RadzenFormField Text="Setting Key" Variant="@Variant.Outlined">
+              <RadzenTextBox @bind-Value="@settingKey" 
+                             Disabled="true"
+                             Placeholder="e.g., EULA, VERSION"
+                             class="w-100" />
+              <small class="text-muted d-block mt-1">
+                The setting key matches the environment variable name and cannot be changed. 
+                Delete and recreate to change the key.
+              </small>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Description" Variant="@Variant.Outlined">
+              <RadzenTextArea @bind-Value="@metadata.Description" 
+                              Rows="2"
+                              Placeholder="Human-readable description"
+                              class="w-100" />
+            </RadzenFormField>
+
+            <div class="row">
+              <div class="col-md-6">
+                <RadzenFormField Text="Category" Variant="@Variant.Outlined">
+                  <RadzenTextBox @bind-Value="@metadata.Category" 
+                                 Placeholder="e.g., World, Network"
+                                 class="w-100" />
+                </RadzenFormField>
+              </div>
+              <div class="col-md-6">
+                <RadzenFormField Text="Display Order" Variant="@Variant.Outlined">
+                  <RadzenNumeric @bind-Value="@metadata.DisplayOrder" 
+                                 class="w-100" />
+                </RadzenFormField>
+              </div>
+            </div>
+
+            <RadzenFormField Text="Placeholder Text" Variant="@Variant.Outlined">
+              <RadzenTextBox @bind-Value="@metadata.Placeholder" 
+                             Placeholder="Hint text for users"
+                             class="w-100" />
+            </RadzenFormField>
+          </RadzenStack>
+        </div>
+      </RadzenTabsItem>
+
+      <RadzenTabsItem Text="Type & Validation">
+        <div class="p-3">
+          <RadzenStack Gap="0.75rem">
+            <RadzenFormField Text="Data Type" Variant="@Variant.Outlined">
+              <RadzenDropDown @bind-Value="@metadata.DataType" 
+                              Data="dataTypes"
+                              AllowClear="true"
+                              Placeholder="Auto-detect"
+                              class="w-100" />
+            </RadzenFormField>
+
+            <div class="row">
+              <div class="col-md-6">
+                <RadzenFormField Text="Required" class="d-flex align-items-center gap-2">
+                  <RadzenCheckBox @bind-Value="@metadata.IsRequired" />
+                  <RadzenLabel Text="Must be provided" />
+                </RadzenFormField>
+              </div>
+              <div class="col-md-6">
+                <RadzenFormField Text="Cannot Be Empty" class="d-flex align-items-center gap-2">
+                  <RadzenCheckBox @bind-Value="@metadata.CannotBeEmpty" />
+                  <RadzenLabel Text="Must have value" />
+                </RadzenFormField>
+              </div>
+            </div>
+
+            @if (metadata.DataType == "list")
+            {
+              <RadzenFormField Text="List Delimiter" Variant="@Variant.Outlined">
+                <RadzenTextBox @bind-Value="@metadata.ListDelimiter" 
+                               Placeholder=","
+                               class="w-100" />
+              </RadzenFormField>
+            }
+
+            @if (metadata.DataType == "enum")
+            {
+              <RadzenFormField Text="Allowed Values (one per line)" Variant="@Variant.Outlined">
+                <RadzenTextArea @bind-Value="@allowedValuesText" 
+                                Rows="4"
+                                Placeholder="peaceful&#10;easy&#10;normal&#10;hard"
+                                class="w-100" />
+              </RadzenFormField>
+            }
+
+            <RadzenFormField Text="Validation Regex" Variant="@Variant.Outlined">
+              <RadzenTextBox @bind-Value="@metadata.ValidationPattern" 
+                             Placeholder="^[a-zA-Z0-9]+$"
+                             class="w-100" />
+            </RadzenFormField>
+
+            <RadzenFormField Text="Validation Error Message" Variant="@Variant.Outlined">
+              <RadzenTextBox @bind-Value="@metadata.ValidationMessage" 
+                             Placeholder="Error message when validation fails"
+                             class="w-100" />
+            </RadzenFormField>
+          </RadzenStack>
+        </div>
+      </RadzenTabsItem>
+
+      <RadzenTabsItem Text="Port Mapping">
+        <div class="p-3">
+          <RadzenStack Gap="0.75rem">
+            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">
+              <strong>Port Mapping:</strong> When enabled, this setting's value will update a port mapping in the server configuration.
+            </RadzenAlert>
+
+            <RadzenFormField Text="Maps to Container Port" class="d-flex align-items-center gap-2">
+              <RadzenCheckBox @bind-Value="@metadata.MapsToContainerPort" />
+              <RadzenLabel Text="This setting controls a port" />
+            </RadzenFormField>
+
+            @if (metadata.MapsToContainerPort)
+            {
+              <div class="row">
+                <div class="col-md-6">
+                  <RadzenFormField Text="Linked Container Port" Variant="@Variant.Outlined">
+                    <RadzenNumeric @bind-Value="@linkedPortValue" 
+                                   Min="1" Max="65535"
+                                   Placeholder="e.g., 25565"
+                                   class="w-100" />
+                  </RadzenFormField>
+                </div>
+                <div class="col-md-6">
+                  <RadzenFormField Text="Protocol" Variant="@Variant.Outlined">
+                    <RadzenDropDown @bind-Value="@metadata.PortProtocol" 
+                                    Data='@(new[] { "tcp", "udp" })'
+                                    class="w-100" />
+                  </RadzenFormField>
+                </div>
+              </div>
+            }
+          </RadzenStack>
+        </div>
+      </RadzenTabsItem>
+
+      <RadzenTabsItem Text="Value Mappings">
+        <div class="p-3">
+          <RadzenStack Gap="0.75rem">
+            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">
+              <strong>Value Mappings:</strong> Provide human-readable descriptions for specific values.
+            </RadzenAlert>
+
+            <RadzenFormField Text="Value Mappings (value=description, one per line)" Variant="@Variant.Outlined">
+              <RadzenTextArea @bind-Value="@valueMappingsText" 
+                              Rows="5"
+                              Placeholder="0=Disabled&#10;1=Normal&#10;2=Aggressive"
+                              class="w-100" />
+            </RadzenFormField>
+          </RadzenStack>
+        </div>
+      </RadzenTabsItem>
+    </Tabs>
+  </RadzenTabs>
+
+  <div class="d-flex justify-content-end gap-2 mt-3">
+    <RadzenButton Text="Cancel" 
+                  Click="Cancel" 
+                  ButtonStyle="ButtonStyle.Light" />
+    <RadzenButton Text="Save" 
+                  Icon="save"
+                  Click="Save" 
+                  ButtonStyle="ButtonStyle.Success"
+                  Disabled="@(!IsValid())" />
+  </div>
+</RadzenStack>
+
+@code {
+  [Parameter] public string SettingKey { get; set; } = "";
+  [Parameter] public SettingMetadata Metadata { get; set; } = new();
+  [Parameter] public bool IsNew { get; set; }
+
+  private string settingKey = "";
+  private SettingMetadata metadata = new();
+  private bool isNew;
+  private string[] dataTypes = new[] { "string", "number", "boolean", "list", "enum", "port" };
+  private string allowedValuesText = "";
+  private string valueMappingsText = "";
+  private int linkedPortValue = 0;
+
+  protected override void OnParametersSet()
+  {
+    settingKey = SettingKey ?? "";
+    metadata = Metadata ?? new SettingMetadata();
+    isNew = IsNew;
+
+    // Parse allowed values
+    if (metadata.AllowedValues != null && metadata.AllowedValues.Any())
+    {
+      allowedValuesText = string.Join("\n", metadata.AllowedValues);
+    }
+
+    // Parse value mappings
+    if (metadata.ValueMappings != null && metadata.ValueMappings.Any())
+    {
+      valueMappingsText = string.Join("\n", metadata.ValueMappings.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+    }
+
+    // Handle nullable int
+    linkedPortValue = metadata.LinkedContainerPort ?? 0;
+  }
+
+  private bool IsValid()
+  {
+    if (string.IsNullOrWhiteSpace(settingKey)) return false;
+    if (metadata.MapsToContainerPort && linkedPortValue == 0) return false;
+    return true;
+  }
+
+  private void Save()
+  {
+    if (!IsValid()) return;
+
+    // Parse allowed values from text
+    if (!string.IsNullOrWhiteSpace(allowedValuesText))
+    {
+      metadata.AllowedValues = allowedValuesText
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Select(s => s.Trim())
+        .Where(s => !string.IsNullOrEmpty(s))
+        .ToList();
+    }
+    else
+    {
+      metadata.AllowedValues = null;
+    }
+
+    // Parse value mappings from text
+    if (!string.IsNullOrWhiteSpace(valueMappingsText))
+    {
+      metadata.ValueMappings = valueMappingsText
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Select(line =>
+        {
+          var parts = line.Split('=', 2);
+          return parts.Length == 2 ? (parts[0].Trim(), parts[1].Trim()) : (null, null);
+        })
+        .Where(kvp => kvp.Item1 != null)
+        .ToDictionary(kvp => kvp.Item1!, kvp => kvp.Item2!);
+    }
+    else
+    {
+      metadata.ValueMappings = null;
+    }
+
+    // Set linked port
+    metadata.LinkedContainerPort = metadata.MapsToContainerPort && linkedPortValue > 0 ? linkedPortValue : null;
+
+    // Set the Key property
+    metadata.Key = settingKey;
+
+    DialogService.Close((settingKey, metadata));
+  }
+
+  private void Cancel()
+  {
+    DialogService.Close();
+  }
+}
