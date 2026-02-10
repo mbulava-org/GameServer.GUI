@@ -14,51 +14,106 @@
     }
     else
     {
-        <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;flex-direction:column;gap:12px">
             @if (Server.Ports == null || Server.Ports.Count == 0)
             {
                 <div class="rz-text">No port mappings defined.</div>
             }
             else 
             {
+                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <RadzenIcon Icon="info" Style="font-size: 1rem;" />
+                        <small>Mark one port as the <strong>Default Port</strong> - this will be used in connection strings.</small>
+                    </div>
+                </RadzenAlert>
+
                 @foreach (var pm in Server.Ports)
                 {
-                    <div class="row">
-                        <div class="col">
-                            <RadzenLabel Text="Host Port" />
-                            <RadzenNumeric TValue="uint"
-                                           Value="@((uint)pm.PublishedPort)"
-                                           Change="@( (uint val) => OnPublishedChanged(pm, val) )"
-                                           Min="0" Max="65535"
-                                           Style="@GetPublishedStyle(pm)" />
-                        
-                        </div>
+                    var isDefault = IsDefaultPort(pm);
+                    <RadzenCard class="port-card" Style="@(isDefault ? "border: 2px solid var(--rz-primary);" : "")">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <RadzenFormField Text="Host Port" Variant="@Variant.Outlined" class="w-100">
+                                    <RadzenNumeric TValue="uint"
+                                                   Value="@((uint)pm.PublishedPort)"
+                                                   Change="@((uint val) => OnPublishedChanged(pm, val))"
+                                                   Min="0" Max="65535"
+                                                   Style="@GetPublishedStyle(pm)"
+                                                   class="w-100" />
+                                </RadzenFormField>
+                                @if (publishedErrors.TryGetValue(pm, out var err) && !string.IsNullOrEmpty(err))
+                                {
+                                    <small class="text-danger d-block mt-1">@err</small>
+                                }
+                            </div>
 
-                        <div class="col">
-                            <RadzenLabel Text="Container Port" />
-                            <RadzenNumeric TValue="uint"
-                                           Value="@((uint)pm.ContainerPort)"
-                                           Min="1" Max="65535"
-                                           Disabled="true"
-                                           />
-                        </div>
+                            <div class="col-md-3">
+                                <RadzenFormField Text="Container Port" Variant="@Variant.Outlined" class="w-100">
+                                    <RadzenNumeric TValue="uint"
+                                                   Value="@((uint)pm.ContainerPort)"
+                                                   Min="1" Max="65535"
+                                                   Disabled="true"
+                                                   class="w-100" />
+                                </RadzenFormField>
+                            </div>
 
-                        <div class="col">
-                            <RadzenLabel Text="Protocol"/>
-                            <RadzenDropDown Value='@pm.Protocol' Data='new[] { "tcp", "udp" }' Change='@(args => pm.Protocol = args.ToString())' Disabled="true" />
+                            <div class="col-md-2">
+                                <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
+                                    <RadzenDropDown Value="@pm.Protocol" 
+                                                    Data="@(new[] { "tcp", "udp" })" 
+                                                    Change="@(args => pm.Protocol = args.ToString())" 
+                                                    Disabled="true"
+                                                    class="w-100" />
+                                </RadzenFormField>
+                            </div>
+
+                            <div class="col-md-3">
+                                <div class="d-flex align-items-center gap-2 pb-2">
+                                    <RadzenRadioButtonList @bind-Value="@defaultPortKey" 
+                                                          TValue="string"
+                                                          Change="@((string value) => OnDefaultPortChanged(pm))">
+                                        <Items>
+                                            <RadzenRadioButtonListItem Text="Default Port" 
+                                                                      Value="@GetPortKey(pm)" 
+                                                                      TValue="string" />
+                                        </Items>
+                                    </RadzenRadioButtonList>
+                                    @if (isDefault)
+                                    {
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Success" 
+                                                    Text="Primary" 
+                                                    Size="BadzeSize.Small" 
+                                                    Variant="Variant.Flat" />
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="col-md-1 text-end">
+                                <div class="pb-2">
+                                    <RadzenIcon Icon="@(isDefault ? "star" : "star_border")" 
+                                               Style="@(isDefault ? "color: var(--rz-warning); font-size: 1.5rem;" : "color: var(--rz-text-disabled-color); font-size: 1.5rem;")" 
+                                               title="@(isDefault ? "Primary connection port" : "Not primary port")" />
+                                </div>
+                            </div>
                         </div>
-                            @if (publishedErrors.TryGetValue(pm, out var err) && !string.IsNullOrEmpty(err))
-                            {
-                                <div style="color:#b91c1c;font-size:0.85rem;margin-top:6px">@err</div>
-                            }
-                        
-                    </div>
+                    </RadzenCard>
                 }
             }
         </div>
     }
   </ChildContent>
 </RadzenCard>
+
+<style>
+    .port-card {
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .port-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+</style>
 
 @code {
     [Inject] public IPortApi PortApi { get; set; }
@@ -67,6 +122,8 @@
     [Parameter] public EventCallback<bool> OnValidityChanged { get; set; }
 
     private bool paramertersSet = false;
+    private string defaultPortKey = "";
+    
     // Validation state: per-instance error message for PublishedPort
     Dictionary<PortMapping, string> publishedErrors = new();
 
@@ -77,6 +134,7 @@
             // only run once
             if(paramertersSet)
                 return;
+                
             // Default published port to container port when 0, validate and sync settings
             foreach (var pm in Server.Ports)
             {
@@ -85,10 +143,38 @@
                     pm.PublishedPort = pm.ContainerPort;
                 }
             }
+            
+            // Initialize defaultPortKey - first port is default if none set
+            if (Server.Ports.Any())
+            {
+                var firstPort = Server.Ports.First();
+                defaultPortKey = GetPortKey(firstPort);
+            }
+            
             // mark as set
             paramertersSet = true;
             _ = ValidateAllPublishedAsync();
         }
+    }
+
+    private string GetPortKey(PortMapping pm)
+    {
+        return $"{pm.ContainerPort}_{pm.Protocol}";
+    }
+
+    private bool IsDefaultPort(PortMapping pm)
+    {
+        return GetPortKey(pm) == defaultPortKey;
+    }
+
+    private void OnDefaultPortChanged(PortMapping selectedPort)
+    {
+        if (Server?.Ports == null) return;
+
+        defaultPortKey = GetPortKey(selectedPort);
+
+        StateHasChanged();
+        _ = NotifyChangedAsync();
     }
 
     // -- Handlers --
@@ -163,7 +249,16 @@
         return publishedErrors.ContainsKey(pm) ? "border-color:#b91c1c" : "";
     }
 
-    
+    public string GetDefaultPortConnectionString()
+    {
+        if (Server?.Ports == null || !Server.Ports.Any()) return "";
+        
+        var defaultPort = Server.Ports.FirstOrDefault(pm => IsDefaultPort(pm));
+        if (defaultPort == null) return "";
+        
+        var effectivePort = defaultPort.PublishedPort == 0 ? defaultPort.ContainerPort : defaultPort.PublishedPort;
+        return $"{effectivePort}/{defaultPort.Protocol}";
+    }
 
     // -- Notify changed upstream --
 

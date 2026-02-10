@@ -1,5 +1,6 @@
 @page "/servers/{ServerId}/edit"
 @rendermode InteractiveServer
+@using GameServer.Web.Components.Server
 @using global::GameServer.Docker.Client
 @using Radzen
 @using Radzen.Blazor
@@ -9,23 +10,23 @@
 @inject NavigationManager Navigation
 @inject DialogService DialogService
 
-<PageTitle>Edit Server - @server?.Name</PageTitle>
+<PageTitle>Edit Server - @Server?.Name</PageTitle>
 
 <div class="container-fluid mt-4">
     @if (loading)
     {
         <div class="text-center py-5">
             <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
-            <p class="mt-3">Loading server details...</p>
+            <p class="mt-3">Loading Server details...</p>
         </div>
     }
-    else if (server == null)
+    else if (Server == null)
     {
         <RadzenCard>
             <div class="text-center py-5">
                 <RadzenIcon Icon="error" Style="font-size: 4rem; color: var(--rz-danger);" />
                 <h4 class="mt-3">Server Not Found</h4>
-                <p class="text-muted">The server you're trying to edit could not be found.</p>
+                <p class="text-muted">The Server you're trying to edit could not be found.</p>
                 <RadzenButton Text="Back to Servers" 
                               Icon="arrow_back" 
                               Click="@(() => Navigation.NavigateTo("/servers"))" />
@@ -48,10 +49,10 @@
                     </div>
                 }
                 <div>
-                    <h2>Edit Server: @server.Name</h2>
+                    <h2>Edit Server: @Server.Name</h2>
                     <p class="text-muted mb-0">
                         <RadzenBadge Text="@gameType?.DisplayName" BadgeStyle="BadgeStyle.Info" />
-                        <span class="ms-2">ID: @server.ServerId</span>
+                        <span class="ms-2">ID: @Server.ServerId</span>
                     </p>
                 </div>
             </div>
@@ -78,13 +79,13 @@
                                     <div class="row">
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-bold">Server Name</label>
-                                            <RadzenTextBox @bind-Value="server.Name" 
+                                            <RadzenTextBox @bind-Value="Server.Name" 
                                                            class="w-100" 
                                                            Placeholder="My Awesome Server" />
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-bold">Server ID</label>
-                                            <RadzenTextBox Value="@server.ServerId" 
+                                            <RadzenTextBox Value="@Server.ServerId" 
                                                            class="w-100" 
                                                            Disabled="true" />
                                             <small class="text-muted">Server ID cannot be changed</small>
@@ -93,10 +94,10 @@
 
                                     <div class="mb-3">
                                         <label class="form-label fw-bold">Description</label>
-                                        <RadzenTextArea @bind-Value="server.Description" 
+                                        <RadzenTextArea @bind-Value="Server.Description" 
                                                         class="w-100" 
                                                         Rows="3"
-                                                        Placeholder="Optional server description" />
+                                                        Placeholder="Optional Server description" />
                                     </div>
                                 </RadzenCard>
                             </div>
@@ -165,14 +166,14 @@
                         <RadzenCard>
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h6 class="mb-0">Port Mappings</h6>
-                                <RadzenButton Text="Add Port" 
-                                              Icon="add" 
+                                <RadzenButton Text="Add Port"
+                                              Icon="add"
                                               Size="ButtonSize.Small"
-                                              ButtonStyle="ButtonStyle.Primary" 
+                                              ButtonStyle="ButtonStyle.Primary"
                                               Click="AddPort" />
                             </div>
 
-                            @if (!server.Ports.Any())
+                            @if (!Server.Ports.Any())
                             {
                                 <div class="alert alert-info">
                                     No port mappings configured.
@@ -180,36 +181,36 @@
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@server.Ports" TItem="PortMapping" AllowRowSelectOnRowClick="false">
+                                <RadzenDataGrid Data="@Server.Ports" TItem="PortMapping" AllowRowSelectOnRowClick="false">
                                     <Columns>
                                         <RadzenDataGridColumn TItem="PortMapping" Title="Container Port" Width="25%">
                                             <Template Context="port">
-                                                <RadzenNumeric @bind-Value="@port.ContainerPort" 
-                                                               Min="1" Max="65535" 
+                                                <RadzenNumeric @bind-Value="@port.ContainerPort"
+                                                               Min="1" Max="65535"
                                                                class="w-100"
                                                                Disabled="true" />
                                             </Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="PortMapping" Title="Published Port" Width="25%">
                                             <Template Context="port">
-                                                <RadzenNumeric @bind-Value="@port.PublishedPort" 
-                                                               Min="0" Max="65535" 
+                                                <RadzenNumeric @bind-Value="@port.PublishedPort"
+                                                               Min="0" Max="65535"
                                                                class="w-100" />
                                                 <small class="text-muted">0 = Use container port</small>
                                             </Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="PortMapping" Title="Protocol" Width="20%">
                                             <Template Context="port">
-                                                <RadzenDropDown @bind-Value="@port.Protocol" 
-                                                                Data="@protocols" 
+                                                <RadzenDropDown @bind-Value="@port.Protocol"
+                                                                Data="@protocols"
                                                                 class="w-100" />
                                             </Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="PortMapping" Title="" Width="80px">
                                             <Template Context="port">
-                                                <RadzenButton Icon="delete" 
+                                                <RadzenButton Icon="delete"
                                                               Size="ButtonSize.Small"
-                                                              ButtonStyle="ButtonStyle.Danger" 
+                                                              ButtonStyle="ButtonStyle.Danger"
                                                               Click="@(() => RemovePort(port))" />
                                             </Template>
                                         </RadzenDataGridColumn>
@@ -217,6 +218,13 @@
                                 </RadzenDataGrid>
                             }
                         </RadzenCard>
+                        @* <EditForm Model="Server">
+                            <DataAnnotationsValidator />
+
+                                <PortMappingEditor Server="@Server" 
+                                                   OnChanged="@OnServerChanged" 
+                                                   OnValidityChanged="@OnValidationChanged" />
+                        </EditForm> *@
                     </div>
                 </RadzenTabsItem>
 
@@ -227,12 +235,12 @@
                                 <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat">
                                     <div class="d-flex align-items-center">
                                         <RadzenIcon Icon="lock" class="me-2" />
-                                        <span>Volume mappings are <strong>immutable</strong> and cannot be changed after server creation to prevent data loss.</span>
+                                        <span>Volume mappings are <strong>immutable</strong> and cannot be changed after Server creation to prevent data loss.</span>
                                     </div>
                                 </RadzenAlert>
                             </div>
 
-                            @if (!server.Volumes.Any())
+                            @if (!Server.Volumes.Any())
                             {
                                 <div class="alert alert-warning">
                                     No volume mappings configured. Data will not be persisted.
@@ -240,7 +248,7 @@
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@server.Volumes" TItem="VolumeDefinition" AllowRowSelectOnRowClick="false">
+                                <RadzenDataGrid Data="@Server.Volumes" TItem="VolumeDefinition" AllowRowSelectOnRowClick="false">
                                     <Columns>
                                         <RadzenDataGridColumn TItem="VolumeDefinition" Title="Source (Host Path)" Width="45%">
                                             <Template Context="volume">
@@ -268,84 +276,17 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Settings">
+                <RadzenTabsItem Text="Settings"> 
                     <div class="p-3">
-                        <RadzenCard>
-                            @if (gameType != null && gameType.DefaultSettings.Any())
-                            {
-                                @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
-                                        <div class="d-flex align-items-center">
-                                            <RadzenIcon Icon="info" class="me-2" />
-                                            <span>
-                                                Need help with these settings? 
-                                                <a href="@gameType.DocumentationUrl" target="_blank" rel="noopener noreferrer" class="fw-bold">
-                                                    Check the documentation <RadzenIcon Icon="open_in_new" Style="font-size: 0.9rem;" />
-                                                </a> 
-                                                for more details on each setting.
-                                            </span>
-                                        </div>
-                                    </RadzenAlert>
-                                }
-
-                                <div class="mb-3">
-                                    <h6>Available Settings</h6>
-                                    <p class="text-muted">Only settings defined by the game type can be modified. You can add or update existing values.</p>
-                                </div>
-
-                                <RadzenDataList Data="@gameType.DefaultSettings" TItem="KeyValuePair<string, string>">
-                                    <Template Context="defaultSetting">
-                                        <div class="row mb-3 p-2 border-bottom">
-                                            <div class="col-md-4">
-                                                <label class="form-label fw-bold">@defaultSetting.Key</label>
-                                                <div>
-                                                    <small class="text-muted">Default: @defaultSetting.Value</small>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-8">
-                                                @if (IsListSetting(defaultSetting.Key))
-                                                {
-                                                    <RadzenTextArea Value="@GetListSettingValue(defaultSetting.Key)" 
-                                                                    Change="@(val => SetListSettingValue(defaultSetting.Key, val?.ToString() ?? ""))"
-                                                                    Style="width:100%;min-height:100px" 
-                                                                    Placeholder="@defaultSetting.Value" />
-                                                    <small class="text-muted">Enter one item per line</small>
-                                                }
-                                                else if (IsBoolSetting(defaultSetting.Value))
-                                                {
-                                                    <RadzenCheckBox TValue="bool" 
-                                                                    Value="@GetBoolSetting(defaultSetting.Key, defaultSetting.Value)" 
-                                                                    Change="@(val => SetBoolSetting(defaultSetting.Key, val))" />
-                                                }
-                                                else if (IsIntSetting(defaultSetting.Value))
-                                                {
-                                                    <RadzenNumeric TValue="int" 
-                                                                   Value="@GetIntSetting(defaultSetting.Key, defaultSetting.Value)" 
-                                                                   Change="@(val => SetIntSetting(defaultSetting.Key, val))" 
-                                                                   Min="0" 
-                                                                   class="w-100"
-                                                                   Placeholder="@defaultSetting.Value" />
-                                                }
-                                                else
-                                                {
-                                                    <RadzenTextBox Value="@GetStringSetting(defaultSetting.Key, defaultSetting.Value)" 
-                                                                   Change="@(val => SetStringSetting(defaultSetting.Key, val?.ToString() ?? ""))" 
-                                                                   class="w-100"
-                                                                   Placeholder="@defaultSetting.Value" />
-                                                }
-                                            </div>
-                                        </div>
-                                    </Template>
-                                </RadzenDataList>
-                            }
-                            else
-                            {
-                                <div class="alert alert-info">
-                                    No configurable settings available for this game type.
-                                </div>
-                            }
-                        </RadzenCard>
+                        <EditForm Model="Server">
+                        <DataAnnotationsValidator/>
+        
+                        <GameSettingsEditor GameTypeDefinition="@gameType" 
+                           Server="@Server" 
+                           ServerChanged="@OnServerChanged"
+                           OnValidationChanged="@OnValidationChanged"
+                           />
+                           </EditForm>
                     </div>
                 </RadzenTabsItem>
             </Tabs>
@@ -356,15 +297,30 @@
 @code {
     [Parameter] public string ServerId { get; set; } = "";
 
-    private GameServer? server;
+    private GameServer? Server;
     private GameTypeDefinition? gameType;
     private bool loading = true;
     private bool saving = false;
-    private List<string> protocols = new() { "tcp", "udp", "tcp/udp" };
+    private List<string> protocols = new() { "tcp", "udp" };
 
     protected override async Task OnInitializedAsync()
     {
         await LoadServerAsync();
+    }
+
+    private GameSettingsEditor? settingsEditor;
+    private bool isValid = true;
+
+    private async Task OnServerChanged(GameServer server)
+    {
+        Server = server;
+        StateHasChanged();
+    }
+
+    private async Task OnValidationChanged(bool valid)
+    {
+        isValid = valid;
+        StateHasChanged();
     }
 
     private async Task LoadServerAsync()
@@ -372,18 +328,18 @@
         loading = true;
         try
         {
-            server = await ServerApi.GetAsync(ServerId);
+            Server = await ServerApi.GetAsync(ServerId);
             
-            if (server != null)
+            if (Server != null)
             {
                 // Load game type definition
                 var allGameTypes = await GameTypeApi.GetAllAsync();
-                gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
+                gameType = allGameTypes.FirstOrDefault(gt => gt.Key == Server.GameType);
 
                 // Initialize collections if null
-                server.Settings ??= new Dictionary<string, string>();
-                server.Ports ??= new List<PortMapping>();
-                server.Volumes ??= new List<VolumeDefinition>();
+                Server.Settings ??= new Dictionary<string, string>();
+                Server.Ports ??= new List<PortMapping>();
+                Server.Volumes ??= new List<VolumeDefinition>();
             }
         }
         catch (Exception ex)
@@ -392,7 +348,7 @@
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Error Loading Server",
-                Detail = $"Failed to load server: {ex.Message}",
+                Detail = $"Failed to load Server: {ex.Message}",
                 Duration = 5000,
                 CloseOnClick = true
             });
@@ -405,12 +361,12 @@
 
     private async Task SaveServer()
     {
-        if (server == null)
+        if (Server == null)
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(server.Name))
+        if (string.IsNullOrWhiteSpace(Server.Name))
         {
             NotificationService.Notify(new NotificationMessage
             {
@@ -426,13 +382,13 @@
         saving = true;
         try
         {
-            await ServerApi.DeployAsync(server);
+            await ServerApi.DeployAsync(Server);
 
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Success,
                 Summary = "Server Updated",
-                Detail = $"'{server.Name}' has been updated successfully.",
+                Detail = $"'{Server.Name}' has been updated successfully.",
                 Duration = 3000,
                 CloseOnClick = true
             });
@@ -459,12 +415,12 @@
     // Port management
     private void AddPort()
     {
-        server?.Ports.Add(new PortMapping { ContainerPort = 25565, PublishedPort = 0, Protocol = "tcp" });
+        Server?.Ports.Add(new PortMapping { ContainerPort = 25565, PublishedPort = 0, Protocol = "tcp" });
     }
 
     private void RemovePort(PortMapping port)
     {
-        server?.Ports.Remove(port);
+        Server?.Ports.Remove(port);
     }
 
     // Setting helpers
@@ -486,7 +442,7 @@
 
     private string GetListSettingValue(string key)
     {
-        if (server?.Settings.TryGetValue(key, out var value) == true && !string.IsNullOrEmpty(value))
+        if (Server?.Settings.TryGetValue(key, out var value) == true && !string.IsNullOrEmpty(value))
         {
             return value.Replace("\r", "");
         }
@@ -495,18 +451,18 @@
 
     private void SetListSettingValue(string key, string value)
     {
-        if (server == null) return;
+        if (Server == null) return;
         
         var lines = (value ?? "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim())
             .Where(s => s.Length > 0);
         
-        server.Settings[key] = string.Join("\n", lines);
+        Server.Settings[key] = string.Join("\n", lines);
     }
 
     private bool GetBoolSetting(string key, string defaultValue)
     {
-        if (server?.Settings.TryGetValue(key, out var value) == true)
+        if (Server?.Settings.TryGetValue(key, out var value) == true)
         {
             return bool.TryParse(value, out var result) && result;
         }
@@ -515,13 +471,13 @@
 
     private void SetBoolSetting(string key, bool value)
     {
-        if (server == null) return;
-        server.Settings[key] = value.ToString().ToLower();
+        if (Server == null) return;
+        Server.Settings[key] = value.ToString().ToLower();
     }
 
     private int GetIntSetting(string key, string defaultValue)
     {
-        if (server?.Settings.TryGetValue(key, out var value) == true && int.TryParse(value, out var result))
+        if (Server?.Settings.TryGetValue(key, out var value) == true && int.TryParse(value, out var result))
         {
             return result;
         }
@@ -530,13 +486,13 @@
 
     private void SetIntSetting(string key, int value)
     {
-        if (server == null) return;
-        server.Settings[key] = value.ToString();
+        if (Server == null) return;
+        Server.Settings[key] = value.ToString();
     }
 
     private string GetStringSetting(string key, string defaultValue)
     {
-        if (server?.Settings.TryGetValue(key, out var value) == true)
+        if (Server?.Settings.TryGetValue(key, out var value) == true)
         {
             return value;
         }
@@ -545,8 +501,8 @@
 
     private void SetStringSetting(string key, string value)
     {
-        if (server == null) return;
-        server.Settings[key] = value;
+        if (Server == null) return;
+        Server.Settings[key] = value;
     }
 
     private void OpenUrl(string? url)
