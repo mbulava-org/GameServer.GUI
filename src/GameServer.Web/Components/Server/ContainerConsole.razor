@@ -1,0 +1,604 @@
+﻿@using GameServer.Web.Configurations
+@using Microsoft.Extensions.Options
+@using global::GameServer.Docker.Client
+@using GameServer.Web.Services
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@inject IGameServerApi GameServerApi
+@inject NotificationService NotificationService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+@inject IOptions<GameServerDockerApi> apiSettings;
+
+<div class="terminal-container">
+    <div class="terminal-header">
+        <div class="terminal-title">
+            <RadzenIcon Icon="terminal" Style="font-size: 1rem;" />
+            <span class="ms-2">@(ServerId ?? "Console")</span>
+        </div>
+        <div class="terminal-controls">
+            @if (isConnected)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                <RadzenButton Icon="refresh" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Light"
+                             Click="@ClearConsole"
+                             title="Clear console" />
+                <RadzenButton Icon="close" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Danger"
+                             Click="@DisconnectAsync"
+                             title="Disconnect" />
+            }
+            else if (isConnecting)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" Size="BadgeSize.Small" />
+            }
+            else
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                <RadzenButton Icon="play_arrow" 
+                             Text="Connect" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Success"
+                             Click="@ConnectAsync"
+                             title="Connect to console" />
+            }
+        </div>
+    </div>
+
+    <div class="terminal-body" @ref="terminalBodyRef">
+        <div class="terminal-output">
+            @foreach (var line in outputLines)
+            {
+                <div class="terminal-line @GetLineClass(line)">
+                    <span class="terminal-timestamp">[@line.Timestamp.ToString("HH:mm:ss")]</span>
+                    <span class="terminal-text">@line.Text</span>
+                </div>
+            }
+            @if (isConnected && !string.IsNullOrEmpty(currentInput))
+            {
+                <div class="terminal-line terminal-input-preview">
+                    <span class="terminal-prompt">></span>
+                    <span class="terminal-text">@currentInput</span>
+                    <span class="terminal-cursor">_</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (isConnected)
+    {
+        <div class="terminal-footer">
+            <div class="terminal-input-container">
+                <span class="terminal-prompt">></span>
+                <input type="text" 
+                       class="terminal-input" 
+                       @bind="currentInput"
+                       @bind:event="oninput"
+                       @onkeydown="HandleKeyDown"
+                       @ref="inputRef"
+                       placeholder="Type command and press Enter..."
+                       disabled="@(!isConnected)" />
+            </div>
+            <small class="terminal-hint">Press ↑↓ for command history • Ctrl+L to clear • Ctrl+C to disconnect</small>
+        </div>
+    }
+</div>
+
+<style>
+    .terminal-container {
+        display: flex;
+        flex-direction: column;
+        height: 600px;
+        background: #1e1e1e;
+        border: 1px solid #3a3a3a;
+        border-radius: 8px;
+        overflow: hidden;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .terminal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        background: #2d2d2d;
+        border-bottom: 1px solid #3a3a3a;
+        color: #d4d4d4;
+    }
+
+    .terminal-title {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .terminal-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .terminal-body {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: #1e1e1e;
+        padding: 1rem;
+        scroll-behavior: smooth;
+    }
+
+    .terminal-body::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .terminal-body::-webkit-scrollbar-track {
+        background: #1e1e1e;
+    }
+
+    .terminal-body::-webkit-scrollbar-thumb {
+        background: #3a3a3a;
+        border-radius: 4px;
+    }
+
+    .terminal-body::-webkit-scrollbar-thumb:hover {
+        background: #4a4a4a;
+    }
+
+    .terminal-output {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .terminal-line {
+        display: flex;
+        gap: 0.5rem;
+        line-height: 1.5;
+        color: #d4d4d4;
+        font-size: 0.875rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .terminal-timestamp {
+        color: #6a6a6a;
+        font-size: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .terminal-text {
+        flex: 1;
+    }
+
+    .terminal-line.error {
+        color: #f48771;
+    }
+
+    .terminal-line.warning {
+        color: #dcdcaa;
+    }
+
+    .terminal-line.success {
+        color: #4ec9b0;
+    }
+
+    .terminal-line.info {
+        color: #9cdcfe;
+    }
+
+    .terminal-line.system {
+        color: #6a9955;
+        font-style: italic;
+    }
+
+    .terminal-input-preview {
+        opacity: 0.7;
+    }
+
+    .terminal-prompt {
+        color: #4ec9b0;
+        font-weight: bold;
+        margin-right: 0.5rem;
+    }
+
+    .terminal-cursor {
+        display: inline-block;
+        width: 8px;
+        background: #4ec9b0;
+        animation: blink 1s infinite;
+    }
+
+    @@keyframes blink {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+    }
+
+    .terminal-footer {
+        padding: 0.75rem 1rem;
+        background: #2d2d2d;
+        border-top: 1px solid #3a3a3a;
+    }
+
+    .terminal-input-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .terminal-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: #d4d4d4;
+        font-family: inherit;
+        font-size: 0.875rem;
+        outline: none;
+        padding: 0.25rem 0;
+    }
+
+    .terminal-input::placeholder {
+        color: #6a6a6a;
+    }
+
+    .terminal-input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .terminal-hint {
+        color: #6a6a6a;
+        font-size: 0.75rem;
+        display: block;
+    }
+
+    @@media (max-width: 768px) {
+        .terminal-container {
+            height: 400px;
+        }
+
+        .terminal-hint {
+            display: none;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public string? ServerId { get; set; }
+    [Parameter] public bool AutoConnect { get; set; } = false;
+
+    private ElementReference terminalBodyRef;
+    private ElementReference inputRef;
+
+    private bool isConnected = false;
+    private bool isConnecting = false;
+    private string currentInput = "";
+    private List<TerminalLine> outputLines = new();
+    private List<string> commandHistory = new();
+    private int historyIndex = -1;
+
+    private IContainerConsoleClient? consoleClient;
+    private CancellationTokenSource? connectionCts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            if (AutoConnect && !string.IsNullOrEmpty(ServerId))
+            {
+                await ConnectAsync();
+            }
+        }
+
+        // Auto-scroll to bottom
+        await ScrollToBottom();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ServerId) && AutoConnect && !isConnected && !isConnecting)
+        {
+            await ConnectAsync();
+        }
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (string.IsNullOrEmpty(ServerId))
+        {
+            AddSystemLine("Error: No server ID provided");
+            return;
+        }
+
+        if (isConnected || isConnecting)
+        {
+            return;
+        }
+
+        isConnecting = true;
+        AddSystemLine($"Connecting to {ServerId}...");
+        StateHasChanged();
+
+        try
+        {
+            // TODO: Replace with actual API call when GetConsoleInfoAsync is available
+            // var consoleInfo = await GameServerApi.GetConsoleInfoAsync(ServerId);
+
+            // For now, construct a placeholder console URL
+            var a = apiSettings.Value;
+            var hostUri = a.BaseUri.Replace("http://", "ws://").Replace("https://", "wss://");
+            var consoleInfo = new { Url = $"{hostUri}/console/{ServerId}" };
+            
+            if (consoleInfo == null || string.IsNullOrEmpty(consoleInfo.Url))
+            {
+                throw new Exception("Console connection information not available");
+            }
+
+            // Create console client
+            connectionCts = new CancellationTokenSource();
+            consoleClient = new ContainerConsoleClient(consoleInfo.Url);
+            
+            // Set up event handlers
+            consoleClient.OnMessageReceived += HandleConsoleMessage;
+            consoleClient.OnConnectionStateChanged += HandleConnectionStateChanged;
+            consoleClient.OnError += HandleConsoleError;
+
+            // Connect
+            await consoleClient.ConnectAsync(connectionCts.Token);
+
+            isConnected = true;
+            isConnecting = false;
+            AddSystemLine("Connected successfully");
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Console Connected",
+                Detail = $"Connected to {ServerId} console",
+                Duration = 3000
+            });
+
+            StateHasChanged();
+            
+            // Focus input
+            await FocusInputAsync();
+        }
+        catch (Exception ex)
+        {
+            isConnecting = false;
+            isConnected = false;
+            AddSystemLine($"Connection failed: {ex.Message}", isError: true);
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Connection Failed",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        if (consoleClient != null)
+        {
+            try
+            {
+                await consoleClient.DisconnectAsync();
+            }
+            catch { }
+
+            consoleClient.OnMessageReceived -= HandleConsoleMessage;
+            consoleClient.OnConnectionStateChanged -= HandleConnectionStateChanged;
+            consoleClient.OnError -= HandleConsoleError;
+            consoleClient = null;
+        }
+
+        connectionCts?.Cancel();
+        connectionCts?.Dispose();
+        connectionCts = null;
+
+        isConnected = false;
+        isConnecting = false;
+        AddSystemLine("Disconnected");
+        StateHasChanged();
+    }
+
+    private async Task SendCommandAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentInput) || !isConnected || consoleClient == null)
+        {
+            return;
+        }
+
+        var command = currentInput.Trim();
+        
+        // Add to history
+        if (!string.IsNullOrEmpty(command))
+        {
+            commandHistory.Add(command);
+            if (commandHistory.Count > 50) // Keep last 50 commands
+            {
+                commandHistory.RemoveAt(0);
+            }
+            historyIndex = commandHistory.Count;
+        }
+
+        // Add to output
+        AddLine($"> {command}", LineType.Info);
+        currentInput = "";
+        StateHasChanged();
+
+        try
+        {
+            await consoleClient.SendCommandAsync(command);
+        }
+        catch (Exception ex)
+        {
+            AddLine($"Error sending command: {ex.Message}", LineType.Error);
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                await SendCommandAsync();
+                break;
+
+            case "ArrowUp":
+                NavigateHistory(-1);
+                break;
+
+            case "ArrowDown":
+                NavigateHistory(1);
+                break;
+
+            case "l" when e.CtrlKey:
+                ClearConsole();
+                break;
+
+            case "c" when e.CtrlKey:
+                await DisconnectAsync();
+                break;
+        }
+    }
+
+    private void NavigateHistory(int direction)
+    {
+        if (commandHistory.Count == 0) return;
+
+        historyIndex += direction;
+        historyIndex = Math.Max(0, Math.Min(commandHistory.Count, historyIndex));
+
+        if (historyIndex < commandHistory.Count)
+        {
+            currentInput = commandHistory[historyIndex];
+        }
+        else
+        {
+            currentInput = "";
+        }
+
+        StateHasChanged();
+    }
+
+    private void ClearConsole()
+    {
+        outputLines.Clear();
+        AddSystemLine("Console cleared");
+        StateHasChanged();
+    }
+
+    private void HandleConsoleMessage(string message)
+    {
+        AddLine(message, LineType.Normal);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleConnectionStateChanged(bool connected)
+    {
+        isConnected = connected;
+        if (!connected)
+        {
+            AddSystemLine("Connection lost", isError: true);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleConsoleError(string error)
+    {
+        AddLine($"Error: {error}", LineType.Error);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void AddLine(string text, LineType type = LineType.Normal)
+    {
+        outputLines.Add(new TerminalLine
+        {
+            Text = text,
+            Type = type,
+            Timestamp = DateTime.Now
+        });
+
+        // Keep last 1000 lines
+        if (outputLines.Count > 1000)
+        {
+            outputLines.RemoveRange(0, outputLines.Count - 1000);
+        }
+    }
+
+    private void AddSystemLine(string text, bool isError = false)
+    {
+        AddLine($"[SYSTEM] {text}", isError ? LineType.Error : LineType.System);
+    }
+
+    private string GetLineClass(TerminalLine line)
+    {
+        return line.Type switch
+        {
+            LineType.Error => "error",
+            LineType.Warning => "warning",
+            LineType.Success => "success",
+            LineType.Info => "info",
+            LineType.System => "system",
+            _ => ""
+        };
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            if (terminalBodyRef.Id != null)
+            {
+                await JSRuntime.InvokeVoidAsync("eval", 
+                    $"document.getElementById('{terminalBodyRef.Id}')?.scrollTo(0, document.getElementById('{terminalBodyRef.Id}')?.scrollHeight)");
+            }
+        }
+        catch { }
+    }
+
+    private async Task FocusInputAsync()
+    {
+        try
+        {
+            if (inputRef.Id != null)
+            {
+                await JSRuntime.InvokeVoidAsync("eval", $"document.getElementById('{inputRef.Id}')?.focus()");
+            }
+        }
+        catch { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+    }
+
+    private class TerminalLine
+    {
+        public string Text { get; set; } = "";
+        public LineType Type { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+
+    private enum LineType
+    {
+        Normal,
+        Error,
+        Warning,
+        Success,
+        Info,
+        System
+    }
+}
