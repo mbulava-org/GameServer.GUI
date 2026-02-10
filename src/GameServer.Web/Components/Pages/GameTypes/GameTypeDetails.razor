@@ -113,7 +113,10 @@
                     <div class="p-4">
                         <RadzenCard>
                             <div class="d-flex justify-content-between align-items-center mb-4">
-                                <h5 class="mb-0">Port Definitions</h5>
+                                <div>
+                                    <h5 class="mb-1">Port Definitions</h5>
+                                    <small class="text-muted">Define which ports this game server requires</small>
+                                </div>
                                 <RadzenButton Text="Add Port" 
                                               Icon="add" 
                                               Size="ButtonSize.Small"
@@ -126,12 +129,19 @@
                             }
                             else
                             {
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <RadzenIcon Icon="info" Style="font-size: 1rem;" />
+                                        <small>Mark one port as the <strong>Default Port</strong> - this will be used in connection strings and server details.</small>
+                                    </div>
+                                </RadzenAlert>
+
                                 <div class="port-list">
                                     @foreach (var port in gameType.Ports.ToList())
                                     {
-                                        <div class="port-item mb-3 p-3 border rounded">
-                                            <div class="row g-2 align-items-center">
-                                                <div class="col-md-5">
+                                        <RadzenCard class="port-definition-card mb-3" Style="@(port.IsDefaultPort ? "border: 2px solid var(--rz-primary);" : "")">
+                                            <div class="row g-3 align-items-end">
+                                                <div class="col-md-4">
                                                     <RadzenFormField Text="Port Number" Variant="@Variant.Outlined" class="w-100">
                                                         <RadzenNumeric @bind-Value="@port.Port" 
                                                                        Min="1" 
@@ -139,21 +149,43 @@
                                                                        class="w-100" />
                                                     </RadzenFormField>
                                                 </div>
-                                                <div class="col-md-5">
+                                                <div class="col-md-3">
                                                     <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
                                                         <RadzenDropDown @bind-Value="@port.Protocol" 
                                                                         Data="@(new[] { "tcp", "udp" })"
                                                                         class="w-100" />
                                                     </RadzenFormField>
                                                 </div>
-                                                <div class="col-md-2 text-end">
-                                                    <RadzenButton Icon="delete" 
-                                                                  ButtonStyle="ButtonStyle.Danger" 
-                                                                  Size="ButtonSize.Small"
-                                                                  Click="@(() => RemovePort(port))" />
+                                                <div class="col-md-4">
+                                                    <div class="d-flex align-items-center gap-2 pb-2">
+                                                        <RadzenCheckBox @bind-Value="@port.IsDefaultPort"
+                                                                       Change="@((bool value) => OnDefaultPortChanged(port, value))" />
+                                                        <RadzenLabel Text="Default Port" class="mb-0" />
+                                                        @if (port.IsDefaultPort)
+                                                        {
+                                                            <RadzenBadge BadgeStyle="BadgeStyle.Success" 
+                                                                        Text="Primary" 
+                                                                        Size="BadgeSize.Small" 
+                                                                        Variant="Variant.Flat" />
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-1 text-end">
+                                                    <div class="d-flex gap-2 pb-2">
+                                                        <RadzenButton Icon="@(port.IsDefaultPort ? "star" : "star_border")" 
+                                                                     ButtonStyle="ButtonStyle.Light"
+                                                                     Size="ButtonSize.Small"
+                                                                     Style="@(port.IsDefaultPort ? "color: var(--rz-warning);" : "")"
+                                                                     title="@(port.IsDefaultPort ? "Primary connection port" : "Not primary port")"
+                                                                     Disabled="true" />
+                                                        <RadzenButton Icon="delete" 
+                                                                     ButtonStyle="ButtonStyle.Danger" 
+                                                                     Size="ButtonSize.Small"
+                                                                     Click="@(() => RemovePort(port))" />
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </RadzenCard>
                                     }
                                 </div>
                             }
@@ -581,6 +613,14 @@
         align-items: center;
     }
 
+    .port-definition-card {
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .port-definition-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
     @@media (max-width: 768px) {
         .setting-header-left {
             flex-direction: column;
@@ -713,13 +753,49 @@ private async Task LoadGameTypeAsync()
 
     private void AddPort()
     {
-        gameType!.Ports.Add(new PortDefinition { Port = 25565, Protocol = "tcp" });
+        var newPort = new PortDefinition { Port = 25565, Protocol = "tcp", IsDefaultPort = false };
+        gameType!.Ports.Add(newPort);
+        
+        // If this is the first port, make it default
+        if (gameType.Ports.Count == 1)
+        {
+            newPort.IsDefaultPort = true;
+        }
+        
         StateHasChanged();
     }
 
     private void RemovePort(PortDefinition port)
     {
+        var wasDefault = port.IsDefaultPort;
         gameType!.Ports.Remove(port);
+        
+        // If we removed the default port and there are still ports left, make the first one default
+        if (wasDefault && gameType.Ports.Any())
+        {
+            gameType.Ports.First().IsDefaultPort = true;
+        }
+        
+        StateHasChanged();
+    }
+
+    private void OnDefaultPortChanged(PortDefinition selectedPort, bool isChecked)
+    {
+        if (!isChecked)
+        {
+            // Don't allow unchecking the default port - there must always be one
+            selectedPort.IsDefaultPort = true;
+            return;
+        }
+
+        // Clear all other IsDefaultPort flags
+        foreach (var port in gameType!.Ports)
+        {
+            port.IsDefaultPort = false;
+        }
+
+        // Set the selected port as default
+        selectedPort.IsDefaultPort = true;
         StateHasChanged();
     }
 
