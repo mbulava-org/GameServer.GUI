@@ -8,9 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="GameServer.Docker.Client" Version="0.0.2.115-beta" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.3" />
-    <PackageReference Include="Radzen.Blazor" Version="9.0.2" />
+    <PackageReference Include="Radzen.Blazor" Version="9.0.4" />
+    <PackageReference Include="XtermBlazor" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Services\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GameServer.Docker.Client\GameServer.Docker.Client.csproj" />
   </ItemGroup>
 
 </Project>

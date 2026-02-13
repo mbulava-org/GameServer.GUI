@@ -1,0 +1,751 @@
+@page "/signalr-test"
+@using GameServer.Docker.Client.Interfaces
+@using GameServer.Docker.Client.Services
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
+@inject IOptions<GameServerDockerApi> ApiConfig
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<PageTitle>SignalR Connection Test</PageTitle>
+
+<RadzenCard>
+    <h3>SignalR Resource Monitor - Connection Test</h3>
+    <p class="text-muted">This page helps diagnose SignalR connectivity issues</p>
+</RadzenCard>
+
+<RadzenRow Gap="1rem" class="mt-3">
+    <!-- Connection Status -->
+    <RadzenColumn Size="12" MD="6">
+        <RadzenCard>
+            <h4>Connection Status</h4>
+            
+            <div class="status-grid">
+                <div class="status-item">
+                    <strong>Hub URL:</strong>
+                    <code>@hubUrl</code>
+                </div>
+                
+                <div class="status-item">
+                    <strong>Connection State:</strong>
+                    @if (client != null && client.IsConnected)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" />
+                    }
+                    else if (isConnecting)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" />
+                    }
+                </div>
+                
+                @if (connectionError != null)
+                {
+                    <div class="status-item">
+                        <strong>Error:</strong>
+                        <span class="text-danger">@connectionError</span>
+                    </div>
+                }
+                
+                @if (lastMessageTime.HasValue)
+                {
+                    <div class="status-item">
+                        <strong>Last Message:</strong>
+                        <span>@lastMessageTime.Value.ToString("HH:mm:ss.fff")</span>
+                    </div>
+                }
+                
+                <div class="status-item">
+                    <strong>Messages Received:</strong>
+                    <span>@messageCount</span>
+                </div>
+            </div>
+            
+            <div class="mt-3">
+                @if (client == null || !client.IsConnected)
+                {
+                    <RadzenButton Text="Connect" 
+                                 Icon="play_arrow" 
+                                 ButtonStyle="ButtonStyle.Success"
+                                 Click="@ConnectAsync"
+                                 Disabled="@isConnecting" />
+                }
+                else
+                {
+                    <RadzenButton Text="Disconnect" 
+                                 Icon="stop" 
+                                 ButtonStyle="ButtonStyle.Danger"
+                                 Click="@DisconnectAsync" />
+                }
+                
+                <RadzenButton Text="Clear Logs" 
+                             Icon="clear_all" 
+                             ButtonStyle="ButtonStyle.Light"
+                             Click="@ClearLogs"
+                             class="ms-2" />
+            </div>
+        </RadzenCard>
+    </RadzenColumn>
+    
+    <!-- Subscription Controls -->
+    <RadzenColumn Size="12" MD="6">
+        <RadzenCard>
+            <h4>Subscription Controls</h4>
+            
+            <div class="mb-3">
+                <label class="form-label">Server ID to Monitor:</label>
+                <RadzenTextBox @bind-Value="@testServerId" 
+                              Placeholder="Enter server ID or container ID" 
+                              class="w-100" />
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Update Interval (seconds):</label>
+                <RadzenNumeric @bind-Value="@updateInterval" 
+                              Min="1" 
+                              Max="60" 
+                              class="w-100" />
+            </div>
+            
+            @if (client?.MonitoredServerId != null)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" class="mb-3">
+                    <strong>Currently Monitoring:</strong> @client.MonitoredServerId<br />
+                    <strong>Interval:</strong> @(client.CurrentIntervalSeconds ?? 0) seconds
+                </RadzenAlert>
+            }
+            
+            <div>
+                @if (client?.MonitoredServerId == null)
+                {
+                    <RadzenButton Text="Subscribe" 
+                                 Icon="notifications_active" 
+                                 ButtonStyle="ButtonStyle.Primary"
+                                 Click="@SubscribeAsync"
+                                 Disabled="@(client == null || !client.IsConnected || string.IsNullOrWhiteSpace(testServerId))" />
+                }
+                else
+                {
+                    <RadzenButton Text="Unsubscribe" 
+                                 Icon="notifications_off" 
+                                 ButtonStyle="ButtonStyle.Warning"
+                                 Click="@UnsubscribeAsync" />
+                }
+                
+                <RadzenButton Text="Get Snapshot" 
+                             Icon="photo_camera" 
+                             ButtonStyle="ButtonStyle.Light"
+                             Click="@GetSnapshotAsync"
+                             Disabled="@(client == null || !client.IsConnected || string.IsNullOrWhiteSpace(testServerId))"
+                             class="ms-2" />
+            </div>
+        </RadzenCard>
+    </RadzenColumn>
+</RadzenRow>
+
+<!-- Message Log -->
+<RadzenCard class="mt-3">
+    <h4>SignalR Message Log</h4>
+    <div class="message-log">
+        @if (!logMessages.Any())
+        {
+            <p class="text-muted">No messages yet. Connect and subscribe to see messages.</p>
+        }
+        else
+        {
+            @foreach (var msg in logMessages.OrderByDescending(m => m.Timestamp))
+            {
+                <div class="log-entry @msg.Type">
+                    <span class="log-time">@msg.Timestamp.ToString("HH:mm:ss.fff")</span>
+                    <span class="log-type">[@msg.Type]</span>
+                    <span class="log-message">@msg.Message</span>
+                </div>
+            }
+        }
+    </div>
+</RadzenCard>
+
+<!-- Latest Data -->
+@if (latestData != null)
+{
+    <RadzenCard class="mt-3">
+        <h4>Latest Resource Data</h4>
+        <div class="data-grid">
+            <div class="data-item">
+                <strong>Server ID:</strong>
+                <span>@latestData.ServerId</span>
+            </div>
+            <div class="data-item">
+                <strong>Server Name:</strong>
+                <span>@latestData.ServerName</span>
+            </div>
+            <div class="data-item">
+                <strong>Game Type:</strong>
+                <span>@latestData.GameType</span>
+            </div>
+            <div class="data-item">
+                <strong>Status:</strong>
+                <span>@latestData.Status</span>
+            </div>
+            <div class="data-item">
+                <strong>Is Running:</strong>
+                <RadzenBadge BadgeStyle="@(latestData.IsRunning ? BadgeStyle.Success : BadgeStyle.Danger)" 
+                            Text="@(latestData.IsRunning ? "Running" : "Stopped")" />
+            </div>
+            
+            @if (latestData.ContainerId != null)
+            {
+                <div class="data-item">
+                    <strong>Container ID:</strong>
+                    <code>@latestData.ContainerId</code>
+                </div>
+            }
+            
+            @if (latestData.NodeName != null)
+            {
+                <div class="data-item">
+                    <strong>Node Name:</strong>
+                    <span>@latestData.NodeName</span>
+                </div>
+            }
+            
+            @if (latestData.CpuUsagePercent.HasValue)
+            {
+                <div class="data-item">
+                    <strong>CPU Usage:</strong>
+                    <span>@latestData.CpuUsagePercent.Value.ToString("F2")%</span>
+                </div>
+            }
+            
+            @if (latestData.MemoryUsagePercent.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Memory Usage:</strong>
+                    <span>@latestData.MemoryUsagePercent.Value.ToString("F2")%</span>
+                </div>
+            }
+            
+            @if (latestData.MemoryUsageBytes.HasValue && latestData.MemoryLimitBytes.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Memory (MB):</strong>
+                    <span>@(latestData.MemoryUsageBytes.Value / 1024 / 1024).ToString("F2") MB / @(latestData.MemoryLimitBytes.Value / 1024 / 1024).ToString("F2") MB</span>
+                </div>
+            }
+            
+            @if (latestData.NetworkRxBytes.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Network RX:</strong>
+                    <span>@FormatBytes((ulong)latestData.NetworkRxBytes.Value)</span>
+                </div>
+            }
+            
+            @if (latestData.NetworkTxBytes.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Network TX:</strong>
+                    <span>@FormatBytes((ulong)latestData.NetworkTxBytes.Value)</span>
+                </div>
+            }
+            
+            @if (latestData.BlockReadBytes.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Block I/O Read:</strong>
+                    <span>@FormatBytes((ulong)latestData.BlockReadBytes.Value)</span>
+                </div>
+            }
+            
+            @if (latestData.BlockWriteBytes.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Block I/O Write:</strong>
+                    <span>@FormatBytes((ulong)latestData.BlockWriteBytes.Value)</span>
+                </div>
+            }
+            
+            @if (latestData.Replicas.HasValue)
+            {
+                <div class="data-item">
+                    <strong>Replicas:</strong>
+                    <span>@latestData.HealthyReplicas / @latestData.Replicas</span>
+                </div>
+            }
+            
+            <div class="data-item">
+                <strong>Timestamp:</strong>
+                <span>@latestData.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</span>
+            </div>
+            
+            <div class="data-item">
+                <strong>Raw JSON:</strong>
+                <pre class="json-preview">@System.Text.Json.JsonSerializer.Serialize(latestData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+            </div>
+        </div>
+    </RadzenCard>
+}
+
+<style>
+    .status-grid, .data-grid {
+        display: grid;
+        gap: 0.75rem;
+    }
+    
+    .status-item, .data-item {
+        padding: 0.5rem;
+        background: var(--rz-base-200);
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .status-item strong, .data-item strong {
+        color: var(--rz-text-secondary-color);
+        font-size: 0.875rem;
+    }
+    
+    .message-log {
+        max-height: 400px;
+        overflow-y: auto;
+        background: #1e1e1e;
+        padding: 1rem;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.875rem;
+    }
+    
+    .log-entry {
+        padding: 0.25rem 0;
+        border-bottom: 1px solid #333;
+        color: #d4d4d4;
+    }
+    
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+    
+    .log-time {
+        color: #888;
+        margin-right: 0.5rem;
+    }
+    
+    .log-type {
+        font-weight: bold;
+        margin-right: 0.5rem;
+    }
+    
+    .log-entry.INFO .log-type {
+        color: #4ec9b0;
+    }
+    
+    .log-entry.SUCCESS .log-type {
+        color: #4ec9b0;
+    }
+    
+    .log-entry.WARNING .log-type {
+        color: #dcdcaa;
+    }
+    
+    .log-entry.ERROR .log-type {
+        color: #f48771;
+    }
+    
+    .log-entry.DATA .log-type {
+        color: #9cdcfe;
+    }
+    
+    .json-preview {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 1rem;
+        border-radius: 4px;
+        overflow-x: auto;
+        font-size: 0.8rem;
+    }
+    
+    code {
+        background: var(--rz-base-300);
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+</style>
+
+@code {
+    private IResourceMonitoringClient? client;
+    private string? hubUrl;
+    private bool isConnecting;
+    private string? connectionError;
+    private DateTime? lastMessageTime;
+    private int messageCount;
+    
+    private string testServerId = "";
+    private int updateInterval = 2;
+    
+    private List<LogMessage> logMessages = new();
+    private GameServer.Docker.Client.Interfaces.ServerResourceUsage? latestData;
+    
+    protected override void OnInitialized()
+    {
+        var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
+        
+        // For SignalR WebSocket, convert http/https to ws/wss
+        var wsUri = baseUri.Replace("https://", "wss://").Replace("http://", "ws://");
+        hubUrl = $"{wsUri}/hubs/resources";
+        
+        AddLog("INFO", $"Test page initialized. Base URI: {baseUri}");
+        AddLog("INFO", $"SignalR Hub URL: {hubUrl}");
+    }
+    
+    private async Task ConnectAsync()
+    {
+        isConnecting = true;
+        connectionError = null;
+        StateHasChanged();
+        
+        try
+        {
+            AddLog("INFO", "Creating ResourceMonitoringClient...");
+            AddLog("INFO", $"Target: {hubUrl}");
+            
+            client = new ResourceMonitoringClient(hubUrl!);
+            
+            // Subscribe to all events
+            client.ResourceUpdateReceived += OnResourceUpdate;
+            client.Subscribed += OnSubscribed;
+            client.SubscribedMultiple += OnSubscribedMultiple;
+            client.Unsubscribed += OnUnsubscribed;
+            client.IntervalUpdated += OnIntervalUpdated;
+            client.ErrorReceived += OnError;
+            
+            AddLog("INFO", "Connecting to SignalR hub...");
+            AddLog("INFO", "If this hangs, check:");
+            AddLog("INFO", "  1. Backend is running");
+            AddLog("INFO", "  2. Hub URL is correct");
+            AddLog("INFO", "  3. CORS is configured");
+            AddLog("INFO", "  4. Firewall allows connection");
+            
+            await client.ConnectAsync(CancellationToken.None);
+            
+            AddLog("SUCCESS", "? Connected successfully!");
+            AddLog("INFO", "Connection ID established with hub");
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Connected",
+                Detail = "SignalR connection established",
+                Duration = 3000
+            });
+        }
+        catch (HttpRequestException ex)
+        {
+            connectionError = $"Network error: {ex.Message}";
+            AddLog("ERROR", $"? HTTP Request failed: {ex.Message}");
+            AddLog("ERROR", "Possible causes:");
+            AddLog("ERROR", "  - Backend not running");
+            AddLog("ERROR", "  - Wrong URL in configuration");
+            AddLog("ERROR", "  - Firewall blocking connection");
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Connection Failed",
+                Detail = $"Cannot reach backend: {ex.Message}",
+                Duration = 5000
+            });
+        }
+        catch (TimeoutException ex)
+        {
+            connectionError = $"Connection timeout: {ex.Message}";
+            AddLog("ERROR", $"? Connection timeout: {ex.Message}");
+            AddLog("ERROR", "Backend is not responding in time");
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Connection Timeout",
+                Detail = "Backend did not respond",
+                Duration = 5000
+            });
+        }
+        catch (Exception ex)
+        {
+            connectionError = ex.Message;
+            AddLog("ERROR", $"? Connection failed: {ex.GetType().Name}");
+            AddLog("ERROR", $"Message: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                AddLog("ERROR", $"Inner: {ex.InnerException.Message}");
+            }
+            
+            // Check for common CORS error
+            if (ex.Message.Contains("CORS") || ex.Message.Contains("Access-Control-Allow-Origin"))
+            {
+                AddLog("ERROR", "?? CORS ERROR DETECTED!");
+                AddLog("ERROR", "Backend needs CORS configuration:");
+                AddLog("ERROR", "  builder.Services.AddCors(...)");
+                AddLog("ERROR", "  app.UseCors()");
+            }
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Connection Failed",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            isConnecting = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task DisconnectAsync()
+    {
+        if (client == null) return;
+        
+        try
+        {
+            AddLog("INFO", "Disconnecting...");
+            
+            // Unsubscribe from events
+            client.ResourceUpdateReceived -= OnResourceUpdate;
+            client.Subscribed -= OnSubscribed;
+            client.SubscribedMultiple -= OnSubscribedMultiple;
+            client.Unsubscribed -= OnUnsubscribed;
+            client.IntervalUpdated -= OnIntervalUpdated;
+            client.ErrorReceived -= OnError;
+            
+            if (client is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else if (client is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            
+            client = null;
+            AddLog("SUCCESS", "? Disconnected");
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = "Disconnected",
+                Detail = "SignalR connection closed",
+                Duration = 3000
+            });
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", $"? Disconnect error: {ex.Message}");
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task SubscribeAsync()
+    {
+        if (client == null || !client.IsConnected || string.IsNullOrWhiteSpace(testServerId))
+            return;
+        
+        try
+        {
+            AddLog("INFO", $"Subscribing to server: {testServerId} with {updateInterval}s interval");
+            await client.SubscribeToServerAsync(testServerId, updateInterval, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", $"? Subscribe failed: {ex.Message}");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Subscribe Failed",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+    }
+    
+    private async Task UnsubscribeAsync()
+    {
+        if (client == null) return;
+        
+        try
+        {
+            AddLog("INFO", "Unsubscribing...");
+            await client.UnsubscribeAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", $"? Unsubscribe failed: {ex.Message}");
+        }
+    }
+    
+    private async Task GetSnapshotAsync()
+    {
+        if (client == null || !client.IsConnected || string.IsNullOrWhiteSpace(testServerId))
+            return;
+        
+        try
+        {
+            AddLog("INFO", $"Requesting snapshot for: {testServerId}");
+            var snapshot = await client.GetSnapshotAsync(testServerId, CancellationToken.None);
+            
+            if (snapshot != null)
+            {
+                latestData = snapshot;
+                AddLog("SUCCESS", $"? Snapshot received");
+                StateHasChanged();
+            }
+            else
+            {
+                AddLog("WARNING", "?? Snapshot returned null");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", $"? Snapshot failed: {ex.Message}");
+        }
+    }
+    
+    private void ClearLogs()
+    {
+        logMessages.Clear();
+        messageCount = 0;
+        latestData = null;
+        AddLog("INFO", "Logs cleared");
+    }
+    
+    // Event Handlers
+    private void OnResourceUpdate(object? sender, GameServer.Docker.Client.Interfaces.ServerResourceUsage usage)
+    {
+        InvokeAsync(() =>
+        {
+            messageCount++;
+            lastMessageTime = DateTime.Now;
+            latestData = usage;
+            
+            var cpuUsage = usage.CpuUsagePercent ?? 0;
+            var memUsage = usage.MemoryUsagePercent ?? 0;
+            
+            AddLog("DATA", $"?? ResourceUpdate: {usage.ServerId} - CPU: {cpuUsage:F2}%, Memory: {memUsage:F2}%");
+            StateHasChanged();
+        });
+    }
+    
+    private void OnSubscribed(object? sender, (string ServerId, int IntervalSeconds) info)
+    {
+        InvokeAsync(() =>
+        {
+            AddLog("SUCCESS", $"? Subscribed: {info.ServerId} ({info.IntervalSeconds}s interval)");
+            StateHasChanged();
+        });
+    }
+    
+    private void OnSubscribedMultiple(object? sender, (string[] ServerIds, int IntervalSeconds) info)
+    {
+        InvokeAsync(() =>
+        {
+            AddLog("SUCCESS", $"? Subscribed to {info.ServerIds.Length} servers ({info.IntervalSeconds}s interval)");
+            StateHasChanged();
+        });
+    }
+    
+    private void OnUnsubscribed(object? sender, EventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            AddLog("INFO", "Unsubscribed");
+            StateHasChanged();
+        });
+    }
+    
+    private void OnIntervalUpdated(object? sender, int intervalSeconds)
+    {
+        InvokeAsync(() =>
+        {
+            AddLog("INFO", $"Interval updated: {intervalSeconds}s");
+            StateHasChanged();
+        });
+    }
+    
+    private void OnError(object? sender, string error)
+    {
+        InvokeAsync(() =>
+        {
+            AddLog("ERROR", $"? Error: {error}");
+            StateHasChanged();
+        });
+    }
+    
+    private void AddLog(string type, string message)
+    {
+        logMessages.Add(new LogMessage
+        {
+            Timestamp = DateTime.Now,
+            Type = type,
+            Message = message
+        });
+        
+        // Keep only last 100 messages
+        if (logMessages.Count > 100)
+        {
+            logMessages.RemoveAt(0);
+        }
+    }
+    
+    private string FormatBytes(ulong bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:F2} {sizes[order]}";
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        if (client != null)
+        {
+            try
+            {
+                client.ResourceUpdateReceived -= OnResourceUpdate;
+                client.Subscribed -= OnSubscribed;
+                client.SubscribedMultiple -= OnSubscribedMultiple;
+                client.Unsubscribed -= OnUnsubscribed;
+                client.IntervalUpdated -= OnIntervalUpdated;
+                client.ErrorReceived -= OnError;
+                
+                if (client is IAsyncDisposable asyncDisposable)
+                {
+                    await asyncDisposable.DisposeAsync();
+                }
+                else if (client is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
+            catch { }
+        }
+    }
+    
+    private class LogMessage
+    {
+        public DateTime Timestamp { get; set; }
+        public string Type { get; set; } = "";
+        public string Message { get; set; } = "";
+    }
+}

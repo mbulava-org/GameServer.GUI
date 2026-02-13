@@ -14,14 +14,119 @@ permissions:
   contents: write
 
 jobs:
-  docker:
+   # Configuration job - Single source of truth for all workflow variables
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_VERSION: '10.0.x'
+      SEMANTIC_VERSION: '0.0.2.120'
+      PRIMARY_BRANCH: 'main'
+      FORCE_PUSH_CLIENT: false
+    outputs:
+      dotnet_version: ${{ steps.config.outputs.dotnet_version }}
+      semantic_version: ${{ steps.config.outputs.semantic_version }}
+      primary_branch: ${{ steps.config.outputs.primary_branch }}
+      push_client_output: ${{ steps.detect-api-changes.outputs.push_client_output }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to compare changes
+      
+      - name: Set configuration values
+        id: config
+        run: |
+          echo "dotnet_version=${{ env.DOTNET_VERSION }}" >> $GITHUB_OUTPUT
+          echo "semantic_version=${{ env.SEMANTIC_VERSION }}" >> $GITHUB_OUTPUT
+          echo "primary_branch=${{ env.PRIMARY_BRANCH }}" >> $GITHUB_OUTPUT
+      
+      - name: Detect API changes
+        id: detect-api-changes
+        run: |
+          # Check if this is a manual dispatch with force push
+          if [ "${{ env.FORCE_PUSH_CLIENT }}" == "true" ]; then
+            echo "::warning::Client package publish FORCED via manual dispatch"
+            echo "push_client_output=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # For pull requests, compare against base branch
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            HEAD_REF="${{ github.event.pull_request.head.sha }}"
+          else
+            # For pushes, compare current commit with previous
+            BASE_REF="${{ github.event.before }}"
+            HEAD_REF="${{ github.sha }}"
+          fi
+          
+          echo "Comparing $BASE_REF...$HEAD_REF"
+          
+          # Check if API-related files changed (Controllers, Models, DTOs, Interfaces that define contracts)
+          API_FILES_CHANGED=$(git diff --name-only $BASE_REF $HEAD_REF | grep -E '(Controllers/|Models/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
+          
+          if [ -n "$API_FILES_CHANGED" ]; then
+            echo "::warning::?? API signature changes detected - Client package will be published! HOPE YOU DIDN'T BREAK COMPATIBILITY!!!"
+            echo "API-related files changed:"
+            echo "$API_FILES_CHANGED"
+            # Show changed files in the warning
+            CHANGED_FILES_LIST=$(echo "$API_FILES_CHANGED" | tr '\n' ', ' | sed 's/,$//')
+            echo "::warning file=API Changes::Changed files: $CHANGED_FILES_LIST"
+            echo "push_client_output=true" >> $GITHUB_OUTPUT
+          else
+            echo "? No API-related files changed - skipping client publish"
+            echo "push_client_output=false" >> $GITHUB_OUTPUT
+          fi
+
+  backend:
+    needs: [setup]
     uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
     secrets: inherit
     with:
-      dotnet_version: '10.0.x'
-      semantic_version: '0.0.1.0'
+      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+      semantic_version: ${{ needs.setup.outputs.semantic_version }}
+      docker_context: './src/GameServer.Docker'
+      primary_branch: ${{ needs.setup.outputs.primary_branch }}
+      push_output: true
+      push_branch: true
+      version_tag: false
+      semantic_version_rollup_tag: false 
+      target_repo: 'gameserver-docker' 
+
+  agent-backend:
+    needs: [setup]
+    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    secrets: inherit
+    with:
+      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+      semantic_version: ${{ needs.setup.outputs.semantic_version }}
+      docker_context: './src/GameServer.Docker.Agent'
+      primary_branch: ${{ needs.setup.outputs.primary_branch }}
+      push_output: true
+      push_branch: true
+      version_tag: false
+      semantic_version_rollup_tag: false 
+      target_repo: 'gameserver-docker-agent'
+
+  client:
+    needs: setup
+    uses: mbulava-org/action-templates/.github/workflows/BuildTestPublish-DotNet.yaml@main
+    secrets: inherit
+    with:
+      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+      semantic_version: ${{ needs.setup.outputs.semantic_version }}
+      push_output: ${{ needs.setup.outputs.push_client_output == 'true' }}
+      push_branch: true
+      disable_tests: false
+
+  web-gui:
+    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    secrets: inherit
+    with:
+      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+      semantic_version: ${{ needs.setup.outputs.semantic_version }}
       docker_context: './src/GameServer.Web'
-      primary_branch : 'main'
+      primary_branch : ${{ needs.setup.outputs.primary_branch }}
       push_output: true
       push_branch: true
       version_tag: true

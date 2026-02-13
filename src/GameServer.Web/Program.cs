@@ -1,4 +1,5 @@
 using GameServer.Docker.Client;
+using GameServer.Docker.Client.Extensions;
 using GameServer.Web.Components;
 using Radzen;
 
@@ -19,12 +20,16 @@ namespace GameServer.Web
             builder.Services.AddRadzenComponents();
 
 
+            
             // Register WebSocket service as singleton
             //builder.Services.AddSingleton<GameServerWebSocketService>();
             builder.Services.AddHttpClient();
 
+            //Simplification???
             var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
-
+            var consoleUri = apiBaseUrl.Replace("https://", "wss://").Replace("http://", "ws://") + "hubs/console";
+            var resourcesUri = apiBaseUrl.Replace("https://", "wss://").Replace("http://", "ws://") + "hubs/resources";
+            //builder.Services.AddGameServerClients(apiBaseUrl, consoleUri, resourcesUri);
             builder.Services.AddHttpClient<IDashboardApi, DashboardApi>(client =>
             {
                 client.BaseAddress = new Uri(apiBaseUrl);
@@ -46,7 +51,18 @@ namespace GameServer.Web
                 client.BaseAddress = new Uri(apiBaseUrl);
             });
 
-            
+            // Register SignalR clients if URLs provided
+            if (!string.IsNullOrWhiteSpace(consoleUri))
+            {
+                builder.Services.AddContainerConsoleClient(consoleUri);
+            }
+
+            if (!string.IsNullOrWhiteSpace(resourcesUri))
+            {
+                builder.Services.AddResourceMonitoringClient(resourcesUri);
+            }
+
+
 
             var app = builder.Build();
 
