@@ -90,18 +90,66 @@ namespace GameServer.Docker.Client.Services
 
         private void RegisterEventHandlers()
         {
-            // Single resource update
-            _hubConnection.On<Interfaces.ServerResourceUsage>("ResourceUpdate", (usage) =>
+            // Single resource update - Use the auto-generated model from NSwag
+            _hubConnection.On<ServerResourceUsage>("ResourceUpdate", (usage) =>
             {
                 _logger?.LogTrace("Received resource update for server {ServerId}", usage.ServerId);
-                ResourceUpdateReceived?.Invoke(this, usage);
+                
+                // Convert to interface model for backward compatibility
+                var interfaceModel = new Interfaces.ServerResourceUsage
+                {
+                    ServerId = usage.ServerId,
+                    ServerName = usage.ServerId, // Backend doesn't have ServerName
+                    GameType = "", // Not in backend model
+                    IsRunning = usage.ServiceStatus == "Running",
+                    Status = usage.ServiceStatus,
+                    Timestamp = usage.Timestamp.DateTime,
+                    CpuUsagePercent = usage.RealTimeStats?.CpuUsagePercent,
+                    MemoryUsageBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryUsageBytes : null,
+                    MemoryLimitBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryLimitBytes : null,
+                    MemoryUsagePercent = usage.RealTimeStats?.MemoryUsagePercent,
+                    NetworkRxBytes = usage.RealTimeStats?.NetworkRxBytes,
+                    NetworkTxBytes = usage.RealTimeStats?.NetworkTxBytes,
+                    BlockReadBytes = usage.RealTimeStats?.BlockReadBytes,
+                    BlockWriteBytes = usage.RealTimeStats?.BlockWriteBytes,
+                    Replicas = usage.DesiredReplicas,
+                    HealthyReplicas = usage.RunningReplicas,
+                    ContainerId = usage.ContainerIds?.FirstOrDefault(),
+                    NodeName = null // Not in backend model
+                };
+                
+                ResourceUpdateReceived?.Invoke(this, interfaceModel);
             });
 
             // Batch of resource updates
-            _hubConnection.On<IEnumerable<Interfaces.ServerResourceUsage>>("ResourceUpdateBatch", (updates) =>
+            _hubConnection.On<IEnumerable<ServerResourceUsage>>("ResourceUpdateBatch", (updates) =>
             {
                 _logger?.LogTrace("Received resource update batch: {Count} servers", updates.Count());
-                ResourceUpdateBatchReceived?.Invoke(this, updates);
+                
+                // Convert to interface models
+                var interfaceModels = updates.Select(usage => new Interfaces.ServerResourceUsage
+                {
+                    ServerId = usage.ServerId,
+                    ServerName = usage.ServerId,
+                    GameType = "",
+                    IsRunning = usage.ServiceStatus == "Running",
+                    Status = usage.ServiceStatus,
+                    Timestamp = usage.Timestamp.DateTime,
+                    CpuUsagePercent = usage.RealTimeStats?.CpuUsagePercent,
+                    MemoryUsageBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryUsageBytes : null,
+                    MemoryLimitBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryLimitBytes : null,
+                    MemoryUsagePercent = usage.RealTimeStats?.MemoryUsagePercent,
+                    NetworkRxBytes = usage.RealTimeStats?.NetworkRxBytes,
+                    NetworkTxBytes = usage.RealTimeStats?.NetworkTxBytes,
+                    BlockReadBytes = usage.RealTimeStats?.BlockReadBytes,
+                    BlockWriteBytes = usage.RealTimeStats?.BlockWriteBytes,
+                    Replicas = usage.DesiredReplicas,
+                    HealthyReplicas = usage.RunningReplicas,
+                    ContainerId = usage.ContainerIds?.FirstOrDefault(),
+                    NodeName = null
+                }).ToList();
+                
+                ResourceUpdateBatchReceived?.Invoke(this, interfaceModels);
             });
 
             // Subscribed to single server
