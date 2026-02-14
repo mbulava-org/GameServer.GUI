@@ -13,7 +13,7 @@ namespace GameServer.Docker.Interfaces
         // Service Logs
         public Task<List<string>> GetServiceLogsAsync(string serverId, int tailLines = 100);
 
-        public Task DeleteServer(string serverId);
+        public Task DeleteServer(string serverId, bool deleteData = false);
         
         public Task StartServer(string serverId);
 

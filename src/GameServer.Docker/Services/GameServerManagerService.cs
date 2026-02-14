@@ -26,9 +26,46 @@ namespace GameServer.Docker.Services
             await dockerServiceHelper.CreateOrUpdateGameServerAsync(server, definition);
         }
 
-        public async Task DeleteServer(string Id)
+        public async Task DeleteServer(string Id, bool deleteData = false)
         {
-            throw new NotImplementedException();
+            logger.LogInformation("Deleting server {ServerId} (deleteData: {DeleteData})", Id, deleteData);
+
+            // Get server details before deletion (to get volume paths)
+            var server = await dockerServiceHelper.GetGameServerById(Id);
+            if (server == null)
+            {
+                logger.LogWarning("Server {ServerId} not found", Id);
+                throw new InvalidOperationException($"Server {Id} not found");
+            }
+
+            // Delete the Docker service
+            logger.LogInformation("Removing Docker service for server {ServerId}", Id);
+            await dockerServiceHelper.DeleteGameServerAsync(Id);
+
+            // Optionally delete data paths
+            if (deleteData && server.Volumes != null && server.Volumes.Any())
+            {
+                logger.LogInformation("Deleting data paths for server {ServerId}", Id);
+                foreach (var volume in server.Volumes)
+                {
+                    if (!string.IsNullOrEmpty(volume.Source) && Directory.Exists(volume.Source))
+                    {
+                        try
+                        {
+                            logger.LogInformation("Deleting directory: {Path}", volume.Source);
+                            Directory.Delete(volume.Source, recursive: true);
+                            logger.LogInformation("Successfully deleted directory: {Path}", volume.Source);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "Failed to delete directory: {Path}", volume.Source);
+                            // Continue with other deletions even if one fails
+                        }
+                    }
+                }
+            }
+
+            logger.LogInformation("Server {ServerId} deleted successfully", Id);
         }
       
         #region Service Logs

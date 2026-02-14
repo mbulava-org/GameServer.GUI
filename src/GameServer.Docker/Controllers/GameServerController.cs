@@ -356,12 +356,12 @@ namespace GameServer.Docker.Controllers
 
         [HttpDelete("{Id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> DeleteServer(string Id)
+        public async Task<IActionResult> DeleteServer(string Id, [FromQuery] bool deleteData = false)
         {
             try
             {
-                await _manager.DeleteServer(Id);
-                return Ok(new { message = "Server deleted successfully" });
+                await _manager.DeleteServer(Id, deleteData);
+                return Ok(new { message = "Server deleted successfully", deletedData = deleteData });
             }
             catch (Exception ex)
             {

@@ -108,16 +108,16 @@ jobs:
       semantic_version_rollup_tag: false 
       target_repo: 'gameserver-docker-agent'
 
-  client:
-    needs: setup
-    uses: mbulava-org/action-templates/.github/workflows/BuildTestPublish-DotNet.yaml@main
-    secrets: inherit
-    with:
-      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
-      semantic_version: ${{ needs.setup.outputs.semantic_version }}
-      push_output: ${{ needs.setup.outputs.push_client_output == 'true' }}
-      push_branch: false
-      disable_tests: false
+  # client:
+  #   needs: setup
+  #   uses: mbulava-org/action-templates/.github/workflows/BuildTestPublish-DotNet.yaml@main
+  #   secrets: inherit
+  #   with:
+  #     dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+  #     semantic_version: ${{ needs.setup.outputs.semantic_version }}
+  #     push_output: ${{ needs.setup.outputs.push_client_output == 'true' }}
+  #     push_branch: false
+  #     disable_tests: false
 
   web-gui:
     needs: [setup, client]

@@ -756,5 +756,74 @@ namespace GameServer.Docker.Services
             }
             await CreateOrUpdateGameServerAsync(server, definition, true);
         }
+
+        internal async Task DeleteGameServerAsync(string serverId, bool removeStorage = false)
+        {
+            logger.LogInformation("Deleting Docker service for server {ServerId}", serverId);
+
+            var server = await GetGameServerById(serverId);
+            if (server == null)
+            {
+                logger.LogWarning("Server {ServerId} not found", serverId);
+                return;
+            }
+
+            // Remove the Docker service
+            if (!string.IsNullOrEmpty(server.ServiceName))
+            {
+                try
+                {
+                    logger.LogInformation("Removing Docker service {ServiceName}", server.ServiceName);
+                    await client.Swarm.RemoveServiceAsync(server.ServiceName);
+                    logger.LogInformation("Docker service {ServiceName} removed successfully", server.ServiceName);
+                }
+                catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    logger.LogWarning("Docker service {ServiceName} not found (may already be deleted)", server.ServiceName);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to remove Docker service {ServiceName}", server.ServiceName);
+                    throw;
+                }
+            }
+
+            foreach (var v in server.Volumes)
+            {
+                var subFolder = volOptions?.Value?.SubPathFormat
+                    .Replace("{serverId}", server.ServerId)
+                    .Replace("{Source}", v.Target.Replace("/", ""))
+                    .Replace("{gameTypeKey}", server.GameType);
+                var mappedPath = Path.Combine(volOptions?.Value?.LocalStoragePath, subFolder);
+                if (removeStorage)
+                {
+                    logger.LogInformation("Deleting storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                    try
+                    {
+                        if (Directory.Exists(mappedPath))
+                        {
+                            Directory.Delete(mappedPath, recursive: true);
+                            logger.LogInformation("Storage for volume {Volume} deleted successfully", v.Target);
+                        }
+                        else
+                        {
+                            logger.LogWarning("Storage path {Path} for volume {Volume} does not exist", mappedPath, v.Target);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to delete storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                        // Continue with other deletions even if one fails
+                    }
+                }
+                else
+                {
+                    logger.LogInformation("Preserving storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                }
+
+            }
+           
+        }
     }
 }
+

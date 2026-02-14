@@ -4,9 +4,10 @@
 @using GameServer.Docker.Client.Services
 @using Radzen
 @using Radzen.Blazor
+@using Microsoft.Extensions.Logging
 @inject IOptions<GameServerDockerApi> ApiConfig
 @inject NotificationService NotificationService
-@inject IResourceMonitoringClient MonitoringClient
+@inject ILogger<ResourceMonitor> Logger
 @implements IAsyncDisposable
 
 <div class="resource-monitor">
@@ -14,19 +15,49 @@
         <div class="monitor-header">
             <div class="monitor-title">
                 <RadzenIcon Icon="monitoring" Style="font-size: 1.25rem;" />
-                <span class="ms-2">@(Title ?? "Resource Monitor")</span>
+                <span class="ms-2">@(Title ?? "Real-Time Resource Monitor (SignalR)")</span>
             </div>
             <div class="monitor-controls">
+                @if (lastUpdateTime.HasValue)
+                {
+                    <small class="text-muted me-2">
+                        Last update: @lastUpdateTime.Value.ToString("HH:mm:ss")
+                    </small>
+                }
+                @if (client?.MonitoredServerId != null)
+                {
+                    <small class="text-muted me-2">
+                        Monitoring: @client.MonitoredServerId.Substring(0, Math.Min(12, client.MonitoredServerId.Length))...
+                    </small>
+                }
+                @if (isConnected && currentMetrics != null)
+                {
+                    <RadzenButton Icon="refresh" 
+                                 Size="ButtonSize.Small" 
+                                 ButtonStyle="ButtonStyle.Primary"
+                                 Variant="Variant.Flat"
+                                 Click="@RefreshMetricsAsync"
+                                 Disabled="@isRefreshing"
+                                 title="Get latest snapshot" />
+                }
                 @if (isConnected)
                 {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Live" Variant="Variant.Flat" Size="BadgeSize.Small" 
-                                Shade="Shade.Lighter" class="pulse-badge" />
+                    @if (client?.MonitoredServerId != null)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Live" Variant="Variant.Flat" Size="BadgeSize.Small" 
+                                    Shade="Shade.Lighter" class="pulse-badge" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Connected" Variant="Variant.Flat" Size="BadgeSize.Small" 
+                                    Shade="Shade.Lighter" />
+                    }
                     <RadzenButton Icon="stop" 
                                  Size="ButtonSize.Small" 
                                  ButtonStyle="ButtonStyle.Danger"
                                  Variant="Variant.Flat"
                                  Click="@DisconnectAsync"
-                                 title="Stop monitoring" />
+                                 title="Disconnect" />
                 }
                 else if (isConnecting)
                 {
@@ -34,19 +65,63 @@
                 }
                 else
                 {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Stopped" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                    <RadzenButton Icon="play_arrow" 
+                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    <RadzenButton Icon="power" 
                                  Size="ButtonSize.Small" 
                                  ButtonStyle="ButtonStyle.Success"
                                  Variant="Variant.Flat"
                                  Click="@ConnectAsync"
-                                 title="Start monitoring" />
+                                 title="Connect to get metrics" />
                 }
             </div>
         </div>
 
-        @if (isConnected && currentMetrics != null && HasValidMetrics())
-        {
+        <!-- Metrics Grid - Always visible with loading overlay -->
+        <div class="metrics-grid-wrapper" style="position: relative;">
+            <!-- Loading Overlay -->
+            @if (!isConnected || currentMetrics == null || !HasValidMetrics())
+            {
+                <div class="loading-overlay">
+                    <div class="loading-content">
+                        @if (isConnecting)
+                        {
+                            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+                            <p class="loading-text">Connecting to SignalR hub...</p>
+                        }
+                        else if (!isConnected)
+                        {
+                            <RadzenIcon Icon="cloud_off" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                            <p class="loading-text">Not connected</p>
+                            <small class="text-muted">Will connect automatically</small>
+                        }
+                        else if (string.IsNullOrEmpty(ContainerId))
+                        {
+                            <RadzenIcon Icon="inbox" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                            <p class="loading-text">Waiting for server ID...</p>
+                            <small class="text-muted">No container to monitor</small>
+                        }
+                        else if (client?.MonitoredServerId == null)
+                        {
+                            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+                            <p class="loading-text">Subscribing to server feed...</p>
+                            <small class="text-muted">Establishing subscription for {ContainerId}</small>
+                        }
+                        else if (currentMetrics == null)
+                        {
+                            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+                            <p class="loading-text">Waiting for first update...</p>
+                            <small class="text-muted">Receiving real-time data from {ContainerId}</small>
+                        }
+                        else
+                        {
+                            <RadzenIcon Icon="analytics" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                            <p class="loading-text">No metrics available</p>
+                            <small class="text-muted">Container may not be running</small>
+                        }
+                    </div>
+                </div>
+            }
+
             <div class="metrics-grid">
                 <!-- CPU Usage -->
                 <RadzenCard class="metric-card">
@@ -171,21 +246,7 @@
                     </RadzenChart>
                 </div>
             }
-        }
-        else if (!isConnected && !isConnecting)
-        {
-            <div class="text-center py-5">
-                <RadzenIcon Icon="monitoring" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
-                <p class="text-muted mt-3">Click "Start monitoring" to view real-time resource metrics</p>
-            </div>
-        }
-        else if (isConnecting)
-        {
-            <div class="text-center py-5">
-                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
-                <p class="text-muted mt-3">Connecting to resource monitor...</p>
-            </div>
-        }
+        </div>
     </RadzenCard>
 </div>
 
@@ -344,6 +405,40 @@
         border-top: 1px solid var(--rz-border-color);
     }
 
+    /* Loading Overlay Styles */
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(var(--rz-base-rgb), 0.95);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        border-radius: 8px;
+    }
+
+    .loading-content {
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .loading-text {
+        margin-top: 1rem;
+        font-size: 1.125rem;
+        font-weight: 500;
+        color: var(--rz-text-color);
+    }
+
+    .loading-content small {
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+    }
+
     @@media (max-width: 768px) {
         .metrics-grid {
             grid-template-columns: 1fr;
@@ -354,82 +449,167 @@
 @code {
     [Parameter] public string? ContainerId { get; set; }
     [Parameter] public string? Title { get; set; }
-    [Parameter] public bool AutoConnect { get; set; } = false;
+    [Parameter] public bool AutoConnect { get; set; } = true;
     [Parameter] public bool ShowHistory { get; set; } = true;
     [Parameter] public int MaxHistoryPoints { get; set; } = 30;
-    [Parameter] public int UpdateIntervalSeconds { get; set; } = 2;
 
+    private IResourceMonitoringClient? client; // Own instance like test page!
+    private string? hubUrl;
     private bool isConnected = false;
     private bool isConnecting = false;
+    private bool isRefreshing = false;
     private CancellationTokenSource? connectionCts;
+    private DateTime? lastUpdateTime;
     
     private ServerResourceUsage? currentMetrics;
     private List<MetricPoint> cpuHistory = new();
     private List<MetricPoint> memoryHistory = new();
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnInitializedAsync()
     {
-        if (firstRender && AutoConnect && !string.IsNullOrEmpty(ContainerId))
+        // Build hub URL
+        var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
+        var wsUri = baseUri.Replace("https://", "wss://").Replace("http://", "ws://");
+        hubUrl = $"{wsUri}/hubs/resources";
+        
+        Logger.LogDebug("ResourceMonitor initialized with hub URL: {HubUrl}", hubUrl);
+
+        // Connect to hub immediately (don't wait for ContainerId)
+        if (AutoConnect)
         {
-            await Task.Delay(100);
-            await ConnectAsync();
+            await ConnectToHubAsync();
         }
     }
 
-    private async Task ConnectAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        if (string.IsNullOrEmpty(ContainerId))
+        // When ContainerId is available and we're connected, subscribe to its feed
+        if (!string.IsNullOrEmpty(ContainerId) && client != null && client.IsConnected)
         {
-            NotificationService.Notify(new NotificationMessage
+            // If we're already monitoring a different server, unsubscribe first
+            if (client.MonitoredServerId != null && client.MonitoredServerId != ContainerId)
             {
-                Severity = NotificationSeverity.Error,
-                Summary = "Connection Error",
-                Detail = "No container ID provided",
-                Duration = 3000
-            });
-            return;
+                Logger.LogInformation("ContainerId changed from {OldId} to {NewId}, resubscribing", 
+                    client.MonitoredServerId, ContainerId);
+                await UnsubscribeFromCurrentAsync();
+            }
+
+            // Subscribe to this server's feed if not already subscribed
+            if (client.MonitoredServerId != ContainerId)
+            {
+                await SubscribeToServerFeedAsync();
+            }
         }
+    }
 
-        if (isConnected || isConnecting) return;
+    private async Task RefreshMetricsAsync()
+    {
+        if (client == null || !client.IsConnected || string.IsNullOrEmpty(ContainerId) || isRefreshing)
+            return;
 
-        isConnecting = true;
+        isRefreshing = true;
         StateHasChanged();
 
         try
         {
-            // Subscribe to events
-            MonitoringClient.ResourceUpdateReceived += OnMetricsReceived;
-            MonitoringClient.ErrorReceived += OnErrorReceived;
-            MonitoringClient.Subscribed += OnMonitoringStarted;
-            MonitoringClient.Unsubscribed += OnMonitoringStopped;
-
-            // Connect to hub (if not already connected)
-            connectionCts = new CancellationTokenSource();
-            if (!MonitoringClient.IsConnected)
+            Logger.LogDebug("Requesting snapshot for container {ContainerId}", ContainerId);
+            var snapshot = await client.GetSnapshotAsync(ContainerId, CancellationToken.None);
+            
+            if (snapshot != null)
             {
-                await MonitoringClient.ConnectAsync(connectionCts.Token);
+                Logger.LogDebug("Snapshot received for container {ContainerId}", ContainerId);
+                // Process the snapshot like a regular update
+                OnMetricsReceived(this, snapshot);
             }
+            else
+            {
+                Logger.LogWarning("Snapshot returned null for container {ContainerId}", ContainerId);
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "No Data",
+                    Detail = "No metrics available for this container",
+                    Duration = 3000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh metrics for container {ContainerId}", ContainerId);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Refresh Failed",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            isRefreshing = false;
+            StateHasChanged();
+        }
+    }
 
-            // Start monitoring the container (subscribe)
-            await MonitoringClient.SubscribeToServerAsync(ContainerId, UpdateIntervalSeconds, connectionCts.Token);
+    /// <summary>
+    /// Connect to the SignalR hub (without subscribing to any server yet)
+    /// </summary>
+    private async Task ConnectToHubAsync()
+    {
+        if (isConnecting || (client != null && client.IsConnected))
+        {
+            Logger.LogDebug("Already connected or connecting to hub");
+            return;
+        }
+
+        isConnecting = true;
+        StateHasChanged();
+
+        Logger.LogInformation("Connecting to SignalR hub");
+
+        try
+        {
+            // Create OWN client instance
+            Logger.LogDebug("Creating new ResourceMonitoringClient instance");
+            client = new ResourceMonitoringClient(hubUrl!);
+            
+            // Subscribe to events
+            Logger.LogDebug("Subscribing to client events");
+            client.ResourceUpdateReceived += OnMetricsReceived;
+            client.ErrorReceived += OnErrorReceived;
+            Logger.LogDebug("Events subscribed to own client instance");
+
+            // Connect to hub
+            connectionCts = new CancellationTokenSource();
+            Logger.LogDebug("Connecting to SignalR hub");
+            await client.ConnectAsync(connectionCts.Token);
+            Logger.LogInformation("SignalR hub connected successfully");
 
             isConnected = true;
             isConnecting = false;
 
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Success,
-                Summary = "Monitoring Started",
-                Detail = $"Now monitoring {ContainerId}",
-                Duration = 3000
-            });
+            // NotificationService.Notify(new NotificationMessage
+            // {
+            //     Severity = NotificationSeverity.Success,
+            //     Summary = "Hub Connected",
+            //     Detail = "SignalR connection established",
+            //     Duration = 3000
+            // });
 
             StateHasChanged();
+
+            // If ContainerId is already known, subscribe to its feed
+            if (!string.IsNullOrEmpty(ContainerId))
+            {
+                await SubscribeToServerFeedAsync();
+            }
         }
         catch (Exception ex)
         {
             isConnecting = false;
             isConnected = false;
+
+            Logger.LogError(ex, "Failed to connect to SignalR hub");
 
             NotificationService.Notify(new NotificationMessage
             {
@@ -443,24 +623,110 @@
         }
     }
 
+    /// <summary>
+    /// Subscribe to a specific server's resource feed
+    /// </summary>
+    private async Task SubscribeToServerFeedAsync()
+    {
+        if (client == null || !client.IsConnected)
+        {
+            Logger.LogWarning("Cannot subscribe - not connected to hub");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ContainerId))
+        {
+            Logger.LogWarning("Cannot subscribe - no ContainerId provided");
+            return;
+        }
+
+        try
+        {
+            Logger.LogInformation("Subscribing to resource feed for container {ContainerId}", ContainerId);
+            
+            // Subscribe to this server's updates (1 second interval for real-time feel)
+            await client.SubscribeToServerAsync(ContainerId, intervalSeconds: 1, connectionCts?.Token ?? CancellationToken.None);
+            
+            Logger.LogInformation("Successfully subscribed to resource feed for {ContainerId}", ContainerId);
+
+            // NotificationService.Notify(new NotificationMessage
+            // {
+            //     Severity = NotificationSeverity.Success,
+            //     Summary = "Monitoring Started",
+            //     Detail = $"Now monitoring {ContainerId}",
+            //     Duration = 3000
+            // });
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to subscribe to resource feed for {ContainerId}", ContainerId);
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Subscription Failed",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+        }
+    }
+
+    /// <summary>
+    /// Unsubscribe from current server's feed
+    /// </summary>
+    private async Task UnsubscribeFromCurrentAsync()
+    {
+        if (client == null || !client.IsConnected)
+            return;
+
+        try
+        {
+            Logger.LogInformation("Unsubscribing from current resource feed");
+            await client.UnsubscribeAsync(CancellationToken.None);
+            
+            // Clear current metrics
+            currentMetrics = null;
+            lastUpdateTime = null;
+            cpuHistory.Clear();
+            memoryHistory.Clear();
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error during unsubscribe");
+        }
+    }
+
+    /// <summary>
+    /// Manual connect button action
+    /// </summary>
+    private async Task ConnectAsync()
+    {
+        await ConnectToHubAsync();
+    }
+
     private async Task DisconnectAsync()
     {
         try
         {
-            // Unsubscribe from events
-            MonitoringClient.ResourceUpdateReceived -= OnMetricsReceived;
-            MonitoringClient.ErrorReceived -= OnErrorReceived;
-            MonitoringClient.Subscribed -= OnMonitoringStarted;
-            MonitoringClient.Unsubscribed -= OnMonitoringStopped;
+            // Unsubscribe from server feed first
+            await UnsubscribeFromCurrentAsync();
 
-            // Stop monitoring (unsubscribe)
-            await MonitoringClient.UnsubscribeAsync(CancellationToken.None);
+            if (client != null)
+            {
+                // Unsubscribe from events
+                client.ResourceUpdateReceived -= OnMetricsReceived;
+                client.ErrorReceived -= OnErrorReceived;
 
-            // Note: Don't dispose the client - it's managed by DI container
+                Logger.LogInformation("Disconnected from SignalR hub");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore errors during disconnect
+            Logger.LogWarning(ex, "Error during disconnect");
         }
 
         connectionCts?.Cancel();
@@ -470,6 +736,7 @@
         isConnected = false;
         isConnecting = false;
         currentMetrics = null;
+        lastUpdateTime = null;
         cpuHistory.Clear();
         memoryHistory.Clear();
 
@@ -479,19 +746,27 @@
     // Event handlers
     private void OnMetricsReceived(object? sender, ServerResourceUsage metrics)
     {
+        Logger.LogDebug("Resource update received for server {ServerId}: CPU={CpuUsage}%, Memory={MemoryUsage}%", 
+            metrics.ServerId, metrics.CpuUsagePercent, metrics.MemoryUsagePercent);
+        
         InvokeAsync(() =>
         {
+            Logger.LogTrace("Processing resource update in UI thread");
             currentMetrics = metrics;
+            lastUpdateTime = DateTime.Now;
 
             // Update history
             var timestamp = DateTime.Now.ToString("HH:mm:ss");
             var cpu = GetCpuValue();
             var memory = GetMemoryValue();
             
+            Logger.LogTrace("Extracted metrics - CPU: {Cpu}, Memory: {Memory}", cpu, memory);
+            
             if (cpu > 0 || memory > 0)
             {
                 cpuHistory.Add(new MetricPoint { Timestamp = timestamp, Value = cpu });
                 memoryHistory.Add(new MetricPoint { Timestamp = timestamp, Value = memory });
+                Logger.LogTrace("Added to history. Total points: {Count}", cpuHistory.Count);
             }
 
             // Keep only last N points
@@ -501,6 +776,8 @@
                 memoryHistory.RemoveAt(0);
             }
 
+            var hasValidMetrics = HasValidMetrics();
+            Logger.LogDebug("HasValidMetrics: {HasValidMetrics}, updating UI", hasValidMetrics);
             StateHasChanged();
         });
     }
@@ -509,6 +786,7 @@
     {
         InvokeAsync(() =>
         {
+            Logger.LogError("Monitoring error received: {Error}", error);
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
@@ -516,32 +794,7 @@
                 Detail = error,
                 Duration = 5000
             });
-            StateHasChanged(); // Ensure UI updates
-        });
-    }
-
-    private void OnMonitoringStarted(object? sender, (string ServerId, int IntervalSeconds) info)
-    {
-        InvokeAsync(() =>
-        {
             StateHasChanged();
-        });
-    }
-
-    private void OnMonitoringStopped(object? sender, EventArgs e)
-    {
-        InvokeAsync(() =>
-        {
-            isConnected = false;
-            StateHasChanged();
-
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Warning,
-                Summary = "Monitoring Stopped",
-                Detail = "Resource monitoring has been stopped",
-                Duration = 3000
-            });
         });
     }
 
@@ -790,21 +1043,22 @@
 
     public async ValueTask DisposeAsync()
     {
-        // Clean up monitoring connection without attempting notifications
+        // Clean up OUR client instance
         try
         {
-            MonitoringClient.ResourceUpdateReceived -= OnMetricsReceived;
-            MonitoringClient.ErrorReceived -= OnErrorReceived;
-            MonitoringClient.Subscribed -= OnMonitoringStarted;
-            MonitoringClient.Unsubscribed -= OnMonitoringStopped;
-
-            await MonitoringClient.UnsubscribeAsync(CancellationToken.None);
-            
-            // Note: Don't dispose the client - it's managed by DI container
+            if (client != null)
+            {
+                client.ResourceUpdateReceived -= OnMetricsReceived;
+                client.ErrorReceived -= OnErrorReceived;
+                
+                // Dispose OUR client
+                await client.DisposeAsync();
+                Logger.LogDebug("ResourceMonitor client disposed");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore errors during disposal
+            Logger.LogWarning(ex, "Error during client disposal");
         }
 
         connectionCts?.Cancel();

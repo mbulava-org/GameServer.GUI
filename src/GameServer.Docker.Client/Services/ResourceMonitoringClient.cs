@@ -302,12 +302,42 @@ namespace GameServer.Docker.Client.Services
 
             try
             {
-                var result = await _hubConnection.InvokeAsync<Interfaces.ServerResourceUsage?>(
+                // Call hub and get the NSwag model (backend model)
+                var result = await _hubConnection.InvokeAsync<ServerResourceUsage?>(
                     "GetSnapshot",
                     serverId,
                     cancellationToken);
 
-                return result;
+                if (result == null)
+                {
+                    _logger?.LogWarning("Snapshot returned null for server {ServerId}", serverId);
+                    return null;
+                }
+
+                // Convert to interface model
+                var interfaceModel = new Interfaces.ServerResourceUsage
+                {
+                    ServerId = result.ServerId,
+                    ServerName = result.ServerId,
+                    GameType = "",
+                    IsRunning = result.ServiceStatus == "Running",
+                    Status = result.ServiceStatus,
+                    Timestamp = result.Timestamp.DateTime,
+                    CpuUsagePercent = result.RealTimeStats?.CpuUsagePercent,
+                    MemoryUsageBytes = result.RealTimeStats != null ? (long?)result.RealTimeStats.MemoryUsageBytes : null,
+                    MemoryLimitBytes = result.RealTimeStats != null ? (long?)result.RealTimeStats.MemoryLimitBytes : null,
+                    MemoryUsagePercent = result.RealTimeStats?.MemoryUsagePercent,
+                    NetworkRxBytes = result.RealTimeStats?.NetworkRxBytes,
+                    NetworkTxBytes = result.RealTimeStats?.NetworkTxBytes,
+                    BlockReadBytes = result.RealTimeStats?.BlockReadBytes,
+                    BlockWriteBytes = result.RealTimeStats?.BlockWriteBytes,
+                    Replicas = result.DesiredReplicas,
+                    HealthyReplicas = result.RunningReplicas,
+                    ContainerId = result.ContainerIds?.FirstOrDefault(),
+                    NodeName = null
+                };
+
+                return interfaceModel;
             }
             catch (Exception ex)
             {

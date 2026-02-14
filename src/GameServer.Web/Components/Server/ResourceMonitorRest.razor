@@ -284,30 +284,25 @@
 </style>
 
 @code {
-    [Parameter] public string? ServerId { get; set; }
-    [Parameter] public string? Title { get; set; }
-    [Parameter] public bool AutoRefresh { get; set; } = false;
-    [Parameter] public int RefreshIntervalSeconds { get; set; } = 30;
-    [Parameter] public bool ShowTimestamps { get; set; } = true;
+[Parameter] public string? ServerId { get; set; }
+[Parameter] public string? Title { get; set; }
+[Parameter] public bool ShowTimestamps { get; set; } = true;
 
-    private ServerResourceUsage? resourceUsage;
-    private bool isRefreshing = false;
-    private string? error;
-    private string lastUpdateTime = "Never";
-    private System.Threading.Timer? refreshTimer;
+private ServerResourceUsage? resourceUsage;
+private bool isRefreshing = false;
+private string? error;
+private string lastUpdateTime = "Never";
 
     protected override async Task OnInitializedAsync()
     {
-        if (AutoRefresh)
-        {
-            await RefreshAsync();
-            StartAutoRefresh();
-        }
+        // Load initial data
+        await RefreshAsync();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrEmpty(ServerId) && AutoRefresh && resourceUsage == null)
+        // Reload if ServerId changes
+        if (!string.IsNullOrEmpty(ServerId) && resourceUsage == null)
         {
             await RefreshAsync();
         }
@@ -344,15 +339,6 @@
         }
     }
 
-    private void StartAutoRefresh()
-    {
-        refreshTimer?.Dispose();
-        refreshTimer = new System.Threading.Timer(async _ =>
-        {
-            await InvokeAsync(async () => await RefreshAsync());
-        }, null, TimeSpan.FromSeconds(RefreshIntervalSeconds), TimeSpan.FromSeconds(RefreshIntervalSeconds));
-    }
-
     private BadgeStyle GetServiceStatusBadge()
     {
         if (resourceUsage == null) return BadgeStyle.Secondary;
@@ -384,9 +370,5 @@
     {
         return (nanoCpus / 1_000_000_000.0).ToString("0.##");
     }
-
-    public void Dispose()
-    {
-        refreshTimer?.Dispose();
-    }
 }
+

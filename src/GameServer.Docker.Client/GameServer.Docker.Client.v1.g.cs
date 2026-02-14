@@ -385,11 +385,11 @@ namespace GameServer.Docker.Client
         System.Threading.Tasks.Task StopServerAsync(string id, System.Threading.CancellationToken cancellationToken);
 
         /// <exception cref="GameServerApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task DeleteServerAsync(string id);
+        System.Threading.Tasks.Task DeleteServerAsync(string id, bool? deleteData);
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <exception cref="GameServerApiException">A server side error occurred.</exception>
-        System.Threading.Tasks.Task DeleteServerAsync(string id, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task DeleteServerAsync(string id, bool? deleteData, System.Threading.CancellationToken cancellationToken);
 
     }
 
@@ -1744,14 +1744,14 @@ namespace GameServer.Docker.Client
         }
 
         /// <exception cref="GameServerApiException">A server side error occurred.</exception>
-        public virtual System.Threading.Tasks.Task DeleteServerAsync(string id)
+        public virtual System.Threading.Tasks.Task DeleteServerAsync(string id, bool? deleteData)
         {
-            return DeleteServerAsync(id, System.Threading.CancellationToken.None);
+            return DeleteServerAsync(id, deleteData, System.Threading.CancellationToken.None);
         }
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <exception cref="GameServerApiException">A server side error occurred.</exception>
-        public virtual async System.Threading.Tasks.Task DeleteServerAsync(string id, System.Threading.CancellationToken cancellationToken)
+        public virtual async System.Threading.Tasks.Task DeleteServerAsync(string id, bool? deleteData, System.Threading.CancellationToken cancellationToken)
         {
             if (id == null)
                 throw new System.ArgumentNullException("id");
@@ -1769,6 +1769,12 @@ namespace GameServer.Docker.Client
                     // Operation Path: "api/servers/{Id}"
                     urlBuilder_.Append("api/servers/");
                     urlBuilder_.Append(System.Uri.EscapeDataString(ConvertToString(id, System.Globalization.CultureInfo.InvariantCulture)));
+                    urlBuilder_.Append('?');
+                    if (deleteData != null)
+                    {
+                        urlBuilder_.Append(System.Uri.EscapeDataString("deleteData")).Append('=').Append(System.Uri.EscapeDataString(ConvertToString(deleteData, System.Globalization.CultureInfo.InvariantCulture))).Append('&');
+                    }
+                    urlBuilder_.Length--;
 
                     PrepareRequest(client_, request_, urlBuilder_);
 
