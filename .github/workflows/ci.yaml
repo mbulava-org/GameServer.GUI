@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOTNET_VERSION: '10.0.x'
-      SEMANTIC_VERSION: '0.0.2.120'
+      SEMANTIC_VERSION: '0.0.3.120'
       PRIMARY_BRANCH: 'main'
       FORCE_PUSH_CLIENT: false
     outputs:
@@ -108,6 +108,7 @@ jobs:
       semantic_version_rollup_tag: false 
       target_repo: 'gameserver-docker-agent'
 
+  #The doesn't need to build/publish, it's a simple project reference in the Web-GUI now.
   # client:
   #   needs: setup
   #   uses: mbulava-org/action-templates/.github/workflows/BuildTestPublish-DotNet.yaml@main
@@ -120,7 +121,7 @@ jobs:
   #     disable_tests: false
 
   web-gui:
-    needs: [setup, client]
+    needs: [setup]
     uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
     secrets: inherit
     with:

@@ -1,31 +1,36 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">GameServer.Web</a>
+﻿@using System.Reflection
+@inject NavigationManager NavigationManager
+
+<div class="nav-container">
+    <div class="nav-header">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" class="px-3 py-3">
+            <RadzenIcon Icon="dns" Style="font-size: 2rem; color: var(--rz-primary);" />
+            <RadzenText TextStyle="TextStyle.H6" class="mb-0" Style="color: #212529; font-weight: 600;">Game Server Manager</RadzenText>
+        </RadzenStack>
+    </div>
+
+    <div class="nav-scrollable">
+        <RadzenPanelMenu>
+            <RadzenPanelMenuItem Text="Home" Icon="home" Path="/" />
+            <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/servers" />
+            <RadzenPanelMenuItem Text="Game Types" Icon="sports_esports" Path="/gametypes" />
+        </RadzenPanelMenu>
+    </div>
+
+    <div class="nav-footer">
+        <RadzenStack Gap="0.25rem" class="px-3 py-3">
+            <RadzenText TextStyle="TextStyle.Caption" class="mb-0" Style="color: #6c757d;">
+                @AssemblyName @AssemblyVersion
+            </RadzenText>
+            <RadzenText TextStyle="TextStyle.Caption" class="mb-0" Style="color: #6c757d;">
+                &copy; @DateTime.Now.Year. All rights reserved.
+            </RadzenText>
+        </RadzenStack>
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
-
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="servers">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Dashboard
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="gametypes">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Game Types
-            </NavLink>
-        </div>
-      
-    </nav>
-</div>
+@code {
+    private string AssemblyName => Assembly.GetExecutingAssembly().GetName().Name ?? "GameServer";
+    private string AssemblyVersion => Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+}
 
