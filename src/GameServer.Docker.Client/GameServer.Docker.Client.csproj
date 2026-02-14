@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Title>GameServer Docker Api Client</Title>
+    <Description>Client Library for the GameServer.Docker WebApi</Description>
+    <PackageProjectUrl>https://github.com/mbulava-org/GameServer.Docker</PackageProjectUrl>
+    <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">True</GeneratePackageOnBuild>
+    <PackageReadmeFile>ReadMe.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="NSwag.MSBuild" Version="14.6.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+
+
+
+  <ItemGroup>
+    <None Update="ReadMe.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+	<Target Name="NSwag" AfterTargets="BeforeBuild" Inputs="nswag.json" Outputs="**/*.g.cs">
+		<Copy SourceFiles="@(ReferencePath)" DestinationFolder="$(OutDir)References" />
+		<Exec Command="$(NSwagExe_Net100) run nswag.json /variables:Configuration=$(Configuration),OutDir=$(OutDir)" />
+		<RemoveDir Directories="$(OutDir)References" />
+		<ItemGroup>
+			<Compile Include="**/*.g.cs" Exclude="@(Compile)" />
+		</ItemGroup>
+	</Target>
+
+</Project>

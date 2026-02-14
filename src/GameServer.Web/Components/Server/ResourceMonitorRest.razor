@@ -1,0 +1,374 @@
+@using GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+@inject IGameServerApi ServerApi
+@inject NotificationService NotificationService
+
+<div class="resource-monitor-rest">
+    <RadzenCard class="monitor-card">
+        <div class="monitor-header">
+            <div class="monitor-title">
+                <RadzenIcon Icon="refresh" Style="font-size: 1.25rem;" />
+                <span class="ms-2">@(Title ?? "Resource Usage (REST API)")</span>
+            </div>
+            <div class="monitor-controls">
+                @if (isRefreshing)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Refreshing..." Variant="Variant.Flat" Size="BadgeSize.Small" />
+                }
+                else
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"Updated {lastUpdateTime}")" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                }
+                <RadzenButton Icon="refresh" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Primary"
+                             Variant="Variant.Flat"
+                             Click="@RefreshAsync"
+                             Disabled="@isRefreshing"
+                             title="Refresh now" />
+            </div>
+        </div>
+
+        @if (resourceUsage != null)
+        {
+            <div class="metrics-grid">
+                <!-- Service Status -->
+                <RadzenCard class="metric-card">
+                    <div class="metric-header">
+                        <RadzenIcon Icon="dns" class="metric-icon" Style="color: var(--rz-primary);" />
+                        <span class="metric-label">Service Status</span>
+                    </div>
+                    <div class="service-status">
+                        <div class="status-item">
+                            <span class="status-label">Status:</span>
+                            <RadzenBadge BadgeStyle="@GetServiceStatusBadge()" Text="@resourceUsage.ServiceStatus" />
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Replicas:</span>
+                            <span class="status-value">@resourceUsage.RunningReplicas / @resourceUsage.DesiredReplicas</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Health:</span>
+                            <RadzenProgressBarCircular Value="@resourceUsage.ReplicaHealthPercent" 
+                                                       ShowValue="true" 
+                                                       Size="ProgressBarCircularSize.Small">
+                                <Template>@($"{resourceUsage.ReplicaHealthPercent:F0}%")</Template>
+                            </RadzenProgressBarCircular>
+                        </div>
+                        @if (resourceUsage.FailedTasks > 0)
+                        {
+                            <div class="status-item">
+                                <span class="status-label">Failed Tasks:</span>
+                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="@resourceUsage.FailedTasks.ToString()" />
+                            </div>
+                        }
+                    </div>
+                </RadzenCard>
+
+                <!-- CPU Limits -->
+                @if (resourceUsage.ServiceCpuLimitPerReplica.HasValue)
+                {
+                    <RadzenCard class="metric-card">
+                        <div class="metric-header">
+                            <RadzenIcon Icon="developer_board" class="metric-icon" Style="color: var(--rz-info);" />
+                            <span class="metric-label">CPU Limits</span>
+                        </div>
+                        <div class="limits-info">
+                            <div class="limit-item">
+                                <span class="limit-label">Per Replica:</span>
+                                <span class="limit-value">@FormatCpuNano(resourceUsage.ServiceCpuLimitPerReplica.Value) CPUs</span>
+                            </div>
+                            @if (resourceUsage.ServiceCpuReservationPerReplica.HasValue)
+                            {
+                                <div class="limit-item">
+                                    <span class="limit-label">Reserved:</span>
+                                    <span class="limit-value">@FormatCpuNano(resourceUsage.ServiceCpuReservationPerReplica.Value) CPUs</span>
+                                </div>
+                            }
+                            @if (resourceUsage.DesiredReplicas > 1)
+                            {
+                                <div class="limit-item">
+                                    <span class="limit-label">Total Limit:</span>
+                                    <span class="limit-value">@FormatCpuNano(resourceUsage.ServiceCpuLimitTotal ?? 0) CPUs</span>
+                                </div>
+                            }
+                        </div>
+                    </RadzenCard>
+                }
+
+                <!-- Memory Limits -->
+                @if (resourceUsage.ServiceMemoryLimitPerReplica.HasValue)
+                {
+                    <RadzenCard class="metric-card">
+                        <div class="metric-header">
+                            <RadzenIcon Icon="memory" class="metric-icon" Style="color: var(--rz-warning);" />
+                            <span class="metric-label">Memory Limits</span>
+                        </div>
+                        <div class="limits-info">
+                            <div class="limit-item">
+                                <span class="limit-label">Per Replica:</span>
+                                <span class="limit-value">@FormatBytes(resourceUsage.ServiceMemoryLimitPerReplica.Value)</span>
+                            </div>
+                            @if (resourceUsage.ServiceMemoryReservationPerReplica.HasValue)
+                            {
+                                <div class="limit-item">
+                                    <span class="limit-label">Reserved:</span>
+                                    <span class="limit-value">@FormatBytes(resourceUsage.ServiceMemoryReservationPerReplica.Value)</span>
+                                </div>
+                            }
+                            @if (resourceUsage.DesiredReplicas > 1)
+                            {
+                                <div class="limit-item">
+                                    <span class="limit-label">Total Limit:</span>
+                                    <span class="limit-value">@FormatBytes(resourceUsage.ServiceMemoryLimitTotal ?? 0)</span>
+                                </div>
+                            }
+                        </div>
+                    </RadzenCard>
+                }
+
+                <!-- Container IDs -->
+                @if (resourceUsage.ContainerIds?.Any() == true)
+                {
+                    <RadzenCard class="metric-card">
+                        <div class="metric-header">
+                            <RadzenIcon Icon="view_in_ar" class="metric-icon" Style="color: var(--rz-success);" />
+                            <span class="metric-label">Containers (@resourceUsage.ContainerIds.Count)</span>
+                        </div>
+                        <div class="container-ids">
+                            @foreach (var containerId in resourceUsage.ContainerIds)
+                            {
+                                <div class="container-id-item">
+                                    <code>@containerId.Substring(0, Math.Min(12, containerId.Length))</code>
+                                </div>
+                            }
+                        </div>
+                    </RadzenCard>
+                }
+            </div>
+
+            @if (ShowTimestamps)
+            {
+                <div class="timestamps-section mt-3">
+                    <small class="text-muted">
+                        @if (resourceUsage.ServiceCreatedAt.HasValue)
+                        {
+                            <div>Created: @resourceUsage.ServiceCreatedAt.Value.ToLocalTime().ToString("g")</div>
+                        }
+                        @if (resourceUsage.ServiceUpdatedAt.HasValue)
+                        {
+                            <div>Updated: @resourceUsage.ServiceUpdatedAt.Value.ToLocalTime().ToString("g")</div>
+                        }
+                        @if (resourceUsage.UpdateState != null)
+                        {
+                            <div>Update State: @resourceUsage.UpdateState</div>
+                        }
+                    </small>
+                </div>
+            }
+        }
+        else if (error != null)
+        {
+            <div class="text-center py-4">
+                <RadzenIcon Icon="error" Style="font-size: 3rem; color: var(--rz-danger);" />
+                <p class="text-muted mt-2">@error</p>
+                <RadzenButton Text="Retry" Icon="refresh" Click="@RefreshAsync" />
+            </div>
+        }
+        else if (!isRefreshing)
+        {
+            <div class="text-center py-4">
+                <RadzenIcon Icon="info" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                <p class="text-muted mt-2">Click refresh to load resource usage</p>
+            </div>
+        }
+    </RadzenCard>
+</div>
+
+<style>
+    .resource-monitor-rest {
+        width: 100%;
+    }
+
+    .monitor-card {
+        overflow: visible;
+    }
+
+    .monitor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--rz-border-color);
+    }
+
+    .monitor-title {
+        display: flex;
+        align-items: center;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--rz-text-color);
+    }
+
+    .monitor-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+
+    .metric-card {
+        padding: 1rem;
+    }
+
+    .metric-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--rz-border-color);
+    }
+
+    .metric-icon {
+        font-size: 1.25rem;
+    }
+
+    .metric-label {
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .service-status, .limits-info, .container-ids {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .status-item, .limit-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .status-label, .limit-label {
+        font-size: 0.875rem;
+        color: var(--rz-text-secondary-color);
+        font-weight: 500;
+    }
+
+    .status-value, .limit-value {
+        font-weight: 600;
+        color: var(--rz-text-color);
+    }
+
+    .container-id-item {
+        padding: 0.5rem;
+        background: var(--rz-base-50);
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.875rem;
+    }
+
+    .timestamps-section {
+        padding-top: 1rem;
+        border-top: 1px solid var(--rz-border-color);
+    }
+</style>
+
+@code {
+[Parameter] public string? ServerId { get; set; }
+[Parameter] public string? Title { get; set; }
+[Parameter] public bool ShowTimestamps { get; set; } = true;
+
+private ServerResourceUsage? resourceUsage;
+private bool isRefreshing = false;
+private string? error;
+private string lastUpdateTime = "Never";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load initial data
+        await RefreshAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload if ServerId changes
+        if (!string.IsNullOrEmpty(ServerId) && resourceUsage == null)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (string.IsNullOrEmpty(ServerId)) return;
+
+        isRefreshing = true;
+        error = null;
+        StateHasChanged();
+
+        try
+        {
+            resourceUsage = await ServerApi.GetResourceUsageAsync(ServerId);
+            lastUpdateTime = DateTime.Now.ToString("HH:mm:ss");
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to load resource usage: {ex.Message}";
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Resource Usage Error",
+                Detail = error,
+                Duration = 4000
+            });
+        }
+        finally
+        {
+            isRefreshing = false;
+            StateHasChanged();
+        }
+    }
+
+    private BadgeStyle GetServiceStatusBadge()
+    {
+        if (resourceUsage == null) return BadgeStyle.Secondary;
+
+        return resourceUsage.ServiceStatus?.ToLower() switch
+        {
+            "running" => BadgeStyle.Success,
+            "starting" => BadgeStyle.Info,
+            "stopped" => BadgeStyle.Secondary,
+            "scaling down" => BadgeStyle.Warning,
+            _ => BadgeStyle.Light
+        };
+    }
+
+    private string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string FormatCpuNano(ulong nanoCpus)
+    {
+        return (nanoCpus / 1_000_000_000.0).ToString("0.##");
+    }
+}
+

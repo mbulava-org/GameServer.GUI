@@ -1,0 +1,56 @@
+@page "/servers/{ServerId}/console"
+@using GameServer.Web.Components.Server
+@inject NavigationManager Navigation
+
+<PageTitle>Server Console - @ServerId</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <RadzenButton Icon="arrow_back" 
+                          ButtonStyle="ButtonStyle.Light" 
+                          Size="ButtonSize.Small"
+                          Click="@(() => Navigation.NavigateTo($"/servers/{ServerId}"))" 
+                          class="me-2" />
+            <h3 class="d-inline-block mb-0">Server Console</h3>
+        </div>
+    </div>
+
+    <RadzenCard>
+        <ContainerConsole ServerId="@ServerId" AutoConnect="true" />
+    </RadzenCard>
+
+    <div class="mt-3">
+        <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat">
+            <div class="d-flex align-items-start gap-2">
+                <RadzenIcon Icon="info" Style="font-size: 1.25rem;" />
+                <div>
+                    <strong>Console Tips:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li><kbd>Enter</kbd> - Send command</li>
+                        <li><kbd>?</kbd> <kbd>?</kbd> - Navigate command history</li>
+                        <li><kbd>Ctrl+L</kbd> - Clear console</li>
+                        <li><kbd>Ctrl+C</kbd> - Disconnect from console</li>
+                    </ul>
+                </div>
+            </div>
+        </RadzenAlert>
+    </div>
+</div>
+
+<style>
+    kbd {
+        display: inline-block;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+        font-family: 'Courier New', monospace;
+        background: var(--rz-base-200);
+        border: 1px solid var(--rz-border-color);
+        border-radius: 3px;
+        box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+    }
+</style>
+
+@code {
+    [Parameter] public string ServerId { get; set; } = "";
+}

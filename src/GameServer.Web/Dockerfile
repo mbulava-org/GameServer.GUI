@@ -14,14 +14,32 @@ ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
-COPY . .
-RUN dotnet restore "./GameServer.Web.csproj"
-RUN dotnet build "./GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
+COPY ["./src/GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
+COPY ["./src/GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
+COPY ["./src/GameServer.Docker.Client/nswag.json", "GameServer.Docker.Client/"]
+COPY ["./src/GameServer.Docker/GameServer.Docker.csproj", "GameServer.Docker/"]
+
+RUN dotnet restore "GameServer.Docker/GameServer.Docker.csproj"	
+RUN dotnet restore "GameServer.Docker.Client/GameServer.Docker.Client.csproj"	
+RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
+
+COPY ["./src/GameServer.Web/", "GameServer.Web/"]
+COPY ["./src/GameServer.Docker.Client/", "GameServer.Docker.Client/"]
+COPY ["./src/GameServer.Docker/", "GameServer.Docker/"]
+
+# Build GameServer.Docker first (required for NSwag code generation)
+RUN dotnet build "GameServer.Docker/GameServer.Docker.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
+
+# Build GameServer.Docker.Client (NSwag will generate client code from GameServer.Docker API)
+RUN dotnet build "GameServer.Docker.Client/GameServer.Docker.Client.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
+
+# Build GameServer.Web (final application)
+RUN dotnet build "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "/src/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:Version=$VERSION_NUMBER
+RUN dotnet publish "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:Version=$VERSION_NUMBER
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final

@@ -7,8 +7,10 @@
 @using System.Text.Json
 @inject IGameServerApi ServerApi
 @inject IGameTypeApi GameTypeApi
-@inject NavigationManager Nav
+@inject IGameTypeExtendedMetadataApi ExtendedMetadataApi
+@inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
+@inject DialogService DialogService
 
 <PageTitle>@(server?.Name ?? "Server Details")</PageTitle>
 
@@ -26,7 +28,7 @@ else if (server == null)
       <RadzenIcon Icon="error" Style="font-size: 4rem; color: var(--rz-danger);" />
       <h3 class="mt-3">Server Not Found</h3>
       <p>The requested server could not be found.</p>
-      <RadzenButton Text="Back to Dashboard" Click='@(() => Nav.NavigateTo("/servers"))' />
+      <RadzenButton Text="Back to Dashboard" Click='@(() => NavigationManager.NavigateTo("/servers"))' />
     </div>
   </RadzenCard>
 }
@@ -38,7 +40,7 @@ else
         <div class="d-flex align-items-center gap-3">
           <RadzenButton Icon="arrow_back" 
                         ButtonStyle="ButtonStyle.Light" 
-                        Click='@(() => Nav.NavigateTo("/servers"))' 
+                        Click='@(() => NavigationManager.NavigateTo("/servers"))' 
                         Size="ButtonSize.Small" />
           @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
           {
@@ -67,7 +69,7 @@ else
           <RadzenButton Text="Edit" 
                         Icon="edit" 
                         ButtonStyle="ButtonStyle.Primary" 
-                        Click="@(() => Nav.NavigateTo($"/servers/{ServerId}/edit"))" />
+                        Click="@(() => NavigationManager.NavigateTo($"/servers/{ServerId}/edit"))" />
           <RadzenButton Text='@(IsServerRunning(server.Status) ? "Stop" : "Start")' 
                         Icon='@(IsServerRunning(server.Status) ? "stop" : "play_arrow")' 
                         Click="ToggleServerState" 
@@ -177,7 +179,20 @@ else
               </div>
 
               <div class="column-right">
-                <ResourceMonitor ServerId="@ServerId" AutoStart="true" />
+                <div class="monitors-stack">
+                  <!-- REST API Monitor (simple polling, manual refresh) -->
+                  <ResourceMonitorRest ServerId="@ServerId"
+                                      Title="REST API Monitor"
+                                      ShowTimestamps="true" />
+                  
+                  <!-- SignalR Monitor (detailed, on-demand) -->
+                  <div class="mt-3">
+                    <ResourceMonitor ContainerId="@ServerId" 
+                                    Title="Real-Time Monitor (SignalR)"
+                                    AutoConnect="true" 
+                                    ShowHistory="true" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -194,6 +209,28 @@ else
             <ServerFileManager ServerId="@ServerId" Server="@server" />
           </div>
         </RadzenTabsItem>
+
+        @if (IsTtyEnabled())
+        {
+          <RadzenTabsItem Text="TTY Console">
+            <div class="tab-content">
+              @if (IsServerRunning(server?.Status))
+              {
+                <ContainerConsole ServerId="@(containerId ?? ServerId)" 
+                                 AutoConnect="false" />
+              }
+              else
+              {
+                <RadzenCard>
+                  <div class="text-center py-5">
+                    <RadzenIcon Icon="info" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                    <p class="text-muted mt-3">Server must be running to access the console. Start the server first.</p>
+                  </div>
+                </RadzenCard>
+              }
+            </div>
+          </RadzenTabsItem>
+        }
       </Tabs>
     </RadzenTabs>
   </div>
@@ -211,6 +248,12 @@ else
   .details-grid {
     display: grid;
     grid-template-columns: 1fr 400px;
+    gap: 1rem;
+  }
+
+  .monitors-stack {
+    display: flex;
+    flex-direction: column;
     gap: 1rem;
   }
 
@@ -398,61 +441,77 @@ else
 </style>
 
 @code {
-    [Parameter] public string ServerId { get; set; } = "";
+[Parameter] public string ServerId { get; set; } = "";
 
-    private string VanityDomain => "games.dev.bulavafamily.com";
+private string VanityDomain => "games.dev.bulavafamily.com";
 
-    private GameServer? server;
-    private GameTypeDefinition? gameType;
-    private bool loading = true;
-    private bool actionInProgress = false;
-    private int selectedTab = 0;
-    private string? publicIp;
+private GameServer? server;
+private GameTypeDefinition? gameType;
+private GameTypeExtendedMetadata? extendedMetadata;
+private ServerResourceUsage? resourceUsage;
+private bool loading = true;
+private bool actionInProgress = false;
+private int selectedTab = 0;
+private string? publicIp;
+private string? containerId;
 
-    protected override async Task OnInitializedAsync()
+protected override async Task OnInitializedAsync()
+{
+    await LoadServerAsync();
+    await LoadPublicIpAsync();
+    await LoadResourceUsageAsync();
+}
+
+protected override async Task OnParametersSetAsync()
+{
+    if (!string.IsNullOrEmpty(ServerId))
     {
         await LoadServerAsync();
-        await LoadPublicIpAsync();
+        await LoadResourceUsageAsync();
     }
+}
 
-    protected override async Task OnParametersSetAsync()
+private async Task LoadServerAsync()
+{
+    loading = true;
+    try
     {
-        if (!string.IsNullOrEmpty(ServerId))
-        {
-            await LoadServerAsync();
-        }
-    }
+        server = await ServerApi.GetAsync(ServerId);
 
-    private async Task LoadServerAsync()
-    {
-        loading = true;
-        try
+        if (server != null && !string.IsNullOrWhiteSpace(server.GameType))
         {
-            server = await ServerApi.GetAsync(ServerId);
-
-            if (server != null && !string.IsNullOrWhiteSpace(server.GameType))
+            // Load the game type definition to get thumbnail
+            var allGameTypes = await GameTypeApi.GetAllAsync();
+            gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
+                
+            // Load extended metadata to check TTY setting
+            try
             {
-                // Load the game type definition to get thumbnail
-                var allGameTypes = await GameTypeApi.GetAllAsync();
-                gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
+                extendedMetadata = await ExtendedMetadataApi.GetAsync(server.GameType);
+            }
+            catch
+            {
+                // Extended metadata is optional
+                extendedMetadata = null;
             }
         }
-        catch (Exception ex)
-        {
-            NotificationService.Notify(new NotificationMessage 
-      { 
-        Severity = NotificationSeverity.Error, 
-        Summary = "Error", 
-        Detail = $"Failed to load server: {ex.Message}", 
-        Duration = 5000 
-      });
-            server = null;
-        }
-        finally
-        {
-            loading = false;
-        }
     }
+    catch (Exception ex)
+    {
+        NotificationService.Notify(new NotificationMessage 
+  { 
+    Severity = NotificationSeverity.Error, 
+    Summary = "Error", 
+    Detail = $"Failed to load server: {ex.Message}", 
+    Duration = 5000 
+  });
+        server = null;
+    }
+    finally
+    {
+        loading = false;
+    }
+}
 
     private async Task LoadPublicIpAsync()
     {
@@ -464,6 +523,30 @@ else
         catch
         {
             publicIp = "localhost";
+        }
+    }
+
+    private async Task LoadResourceUsageAsync()
+    {
+        try
+        {
+            resourceUsage = await ServerApi.GetResourceUsageAsync(ServerId);
+            
+            // Extract the first container ID if available
+            if (resourceUsage?.ContainerIds?.Any() == true)
+            {
+                containerId = resourceUsage.ContainerIds.First();
+            }
+            else
+            {
+                // Fallback to ServerId if no containers yet
+                containerId = ServerId;
+            }
+        }
+        catch
+        {
+            // If resource usage fails, fall back to using ServerId
+            containerId = ServerId;
         }
     }
 
@@ -512,15 +595,68 @@ else
     {
         if (server == null) return;
 
-        NotificationService.Notify(new NotificationMessage 
-    { 
-      Severity = NotificationSeverity.Info, 
-      Summary = "Info", 
-      Detail = "Server deletion feature is currently disabled.", 
-      Duration = 3000 
-    });
+        // Show confirmation dialog
+        var confirmed = await DialogService.Confirm(
+            "Are you sure you want to delete this server?",
+            "Delete Server",
+            new ConfirmOptions
+            {
+                OkButtonText = "Delete",
+                CancelButtonText = "Cancel",
+                AutoFocusFirstElement = true
+            });
 
-        actionInProgress = false;
+        if (confirmed != true)
+            return;
+
+        // Show second dialog to ask about deleting data
+        var deleteData = await DialogService.Confirm(
+            $"Do you also want to delete the server data directories?\n\n" +
+            $"This will permanently remove all game files, configurations, and world data.\n\n" +
+            $"Data paths:\n{string.Join("\n", server.Volumes?.Select(v => v.Source) ?? Array.Empty<string>())}",
+            "Delete Server Data?",
+            new ConfirmOptions
+            {
+                OkButtonText = "Delete Data",
+                CancelButtonText = "Keep Data",
+                AutoFocusFirstElement = false
+            });
+
+        actionInProgress = true;
+        StateHasChanged();
+
+        try
+        {
+            await ServerApi.DeleteServerAsync(ServerId, deleteData == true);
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Server Deleted",
+                Detail = deleteData == true
+                    ? "Server and data deleted successfully"
+                    : "Server deleted successfully (data preserved)",
+                Duration = 5000
+            });
+
+            // Navigate back to servers list
+            NavigationManager.NavigateTo("/servers");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Delete Failed",
+                Detail = $"Failed to delete server: {ex.Message}",
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            actionInProgress = false;
+            StateHasChanged();
+        }
     }
 
     private async Task CopyConnectionString()
@@ -577,5 +713,9 @@ else
         };
     }
     
+    private bool IsTtyEnabled()
+    {
+        return extendedMetadata?.EnableTTY == true;
+    }
 
 }
