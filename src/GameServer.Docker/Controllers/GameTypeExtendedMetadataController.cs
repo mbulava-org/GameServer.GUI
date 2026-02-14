@@ -1,5 +1,6 @@
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models;
+using GameServer.Docker.Repositories;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameServer.Docker.Controllers
@@ -8,26 +9,15 @@ namespace GameServer.Docker.Controllers
     [Route("api/gametypes/extended")]
     public class GameTypeExtendedMetadataController : ControllerBase
     {
-        private readonly IGameTypeExtendedMetadataRegistry _registry;
+        private readonly IGameTypeRepository _repository;
         private readonly ILogger<GameTypeExtendedMetadataController> _logger;
 
         public GameTypeExtendedMetadataController(
-            IGameTypeExtendedMetadataRegistry registry,
+            IGameTypeRepository repository,
             ILogger<GameTypeExtendedMetadataController> logger)
         {
-            _registry = registry;
+            _repository = repository;
             _logger = logger;
-        }
-
-        /// <summary>
-        /// Gets all extended metadata entries
-        /// </summary>
-        [HttpGet]
-        [ProducesResponseType(200, Type = typeof(IEnumerable<GameTypeExtendedMetadata>))]
-        public async Task<ActionResult<IEnumerable<GameTypeExtendedMetadata>>> GetAll()
-        {
-            var metadata = await _registry.GetAll();
-            return Ok(metadata);
         }
 
         /// <summary>
@@ -39,7 +29,7 @@ namespace GameServer.Docker.Controllers
         [ProducesResponseType(404)]
         public async Task<IActionResult> Get(string gameTypeKey)
         {
-            var metadata = await _registry.Get(gameTypeKey);
+            var metadata = await _repository.GetExtendedMetadataAsync(gameTypeKey);
             if (metadata == null)
             {
                 return NotFound(new { message = $"Extended metadata for game type '{gameTypeKey}' not found." });
@@ -50,26 +40,37 @@ namespace GameServer.Docker.Controllers
         /// <summary>
         /// Adds or updates extended metadata for a game type
         /// </summary>
+        /// <param name="gameTypeKey">The game type key</param>
         /// <param name="metadata">The metadata to add or update</param>
-        [HttpPost]
-        [ProducesResponseType(200)]
+        [HttpPost("{gameTypeKey}")]
+        [ProducesResponseType(200, Type = typeof(GameTypeExtendedMetadata))]
         [ProducesResponseType(400)]
-        public async Task<IActionResult> Save([FromBody] GameTypeExtendedMetadata metadata)
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> Save(string gameTypeKey, [FromBody] GameTypeExtendedMetadata metadata)
         {
             if (string.IsNullOrEmpty(metadata.GameTypeKey))
             {
-                return BadRequest(new { message = "GameTypeKey is required." });
+                metadata.GameTypeKey = gameTypeKey;
+            }
+            
+            if (gameTypeKey != metadata.GameTypeKey)
+            {
+                return BadRequest(new { message = "GameTypeKey mismatch." });
             }
 
             try
             {
-                await _registry.AddOrUpdate(metadata);
-                _logger.LogInformation("Extended metadata for game type '{GameTypeKey}' saved successfully.", metadata.GameTypeKey);
-                return Ok(new { message = "Extended metadata saved successfully." });
+                var saved = await _repository.SaveExtendedMetadataAsync(gameTypeKey, metadata);
+                _logger.LogInformation("Extended metadata for game type '{GameTypeKey}' saved successfully.", gameTypeKey);
+                return Ok(saved);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = $"GameType '{gameTypeKey}' not found." });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving extended metadata for game type '{GameTypeKey}'", metadata.GameTypeKey);
+                _logger.LogError(ex, "Error saving extended metadata for game type '{GameTypeKey}'", gameTypeKey);
                 return StatusCode(500, new { message = "An error occurred while saving extended metadata." });
             }
         }
@@ -79,24 +80,17 @@ namespace GameServer.Docker.Controllers
         /// </summary>
         /// <param name="gameTypeKey">The game type key</param>
         [HttpDelete("{gameTypeKey}")]
-        [ProducesResponseType(200)]
+        [ProducesResponseType(204)]
+        [ProducesResponseType(404)]
         public async Task<IActionResult> Delete(string gameTypeKey)
         {
-            try
-            {
-                await _registry.Delete(gameTypeKey);
-                _logger.LogInformation("Extended metadata for game type '{GameTypeKey}' deleted successfully.", gameTypeKey);
-                return Ok(new { message = "Extended metadata deleted successfully." });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting extended metadata for game type '{GameTypeKey}'", gameTypeKey);
-                return StatusCode(500, new { message = "An error occurred while deleting extended metadata." });
-            }
+            await _repository.DeleteExtendedMetadataAsync(gameTypeKey);
+            _logger.LogInformation("Extended metadata for game type '{GameTypeKey}' deleted.", gameTypeKey);
+            return NoContent();
         }
 
         /// <summary>
-        /// Gets metadata for a specific setting within a game type
+        /// Gets metadata for a specific setting
         /// </summary>
         /// <param name="gameTypeKey">The game type key</param>
         /// <param name="settingKey">The setting key</param>
@@ -105,77 +99,65 @@ namespace GameServer.Docker.Controllers
         [ProducesResponseType(404)]
         public async Task<IActionResult> GetSettingMetadata(string gameTypeKey, string settingKey)
         {
-            var metadata = await _registry.Get(gameTypeKey);
+            var metadata = await _repository.GetSettingMetadataAsync(gameTypeKey, settingKey);
             if (metadata == null)
             {
-                return NotFound(new { message = $"Extended metadata for game type '{gameTypeKey}' not found." });
+                return NotFound(new { message = $"Setting metadata for '{settingKey}' not found." });
             }
-
-            if (!metadata.SettingsMetadata.TryGetValue(settingKey, out var settingMetadata))
-            {
-                return NotFound(new { message = $"Setting metadata for '{settingKey}' not found in game type '{gameTypeKey}'." });
-            }
-
-            return Ok(settingMetadata);
+            return Ok(metadata);
         }
 
         /// <summary>
-        /// Adds or updates metadata for a specific setting within a game type
+        /// Gets all setting metadata for a game type
+        /// </summary>
+        /// <param name="gameTypeKey">The game type key</param>
+        [HttpGet("{gameTypeKey}/settings")]
+        [ProducesResponseType(200, Type = typeof(Dictionary<string, SettingMetadata>))]
+        public async Task<ActionResult<Dictionary<string, SettingMetadata>>> GetAllSettingMetadata(string gameTypeKey)
+        {
+            var metadata = await _repository.GetAllSettingMetadataAsync(gameTypeKey);
+            return Ok(metadata);
+        }
+
+        /// <summary>
+        /// Updates metadata for a specific setting
         /// </summary>
         /// <param name="gameTypeKey">The game type key</param>
         /// <param name="settingKey">The setting key</param>
-        /// <param name="settingMetadata">The setting metadata to add or update</param>
+        /// <param name="metadata">The metadata to update</param>
         [HttpPut("{gameTypeKey}/settings/{settingKey}")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]
         public async Task<IActionResult> UpdateSettingMetadata(
-            string gameTypeKey,
-            string settingKey,
-            [FromBody] SettingMetadata settingMetadata)
+            string gameTypeKey, 
+            string settingKey, 
+            [FromBody] SettingMetadata metadata)
         {
-            var metadata = await _registry.Get(gameTypeKey);
-            if (metadata == null)
+            try
             {
-                return NotFound(new { message = $"Extended metadata for game type '{gameTypeKey}' not found." });
+                await _repository.UpdateSettingMetadataAsync(gameTypeKey, settingKey, metadata);
+                _logger.LogInformation("Setting metadata for '{GameType}.{Setting}' updated.", gameTypeKey, settingKey);
+                return Ok(new { message = "Setting metadata updated successfully." });
             }
-
-            // Ensure the key matches
-            settingMetadata.Key = settingKey;
-            metadata.SettingsMetadata[settingKey] = settingMetadata;
-
-            await _registry.AddOrUpdate(metadata);
-            _logger.LogInformation("Setting metadata for '{SettingKey}' in game type '{GameTypeKey}' updated successfully.", 
-                settingKey, gameTypeKey);
-
-            return Ok(new { message = "Setting metadata updated successfully." });
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
         }
 
         /// <summary>
-        /// Deletes metadata for a specific setting within a game type
+        /// Deletes metadata for a specific setting
         /// </summary>
         /// <param name="gameTypeKey">The game type key</param>
         /// <param name="settingKey">The setting key</param>
         [HttpDelete("{gameTypeKey}/settings/{settingKey}")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(404)]
+        [ProducesResponseType(204)]
         public async Task<IActionResult> DeleteSettingMetadata(string gameTypeKey, string settingKey)
         {
-            var metadata = await _registry.Get(gameTypeKey);
-            if (metadata == null)
-            {
-                return NotFound(new { message = $"Extended metadata for game type '{gameTypeKey}' not found." });
-            }
-
-            if (!metadata.SettingsMetadata.Remove(settingKey))
-            {
-                return NotFound(new { message = $"Setting metadata for '{settingKey}' not found in game type '{gameTypeKey}'." });
-            }
-
-            await _registry.AddOrUpdate(metadata);
-            _logger.LogInformation("Setting metadata for '{SettingKey}' in game type '{GameTypeKey}' deleted successfully.", 
-                settingKey, gameTypeKey);
-
-            return Ok(new { message = "Setting metadata deleted successfully." });
+            await _repository.DeleteSettingMetadataAsync(gameTypeKey, settingKey);
+            _logger.LogInformation("Setting metadata for '{GameType}.{Setting}' deleted.", gameTypeKey, settingKey);
+            return NoContent();
         }
     }
 }
+

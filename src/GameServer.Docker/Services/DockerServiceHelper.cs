@@ -142,7 +142,7 @@ namespace GameServer.Docker.Services
         {
             var opts = netOptions.Value;
             
-            if (existing == null && opts != null 
+            if (opts != null 
                 && !string.IsNullOrEmpty(opts.NetworkName))
             {
                 //lookup the network name
@@ -158,6 +158,7 @@ namespace GameServer.Docker.Services
                 });
                 if (networks.Count > 0)
                 {
+                    logger.LogInformation("Attaching service to network: {NetworkName}", opts.NetworkName);
                     List<NetworkAttachmentConfig> myNets = new List<NetworkAttachmentConfig>
                     {
                         new NetworkAttachmentConfig
@@ -170,6 +171,7 @@ namespace GameServer.Docker.Services
                     return myNets;
                 }
             }
+            logger.LogWarning("No valid network configuration found. Service will be created without network attachments.");
             return new List<NetworkAttachmentConfig>();
         }
 

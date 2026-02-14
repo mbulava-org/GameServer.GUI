@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System.Reflection;
 using Scalar.AspNetCore;
@@ -9,7 +10,7 @@ namespace GameServer.Docker
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Debug()
@@ -72,8 +73,19 @@ namespace GameServer.Docker
 
                 builder.Services.AddSingleton<PortAllocator>();
 
-                builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
-                builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
+                // Add SQLite Database for GameType management
+                var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
+                    ?? "Data Source=./data/gameserver.db";
+                builder.Services.AddDbContext<Data.GameServerDbContext>(options =>
+                    options.UseSqlite(connectionString));
+
+                // Add GameType Repository (database-backed) - This replaces file-based registries
+                builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
+                
+                // Keep file-based registries as fallback/migration helpers (optional)
+                // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
+                // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
+                
                 builder.Services.AddSingleton<GameTypeMetadataApplier>();
                 builder.Services.AddScoped<ServerLifecycleService>();
 
@@ -132,6 +144,9 @@ namespace GameServer.Docker
 
                 app.UseHttpsRedirection();
 
+                // Initialize database
+                await InitializeDatabaseAsync(app.Services);
+
                 // Enable CORS (must be before routing)
                 app.UseCors();
 
@@ -152,6 +167,122 @@ namespace GameServer.Docker
             finally
             {
                 Log.CloseAndFlush();
+            }
+        }
+
+        /// <summary>
+        /// Initialize database on startup
+        /// </summary>
+        private static async Task InitializeDatabaseAsync(IServiceProvider services)
+        {
+            using var scope = services.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<Data.GameServerDbContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+            try
+            {
+                // Ensure database is created
+                logger.LogInformation("Initializing database...");
+                await context.Database.EnsureCreatedAsync();
+                
+                // Check if we need to migrate from JSON files
+                var gameTypesCount = await context.GameTypes.CountAsync();
+                if (gameTypesCount == 0)
+                {
+                    logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
+                    await MigrateFromJsonIfExistsAsync(scope.ServiceProvider, logger);
+                }
+                else
+                {
+                    logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error initializing database");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Migrate data from existing JSON files if they exist
+        /// </summary>
+        private static async Task MigrateFromJsonIfExistsAsync(IServiceProvider services, Microsoft.Extensions.Logging.ILogger logger)
+        {
+            var configuration = services.GetRequiredService<IConfiguration>();
+            var dataDirectory = configuration.GetValue<string>("GameTypeStorage:DataDirectory") ?? "./data";
+            var gameTypesDir = Path.Combine(dataDirectory, "gametypes");
+
+            if (!Directory.Exists(gameTypesDir))
+            {
+                logger.LogInformation("No JSON files found to migrate.");
+                return;
+            }
+
+            var jsonFiles = Directory.GetFiles(gameTypesDir, "*.json");
+            if (jsonFiles.Length == 0)
+            {
+                logger.LogInformation("No JSON files found to migrate.");
+                return;
+            }
+
+            logger.LogInformation("Found {Count} JSON files to migrate.", jsonFiles.Length);
+
+            var context = services.GetRequiredService<Data.GameServerDbContext>();
+            var migrated = 0;
+
+            foreach (var file in jsonFiles)
+            {
+                try
+                {
+                    var json = await File.ReadAllTextAsync(file);
+                    var gameType = System.Text.Json.JsonSerializer.Deserialize<Models.GameTypeDefinition>(json);
+
+                    if (gameType != null && !await context.GameTypes.AnyAsync(gt => gt.Key == gameType.Key))
+                    {
+                        var entity = new Data.GameTypeEntity
+                        {
+                            Key = gameType.Key,
+                            DisplayName = gameType.DisplayName,
+                            Description = gameType.Description,
+                            Image = gameType.Image,
+                            ThumbnailUrl = gameType.ThumbnailUrl,
+                            DocumentationUrl = gameType.DocumentationUrl,
+                            IsActive = true,
+                            Ports = gameType.Ports?.Select(p => new Data.PortEntity
+                            {
+                                Port = (int)p.Port,
+                                Protocol = p.Protocol,
+                                IsDefaultPort = p.IsDefaultPort
+                            }).ToList() ?? new List<Data.PortEntity>(),
+                            Volumes = gameType.Volumes?.Select(v => new Data.VolumeEntity
+                            {
+                                Source = v.Source,
+                                Target = v.Target,
+                                ReadOnly = false  // Default to false, model doesn't have this property yet
+                            }).ToList() ?? new List<Data.VolumeEntity>(),
+                            DefaultSettings = gameType.DefaultSettings?.Select(ds => new Data.DefaultSettingEntity
+                            {
+                                SettingKey = ds.Key,
+                                SettingValue = ds.Value
+                            }).ToList() ?? new List<Data.DefaultSettingEntity>()
+                        };
+
+                        context.GameTypes.Add(entity);
+                        migrated++;
+                        logger.LogInformation("Migrated GameType: {Key}", gameType.Key);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error migrating file: {File}", file);
+                }
+            }
+
+            if (migrated > 0)
+            {
+                await context.SaveChangesAsync();
+                logger.LogInformation("Migration complete. Migrated {Count} game types from JSON to database.", migrated);
             }
         }
     }
