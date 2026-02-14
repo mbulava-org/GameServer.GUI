@@ -131,8 +131,10 @@
 </style>
 
 @code {
-    [Parameter] public string? ServerId { get; set; }
-    [Parameter] public bool AutoConnect { get; set; } = false;
+[Parameter] public string? ServerId { get; set; }
+[Parameter] public bool AutoConnect { get; set; } = false;
+[Parameter] public bool EnableTTY { get; set; } = true; // Enable TTY by default for interactive consoles
+[Parameter] public string? AgentUrl { get; set; } // Optional: URL of the Docker agent for direct exec
 
     private Xterm? terminal;
     private TerminalOptions terminalOptions = new()
@@ -209,8 +211,18 @@
         if (!isConnected || consoleClient == null)
             return;
 
-        stringBuilder.Append(data);
-        terminal?.Write(data); // Echo input back to terminal immediately
+        try
+        {
+            // Send the input to the container
+            await consoleClient.SendInputAsync(data, connectionCts?.Token ?? CancellationToken.None);
+            
+            // Don't echo input - let the container echo it back for proper terminal behavior
+            // This ensures what you see matches what the container actually received
+        }
+        catch (Exception ex)
+        {
+            await WriteSystemMessage($"Error sending input: {ex.Message}", isError: true);
+        }
     }
 
     private async Task ConnectAsync()
