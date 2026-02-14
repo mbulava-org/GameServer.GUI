@@ -14,11 +14,11 @@ ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
-COPY ["GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
-COPY ["GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
+COPY ["../GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
+COPY ["../GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
 RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
-COPY ["GameServer.Web/", "GameServer.Web/"]
-COPY ["GameServer.Docker.Client/", "GameServer.Docker.Client/"]
+COPY ["../GameServer.Web/", "GameServer.Web/"]
+COPY ["../GameServer.Docker.Client/", "GameServer.Docker.Client/"]
 RUN dotnet build "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
 # This stage is used to publish the service project to be copied to the final stage
