@@ -14,14 +14,17 @@ ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
-COPY . .
-RUN dotnet restore "./GameServer.Web.csproj"
-RUN dotnet build "./GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
+COPY ["GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
+COPY ["GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
+RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
+COPY ["GameServer.Web/", "GameServer.Web/"]
+COPY ["GameServer.Docker.Client/", "GameServer.Docker.Client/"]
+RUN dotnet build "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "/src/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:Version=$VERSION_NUMBER
+RUN dotnet publish "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:Version=$VERSION_NUMBER
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
