@@ -1,6 +1,7 @@
 ﻿using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Interfaces;
+using GameServer.Docker.Repositories;
 using Microsoft.Extensions.Options;
 using System.Threading.Tasks;
 
@@ -8,8 +9,7 @@ namespace GameServer.Docker.Services
 {
     public class DockerServiceHelper(ILogger<DockerServiceHelper> logger,
         IDockerClient client,
-        IGameTypeRegistry gameTypeRegistry,
-        IGameTypeExtendedMetadataRegistry extendedMetadataRegistry,
+        IGameTypeRepository gameTypeRepository,
         IOptions<Configurations.VolumeDriverConfigOptions> volOptions,
         IOptions<Configurations.NetworkOptions> netOptions)
     {
@@ -18,7 +18,7 @@ namespace GameServer.Docker.Services
         /// When updating, preserves settings that weren't explicitly changed.
         /// Volume mounts are IMMUTABLE - they are never changed after initial creation.
         /// </summary>
-        private ServiceSpec BuildGameServerServiceSpec(
+        private async Task<ServiceSpec> BuildGameServerServiceSpec(
             Models.GameServer server, 
             Models.GameTypeDefinition definition, 
             ServiceSpec? existingSpec = null,
@@ -89,7 +89,7 @@ namespace GameServer.Docker.Services
             SwarmUpdateConfig? rollbackConfig = existingSpec?.RollbackConfig;
 
             //Fetch extended metadata for this game type to determine if TTY should be enabled
-            var extendedMetadata = extendedMetadataRegistry.Get(definition.Key).Result;
+            var extendedMetadata = await gameTypeRepository.GetExtendedMetadataAsync(definition.Key);
 
             // 10. Construct the ServiceSpec
             var serviceSpec = new ServiceSpec
@@ -570,7 +570,7 @@ namespace GameServer.Docker.Services
             if (existing == null)
             {
                 logger.LogInformation($"Creating new GameServer: {server.Name} ({server.ServerId})");
-                var serviceSpec = BuildGameServerServiceSpec(server, definition);
+                var serviceSpec = await BuildGameServerServiceSpec(server, definition);
 
                 await client.Swarm.CreateServiceAsync(new ServiceCreateParameters
                 {
@@ -602,7 +602,7 @@ namespace GameServer.Docker.Services
                 var service = services.First();
 
                 // Build updated spec from the new configuration, passing existing spec for reference
-                var updatedSpec = BuildGameServerServiceSpec(server, definition, service.Spec, performShutdown);
+                var updatedSpec = await BuildGameServerServiceSpec(server, definition, service.Spec, performShutdown);
 
                 // Update the service with correct version
                 logger.LogDebug($"Updating service {service.ID} with version {service.Version.Index}");
@@ -742,7 +742,7 @@ namespace GameServer.Docker.Services
         internal async Task StartGameServerAsync(string serverId)
         {
             var server = await GetGameServerById(serverId);
-            var definition = await gameTypeRegistry.Get(server!.GameType);
+            var definition = await gameTypeRepository.GetByKeyAsync(server!.GameType);
             if (definition == null)
             {
                 throw new ArgumentException($"Unable to locate gameType {server.GameType}");
@@ -753,7 +753,7 @@ namespace GameServer.Docker.Services
         internal async Task StopGameServerAsync(string serverId)
         {
             var server = await GetGameServerById(serverId);
-            var definition = await gameTypeRegistry.Get(server!.GameType);
+            var definition = await gameTypeRepository.GetByKeyAsync(server!.GameType);
             if (definition == null)
             {
                 throw new ArgumentException($"Unable to locate gameType {server.GameType}");

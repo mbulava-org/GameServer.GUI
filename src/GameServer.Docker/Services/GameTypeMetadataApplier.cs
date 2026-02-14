@@ -1,6 +1,7 @@
 using Docker.DotNet.Models;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models;
+using GameServer.Docker.Repositories;
 
 namespace GameServer.Docker.Services
 {
@@ -9,14 +10,14 @@ namespace GameServer.Docker.Services
     /// </summary>
     public class GameTypeMetadataApplier
     {
-        private readonly IGameTypeExtendedMetadataRegistry _metadataRegistry;
+        private readonly IGameTypeRepository _repository;
         private readonly ILogger<GameTypeMetadataApplier> _logger;
 
         public GameTypeMetadataApplier(
-            IGameTypeExtendedMetadataRegistry metadataRegistry,
+            IGameTypeRepository repository,
             ILogger<GameTypeMetadataApplier> logger)
         {
-            _metadataRegistry = metadataRegistry;
+            _repository = repository;
             _logger = logger;
         }
 
@@ -28,7 +29,7 @@ namespace GameServer.Docker.Services
         /// <returns>The modified ContainerSpec</returns>
         public async Task<ContainerSpec> ApplyMetadata(ContainerSpec containerSpec, string gameTypeKey)
         {
-            var metadata = await _metadataRegistry.Get(gameTypeKey);
+            var metadata = await _repository.GetExtendedMetadataAsync(gameTypeKey);
             if (metadata == null)
             {
                 _logger.LogDebug("No extended metadata found for game type '{GameTypeKey}'", gameTypeKey);
@@ -54,7 +55,7 @@ namespace GameServer.Docker.Services
         public async Task<List<string>> ValidateSettings(GameServer.Docker.Models.GameServer server, string gameTypeKey)
         {
             var errors = new List<string>();
-            var metadata = await _metadataRegistry.Get(gameTypeKey);
+            var metadata = await _repository.GetExtendedMetadataAsync(gameTypeKey);
             
             if (metadata == null)
             {
@@ -114,7 +115,7 @@ namespace GameServer.Docker.Services
             GameServer.Docker.Models.GameServer server, 
             GameTypeDefinition definition)
         {
-            var metadata = await _metadataRegistry.Get(server.GameType);
+            var metadata = await _repository.GetExtendedMetadataAsync(server.GameType);
             if (metadata == null)
             {
                 // No metadata, return original ports
@@ -185,14 +186,14 @@ namespace GameServer.Docker.Services
         /// <returns>Dictionary of category name to list of settings metadata, ordered by DisplayOrder</returns>
         public async Task<Dictionary<string, List<SettingMetadata>>> GetSettingsByCategory(string gameTypeKey)
         {
-            var metadata = await _metadataRegistry.Get(gameTypeKey);
+            var metadata = await _repository.GetExtendedMetadataAsync(gameTypeKey);
             if (metadata == null)
             {
                 return new Dictionary<string, List<SettingMetadata>>();
             }
 
             var categorized = metadata.SettingsMetadata.Values
-                .GroupBy(s => s.Category ?? "General")
+                .GroupBy(s => s.Category ?? "Undefined")
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(s => s.DisplayOrder).ToList()
@@ -210,7 +211,7 @@ namespace GameServer.Docker.Services
         /// <returns>List of parsed items</returns>
         public async Task<List<string>> ParseListSetting(string settingKey, string value, string gameTypeKey)
         {
-            var metadata = await _metadataRegistry.Get(gameTypeKey);
+            var metadata = await _repository.GetExtendedMetadataAsync(gameTypeKey);
             if (metadata == null || !metadata.SettingsMetadata.TryGetValue(settingKey, out var settingMeta))
             {
                 // Default to comma-separated

@@ -1,5 +1,6 @@
 ﻿using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models;
+using GameServer.Docker.Repositories;
 using GameServer.Docker.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks.Dataflow;
@@ -10,7 +11,7 @@ namespace GameServer.Docker.Controllers
     [Route("api/dashboard")]
     public class DashboardController : ControllerBase
     {
-        private readonly IGameTypeRegistry _registry;
+        private readonly IGameTypeRepository _repository;
         private readonly ServerLifecycleService _lifecycle;
         private readonly IGameServerManager _manager;
 
@@ -18,11 +19,11 @@ namespace GameServer.Docker.Controllers
         //private static readonly List<Models.GameServer> _servers = new();
 
         public DashboardController(
-            IGameTypeRegistry registry,
+            IGameTypeRepository repository,
             ServerLifecycleService lifecycle,
             IGameServerManager manager)
         {
-            _registry = registry;
+            _repository = repository;
             _lifecycle = lifecycle;
             _manager = manager;
         }
