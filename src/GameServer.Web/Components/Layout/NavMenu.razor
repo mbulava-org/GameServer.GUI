@@ -31,6 +31,6 @@
 
 @code {
     private string AssemblyName => Assembly.GetExecutingAssembly().GetName().Name ?? "GameServer";
-    private string AssemblyVersion => Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+    private string AssemblyVersion => Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "0.0.0.0";
 }
 

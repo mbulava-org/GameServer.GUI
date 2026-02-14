@@ -525,23 +525,25 @@ namespace GameServer.Docker.Services
 
             //Get Status...
             var tasks = await GetTasksForSwarmServiceAsync(service.ID);
-            var latestTask = tasks
-                .OrderByDescending(t => t.UpdatedAt)
-                .FirstOrDefault();
-
-            if (latestTask != null)
+            
+            // Get desired replicas from service spec
+            var desiredReplicas = (int)(service.Spec?.Mode?.Replicated?.Replicas ?? 0);
+            
+            // Count running tasks
+            var runningTasks = tasks.Count(t => t.Status?.State == TaskState.Running);
+            
+            // Determine status using same logic as ResourceUsage.ServiceStatus
+            item.Status = (desiredReplicas, runningTasks) switch
             {
-                // Map task state to status
-                item.Status = latestTask.Status?.State.ToString() ?? "unknown";
+                (0, _) => "Stopped",
+                var (d, r) when r == d => "Running",
+                var (d, r) when r < d => "Starting",
+                var (d, r) when r > d => "Scaling Down",
+                _ => "Unknown"
+            };
 
-                // Determine if running based on task state
-                item.IsRunning = latestTask.Status?.State.ToString().ToLowerInvariant() == "running";
-            }
-            else
-            {
-                item.Status = "no-tasks";
-                item.IsRunning = false;
-            }
+            // Determine if running based on status
+            item.IsRunning = item.Status == "Running";
 
             return item;
         }

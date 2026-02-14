@@ -1,0 +1,453 @@
+# Game Server Port Configuration Examples
+
+This file contains real-world port configuration examples for popular game servers.
+
+## Counter-Strike: Source / CS:GO
+
+```json
+{
+  "GameTypeKey": "csgo",
+  "SettingsMetadata": {
+    "SERVER_PORT": {
+      "Key": "SERVER_PORT",
+      "Description": "Game server port (UDP)",
+      "DataType": "port",
+      "IsRequired": true,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 27015,
+      "PortProtocol": "udp",
+      "Placeholder": "27015",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 27000,
+        "MaxPort": 27100,
+        "CheckAvailability": true,
+        "SuggestedPorts": [27015, 27016, 27017, 27018],
+        "ValidationMessage": "Port must be between 27000-27100 and available"
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 27016,
+          "TargetProtocol": "udp",
+          "Offset": 1,
+          "Description": "Steam Query Port (Server Browser)",
+          "IsRequired": true
+        },
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 27015,
+          "TargetProtocol": "tcp",
+          "Offset": 0,
+          "Description": "RCON Port",
+          "IsRequired": false
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    }
+  }
+}
+```
+
+## Minecraft Server
+
+```json
+{
+  "GameTypeKey": "minecraft",
+  "SettingsMetadata": {
+    "SERVER_PORT": {
+      "Key": "SERVER_PORT",
+      "Description": "Minecraft server port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 25565,
+      "PortProtocol": "tcp",
+      "Placeholder": "25565",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 25500,
+        "MaxPort": 25600,
+        "CheckAvailability": true,
+        "ReservedPorts": [],
+        "SuggestedPorts": [25565, 25566, 25567, 25568],
+        "IsUserEditable": true,
+        "ValidationMessage": "Port must be between 25500-25600"
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 25565,
+          "TargetProtocol": "udp",
+          "Offset": 0,
+          "Description": "Query Port (Server List Ping)",
+          "IsRequired": true
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    },
+    "RCON_PORT": {
+      "Key": "RCON_PORT",
+      "Description": "RCON remote console port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 25575,
+      "PortProtocol": "tcp",
+      "Placeholder": "25575",
+      "Category": "Network",
+      "DisplayOrder": 2,
+      "PortValidation": {
+        "MinPort": 25500,
+        "MaxPort": 25600,
+        "CheckAvailability": true,
+        "SuggestedPorts": [25575],
+        "ValidationMessage": "RCON port must be different from server port"
+      },
+      "ValidateRelatedPortsAvailability": false
+    }
+  }
+}
+```
+
+## ARK: Survival Evolved
+
+```json
+{
+  "GameTypeKey": "ark",
+  "SettingsMetadata": {
+    "SESSION_PORT": {
+      "Key": "SESSION_PORT",
+      "Description": "Game session port (main game port)",
+      "DataType": "port",
+      "IsRequired": true,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 7777,
+      "PortProtocol": "udp",
+      "Placeholder": "7777",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 7777,
+        "MaxPort": 7877,
+        "CheckAvailability": true,
+        "SuggestedPorts": [7777, 7800, 7850],
+        "ValidationMessage": "Session port must be between 7777-7877"
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 7778,
+          "TargetProtocol": "udp",
+          "Offset": 1,
+          "Description": "Query Port (Steam Server Browser)",
+          "IsRequired": true
+        },
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 27020,
+          "TargetProtocol": "tcp",
+          "Offset": 19243,
+          "Description": "RCON Port (Remote Admin)",
+          "IsRequired": true
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true,
+      "AutoAllocatePort": false
+    }
+  }
+}
+```
+
+## Valheim
+
+```json
+{
+  "GameTypeKey": "valheim",
+  "SettingsMetadata": {
+    "SERVER_PORT": {
+      "Key": "SERVER_PORT",
+      "Description": "Valheim server port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 2456,
+      "PortProtocol": "udp",
+      "Placeholder": "2456",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 2456,
+        "MaxPort": 2556,
+        "CheckAvailability": true,
+        "SuggestedPorts": [2456, 2457, 2458, 2459],
+        "ValidationMessage": "Port must be between 2456-2556"
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 2457,
+          "TargetProtocol": "udp",
+          "Offset": 1,
+          "Description": "Status/Query Port",
+          "IsRequired": true
+        },
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 2458,
+          "TargetProtocol": "udp",
+          "Offset": 2,
+          "Description": "Secondary Port",
+          "IsRequired": false
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    }
+  }
+}
+```
+
+## Rust
+
+```json
+{
+  "GameTypeKey": "rust",
+  "SettingsMetadata": {
+    "SERVER_PORT": {
+      "Key": "SERVER_PORT",
+      "Description": "Rust game port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 28015,
+      "PortProtocol": "udp",
+      "Placeholder": "28015",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 28000,
+        "MaxPort": 28100,
+        "CheckAvailability": true,
+        "SuggestedPorts": [28015, 28016, 28017, 28018],
+        "ValidationMessage": "Port must be between 28000-28100"
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 28016,
+          "TargetProtocol": "tcp",
+          "Offset": 1,
+          "Description": "RCON Port",
+          "IsRequired": true
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    },
+    "APP_PORT": {
+      "Key": "APP_PORT",
+      "Description": "Rust+ companion app port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 28082,
+      "PortProtocol": "tcp",
+      "Placeholder": "28082",
+      "Category": "Network",
+      "DisplayOrder": 2,
+      "PortValidation": {
+        "MinPort": 28000,
+        "MaxPort": 28100,
+        "CheckAvailability": true,
+        "IsUserEditable": true
+      }
+    }
+  }
+}
+```
+
+## Team Fortress 2
+
+```json
+{
+  "GameTypeKey": "tf2",
+  "SettingsMetadata": {
+    "SERVER_PORT": {
+      "Key": "SERVER_PORT",
+      "Description": "TF2 server port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 27015,
+      "PortProtocol": "udp",
+      "Placeholder": "27015",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 27000,
+        "MaxPort": 27100,
+        "CheckAvailability": true,
+        "SuggestedPorts": [27015, 27016, 27017],
+        "ValidationMessage": "Port must be between 27000-27100"
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 27016,
+          "TargetProtocol": "udp",
+          "Offset": 1,
+          "Description": "Query Port (Server Browser)",
+          "IsRequired": true
+        },
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 27015,
+          "TargetProtocol": "tcp",
+          "Offset": 0,
+          "Description": "RCON Port",
+          "IsRequired": false
+        },
+        {
+          "RelationType": "Fixed",
+          "TargetContainerPort": 27005,
+          "TargetProtocol": "udp",
+          "FixedValue": 27005,
+          "Description": "Client Port (SourceTV)",
+          "IsRequired": false
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    }
+  }
+}
+```
+
+## 7 Days to Die
+
+```json
+{
+  "GameTypeKey": "7days",
+  "SettingsMetadata": {
+    "SERVER_PORT": {
+      "Key": "SERVER_PORT",
+      "Description": "Game server port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 26900,
+      "PortProtocol": "udp",
+      "Placeholder": "26900",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 26900,
+        "MaxPort": 27000,
+        "CheckAvailability": true,
+        "SuggestedPorts": [26900, 26901, 26902]
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 26901,
+          "TargetProtocol": "udp",
+          "Offset": 1,
+          "Description": "Control Panel Port",
+          "IsRequired": false
+        },
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 26902,
+          "TargetProtocol": "tcp",
+          "Offset": 2,
+          "Description": "Web Dashboard Port",
+          "IsRequired": false
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    }
+  }
+}
+```
+
+## Palworld
+
+```json
+{
+  "GameTypeKey": "palworld",
+  "SettingsMetadata": {
+    "PORT": {
+      "Key": "PORT",
+      "Description": "Palworld server port",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 8211,
+      "PortProtocol": "udp",
+      "Placeholder": "8211",
+      "Category": "Network",
+      "DisplayOrder": 1,
+      "PortValidation": {
+        "MinPort": 8200,
+        "MaxPort": 8300,
+        "CheckAvailability": true,
+        "SuggestedPorts": [8211, 8212, 8213]
+      },
+      "PortRelationships": [
+        {
+          "RelationType": "Offset",
+          "TargetContainerPort": 27015,
+          "TargetProtocol": "udp",
+          "Offset": 18804,
+          "Description": "Query Port (Steam)",
+          "IsRequired": true
+        }
+      ],
+      "ValidateRelatedPortsAvailability": true
+    },
+    "REST_API_PORT": {
+      "Key": "REST_API_PORT",
+      "Description": "REST API port for server management",
+      "DataType": "port",
+      "IsRequired": false,
+      "MapsToContainerPort": true,
+      "LinkedContainerPort": 8212,
+      "PortProtocol": "tcp",
+      "Placeholder": "8212",
+      "Category": "Network",
+      "DisplayOrder": 2,
+      "PortValidation": {
+        "MinPort": 8200,
+        "MaxPort": 8300,
+        "CheckAvailability": true
+      }
+    }
+  }
+}
+```
+
+## Notes
+
+### Port Allocation Strategies
+
+1. **Sequential Allocation**: Simplest, increment from base port
+2. **Fixed Offset**: Game + constant (e.g., +1, +10)
+3. **Large Offset**: Different range (e.g., game: 7777, RCON: 27020)
+4. **Fixed Ports**: Some ports never change (RCON, metrics)
+
+### Common Port Ranges
+
+- **Minecraft**: 25500-25600
+- **Source Games**: 27000-27100
+- **ARK**: 7777-7877
+- **Rust**: 28000-28100
+- **Valheim**: 2456-2556
+
+### Best Practices
+
+1. Always validate UDP ports for game servers
+2. TCP ports for RCON/Admin interfaces
+3. Leave space between servers (use +10, +20 increments)
+4. Document which ports are user-editable
+5. Provide clear suggested ports
+6. Check availability before assignment

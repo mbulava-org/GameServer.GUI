@@ -5,10 +5,64 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 
-<RadzenTabs>
-    <Tabs>
+<style>
+    .game-type-editor-container {
+        display: flex;
+        flex-direction: column;
+        height: 70vh;
+        max-height: 800px;
+        min-height: 500px;
+    }
+
+    .game-type-editor-header {
+        flex-shrink: 0;
+        padding: 0 0 1rem 0;
+    }
+
+    .game-type-editor-tabs {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0; /* Important for Firefox */
+    }
+
+    .game-type-editor-tabs .rz-tabview {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .game-type-editor-tabs .rz-tabview-nav {
+        flex-shrink: 0;
+    }
+
+    .game-type-editor-tabs .rz-tabview-panels {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0; /* Important for Firefox */
+    }
+
+    .game-type-editor-footer {
+        flex-shrink: 0;
+        border-top: 1px solid var(--rz-border-color);
+        padding: 1rem;
+        background: var(--rz-base-background-color);
+        margin-top: 0.5rem;
+    }
+
+    /* Ensure tab content has proper padding */
+    .game-type-editor-tabs .rz-tabview-panels > div {
+        padding: 1rem;
+    }
+</style>
+
+<div class="game-type-editor-container">
+    <RadzenTabs class="game-type-editor-tabs">
+        <Tabs>
         <RadzenTabsItem Text="Basic Info">
-            <div class="p-3">
+            <div>
                 <EditForm Model="@GameType" OnValidSubmit="SaveGameType">
                     <DataAnnotationsValidator />
                     
@@ -73,7 +127,7 @@
         </RadzenTabsItem>
 
         <RadzenTabsItem Text="Ports">
-            <div class="p-3">
+            <div>
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6>Port Mappings</h6>
                     <RadzenButton Text="Add Port" 
@@ -120,7 +174,7 @@
         </RadzenTabsItem>
 
         <RadzenTabsItem Text="Volumes">
-            <div class="p-3">
+            <div>
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6>Volume Mappings</h6>
                     <RadzenButton Text="Add Volume" 
@@ -169,7 +223,7 @@
         </RadzenTabsItem>
 
         <RadzenTabsItem Text="Default Settings">
-            <div class="p-3">
+            <div>
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6>Default Environment Variables / Settings</h6>
                     <RadzenButton Text="Add Setting" 
@@ -216,16 +270,17 @@
                 }
             </div>
         </RadzenTabsItem>
-    </Tabs>
-</RadzenTabs>
+        </Tabs>
+    </RadzenTabs>
 
-<div class="d-flex justify-content-end gap-2 mt-4 p-3 border-top">
-    <RadzenButton Text="Cancel" 
-                  ButtonStyle="ButtonStyle.Light" 
-                  Click="@(() => DialogService.Close(false))" />
-    <RadzenButton Text="@(IsNew ? "Create" : "Save")" 
-                  ButtonStyle="ButtonStyle.Primary" 
-                  Click="SaveGameType" />
+    <div class="game-type-editor-footer d-flex justify-content-end gap-2">
+        <RadzenButton Text="Cancel" 
+                      ButtonStyle="ButtonStyle.Light" 
+                      Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="@(IsNew ? "Create" : "Save")" 
+                      ButtonStyle="ButtonStyle.Primary" 
+                      Click="SaveGameType" />
+    </div>
 </div>
 
 @code {

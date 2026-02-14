@@ -4004,6 +4004,87 @@ namespace GameServer.Docker.Client
         [Newtonsoft.Json.JsonProperty("validationMessage", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public string ValidationMessage { get; set; }
 
+        [Newtonsoft.Json.JsonProperty("portRelationships", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public System.Collections.Generic.ICollection<PortRelationship> PortRelationships { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("portValidation", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public PortValidationRule PortValidation { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("synchronizedWithSetting", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string SynchronizedWithSetting { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("autoAllocatePort", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool AutoAllocatePort { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("validateRelatedPortsAvailability", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool ValidateRelatedPortsAvailability { get; set; }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class PortRelationship
+    {
+
+        [Newtonsoft.Json.JsonProperty("relationType", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public PortRelationshipType RelationType { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("targetContainerPort", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int TargetContainerPort { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("targetProtocol", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string TargetProtocol { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("offset", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Offset { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("fixedValue", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int? FixedValue { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("description", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string Description { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("isRequired", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool IsRequired { get; set; }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public enum PortRelationshipType
+    {
+
+        Offset = 0,
+
+        Fixed = 1,
+
+        Multiplier = 2,
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class PortValidationRule
+    {
+
+        [Newtonsoft.Json.JsonProperty("minPort", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int MinPort { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("maxPort", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int MaxPort { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("reservedPorts", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public System.Collections.Generic.ICollection<int> ReservedPorts { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("checkAvailability", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool CheckAvailability { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("validationMessage", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string ValidationMessage { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("isUserEditable", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool IsUserEditable { get; set; }
+
+        [Newtonsoft.Json.JsonProperty("suggestedPorts", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public System.Collections.Generic.ICollection<int> SuggestedPorts { get; set; }
+
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NSwag", "14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))")]

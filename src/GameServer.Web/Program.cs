@@ -51,6 +51,11 @@ namespace GameServer.Web
                 client.BaseAddress = new Uri(apiBaseUrl);
             });
 
+            // TODO: Uncomment once GameServer.Docker.Client includes PortRelationship, PortValidationRule models
+            // This requires the API to expose these models through controller endpoints
+            // Register Port Mapping Service for advanced port validation and automatic updates
+            // builder.Services.AddScoped<GameServer.Web.Services.PortMappingService>();
+
             // Register SignalR clients if URLs provided
             if (!string.IsNullOrWhiteSpace(consoleUri))
             {
