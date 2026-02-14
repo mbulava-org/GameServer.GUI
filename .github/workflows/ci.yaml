@@ -128,7 +128,7 @@ jobs:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
       semantic_version: ${{ needs.setup.outputs.semantic_version }}
       docker_context: './src'
-      dockerfile_path: './GameServer.Web/Dockerfile'
+      docker_file: './GameServer.Web/Dockerfile'
       primary_branch : ${{ needs.setup.outputs.primary_branch }}
       push_output: true
       push_branch: true
