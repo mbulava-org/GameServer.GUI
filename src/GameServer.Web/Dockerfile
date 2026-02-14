@@ -28,10 +28,10 @@ COPY ["./src/GameServer.Docker.Client/", "GameServer.Docker.Client/"]
 COPY ["./src/GameServer.Docker/", "GameServer.Docker/"]
 
 # Build GameServer.Docker first (required for NSwag code generation)
-RUN dotnet build "GameServer.Docker/GameServer.Docker.csproj" -c $BUILD_CONFIGURATION -o /app/build/docker /p:Version=$VERSION_NUMBER
+RUN dotnet build "GameServer.Docker/GameServer.Docker.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
 
 # Build GameServer.Docker.Client (NSwag will generate client code from GameServer.Docker API)
-RUN dotnet build "GameServer.Docker.Client/GameServer.Docker.Client.csproj" -c $BUILD_CONFIGURATION -o /app/build/client /p:Version=$VERSION_NUMBER
+RUN dotnet build "GameServer.Docker.Client/GameServer.Docker.Client.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
 
 # Build GameServer.Web (final application)
 RUN dotnet build "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
