@@ -14,18 +14,18 @@ ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
-COPY ["./GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
-COPY ["./GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
-COPY ["./GameServer.Docker.Client/nswag.json", "GameServer.Docker.Client/"]
-COPY ["./GameServer.Docker/GameServer.Docker.csproj", "GameServer.Docker/"]
+COPY ["./src/GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
+COPY ["./src/GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
+COPY ["./src/GameServer.Docker.Client/nswag.json", "GameServer.Docker.Client/"]
+COPY ["./src/GameServer.Docker/GameServer.Docker.csproj", "GameServer.Docker/"]
 
 RUN dotnet restore "GameServer.Docker/GameServer.Docker.csproj"	
 RUN dotnet restore "GameServer.Docker.Client/GameServer.Docker.Client.csproj"	
 RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
 
-COPY ["./GameServer.Web/", "GameServer.Web/"]
-COPY ["./GameServer.Docker.Client/", "GameServer.Docker.Client/"]
-COPY ["./GameServer.Docker/", "GameServer.Docker/"]
+COPY ["./src/GameServer.Web/", "GameServer.Web/"]
+COPY ["./src/GameServer.Docker.Client/", "GameServer.Docker.Client/"]
+COPY ["./src/GameServer.Docker/", "GameServer.Docker/"]
 
 # Build GameServer.Docker first (required for NSwag code generation)
 RUN dotnet build "GameServer.Docker/GameServer.Docker.csproj" -c $BUILD_CONFIGURATION -o /app/build/docker /p:Version=$VERSION_NUMBER
