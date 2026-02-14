@@ -14,11 +14,26 @@ ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
-COPY ["../GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
-COPY ["../GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
+COPY ["./GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
+COPY ["./GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
+COPY ["./GameServer.Docker.Client/nswag.json", "GameServer.Docker.Client/"]
+COPY ["./GameServer.Docker/GameServer.Docker.csproj", "GameServer.Docker/"]
+
+RUN dotnet restore "GameServer.Docker/GameServer.Docker.csproj"	
+RUN dotnet restore "GameServer.Docker.Client/GameServer.Docker.Client.csproj"	
 RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
-COPY ["../GameServer.Web/", "GameServer.Web/"]
-COPY ["../GameServer.Docker.Client/", "GameServer.Docker.Client/"]
+
+COPY ["./GameServer.Web/", "GameServer.Web/"]
+COPY ["./GameServer.Docker.Client/", "GameServer.Docker.Client/"]
+COPY ["./GameServer.Docker/", "GameServer.Docker/"]
+
+# Build GameServer.Docker first (required for NSwag code generation)
+RUN dotnet build "GameServer.Docker/GameServer.Docker.csproj" -c $BUILD_CONFIGURATION -o /app/build/docker /p:Version=$VERSION_NUMBER
+
+# Build GameServer.Docker.Client (NSwag will generate client code from GameServer.Docker API)
+RUN dotnet build "GameServer.Docker.Client/GameServer.Docker.Client.csproj" -c $BUILD_CONFIGURATION -o /app/build/client /p:Version=$VERSION_NUMBER
+
+# Build GameServer.Web (final application)
 RUN dotnet build "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
 # This stage is used to publish the service project to be copied to the final stage
