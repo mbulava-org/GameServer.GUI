@@ -20,7 +20,7 @@ namespace GameServer.Docker
             try
             {
                 //Log startup information
-                var asmb = Assembly.GetCallingAssembly();
+                var asmb = Assembly.GetExecutingAssembly();
                 Log.Information($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
 
                 var builder = WebApplication.CreateBuilder(args);
@@ -32,7 +32,8 @@ namespace GameServer.Docker
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
                         .Enrich.WithProperty("ApplicationName", "GameServer.Docker")
-                        .WriteTo.Console());
+                        .WriteTo.Console(
+                            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
 
                 //Add configuration sources
                 builder.Services.Configure<Configurations.DockerConnection>(builder.Configuration.GetSection("DockerConnection"));
@@ -145,7 +146,7 @@ namespace GameServer.Docker
                 app.UseHttpsRedirection();
 
                 // Initialize database
-                await InitializeDatabaseAsync(app.Services);
+                //await InitializeDatabaseAsync(app.Services);
 
                 // Enable CORS (must be before routing)
                 app.UseCors();
@@ -153,8 +154,8 @@ namespace GameServer.Docker
                 app.UseAuthorization();
                 
                 // Map SignalR hubs
-                app.MapHub<GameServer.Docker.Hubs.ContainerConsoleHub>("/hubs/console");
-                app.MapHub<GameServer.Docker.Hubs.ResourceMonitoringHub>("/hubs/resources");
+                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");
+                app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
 
                 app.MapControllers();
 
@@ -173,117 +174,117 @@ namespace GameServer.Docker
         /// <summary>
         /// Initialize database on startup
         /// </summary>
-        private static async Task InitializeDatabaseAsync(IServiceProvider services)
-        {
-            using var scope = services.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<Data.GameServerDbContext>();
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        //private static async Task InitializeDatabaseAsync(IServiceProvider services)
+        //{
+        //    using var scope = services.CreateScope();
+        //    var context = scope.ServiceProvider.GetRequiredService<Data.GameServerDbContext>();
+        //    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-            try
-            {
-                // Ensure database is created
-                logger.LogInformation("Initializing database...");
-                await context.Database.EnsureCreatedAsync();
+        //    try
+        //    {
+        //        // Ensure database is created
+        //        logger.LogInformation("Initializing database...");
+        //        await context.Database.EnsureCreatedAsync();
                 
-                // Check if we need to migrate from JSON files
-                var gameTypesCount = await context.GameTypes.CountAsync();
-                if (gameTypesCount == 0)
-                {
-                    logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
-                    await MigrateFromJsonIfExistsAsync(scope.ServiceProvider, logger);
-                }
-                else
-                {
-                    logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error initializing database");
-                throw;
-            }
-        }
+        //        // Check if we need to migrate from JSON files
+        //        var gameTypesCount = await context.GameTypes.CountAsync();
+        //        if (gameTypesCount == 0)
+        //        {
+        //            logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
+        //            await MigrateFromJsonIfExistsAsync(scope.ServiceProvider, logger);
+        //        }
+        //        else
+        //        {
+        //            logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        logger.LogError(ex, "Error initializing database");
+        //        throw;
+        //    }
+        //}
 
         /// <summary>
         /// Migrate data from existing JSON files if they exist
         /// </summary>
-        private static async Task MigrateFromJsonIfExistsAsync(IServiceProvider services, Microsoft.Extensions.Logging.ILogger logger)
-        {
-            var configuration = services.GetRequiredService<IConfiguration>();
-            var dataDirectory = configuration.GetValue<string>("GameTypeStorage:DataDirectory") ?? "./data";
-            var gameTypesDir = Path.Combine(dataDirectory, "gametypes");
+        //private static async Task MigrateFromJsonIfExistsAsync(IServiceProvider services, Microsoft.Extensions.Logging.ILogger logger)
+        //{
+        //    var configuration = services.GetRequiredService<IConfiguration>();
+        //    var dataDirectory = configuration.GetValue<string>("GameTypeStorage:DataDirectory") ?? "./data";
+        //    var gameTypesDir = Path.Combine(dataDirectory, "gametypes");
 
-            if (!Directory.Exists(gameTypesDir))
-            {
-                logger.LogInformation("No JSON files found to migrate.");
-                return;
-            }
+        //    if (!Directory.Exists(gameTypesDir))
+        //    {
+        //        logger.LogInformation("No JSON files found to migrate.");
+        //        return;
+        //    }
 
-            var jsonFiles = Directory.GetFiles(gameTypesDir, "*.json");
-            if (jsonFiles.Length == 0)
-            {
-                logger.LogInformation("No JSON files found to migrate.");
-                return;
-            }
+        //    var jsonFiles = Directory.GetFiles(gameTypesDir, "*.json");
+        //    if (jsonFiles.Length == 0)
+        //    {
+        //        logger.LogInformation("No JSON files found to migrate.");
+        //        return;
+        //    }
 
-            logger.LogInformation("Found {Count} JSON files to migrate.", jsonFiles.Length);
+        //    logger.LogInformation("Found {Count} JSON files to migrate.", jsonFiles.Length);
 
-            var context = services.GetRequiredService<Data.GameServerDbContext>();
-            var migrated = 0;
+        //    var context = services.GetRequiredService<Data.GameServerDbContext>();
+        //    var migrated = 0;
 
-            foreach (var file in jsonFiles)
-            {
-                try
-                {
-                    var json = await File.ReadAllTextAsync(file);
-                    var gameType = System.Text.Json.JsonSerializer.Deserialize<Models.GameTypeDefinition>(json);
+        //    foreach (var file in jsonFiles)
+        //    {
+        //        try
+        //        {
+        //            var json = await File.ReadAllTextAsync(file);
+        //            var gameType = System.Text.Json.JsonSerializer.Deserialize<Models.GameTypeDefinition>(json);
 
-                    if (gameType != null && !await context.GameTypes.AnyAsync(gt => gt.Key == gameType.Key))
-                    {
-                        var entity = new Data.GameTypeEntity
-                        {
-                            Key = gameType.Key,
-                            DisplayName = gameType.DisplayName,
-                            Description = gameType.Description,
-                            Image = gameType.Image,
-                            ThumbnailUrl = gameType.ThumbnailUrl,
-                            DocumentationUrl = gameType.DocumentationUrl,
-                            IsActive = true,
-                            Ports = gameType.Ports?.Select(p => new Data.PortEntity
-                            {
-                                Port = (int)p.Port,
-                                Protocol = p.Protocol,
-                                IsDefaultPort = p.IsDefaultPort
-                            }).ToList() ?? new List<Data.PortEntity>(),
-                            Volumes = gameType.Volumes?.Select(v => new Data.VolumeEntity
-                            {
-                                Source = v.Source,
-                                Target = v.Target,
-                                ReadOnly = false  // Default to false, model doesn't have this property yet
-                            }).ToList() ?? new List<Data.VolumeEntity>(),
-                            DefaultSettings = gameType.DefaultSettings?.Select(ds => new Data.DefaultSettingEntity
-                            {
-                                SettingKey = ds.Key,
-                                SettingValue = ds.Value
-                            }).ToList() ?? new List<Data.DefaultSettingEntity>()
-                        };
+        //            if (gameType != null && !await context.GameTypes.AnyAsync(gt => gt.Key == gameType.Key))
+        //            {
+        //                var entity = new Data.GameTypeEntity
+        //                {
+        //                    Key = gameType.Key,
+        //                    DisplayName = gameType.DisplayName,
+        //                    Description = gameType.Description,
+        //                    Image = gameType.Image,
+        //                    ThumbnailUrl = gameType.ThumbnailUrl,
+        //                    DocumentationUrl = gameType.DocumentationUrl,
+        //                    IsActive = true,
+        //                    Ports = gameType.Ports?.Select(p => new Data.PortEntity
+        //                    {
+        //                        Port = (int)p.Port,
+        //                        Protocol = p.Protocol,
+        //                        IsDefaultPort = p.IsDefaultPort
+        //                    }).ToList() ?? new List<Data.PortEntity>(),
+        //                    Volumes = gameType.Volumes?.Select(v => new Data.VolumeEntity
+        //                    {
+        //                        Source = v.Source,
+        //                        Target = v.Target,
+        //                        ReadOnly = false  // Default to false, model doesn't have this property yet
+        //                    }).ToList() ?? new List<Data.VolumeEntity>(),
+        //                    DefaultSettings = gameType.DefaultSettings?.Select(ds => new Data.DefaultSettingEntity
+        //                    {
+        //                        SettingKey = ds.Key,
+        //                        SettingValue = ds.Value
+        //                    }).ToList() ?? new List<Data.DefaultSettingEntity>()
+        //                };
 
-                        context.GameTypes.Add(entity);
-                        migrated++;
-                        logger.LogInformation("Migrated GameType: {Key}", gameType.Key);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Error migrating file: {File}", file);
-                }
-            }
+        //                context.GameTypes.Add(entity);
+        //                migrated++;
+        //                logger.LogInformation("Migrated GameType: {Key}", gameType.Key);
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            logger.LogWarning(ex, "Error migrating file: {File}", file);
+        //        }
+        //    }
 
-            if (migrated > 0)
-            {
-                await context.SaveChangesAsync();
-                logger.LogInformation("Migration complete. Migrated {Count} game types from JSON to database.", migrated);
-            }
-        }
+        //    if (migrated > 0)
+        //    {
+        //        await context.SaveChangesAsync();
+        //        logger.LogInformation("Migration complete. Migrated {Count} game types from JSON to database.", migrated);
+        //    }
+        //}
     }
 }

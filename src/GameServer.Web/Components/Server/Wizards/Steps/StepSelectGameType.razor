@@ -1,5 +1,4 @@
-﻿@using GameServer.Web.Components.Pages.GameTypes
-@using global::GameServer.Docker.Client
+﻿@using global::GameServer.Docker.Client
 @inject IGameTypeApi GameTypeApi
 @inject NotificationService NotificationService
 @inject DialogService DialogService
@@ -91,88 +90,6 @@
         finally
         {
             isLoading = false;
-        }
-    }
-
-    private async Task ShowGameTypeDialog(GameTypeDefinition? gameType)
-    {
-        var isNew = gameType == null;
-        var dialogTitle = isNew ? "Add Game Type" : $"Edit Game Type: {gameType!.DisplayName}";
-        
-        var result = await DialogService.OpenAsync<GameTypeEditorDialog>(
-            dialogTitle,
-            new Dictionary<string, object>
-            {
-                { "GameType", gameType ?? new GameTypeDefinition() },
-                { "IsNew", isNew }
-            },
-            new DialogOptions
-            {
-                Width = "900px",
-                Height = "85vh",
-                Resizable = true,
-                Draggable = true
-            });
-
-        if (result is bool success && success)
-        {
-            await LoadGameTypesAsync();
-        }
-    }
-
-    private async Task DuplicateGameType(GameTypeDefinition gameType)
-    {
-        var duplicate = new GameTypeDefinition
-        {
-            Key = $"{gameType.Key}_copy",
-            DisplayName = $"{gameType.DisplayName} (Copy)",
-            Description = gameType.Description,
-            Image = gameType.Image,
-            ThumbnailUrl = gameType.ThumbnailUrl,
-            DocumentationUrl = gameType.DocumentationUrl,
-            Ports = new List<PortDefinition>(gameType.Ports),
-            Volumes = new List<VolumeDefinition>(gameType.Volumes),
-            DefaultSettings = new Dictionary<string, string>(gameType.DefaultSettings ?? new Dictionary<string,string>())
-        };
-
-        await ShowGameTypeDialog(duplicate);
-    }
-
-    private async Task DeleteGameType(GameTypeDefinition gameType)
-    {
-        var confirmed = await DialogService.Confirm(
-            $"Are you sure you want to delete '{gameType.DisplayName}'? This action cannot be undone.",
-            "Delete Game Type",
-            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
-
-        if (confirmed == true)
-        {
-            try
-            {
-                await GameTypeApi.DeleteAsync(gameType.Key);
-                
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Game Type Deleted",
-                    Detail = $"'{gameType.DisplayName}' has been deleted successfully.",
-                    Duration = 3000,
-                    CloseOnClick = true
-                });
-
-                await LoadGameTypesAsync();
-            }
-            catch (Exception ex)
-            {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "Delete Failed",
-                    Detail = $"Failed to delete game type: {ex.Message}",
-                    Duration = 5000,
-                    CloseOnClick = true
-                });
-            }
         }
     }
 }

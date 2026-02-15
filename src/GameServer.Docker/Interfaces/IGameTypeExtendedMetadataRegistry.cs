@@ -3,8 +3,9 @@ using GameServer.Docker.Models;
 namespace GameServer.Docker.Interfaces
 {
     /// <summary>
-    /// Registry for managing extended metadata for GameTypes
+    /// OBSOLETE: File-based extended metadata registry. Use IGameTypeRepository.GetExtendedMetadataAsync() and related methods instead.
     /// </summary>
+    [Obsolete("IGameTypeExtendedMetadataRegistry is obsolete. Use IGameTypeRepository from GameServer.Docker.Repositories for extended metadata operations. This file-based registry will be removed in a future version.")]
     public interface IGameTypeExtendedMetadataRegistry
     {
         /// <summary>

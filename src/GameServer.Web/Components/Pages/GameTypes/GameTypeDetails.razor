@@ -1000,11 +1000,11 @@ private async Task LoadGameTypeAsync()
             // Save the game type first
             if (isNew)
             {
-                await GameTypeApi.SaveAsync(gameType);
+                await GameTypeApi.CreateAsync(gameType);
             }
             else
             {
-                await GameTypeApi.SaveAsync(gameType);
+                await GameTypeApi.UpdateAsync(gameType.Key, gameType);
             }
 
             // Save extended metadata if any settings have metadata configured
@@ -1032,7 +1032,7 @@ private async Task LoadGameTypeAsync()
 
                 try
                 {
-                    await MetadataApi.SaveAsync(extendedMetadata);
+                    await MetadataApi.SaveAsync(gameType.Key, extendedMetadata);
                     Console.WriteLine($"GameTypeDetails: Saved extended metadata with {cleanedMetadata.Count} settings");
                 }
                 catch (Exception metadataEx)

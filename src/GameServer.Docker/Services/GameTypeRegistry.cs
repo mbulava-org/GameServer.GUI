@@ -3,7 +3,14 @@ using GameServer.Docker.Models;
 
 namespace GameServer.Docker.Services
 {
+    /// <summary>
+    /// OBSOLETE: In-memory registry with hardcoded game type definitions. Use GameTypeRepository with database storage instead.
+    /// This class contained built-in definitions for Minecraft, Valheim, ARK, etc. which should now be managed via the database.
+    /// </summary>
+    [Obsolete("GameTypeRegistry is obsolete. Use GameTypeRepository from GameServer.Docker.Repositories instead. Built-in game types should be seeded into the database. This in-memory implementation will be removed in a future version.")]
+#pragma warning disable CS0618 // Type or member is obsolete
     public class GameTypeRegistry : IGameTypeRegistry
+#pragma warning restore CS0618 // Type or member is obsolete
     {
         private readonly Dictionary<string, GameTypeDefinition> _definitions = new();
 

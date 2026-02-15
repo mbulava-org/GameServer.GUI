@@ -811,11 +811,11 @@ private void SetValueMappings(SettingMetadata setting, string json)
 
   private async Task SaveMetadata()
   {
-    if (metadata == null) return;
+    if (metadata == null || string.IsNullOrEmpty(metadata.GameTypeKey)) return;
 
     try
     {
-      await MetadataApi.SaveAsync(metadata);
+      await MetadataApi.SaveAsync(metadata.GameTypeKey, metadata);
       
       NotificationService.Notify(new NotificationMessage
       {
