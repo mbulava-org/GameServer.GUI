@@ -1,6 +1,9 @@
 using GameServer.Docker.Data;
 using GameServer.Docker.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations.Internal;
+using System;
+using System.Security.AccessControl;
 using System.Text.Json;
 
 namespace GameServer.Docker.Repositories
@@ -17,6 +20,7 @@ namespace GameServer.Docker.Repositories
         {
             _context = context;
             _logger = logger;
+            CreateAndMigrate().Wait();
         }
 
         #region Query Methods
@@ -626,5 +630,159 @@ namespace GameServer.Docker.Repositories
         }
 
         #endregion
+
+
+        private async Task CreateAndMigrate()
+        {
+            // Ensure database is created
+            _logger.LogInformation("Initializing database...");
+            if (!_context.Database.EnsureCreatedAsync().Result)
+                _logger.LogInformation("Database already exists");
+
+            // Check if we need to migrate from JSON files
+            var gameTypesCount = await _context.GameTypes.CountAsync();
+            if (gameTypesCount == 0)
+            {
+                _logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
+                await MigrateFromJsonIfExistsAsync();
+            }
+            else
+            {
+                _logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
+            }
+        }
+
+        /// <summary>
+        /// Migrate data from existing JSON files if they exist
+        /// </summary>
+        private async Task MigrateFromJsonIfExistsAsync()
+        {
+            var typesFilesPath = "/data/game-types.json";
+            var gameTypesDir = "/data/game-types-extended";
+
+            if (!File.Exists(typesFilesPath))
+            {
+                _logger.LogInformation("No game-types.json file found to migrate.");
+                return;
+            }
+
+            //import existing Types
+            var json = await File.ReadAllTextAsync(typesFilesPath);
+            var gameTypes = JsonSerializer.Deserialize<Dictionary<string, GameTypeDefinition>>(json);
+            if (gameTypes == null || gameTypes.Count == 0)
+            {
+                _logger.LogInformation("No game types found in game-types.json to migrate.");
+                return;
+            }
+            //Do the Work
+            int migrated = 0;
+            foreach (var game in gameTypes)
+            {
+                var extendedFilePath = Path.Combine(gameTypesDir, $"{game.Key}.json");
+                var extendedMetadata = File.Exists(extendedFilePath) ?
+                    JsonSerializer.Deserialize<GameTypeExtendedMetadata>(await File.ReadAllTextAsync(extendedFilePath)) 
+                    : new();
+                if (extendedMetadata == null)
+                {
+                    _logger.LogWarning("Failed to deserialize extended metadata for game type {Key}. Skipping.", game.Key);
+                    extendedMetadata = new GameTypeExtendedMetadata { GameTypeKey = game.Key };
+                }
+
+                var entity = new GameTypeEntity
+                {
+                    Key = game.Key,
+                    DisplayName = game.Value.DisplayName,
+                    Description = game.Value.Description,
+                    Image = game.Value.Image,
+                    ThumbnailUrl = game.Value.ThumbnailUrl,
+                    DocumentationUrl = game.Value.DocumentationUrl,
+                    IsActive = true,
+                    Ports = game.Value.Ports?.Select(p => new PortEntity
+                    {
+                        Port = (int)p.Port,
+                        Protocol = p.Protocol,
+                        IsDefaultPort = p.IsDefaultPort
+                    }).ToList() ?? new List<PortEntity>(),
+                    Volumes = game.Value.Volumes?.Select(v => new VolumeEntity
+                    {
+                        Source = v.Source,
+                        Target = v.Target,
+                    }).ToList() ?? new List<VolumeEntity>(),
+                    DefaultSettings = game.Value.DefaultSettings?.Select(ds => new DefaultSettingEntity
+                    {
+                        SettingKey = ds.Key,
+                        SettingValue = ds.Value,
+                        SettingsMetadata= new SettingMetadataEntity
+                        {
+                            Description = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].Description : null,
+                            IsRequired = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].IsRequired : false,
+                            CannotBeEmpty = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].CannotBeEmpty : false,
+                            DataType = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].DataType : null,
+                            Category = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].Category : null,
+                            DisplayOrder = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].DisplayOrder : 0,
+                            Placeholder = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].Placeholder : null,
+                            ValidationPattern = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ValidationPattern : null,
+                            ValidationMessage = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ValidationMessage : null,
+                            MapsToContainerPort = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].MapsToContainerPort : false,
+                            LinkedContainerPort = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].LinkedContainerPort.HasValue
+                                ? (int?)extendedMetadata.SettingsMetadata[ds.Key].LinkedContainerPort.Value
+                                : null,
+                            PortProtocol = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].PortProtocol : null,
+                            SynchronizedWithSetting = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].SynchronizedWithSetting : null,
+                            AutoAllocatePort = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].AutoAllocatePort : false,
+                            ValidateRelatedPortsAvailability = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ValidateRelatedPortsAvailability : false,
+                            ListDelimiter = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ListDelimiter : null,
+                            AllowedValuesJson = (extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].AllowedValues != null)
+                                ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].AllowedValues
+                                : null,
+                            ValueMappingsJson = (extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].ValueMappings != null)
+                                ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].ValueMappings)
+                                : null,
+                            PortValidation = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].PortValidation != null
+                                ? new PortValidationEntity
+                                {
+                                    MinPort = (int)extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.MinPort,
+                                    MaxPort = (int)extendedMetadata.SettingsMetadata[ds.Key].PortValidation.MaxPort,
+                                    ReservedPortsJson = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.ReservedPorts != null
+                                        ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].PortValidation.ReservedPorts)
+                                        : null,
+                                    CheckAvailability = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.CheckAvailability,
+                                    IsUserEditable = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.IsUserEditable,
+                                    SuggestedPortsJson = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.SuggestedPorts != null
+                                        ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].PortValidation.SuggestedPorts)
+                                        : null,
+                                    ValidationMessage = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.ValidationMessage
+                                }
+                                : null,
+                            PortRelationships = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].PortRelationships != null
+                                ? extendedMetadata.SettingsMetadata[ds.Key].PortRelationships.Select(pr => new PortRelationshipEntity
+                                {
+                                    RelationType = (int)pr.RelationType,
+                                    TargetContainerPort = (int)pr.TargetContainerPort,
+                                    TargetProtocol = pr.TargetProtocol,
+                                    OffsetValue = pr.Offset,
+                                    FixedValue = pr.FixedValue.HasValue ? (int?)pr.FixedValue.Value : null,
+                                    Description = pr.Description,
+                                    IsRequired = pr.IsRequired,
+                                    DisplayOrder = 0
+                                }).ToList()
+                                : new List<PortRelationshipEntity>(),
+
+                        }
+                    }).ToList() ?? new List<DefaultSettingEntity>(),
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                _context.GameTypes.Add(entity);
+
+                migrated++;
+                _logger.LogInformation("Migrated GameType: {Key}", game.Key);
+            }
+            if (migrated > 0)
+            {
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Migration complete. Migrated {Count} game types from JSON to database.", migrated);
+            }
+        }
     }
 }
