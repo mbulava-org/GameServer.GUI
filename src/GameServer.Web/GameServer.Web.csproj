@@ -18,4 +18,8 @@
     <ProjectReference Include="..\GameServer.Docker.Client\GameServer.Docker.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Services\" />
+  </ItemGroup>
+
 </Project>

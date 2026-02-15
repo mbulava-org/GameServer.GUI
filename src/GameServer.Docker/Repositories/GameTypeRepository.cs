@@ -733,7 +733,7 @@ namespace GameServer.Docker.Repositories
                             ValidateRelatedPortsAvailability = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ValidateRelatedPortsAvailability : false,
                             ListDelimiter = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ListDelimiter : null,
                             AllowedValuesJson = (extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].AllowedValues != null)
-                                ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].AllowedValues
+                                ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].AllowedValues)
                                 : null,
                             ValueMappingsJson = (extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].ValueMappings != null)
                                 ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].ValueMappings)
