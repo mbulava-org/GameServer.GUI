@@ -180,40 +180,7 @@ namespace GameServer.Docker.Data
                     "TargetProtocol IN ('tcp', 'udp')");
             });
 
-            // Seed initial data (optional)
-            SeedData(modelBuilder);
-        }
-
-        private void SeedData(ModelBuilder modelBuilder)
-        {
-            // Seed example: Minecraft game type
-            modelBuilder.Entity<GameTypeEntity>().HasData(
-                new GameTypeEntity
-                {
-                    Id = 1,
-                    Key = "minecraft",
-                    DisplayName = "Minecraft Server",
-                    Description = "Java Edition Minecraft Server",
-                    Image = "itzg/minecraft-server:latest",
-                    ThumbnailUrl = "https://static.wikia.nocookie.net/minecraft_gamepedia/images/2/2d/Plains_Banner.png",
-                    DocumentationUrl = "https://hub.docker.com/r/itzg/minecraft-server",
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                }
-            );
-
-            // Seed example ports
-            modelBuilder.Entity<PortEntity>().HasData(
-                new PortEntity { Id = 1, GameTypeId = 1, Port = 25565, Protocol = "tcp", IsDefaultPort = true, Description = "Game Port" },
-                new PortEntity { Id = 2, GameTypeId = 1, Port = 25565, Protocol = "udp", IsDefaultPort = false, Description = "Query Port" }
-            );
-
-            // Seed example default settings
-            modelBuilder.Entity<DefaultSettingEntity>().HasData(
-                new DefaultSettingEntity { Id = 1, GameTypeId = 1, SettingKey = "EULA", SettingValue = "TRUE" },
-                new DefaultSettingEntity { Id = 2, GameTypeId = 1, SettingKey = "VERSION", SettingValue = "LATEST" }
-            );
+            
         }
 
         /// <summary>
