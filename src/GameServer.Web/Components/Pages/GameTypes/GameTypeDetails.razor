@@ -283,6 +283,10 @@
                                 <div class="settings-list">
                                     @foreach (var setting in settingsList.ToList())
                                     {
+                                        if (string.IsNullOrEmpty(setting.Key))
+                                        {
+                                            continue;
+                                        }
                                         var metadata = GetSettingMetadata(setting.Key);
                                         var isExpanded = expandedSettingsKeys.Contains(setting.Key);
                                         
@@ -367,7 +371,7 @@
                                                         <div class="row g-3">
                                                             <div class="col-md-6">
                                                                 <RadzenFormField Text="Data Type" Variant="@Variant.Outlined" class="w-100">
-                                                                    <RadzenDropDown @bind-Value="@metadata.DataType"
+                                                                    <RadzenDropDown @bind-Value="@metadata!.DataType"
                                                                                     Data="@dataTypes"
                                                                                     AllowClear="true"
                                                                                     Placeholder="Auto-detect"
@@ -378,7 +382,7 @@
 
                                                             <div class="col-md-6">
                                                                 <RadzenFormField Text="Category" Variant="@Variant.Outlined" class="w-100">
-                                                                    <RadzenTextBox @bind-Value="@metadata.Category" 
+                                                                    <RadzenTextBox @bind-Value="@metadata!.Category" 
                                                                                    Placeholder="General, Network, Gameplay..."
                                                                                    class="w-100" />
                                                                 </RadzenFormField>
@@ -387,7 +391,7 @@
 
                                                             <div class="col-12">
                                                                 <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
-                                                                    <RadzenTextArea @bind-Value="@metadata.Description" 
+                                                                    <RadzenTextArea @bind-Value="@metadata!.Description" 
                                                                                     Rows="2"
                                                                                     Placeholder="User-friendly description for the wizard"
                                                                                     class="w-100" />
@@ -396,7 +400,7 @@
 
                                                             <div class="col-md-4">
                                                                 <RadzenFormField Text="Display Order" Variant="@Variant.Outlined" class="w-100">
-                                                                    <RadzenNumeric @bind-Value="@metadata.DisplayOrder" 
+                                                                    <RadzenNumeric @bind-Value="@metadata!.DisplayOrder" 
                                                                                    Min="0"
                                                                                    class="w-100" />
                                                                 </RadzenFormField>
@@ -404,7 +408,7 @@
 
                                                             <div class="col-md-4">
                                                                 <RadzenFormField Text="Placeholder" Variant="@Variant.Outlined" class="w-100">
-                                                                    <RadzenTextBox @bind-Value="@metadata.Placeholder" 
+                                                                    <RadzenTextBox @bind-Value="@metadata!.Placeholder" 
                                                                                    Placeholder="Hint text"
                                                                                    class="w-100" />
                                                                 </RadzenFormField>
@@ -413,7 +417,7 @@
                                                             <div class="col-md-4 d-flex align-items-end">
                                                                 <div class="w-100">
                                                                     <div class="checkbox-group mb-2">
-                                                                        <RadzenCheckBox @bind-Value="@metadata.IsRequired" />
+                                                                        <RadzenCheckBox @bind-Value="@metadata!.IsRequired" />
                                                                         <RadzenLabel Text="Required" class="ms-2" />
                                                                     </div>
                                                                     <div class="checkbox-group">
@@ -978,8 +982,11 @@ private async Task LoadGameTypeAsync()
     private void RemoveSetting(SettingItem setting)
     {
         settingsList.Remove(setting);
-        settingsMetadata.Remove(setting.Key);
-        expandedSettingsKeys.Remove(setting.Key);
+        if (!string.IsNullOrEmpty(setting.Key))
+        {
+            settingsMetadata.Remove(setting.Key);
+            expandedSettingsKeys.Remove(setting.Key);
+        }
         StateHasChanged();
     }
 
@@ -1057,7 +1064,7 @@ private async Task LoadGameTypeAsync()
             setting.ValueMappings = mappings;
             StateHasChanged();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             NotificationService.Notify(new NotificationMessage
             {

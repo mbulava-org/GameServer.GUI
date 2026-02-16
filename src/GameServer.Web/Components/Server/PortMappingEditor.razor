@@ -116,7 +116,7 @@
 </style>
 
 @code {
-    [Inject] public IPortApi PortApi { get; set; }
+    [Inject] public required IPortApi PortApi { get; set; }
     [Parameter] public GameServer? Server { get; set; }
     [Parameter] public EventCallback<GameServer> OnChanged { get; set; }
     [Parameter] public EventCallback<bool> OnValidityChanged { get; set; }

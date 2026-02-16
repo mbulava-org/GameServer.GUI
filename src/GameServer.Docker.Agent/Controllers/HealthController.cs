@@ -15,7 +15,7 @@ namespace GameServer.Docker.Agent.Controllers
     {
         private readonly ILogger<HealthController> _logger;
         private readonly Assembly _myAssembly;
-        private readonly IDockerClient _dockerClient;
+        
         public HealthController(ILogger<HealthController> logger, IDockerClient client)
         {
             _logger = logger;

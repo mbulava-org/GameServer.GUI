@@ -425,7 +425,7 @@ namespace GameServer.Docker.Repositories
             {
                 Key = entity.Key,
                 DisplayName = entity.DisplayName,
-                Description = entity.Description,
+                Description = entity.Description ?? "",
                 Image = entity.Image,
                 ThumbnailUrl = entity.ThumbnailUrl,
                 DocumentationUrl = entity.DocumentationUrl,
@@ -547,7 +547,7 @@ namespace GameServer.Docker.Repositories
                 GameTypeKey = gameType.Key,
                 EnableTTY = gameType.ExtendedMetadata?.EnableTTY ?? false,
                 CustomProperties = !string.IsNullOrEmpty(gameType.ExtendedMetadata?.CustomPropertiesJson)
-                    ? JsonSerializer.Deserialize<Dictionary<string, string>>(gameType.ExtendedMetadata.CustomPropertiesJson)
+                    ? JsonSerializer.Deserialize<Dictionary<string, string>>(gameType.ExtendedMetadata!.CustomPropertiesJson) ?? new Dictionary<string, string>()
                     : new Dictionary<string, string>(),
                 SettingsMetadata = new Dictionary<string, SettingMetadata>()
             };
@@ -565,8 +565,8 @@ namespace GameServer.Docker.Repositories
         {
             var model = new SettingMetadata
             {
-                Key = entity.DefaultSetting.SettingKey,
-                Description = entity.Description,
+                Key = entity.DefaultSetting?.SettingKey ?? "",
+                Description = entity.Description ?? "",
                 IsRequired = entity.IsRequired,
                 CannotBeEmpty = entity.CannotBeEmpty,
                 DataType = entity.DataType,
@@ -725,13 +725,13 @@ namespace GameServer.Docker.Repositories
                             ValidationMessage = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ValidationMessage : null,
                             MapsToContainerPort = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].MapsToContainerPort : false,
                             LinkedContainerPort = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].LinkedContainerPort.HasValue
-                                ? (int?)extendedMetadata.SettingsMetadata[ds.Key].LinkedContainerPort.Value
+                                ? (int)extendedMetadata.SettingsMetadata[ds.Key].LinkedContainerPort!.Value
                                 : null,
-                            PortProtocol = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].PortProtocol : null,
+                            PortProtocol = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].PortProtocol : "",
                             SynchronizedWithSetting = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].SynchronizedWithSetting : null,
                             AutoAllocatePort = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].AutoAllocatePort : false,
                             ValidateRelatedPortsAvailability = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ValidateRelatedPortsAvailability : false,
-                            ListDelimiter = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ListDelimiter : null,
+                            ListDelimiter = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) ? extendedMetadata.SettingsMetadata[ds.Key].ListDelimiter : ",",
                             AllowedValuesJson = (extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].AllowedValues != null)
                                 ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].AllowedValues)
                                 : null,
@@ -742,20 +742,20 @@ namespace GameServer.Docker.Repositories
                                 ? new PortValidationEntity
                                 {
                                     MinPort = (int)extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.MinPort,
-                                    MaxPort = (int)extendedMetadata.SettingsMetadata[ds.Key].PortValidation.MaxPort,
-                                    ReservedPortsJson = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.ReservedPorts != null
-                                        ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].PortValidation.ReservedPorts)
+                                    MaxPort = (int)extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.MaxPort,
+                                    ReservedPortsJson = extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.ReservedPorts != null
+                                        ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.ReservedPorts)
                                         : null,
-                                    CheckAvailability = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.CheckAvailability,
-                                    IsUserEditable = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.IsUserEditable,
-                                    SuggestedPortsJson = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.SuggestedPorts != null
-                                        ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].PortValidation.SuggestedPorts)
+                                    CheckAvailability = extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.CheckAvailability,
+                                    IsUserEditable = extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.IsUserEditable,
+                                    SuggestedPortsJson = extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.SuggestedPorts != null
+                                        ? JsonSerializer.Serialize(extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.SuggestedPorts)
                                         : null,
-                                    ValidationMessage = extendedMetadata.SettingsMetadata[ds.Key].PortValidation.ValidationMessage
+                                    ValidationMessage = extendedMetadata.SettingsMetadata[ds.Key].PortValidation!.ValidationMessage
                                 }
                                 : null,
                             PortRelationships = extendedMetadata.SettingsMetadata.ContainsKey(ds.Key) && extendedMetadata.SettingsMetadata[ds.Key].PortRelationships != null
-                                ? extendedMetadata.SettingsMetadata[ds.Key].PortRelationships.Select(pr => new PortRelationshipEntity
+                                ? extendedMetadata.SettingsMetadata[ds.Key].PortRelationships!.Select(pr => new PortRelationshipEntity
                                 {
                                     RelationType = (int)pr.RelationType,
                                     TargetContainerPort = (int)pr.TargetContainerPort,

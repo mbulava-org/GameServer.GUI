@@ -55,7 +55,6 @@
 </style>
 @code {
     private List<GameTypeDefinition> gameTypes = new();
-    private bool isLoading = true;
 
     [Parameter]
     public List<GameTypeDefinition> GameTypes { get; set; } = new();
@@ -70,7 +69,6 @@
 
     private async Task LoadGameTypesAsync()
     {
-        isLoading = true;
         try
         {
             var data = await GameTypeApi.GetAllAsync();
@@ -86,10 +84,6 @@
                 Duration = 5000,
                 CloseOnClick = true
             });
-        }
-        finally
-        {
-            isLoading = false;
         }
     }
 }

@@ -798,31 +798,40 @@ namespace GameServer.Docker.Services
                     .Replace("{serverId}", server.ServerId)
                     .Replace("{Source}", v.Target.Replace("/", ""))
                     .Replace("{gameTypeKey}", server.GameType);
-                var mappedPath = Path.Combine(volOptions?.Value?.LocalStoragePath, subFolder);
-                if (removeStorage)
+                
+                // Only process if we have valid paths
+                if (!string.IsNullOrEmpty(volOptions?.Value?.LocalStoragePath) && !string.IsNullOrEmpty(subFolder))
                 {
-                    logger.LogInformation("Deleting storage for volume {Volume} at path {Path}", v.Target, mappedPath);
-                    try
+                    var mappedPath = Path.Combine(volOptions.Value.LocalStoragePath, subFolder);
+                    if (removeStorage)
                     {
-                        if (Directory.Exists(mappedPath))
+                        logger.LogInformation("Deleting storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                        try
                         {
-                            Directory.Delete(mappedPath, recursive: true);
-                            logger.LogInformation("Storage for volume {Volume} deleted successfully", v.Target);
+                            if (Directory.Exists(mappedPath))
+                            {
+                                Directory.Delete(mappedPath, recursive: true);
+                                logger.LogInformation("Storage for volume {Volume} deleted successfully", v.Target);
                         }
                         else
                         {
                             logger.LogWarning("Storage path {Path} for volume {Volume} does not exist", mappedPath, v.Target);
                         }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "Failed to delete storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                            // Continue with other deletions even if one fails
+                        }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        logger.LogError(ex, "Failed to delete storage for volume {Volume} at path {Path}", v.Target, mappedPath);
-                        // Continue with other deletions even if one fails
+                        logger.LogInformation("Preserving storage for volume {Volume} at path {Path}", v.Target, mappedPath);
                     }
                 }
                 else
                 {
-                    logger.LogInformation("Preserving storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                    logger.LogWarning("Skipping volume cleanup - invalid path configuration for volume {Volume}", v.Target);
                 }
 
             }
