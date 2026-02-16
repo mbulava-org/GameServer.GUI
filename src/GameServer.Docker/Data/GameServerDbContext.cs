@@ -66,16 +66,16 @@ namespace GameServer.Docker.Data
             // Port configuration
             modelBuilder.Entity<PortEntity>(entity =>
             {
-                entity.ToTable("Ports");
+                entity.ToTable("Ports", t =>
+                {
+                    t.HasCheckConstraint("CK_Ports_Protocol", "Protocol IN ('tcp', 'udp')");
+                    t.HasCheckConstraint("CK_Ports_Range", "Port >= 1 AND Port <= 65535");
+                });
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.GameTypeId);
                 entity.HasIndex(e => e.IsDefaultPort);
 
                 entity.Property(e => e.Protocol).IsRequired().HasMaxLength(10);
-                entity.HasCheckConstraint("CK_Ports_Protocol", 
-                    "Protocol IN ('tcp', 'udp')");
-                entity.HasCheckConstraint("CK_Ports_Range", 
-                    "Port >= 1 AND Port <= 65535");
             });
 
             // Volume configuration
@@ -122,7 +122,11 @@ namespace GameServer.Docker.Data
             // SettingMetadata configuration
             modelBuilder.Entity<SettingMetadataEntity>(entity =>
             {
-                entity.ToTable("SettingsMetadata");
+                entity.ToTable("SettingsMetadata", t =>
+                {
+                    t.HasCheckConstraint("CK_SettingsMetadata_DataType",
+                        "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port')");
+                });
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.DefaultSettingId).IsUnique();
                 entity.HasIndex(e => e.Category);
@@ -132,9 +136,6 @@ namespace GameServer.Docker.Data
                 entity.Property(e => e.PortProtocol).HasDefaultValue("tcp");
                 entity.Property(e => e.ListDelimiter).HasDefaultValue(",");
                 entity.Property(e => e.ValidateRelatedPortsAvailability).HasDefaultValue(true);
-
-                entity.HasCheckConstraint("CK_SettingsMetadata_DataType",
-                    "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port')");
 
                 // Relationships
                 entity.HasOne(e => e.PortValidation)
@@ -151,7 +152,11 @@ namespace GameServer.Docker.Data
             // PortValidation configuration
             modelBuilder.Entity<PortValidationEntity>(entity =>
             {
-                entity.ToTable("PortValidation");
+                entity.ToTable("PortValidation", t =>
+                {
+                    t.HasCheckConstraint("CK_PortValidation_Range",
+                        "MinPort >= 1 AND MinPort <= MaxPort AND MaxPort <= 65535");
+                });
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.SettingMetadataId).IsUnique();
 
@@ -159,25 +164,23 @@ namespace GameServer.Docker.Data
                 entity.Property(e => e.MaxPort).HasDefaultValue(65535);
                 entity.Property(e => e.CheckAvailability).HasDefaultValue(true);
                 entity.Property(e => e.IsUserEditable).HasDefaultValue(true);
-
-                entity.HasCheckConstraint("CK_PortValidation_Range",
-                    "MinPort >= 1 AND MinPort <= MaxPort AND MaxPort <= 65535");
             });
 
             // PortRelationship configuration
             modelBuilder.Entity<PortRelationshipEntity>(entity =>
             {
-                entity.ToTable("PortRelationships");
+                entity.ToTable("PortRelationships", t =>
+                {
+                    t.HasCheckConstraint("CK_PortRelationships_Type",
+                        "RelationType IN (0, 1, 2)");
+                    t.HasCheckConstraint("CK_PortRelationships_Protocol",
+                        "TargetProtocol IN ('tcp', 'udp')");
+                });
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.SettingMetadataId);
 
                 entity.Property(e => e.TargetProtocol).HasDefaultValue("udp");
                 entity.Property(e => e.IsRequired).HasDefaultValue(true);
-
-                entity.HasCheckConstraint("CK_PortRelationships_Type",
-                    "RelationType IN (0, 1, 2)");
-                entity.HasCheckConstraint("CK_PortRelationships_Protocol",
-                    "TargetProtocol IN ('tcp', 'udp')");
             });
 
             

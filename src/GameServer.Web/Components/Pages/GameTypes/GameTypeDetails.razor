@@ -447,8 +447,24 @@
                                                                 </div>
                                                             }
 
+                                                            @if (metadata.DataType == "list")
+                                                            {
+                                                                <div class="col-md-6">
+                                                                    <RadzenFormField Text="List Delimiter" Variant="@Variant.Outlined" class="w-100">
+                                                                        <RadzenTextBox @bind-Value="@metadata.ListDelimiter" 
+                                                                                       Placeholder=","
+                                                                                       class="w-100" />
+                                                                    </RadzenFormField>
+                                                                    <small class="text-muted">Character used to separate list items (default: comma)</small>
+                                                                </div>
+                                                            }
+
                                                             @if (metadata.DataType == "port")
                                                             {
+                                                                <div class="col-12">
+                                                                    <div class="section-title">Port Configuration</div>
+                                                                </div>
+                                                                
                                                                 <div class="col-md-6">
                                                                     <div class="checkbox-group mb-2">
                                                                         <RadzenCheckBox @bind-Value="@metadata.MapsToContainerPort" />
@@ -473,6 +489,54 @@
                                                                                             Data="@(new[] { "tcp", "udp" })"
                                                                                             class="w-100" />
                                                                         </RadzenFormField>
+                                                                    </div>
+
+                                                                    <div class="col-12 mt-3">
+                                                                        <div class="section-title">Port Validation</div>
+                                                                    </div>
+
+                                                                    <div class="col-md-3">
+                                                                        <RadzenFormField Text="Min Port" Variant="@Variant.Outlined" class="w-100">
+                                                                            <RadzenNumeric @bind-Value="@GetOrCreatePortValidation(metadata).MinPort" 
+                                                                                           Min="1" Max="65535"
+                                                                                           class="w-100" />
+                                                                        </RadzenFormField>
+                                                                        <small class="text-muted">Minimum allowed port (optional)</small>
+                                                                    </div>
+
+                                                                    <div class="col-md-3">
+                                                                        <RadzenFormField Text="Max Port" Variant="@Variant.Outlined" class="w-100">
+                                                                            <RadzenNumeric @bind-Value="@GetOrCreatePortValidation(metadata).MaxPort" 
+                                                                                           Min="1" Max="65535"
+                                                                                           class="w-100" />
+                                                                        </RadzenFormField>
+                                                                        <small class="text-muted">Maximum allowed port (optional)</small>
+                                                                    </div>
+
+                                                                    <div class="col-md-3">
+                                                                        <div class="checkbox-group mb-2">
+                                                                            <RadzenCheckBox @bind-Value="@GetOrCreatePortValidation(metadata).CheckAvailability" />
+                                                                            <RadzenLabel Text="Check Availability" class="ms-2" />
+                                                                        </div>
+                                                                        <small class="text-muted">Verify port is not in use</small>
+                                                                    </div>
+
+                                                                    <div class="col-md-3">
+                                                                        <div class="checkbox-group mb-2">
+                                                                            <RadzenCheckBox @bind-Value="@GetOrCreatePortValidation(metadata).IsUserEditable" />
+                                                                            <RadzenLabel Text="User Editable" class="ms-2" />
+                                                                        </div>
+                                                                        <small class="text-muted">Allow users to change this port</small>
+                                                                    </div>
+
+                                                                    <div class="col-12">
+                                                                        <RadzenFormField Text="Reserved Ports (comma-separated)" Variant="@Variant.Outlined" class="w-100">
+                                                                            <RadzenTextBox Value="@GetReservedPortsString(metadata)" 
+                                                                                           ValueChanged="@((string value) => SetReservedPorts(metadata, value))"
+                                                                                           Placeholder="80,443,22"
+                                                                                           class="w-100" />
+                                                                        </RadzenFormField>
+                                                                        <small class="text-muted">Ports that cannot be used (e.g., system ports)</small>
                                                                     </div>
                                                                 }
                                                             }
@@ -504,9 +568,28 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Extended Metadata">
+                <RadzenTabsItem Text="Advanced Settings">
                     <div class="p-4">
-                        <ExtendedMetadataEditor GameTypeKey="@(gameType.Key ?? "")" />
+                        <RadzenCard>
+                            <h5 class="mb-4">Advanced Configuration</h5>
+                            
+                            <div class="section-title mb-3">Console & Terminal</div>
+                            <div class="mb-4">
+                                <div class="checkbox-group">
+                                    <RadzenCheckBox @bind-Value="@enableTTY" Name="enableTty" />
+                                    <RadzenLabel Text="Enable TTY (Interactive Terminal)" for="enableTty" class="ms-2" />
+                                </div>
+                                <small class="text-muted d-block mt-2">
+                                    Enable for game servers that need interactive console input (e.g., Minecraft, ARK).
+                                    Required for proper terminal emulation and ANSI color support.
+                                </small>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <strong>Note:</strong> Detailed extended metadata editing is available in the Settings tab for each individual setting.
+                                Use the expandable cards to configure validation rules, port mappings, and more.
+                            </div>
+                        </RadzenCard>
                     </div>
                 </RadzenTabsItem>
             </Tabs>
@@ -688,6 +771,7 @@ private GameTypeDefinition? gameType;
 private List<SettingItem> settingsList = new();
 private Dictionary<string, SettingMetadata> settingsMetadata = new();
 private HashSet<string> expandedSettingsKeys = new();
+private bool enableTTY = false;
 private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port" };
 private bool isNew = false;
 private bool isLoading = true;
@@ -759,15 +843,26 @@ private async Task LoadGameTypeAsync()
             try
             {
                 var extendedMetadata = await MetadataApi.GetAsync(Key);
-                if (extendedMetadata?.SettingsMetadata != null)
+                if (extendedMetadata != null)
                 {
+                    // Load TTY setting
+                    enableTTY = extendedMetadata.EnableTTY;
+                    
                     // Load existing metadata
-                    settingsMetadata = new Dictionary<string, SettingMetadata>(extendedMetadata.SettingsMetadata);
-                    Console.WriteLine($"GameTypeDetails: Loaded extended metadata with {settingsMetadata.Count} settings");
+                    if (extendedMetadata.SettingsMetadata != null)
+                    {
+                        settingsMetadata = new Dictionary<string, SettingMetadata>(extendedMetadata.SettingsMetadata);
+                        Console.WriteLine($"GameTypeDetails: Loaded extended metadata with {settingsMetadata.Count} settings");
+                    }
+                    else
+                    {
+                        settingsMetadata = new Dictionary<string, SettingMetadata>();
+                    }
                 }
                 else
                 {
                     // No metadata exists yet, initialize empty
+                    enableTTY = false;
                     settingsMetadata = new Dictionary<string, SettingMetadata>();
                     Console.WriteLine("GameTypeDetails: No extended metadata found, starting fresh");
                 }
@@ -776,6 +871,7 @@ private async Task LoadGameTypeAsync()
             {
                 // Extended metadata is optional, don't fail if it doesn't exist
                 Console.WriteLine($"GameTypeDetails: Could not load extended metadata: {metadataEx.Message}");
+                enableTTY = false;
                 settingsMetadata = new Dictionary<string, SettingMetadata>();
             }
         }
@@ -1025,7 +1121,7 @@ private async Task LoadGameTypeAsync()
                 var extendedMetadata = new GameTypeExtendedMetadata
                 {
                     GameTypeKey = gameType.Key,
-                    EnableTTY = false, // TODO: Add UI for this if needed
+                    EnableTTY = enableTTY,
                     SettingsMetadata = cleanedMetadata,
                     CustomProperties = new Dictionary<string, string>()
                 };
@@ -1115,6 +1211,60 @@ private async Task LoadGameTypeAsync()
     private void GoBack()
     {
         Navigation.NavigateTo("/gametypes");
+    }
+
+    private PortValidationRule GetOrCreatePortValidation(SettingMetadata metadata)
+    {
+        if (metadata.PortValidation == null)
+        {
+            metadata.PortValidation = new PortValidationRule
+            {
+                MinPort = 1024,
+                MaxPort = 65535,
+                CheckAvailability = true,
+                IsUserEditable = true,
+                ReservedPorts = new List<int>()
+            };
+        }
+        return metadata.PortValidation;
+    }
+
+    private string GetReservedPortsString(SettingMetadata metadata)
+    {
+        var portValidation = GetOrCreatePortValidation(metadata);
+        if (portValidation.ReservedPorts == null || !portValidation.ReservedPorts.Any())
+            return "";
+        return string.Join(",", portValidation.ReservedPorts);
+    }
+
+    private void SetReservedPorts(SettingMetadata metadata, string value)
+    {
+        var portValidation = GetOrCreatePortValidation(metadata);
+        
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            portValidation.ReservedPorts = new List<int>();
+            return;
+        }
+
+        try
+        {
+            portValidation.ReservedPorts = value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(p => int.Parse(p))
+                .Where(p => p >= 1 && p <= 65535)
+                .ToList();
+        }
+        catch
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Invalid Port",
+                Detail = "Reserved ports must be valid numbers between 1-65535",
+                Duration = 3000
+            });
+        }
     }
 
     private class SettingItem
