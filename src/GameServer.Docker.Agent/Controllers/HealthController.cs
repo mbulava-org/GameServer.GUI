@@ -14,7 +14,7 @@ namespace GameServer.Docker.Agent.Controllers
     public class HealthController : ControllerBase
     {
         private readonly ILogger<HealthController> _logger;
-        private readonly Assembly _myAssembly;
+        private readonly Assembly? _myAssembly;
         
         public HealthController(ILogger<HealthController> logger, IDockerClient client)
         {
@@ -36,7 +36,7 @@ namespace GameServer.Docker.Agent.Controllers
                 Status = "healthy",
                 Timestamp = DateTime.UtcNow,
                 NodeName = Environment.GetEnvironmentVariable("NODE_NAME") ?? "unknown",
-                Version = $"{_myAssembly.GetName().Version}"
+                Version = _myAssembly?.GetName().Version?.ToString() ?? "unknown"
             };
 
             return Ok(response);

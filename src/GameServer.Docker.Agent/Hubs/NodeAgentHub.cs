@@ -105,6 +105,41 @@ namespace GameServer.Docker.Agent.Hubs
         }
 
         /// <summary>
+        /// Stream container logs in real-time using Docker's native log streaming API.
+        /// This method uses async streams (IAsyncEnumerable) for efficient real-time log delivery.
+        /// </summary>
+        /// <param name="containerId">Container ID to stream logs from</param>
+        /// <param name="follow">If true, continuously streams new logs. If false, returns historical logs only.</param>
+        /// <param name="tailLines">Number of recent lines to include (0 for all)</param>
+        /// <param name="timestamps">Include timestamps in log output</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        public async IAsyncEnumerable<string> StreamContainerLogs(
+            string containerId,
+            bool follow = true,
+            int tailLines = 100,
+            bool timestamps = true,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default)
+        {
+            var connectionId = Context.ConnectionId;
+            _logger.LogInformation("Client {ConnectionId} starting log stream for container {ContainerId} (follow={Follow}, tail={Tail})",
+                connectionId, containerId, follow, tailLines);
+
+            try
+            {
+                await foreach (var logLine in _containerService.StreamContainerLogsAsync(
+                    containerId, follow, tailLines, timestamps, cancellationToken))
+                {
+                    yield return logLine;
+                }
+            }
+            finally
+            {
+                _logger.LogInformation("Log stream ended for container {ContainerId} on connection {ConnectionId}",
+                    containerId, connectionId);
+            }
+        }
+
+        /// <summary>
         /// Called when a client disconnects
         /// </summary>
         public override async Task OnDisconnectedAsync(Exception? exception)

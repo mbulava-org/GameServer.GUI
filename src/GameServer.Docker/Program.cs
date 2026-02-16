@@ -69,6 +69,9 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 
+                // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
+                builder.Services.AddSingleton<NodeAgentClient>();
+                
                 // Add Resource Monitoring (uses Node Agents for real-time stats)
                 builder.Services.AddSingleton<IGameServerResourceMonitor, GameServerResourceMonitorService>();
 
@@ -155,6 +158,7 @@ namespace GameServer.Docker
                 
                 // Map SignalR hubs
                 app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");
+                app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
                 app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
 
                 app.MapControllers();
