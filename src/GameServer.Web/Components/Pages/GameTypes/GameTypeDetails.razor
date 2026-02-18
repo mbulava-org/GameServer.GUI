@@ -359,7 +359,8 @@
 
                                                             <div class="col-md-6">
                                                                 <RadzenFormField Text="Default Value" Variant="@Variant.Outlined" class="w-100">
-                                                                    <RadzenTextBox @bind-Value="@setting.Value" 
+                                                                    <RadzenTextBox Value="@setting.Value" 
+                                                                                   ValueChanged="@((string value) => OnDefaultSettingValueChanged(setting.Key, value))"
                                                                                    Placeholder="true, 25565, 2G, etc."
                                                                                    class="w-100" />
                                                                 </RadzenFormField>
@@ -542,6 +543,126 @@
                                                                         </RadzenFormField>
                                                                         <small class="text-muted">Ports that cannot be used (e.g., system ports)</small>
                                                                     </div>
+
+                                                                    @* Port Relationships Section *@
+                                                                    <div class="col-12 mt-4">
+                                                                        <div class="d-flex justify-content-between align-items-center mb-3">
+                                                                            <div class="section-title mb-0">Port Relationships</div>
+                                                                            <div class="d-flex gap-2">
+                                                                                <RadzenButton Text="Auto-Detect" 
+                                                                                              Icon="auto_fix_high" 
+                                                                                              Size="ButtonSize.Small"
+                                                                                              ButtonStyle="ButtonStyle.Info"
+                                                                                              Click="@(() => AutoDetectPortRelationships(metadata))"
+                                                                                              title="Automatically detect relationships from existing ports" />
+                                                                                <RadzenButton Text="Add Relationship" 
+                                                                                              Icon="add" 
+                                                                                              Size="ButtonSize.Small"
+                                                                                              ButtonStyle="ButtonStyle.Success"
+                                                                                              Click="@(() => AddPortRelationship(metadata))" />
+                                                                            </div>
+                                                                        </div>
+                                                                        <small class="text-muted d-block mb-3">Define related ports that update automatically when this port changes (e.g., Query Port, RCON Port). Use "Auto-Detect" to find relationships from existing port definitions.</small>
+                                                                    </div>
+
+                                                                    @if (metadata.PortRelationships?.Any() == true)
+                                                                    {
+                                                                        @foreach (var relationship in metadata.PortRelationships)
+                                                                        {
+                                                                            var validationMsg = GetPortRelationshipValidationMessage(relationship);
+                                                                            var hasError = !string.IsNullOrEmpty(validationMsg);
+                                                                            
+                                                                            <div class="col-12">
+                                                                                <RadzenCard class="mb-3" Style="@(hasError ? "background: var(--rz-danger-lighter); border: 2px solid var(--rz-danger);" : "background: var(--rz-base-50);")">
+                                                                                    @if (hasError)
+                                                                                    {
+                                                                                        <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Size="AlertSize.Small" class="mb-3">
+                                                                                            @validationMsg
+                                                                                        </RadzenAlert>
+                                                                                    }
+                                                                                    <div class="row g-3">
+                                                                                        <div class="col-md-3">
+                                                                                            <RadzenFormField Text="Relationship Type" Variant="@Variant.Outlined" class="w-100">
+                                                                                                <RadzenDropDown @bind-Value="@relationship.RelationType"
+                                                                                                                Data="@portRelationshipTypes"
+                                                                                                                class="w-100" />
+                                                                                            </RadzenFormField>
+                                                                                        </div>
+
+                                                                                        <div class="col-md-2">
+                                                                                            <RadzenFormField Text="Target Port" Variant="@Variant.Outlined" class="w-100">
+                                                                                                <RadzenNumeric @bind-Value="@relationship.TargetContainerPort"
+                                                                                                               Min="1" Max="65535"
+                                                                                                               class="w-100" />
+                                                                                            </RadzenFormField>
+                                                                                        </div>
+
+                                                                                        <div class="col-md-2">
+                                                                                            <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
+                                                                                                <RadzenDropDown @bind-Value="@relationship.TargetProtocol"
+                                                                                                                Data="@(new[] { "tcp", "udp" })"
+                                                                                                                class="w-100" />
+                                                                                            </RadzenFormField>
+                                                                                        </div>
+
+                                                                                        @if (relationship.RelationType == PortRelationshipType.Offset)
+                                                                                        {
+                                                                                            <div class="col-md-2">
+                                                                                                <RadzenFormField Text="Offset" Variant="@Variant.Outlined" class="w-100">
+                                                                                                    <RadzenNumeric @bind-Value="@relationship.Offset"
+                                                                                                                   Min="-65535" Max="65535"
+                                                                                                                   class="w-100" />
+                                                                                                </RadzenFormField>
+                                                                                                <small class="text-muted">+/- from source port</small>
+                                                                                            </div>
+                                                                                        }
+                                                                                        else if (relationship.RelationType == PortRelationshipType.Fixed)
+                                                                                        {
+                                                                                            <div class="col-md-2">
+                                                                                                <RadzenFormField Text="Fixed Value" Variant="@Variant.Outlined" class="w-100">
+                                                                                                    <RadzenNumeric @bind-Value="@relationship.FixedValue"
+                                                                                                                   Min="1" Max="65535"
+                                                                                                                   class="w-100" />
+                                                                                                </RadzenFormField>
+                                                                                                <small class="text-muted">Always this port</small>
+                                                                                            </div>
+                                                                                        }
+
+                                                                                        <div class="col-md-2">
+                                                                                            <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
+                                                                                                <RadzenTextBox @bind-Value="@relationship.Description"
+                                                                                                               Placeholder="Query Port"
+                                                                                                               class="w-100" />
+                                                                                            </RadzenFormField>
+                                                                                        </div>
+
+                                                                                        <div class="col-md-1 d-flex align-items-end">
+                                                                                            <div class="checkbox-group mb-2">
+                                                                                                <RadzenCheckBox @bind-Value="@relationship.IsRequired" />
+                                                                                                <RadzenLabel Text="Required" class="ms-1" Style="font-size: 0.75rem;" />
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        <div class="col-12 d-flex justify-content-end">
+                                                                                            <RadzenButton Icon="delete" 
+                                                                                                          Text="Remove" 
+                                                                                                          Size="ButtonSize.Small"
+                                                                                                          ButtonStyle="ButtonStyle.Danger"
+                                                                                                          Click="@(() => RemovePortRelationship(metadata, relationship))" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </RadzenCard>
+                                                                            </div>
+                                                                        }
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <div class="col-12">
+                                                                            <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Size="AlertSize.Small">
+                                                                                No port relationships defined. Click "Add Relationship" to create automatic port dependencies.
+                                                                            </RadzenAlert>
+                                                                        </div>
+                                                                    }
                                                                 }
                                                             }
 
@@ -777,6 +898,7 @@ private Dictionary<string, SettingMetadata> settingsMetadata = new();
 private HashSet<string> expandedSettingsKeys = new();
 private bool enableTTY = false;
 private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port" };
+private PortRelationshipType[] portRelationshipTypes = Enum.GetValues<PortRelationshipType>();
 private bool isNew = false;
 private bool isLoading = true;
 private bool isSaving = false;
@@ -987,6 +1109,39 @@ private async Task LoadGameTypeAsync()
             settingsMetadata.Remove(setting.Key);
             expandedSettingsKeys.Remove(setting.Key);
         }
+        StateHasChanged();
+    }
+
+    private void OnDefaultSettingValueChanged(string key, string newValue)
+    {
+        // Find the setting and update its value
+        var setting = settingsList.FirstOrDefault(s => s.Key == key);
+        if (setting != null)
+        {
+            setting.Value = newValue;
+        }
+
+        // Check if this setting maps to a container port
+        if (settingsMetadata.TryGetValue(key, out var metadata) && 
+            metadata.MapsToContainerPort && 
+            metadata.LinkedContainerPort.HasValue &&
+            int.TryParse(newValue, out var newPort) && newPort > 0)
+        {
+            // Find the port definition with the linked container port
+            var portDef = gameType?.Ports?.FirstOrDefault(p => 
+                p.Port == metadata.LinkedContainerPort.Value &&
+                p.Protocol.Equals(metadata.PortProtocol, StringComparison.OrdinalIgnoreCase));
+
+            if (portDef != null)
+            {
+                var isUdp = metadata.PortProtocol.Equals("udp", StringComparison.OrdinalIgnoreCase);
+                
+                // For both UDP and TCP, update the port definition's port number
+                // (In GameType definitions, there's only one Port value, not separate Container/Published)
+                portDef.Port = newPort;
+            }
+        }
+
         StateHasChanged();
     }
 
@@ -1272,6 +1427,110 @@ private async Task LoadGameTypeAsync()
                 Duration = 3000
             });
         }
+    }
+
+    private void AddPortRelationship(SettingMetadata metadata)
+    {
+        metadata.PortRelationships ??= new List<PortRelationship>();
+        
+        // Try to detect a good default target from existing ports
+        var linkedPort = (int)(metadata.LinkedContainerPort ?? 25565);
+        var protocol = metadata.PortProtocol;
+        
+        // Find ports that could be related (same protocol, different port number)
+        var potentialTargets = gameType?.Ports?
+            .Where(p => p.Protocol.Equals(protocol, StringComparison.OrdinalIgnoreCase) && p.Port != linkedPort)
+            .OrderBy(p => p.Port)
+            .ToList();
+        
+        int targetPort = linkedPort + 1; // Default to +1
+        int offset = 1;
+        
+        // If we found potential targets, use the first one and calculate the offset
+        if (potentialTargets?.Any() == true)
+        {
+            var firstTarget = potentialTargets.First();
+            targetPort = firstTarget.Port;
+            offset = (int)(firstTarget.Port - linkedPort);
+        }
+        
+        metadata.PortRelationships.Add(new PortRelationship
+        {
+            RelationType = PortRelationshipType.Offset,
+            TargetContainerPort = targetPort,
+            TargetProtocol = protocol,
+            Offset = offset,
+            Description = offset == 1 ? "Query Port" : $"Port +{offset}",
+            IsRequired = true
+        });
+        
+        StateHasChanged();
+    }
+
+    private void RemovePortRelationship(SettingMetadata metadata, PortRelationship relationship)
+    {
+        metadata.PortRelationships?.Remove(relationship);
+        StateHasChanged();
+    }
+
+    private void AutoDetectPortRelationships(SettingMetadata metadata)
+    {
+        if (!metadata.MapsToContainerPort || !metadata.LinkedContainerPort.HasValue || gameType?.Ports == null)
+            return;
+
+        metadata.PortRelationships ??= new List<PortRelationship>();
+        metadata.PortRelationships.Clear();
+
+        var linkedPort = metadata.LinkedContainerPort.Value;
+        var protocol = metadata.PortProtocol;
+
+        // Find all other ports with the same protocol
+        var relatedPorts = gameType.Ports
+            .Where(p => p.Protocol.Equals(protocol, StringComparison.OrdinalIgnoreCase) && p.Port != linkedPort)
+            .OrderBy(p => p.Port)
+            .ToList();
+
+        foreach (var port in relatedPorts)
+        {
+            var offset = (int)(port.Port - linkedPort);
+            
+            metadata.PortRelationships.Add(new PortRelationship
+            {
+                RelationType = PortRelationshipType.Offset,
+                TargetContainerPort = port.Port,
+                TargetProtocol = protocol,
+                Offset = offset,
+                Description = offset > 0 ? $"Port +{offset}" : $"Port {offset}",
+                IsRequired = true
+            });
+        }
+
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Success,
+            Summary = "Relationships Detected",
+            Detail = $"Found {metadata.PortRelationships.Count} related port(s) based on existing port definitions.",
+            Duration = 3000
+        });
+
+        StateHasChanged();
+    }
+
+    private bool ValidatePortRelationship(PortRelationship relationship)
+    {
+        // Check if target port exists in gameType.Ports
+        return gameType?.Ports?.Any(p => 
+            p.Port == relationship.TargetContainerPort && 
+            p.Protocol.Equals(relationship.TargetProtocol, StringComparison.OrdinalIgnoreCase)) == true;
+    }
+
+    private string GetPortRelationshipValidationMessage(PortRelationship relationship)
+    {
+        if (!ValidatePortRelationship(relationship))
+        {
+            return $"⚠ Target port {relationship.TargetContainerPort} ({relationship.TargetProtocol}) not found in port definitions!";
+        }
+        return "";
     }
 
     private class SettingItem

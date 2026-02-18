@@ -122,60 +122,62 @@ else
                   <div class="card-header">
                     <h4><RadzenIcon Icon="settings_ethernet" /> Network</h4>
                   </div>
+                  
+                  <div class="info-section">
+                    <div class="info-row">
+                      <span class="label">Host IP:</span>
+                      <span class="value">@(publicIp ?? "Loading...")</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="label">Published Port:</span>
+                      <span class="value">
+                        @GetDefaultPublishedPort()
+                        @if (HasDefaultPort())
+                        {
+                          <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Default" Size="BadgeSize.Small" class="ms-2" />
+                        }
+                      </span>
+                    </div>
+                    <div class="info-row">
+                      <span class="label">Connection:</span>
+                      <span class="value">
+                        <code class="connection-string">@GetConnectionString()</code>
+                        <RadzenButton Icon="content_copy" 
+                                      Size="ButtonSize.Small" 
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Click="CopyConnectionString" 
+                                      class="ms-2"
+                                      title="Copy connection string" />
+                      </span>
+                    </div>
+                  </div>
+                  
                   @if (server.Ports?.Any() == true)
                   {
-                    <div class="ports-grid">
-                      @foreach (var port in server.Ports)
-                      {
-                        <div class="port-item">
-                          <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort}")' />
-                          <span class="port-arrow">→</span>
-                          <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text='@($"{port.ContainerPort}")' />
-                          <RadzenBadge BadgeStyle="BadgeStyle.Light" Text='@port.Protocol.ToUpper()' />
-                        </div>
-                      }
-                    </div>
-                    
-                    <div class="connection-section">
-                      <div class="connection-info">
-                        <span class="connection-label">
-                          <RadzenIcon Icon="link" Style="font-size: 1rem;" />
-                          Connect to:
-                        </span>
-                        <div class="connection-value">
-                          <code class="connection-string">@GetConnectionString()</code>
-                          <RadzenButton Icon="content_copy" 
-                                        Size="ButtonSize.Small" 
-                                        ButtonStyle="ButtonStyle.Light"
-                                        Click="CopyConnectionString" 
-                                        title="Copy to clipboard" />
-                        </div>
+                    <div class="mt-3">
+                      <div class="card-subheader">
+                        <strong>Port Mappings</strong>
                       </div>
-                      
-                      @if (!string.IsNullOrWhiteSpace(VanityDomain))
-                      {
-                        <div class="connection-info">
-                          <span class="connection-label">
-                            <RadzenIcon Icon="public" Style="font-size: 1rem;" />
-                            Vanity URL:
-                          </span>
-                          <div class="connection-value">
-                            <code class="connection-string">@GetConnectionString(VanityDomain)</code>
-                            <RadzenButton Icon="content_copy" 
-                                          Size="ButtonSize.Small" 
-                                          ButtonStyle="ButtonStyle.Light"
-                                          Click="CopyVanityConnectionString" 
-                                          title="Copy to clipboard" />
+                      <div class="ports-list">
+                        @foreach (var port in server.Ports)
+                        {
+                          var isDefault = IsDefaultPort(port);
+                          <div class="port-mapping-item">
+                            <div class="d-flex align-items-center gap-2">
+                              <RadzenBadge BadgeStyle="@(isDefault ? BadgeStyle.Success : BadgeStyle.Info)" 
+                                           Text='@($"{port.PublishedPort} → {port.ContainerPort} ({port.Protocol})")' />
+                              @if (isDefault)
+                              {
+                                <RadzenIcon Icon="star" Style="color: var(--rz-warning); font-size: 1rem;" title="Default connection port" />
+                              }
+                            </div>
                           </div>
-                        </div>
-                      }
+                        }
+                      </div>
                     </div>
-                  }
-                  else
-                  {
-                    <p class="no-data">No port mappings configured</p>
                   }
                 </RadzenCard>
+
               </div>
 
               <div class="column-right">
@@ -552,9 +554,71 @@ private async Task LoadServerAsync()
 
     private string GetConnectionString(string? vanity=null)
     {
-        var port = server?.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
+        var defaultPort = GetDefaultPort();
+        var port = defaultPort?.PublishedPort ?? 0;
         var host = vanity ?? publicIp ?? "localhost";
         return port > 0 ? $"{host}:{port}" : "N/A";
+    }
+
+    private string GetDefaultPublishedPort()
+    {
+        var defaultPort = GetDefaultPort();
+        return defaultPort?.PublishedPort.ToString() ?? "Not configured";
+    }
+
+    private bool HasDefaultPort()
+    {
+        return gameType?.Ports?.Any(p => p.IsDefaultPort) == true;
+    }
+
+    private bool IsDefaultPort(PortMapping port)
+    {
+        if (!HasDefaultPort() || gameType?.Ports == null)
+            return false;
+
+        // Find the default port definition
+        var defaultPortDef = gameType.Ports.FirstOrDefault(p => p.IsDefaultPort);
+        if (defaultPortDef == null)
+            return false;
+
+        // Find the index of the default port in the definition
+        var portDefsList = gameType.Ports.ToList();
+        var defaultIndex = portDefsList.IndexOf(defaultPortDef);
+
+        if (defaultIndex < 0)
+            return false;
+
+        // Check if this port is at the same index in Server.Ports
+        var serverPortsList = server?.Ports?.ToList();
+        if (serverPortsList == null || defaultIndex >= serverPortsList.Count)
+            return false;
+
+        return serverPortsList[defaultIndex] == port;
+    }
+
+    private PortMapping? GetDefaultPort()
+    {
+        if (!HasDefaultPort() || gameType?.Ports == null || server?.Ports == null)
+            return server?.Ports?.FirstOrDefault();
+
+        // Find the default port definition
+        var defaultPortDef = gameType.Ports.FirstOrDefault(p => p.IsDefaultPort);
+        if (defaultPortDef == null)
+            return server.Ports.FirstOrDefault();
+
+        // Find the index of the default port in the definition
+        var portDefsList = gameType.Ports.ToList();
+        var defaultIndex = portDefsList.IndexOf(defaultPortDef);
+
+        if (defaultIndex < 0)
+            return server.Ports.FirstOrDefault();
+
+        // Get the port at the same index in Server.Ports
+        var serverPortsList = server.Ports.ToList();
+        if (defaultIndex < serverPortsList.Count)
+            return serverPortsList[defaultIndex];
+
+        return server.Ports.FirstOrDefault();
     }
 
     private async Task ToggleServerState()

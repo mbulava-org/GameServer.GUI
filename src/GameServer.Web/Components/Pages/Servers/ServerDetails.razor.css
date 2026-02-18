@@ -72,6 +72,7 @@
   grid-template-columns: 140px 1fr;
   padding: 12px 0;
   border-bottom: 1px solid var(--rz-border-color, #f0f0f0);
+  align-items: center;
 }
 
 .info-row:last-child {
@@ -86,6 +87,35 @@
 .info-row .value {
   color: var(--rz-text-color, #333);
   word-break: break-word;
+  display: flex;
+  align-items: center;
+}
+
+.connection-string {
+  font-family: 'Courier New', monospace;
+  background: var(--rz-base-100, #f5f5f5);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: var(--rz-primary, #007bff);
+}
+
+.card-subheader {
+  font-size: 0.875rem;
+  color: var(--rz-text-secondary-color, #666);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rz-border-color, #e0e0e0);
+  margin-bottom: 12px;
+}
+
+.ports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.port-mapping-item {
+  padding: 4px 0;
 }
 
 .port-row {

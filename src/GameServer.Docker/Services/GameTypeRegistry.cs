@@ -317,9 +317,9 @@ namespace GameServer.Docker.Services
 
                 Ports = new()
                 {
-                    new PortDefinition(2456, "udp"),
-                    new PortDefinition(2457, "udp"),
-                    new PortDefinition(2458, "udp")
+                    new PortDefinition(2456, "udp", false),  // Server port (controlled by SERVER_PORT)
+                    new PortDefinition(2457, "udp", true),   // Connection port (DEFAULT) - what users connect to
+                    new PortDefinition(2458, "udp", false)   // Steam server list port
                 },
 
                 Volumes = new()

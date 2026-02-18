@@ -30,6 +30,7 @@
     else if (Step == 4)
     {
         <StepTechnicalDetails Server="Server"
+                              Definition="SelectedDefinition"
                               OnNext="Next"
                               OnBack="Back" />
     }
@@ -80,16 +81,22 @@
         // Initialize settings and lists
         Server.Settings = new Dictionary<string, string>();
         Server.Ports = new List<PortMapping>();
+        
+        // Track which port is the default from the GameType definition
+        var defaultPortDef = SelectedDefinition.Ports.FirstOrDefault(p => p.IsDefaultPort);
+        
         foreach(var p in SelectedDefinition.Ports)
         {
-            Server.Ports.Add(new()
-                {
-                    Protocol = p.Protocol,
-                    ContainerPort = p.Port,
-                    PublishedPort = p.Port
-                });
-
+            var portMapping = new PortMapping
+            {
+                Protocol = p.Protocol,
+                ContainerPort = p.Port,
+                PublishedPort = p.Port
+            };
+            
+            Server.Ports.Add(portMapping);
         }
+        
         Server.Volumes = new List<VolumeDefinition>();
         foreach(var v in SelectedDefinition.Volumes)
         {
