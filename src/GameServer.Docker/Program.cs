@@ -96,6 +96,10 @@ namespace GameServer.Docker
                     options.UseSqlite(optimizedConnectionString, sqliteOptions =>
                     {
                         sqliteOptions.CommandTimeout(30); // 30 second timeout
+                        
+                        // Use SplitQuery to prevent cartesian explosion with multiple collections
+                        // This fixes the EF Core warning about QuerySplittingBehavior
+                        sqliteOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
                     });
                     
                     // Only enable sensitive data logging in development
@@ -169,7 +173,12 @@ namespace GameServer.Docker
                     options.WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
                 });
 
-                app.UseHttpsRedirection();
+                // Only use HTTPS redirection in development with proper HTTPS setup
+                // In Docker/Production, this is typically handled by a reverse proxy
+                if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("UseHttpsRedirection", false))
+                {
+                    app.UseHttpsRedirection();
+                }
 
                 var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
                 mainLogger.LogInformation($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
