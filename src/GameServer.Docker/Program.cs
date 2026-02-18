@@ -81,7 +81,7 @@ namespace GameServer.Docker
 
                 // Add SQLite Database for GameType management
                 var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
-                    ?? "Data Source=/data/gameserver.db";
+                    ?? "Data Source=./data/gameserver.db";//let this default to a sub path to avoid NSwag build errors.
                 builder.Services.AddDbContext<Data.GameServerDbContext>(options =>
                     options.UseSqlite(connectionString));
 

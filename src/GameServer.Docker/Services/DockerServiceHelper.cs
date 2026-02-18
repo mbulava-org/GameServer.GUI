@@ -731,10 +731,19 @@ namespace GameServer.Docker.Services
             // Find running task/container for this service
             var tasks = await client.Tasks.ListAsync();
 
+            // Accept tasks that are Running, Starting, or Preparing (container might not be fully running yet)
+            var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
+            
             var runningTask = tasks
-                .Where(t => t.ServiceID == service.ID && t.Status?.State == TaskState.Running)
+                .Where(t => t.ServiceID == service.ID && activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
                 .OrderByDescending(x => x.UpdatedAt)
                 .FirstOrDefault();
+
+            if (runningTask == null)
+            {
+                logger.LogWarning("No active task found for service {ServiceId} ({ServiceName}). Available tasks: {TaskCount}",
+                    service.ID, server.ServiceName, tasks.Count(t => t.ServiceID == service.ID));
+            }
 
             return runningTask?.Status?.ContainerStatus?.ContainerID ?? "";
         }

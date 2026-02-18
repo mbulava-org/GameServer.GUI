@@ -62,28 +62,38 @@ namespace GameServer.Docker.Hubs
                 yield break;
             }
 
-            // Use label-based lookup to find container
-            _logger.LogInformation("Looking up container for server {ServerId} using Docker labels", serverId);
-            var (containerId, nodeUrl) = await _serverManager.GetContainerInfoAsync(serverId);
+            string? containerId = null;
 
-            // Fallback: Try to use existing method if label lookup fails
+            // Method 1: Try label-based lookup to find container
+            _logger.LogInformation("Looking up container for server {ServerId} using Docker labels", serverId);
+            (containerId, _) = await _serverManager.GetContainerInfoAsync(serverId);
+
+            // Method 2: Fallback to service/task-based lookup if label lookup fails
             if (string.IsNullOrEmpty(containerId))
             {
-                _logger.LogWarning("Label-based lookup failed, trying legacy method for server {ServerId}", serverId);
+                _logger.LogWarning("Label-based lookup failed, trying service/task lookup for server {ServerId}", serverId);
                 try
                 {
                     containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "Legacy container lookup also failed for server {ServerId}", serverId);
+                    _logger.LogDebug(ex, "Service/task lookup also failed for server {ServerId}", serverId);
                 }
             }
 
             if (string.IsNullOrEmpty(containerId))
             {
-                _logger.LogWarning("Could not find container for server {ServerId}", serverId);
-                yield return $"ERROR: Could not locate running container for server {serverId}. Make sure the server is started.";
+                _logger.LogWarning("Could not find running container for server {ServerId}. Server state: {Status}, ServiceName: {ServiceName}", 
+                    serverId, server.Status, server.ServiceName);
+                    
+                yield return $"ERROR: Could not locate running container for server '{server.Name}' (ID: {serverId}).";
+                yield return "";
+                yield return "Possible reasons:";
+                yield return "  • The container is not running yet (check server status)";
+                yield return "  • The container failed to start (check Docker logs)";
+                yield return $"  • Service name: {server.ServiceName}";
+                yield return $"  • Server status: {server.Status}";
                 yield break;
             }
 
