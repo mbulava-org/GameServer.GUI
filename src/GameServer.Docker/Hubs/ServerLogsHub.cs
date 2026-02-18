@@ -92,8 +92,7 @@ namespace GameServer.Docker.Hubs
 
             // Stream logs directly from Docker daemon
             ContainerLogsParameters logsParameters;
-            Stream? logStream = null;
-            StreamReader? reader = null;
+            MultiplexedStream? logStream = null;
 
             try
             {
@@ -108,23 +107,25 @@ namespace GameServer.Docker.Hubs
 
                 logStream = await _dockerClient.Containers.GetContainerLogsAsync(
                     containerId,
+                    false, // tty: false
                     logsParameters,
                     cancellationToken);
 
-                reader = new StreamReader(logStream);
+                var buffer = new byte[4096];
                 
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var line = await reader.ReadLineAsync();
-                    if (line == null)
+                    var result = await logStream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken);
+                    
+                    if (result.EOF)
                         break;
 
-                    // Clean Docker log line (remove 8-byte header if present)
-                    var cleanLine = CleanDockerLogLine(line);
+                    // Convert bytes to string
+                    var line = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
                     
-                    if (!string.IsNullOrEmpty(cleanLine))
+                    if (!string.IsNullOrEmpty(line))
                     {
-                        yield return cleanLine;
+                        yield return line;
                     }
                 }
 
@@ -132,30 +133,11 @@ namespace GameServer.Docker.Hubs
             }
             finally
             {
-                reader?.Dispose();
                 logStream?.Dispose();
                 
                 _logger.LogInformation("Log stream ended for server {ServerId} on connection {ConnectionId}",
                     serverId, connectionId);
             }
-        }
-
-        /// <summary>
-        /// Clean Docker log line by removing 8-byte header if present
-        /// </summary>
-        private string CleanDockerLogLine(string line)
-        {
-            if (string.IsNullOrEmpty(line))
-                return string.Empty;
-
-            // Docker logs may have 8-byte header: [stream_type(1)][padding(3)][size(4)]
-            // If line starts with non-printable characters, skip the first 8 bytes
-            if (line.Length > 8 && line[0] < 32)
-            {
-                return line.Substring(8);
-            }
-
-            return line;
         }
 
         /// <summary>
@@ -284,3 +266,4 @@ namespace GameServer.Docker.Hubs
         }
     }
 }
+
