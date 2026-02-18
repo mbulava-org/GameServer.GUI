@@ -6,6 +6,7 @@
       "project": "../GameServer.Docker/GameServer.Docker.csproj",
       "documentName": "v1",
       "msBuildProjectExtensionsPath": null,
+      "arguments": [ "--no-db-init" ],
       "configuration": "$(Configuration)",
       "runtime": null,
       "targetFramework": "net10.0",
