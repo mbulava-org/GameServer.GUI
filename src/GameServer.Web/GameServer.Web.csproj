@@ -22,4 +22,21 @@
     <Folder Include="Services\" />
   </ItemGroup>
 
+  <!-- Workaround for .NET 10 static web assets issue -->
+  <!-- Manually copy Radzen and XtermBlazor assets to wwwroot/_content -->
+  <Target Name="CopyStaticWebAssets" AfterTargets="Build">
+    <ItemGroup>
+      <RadzenAssets Include="$(NuGetPackageRoot)radzen.blazor\9.0.4\staticwebassets\**\*.*" />
+      <XtermAssets Include="$(NuGetPackageRoot)xtermblazor\2.3.0\staticwebassets\**\*.*" />
+    </ItemGroup>
+    
+    <Copy SourceFiles="@(RadzenAssets)" 
+          DestinationFolder="$(OutputPath)wwwroot\_content\Radzen.Blazor\%(RecursiveDir)" 
+          SkipUnchangedFiles="true" />
+    
+    <Copy SourceFiles="@(XtermAssets)" 
+          DestinationFolder="$(OutputPath)wwwroot\_content\XtermBlazor\%(RecursiveDir)" 
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

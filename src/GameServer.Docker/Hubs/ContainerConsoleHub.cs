@@ -179,8 +179,10 @@ namespace GameServer.Docker.Hubs
                 }
 
                 // Create WebSocket connection to agent's exec endpoint
+                // Agent expects cmd as an array parameter for Docker exec
                 var wsUrl = agent.InternalUrl.Replace("http://", "ws://").Replace("https://", "wss://");
-                var agentWsUrl = $"{wsUrl}/containers/{containerId}/exec/ws?shell={Uri.EscapeDataString(shell)}";
+                var shellCmd = Uri.EscapeDataString(shell);
+                var agentWsUrl = $"{wsUrl}/containers/{containerId}/exec/ws?cmd={shellCmd}&cmd=-i&tty=true";
 
                 var session = new ConsoleSession
                 {

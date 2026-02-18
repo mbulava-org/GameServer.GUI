@@ -105,12 +105,22 @@ namespace GameServer.Web
                 }
 
                 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-                app.UseHttpsRedirection();
+                
+                // HTTPS redirection (disabled in production/Docker - handled by reverse proxy)
+                if (app.Environment.IsDevelopment())
+                {
+                    app.UseHttpsRedirection();
+                }
 
-                app.UseStaticFiles(); // Add explicit static files middleware
+                // Critical: Serve static files from wwwroot AND from Razor Class Libraries (_content)
+                // In .NET 10, this automatically uses the staticwebassets.runtime.json manifest
+                app.UseStaticFiles();
+                
                 app.UseAntiforgery();
 
+                // Map static assets (for .NET 10+ optimizations)
                 app.MapStaticAssets();
+                
                 app.MapRazorComponents<App>()
                     .AddInteractiveServerRenderMode();
 
