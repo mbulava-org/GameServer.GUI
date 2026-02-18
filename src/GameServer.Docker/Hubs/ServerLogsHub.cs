@@ -2,40 +2,35 @@ using Microsoft.AspNetCore.SignalR;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
 using System.Runtime.CompilerServices;
-using Docker.DotNet;
-using Docker.DotNet.Models;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace GameServer.Docker.Hubs
 {
     /// <summary>
     /// SignalR Hub for streaming real-time game server logs to web clients.
-    /// Streams logs directly from Docker containers using Docker.DotNet.
-    /// </summary>
+    /// Uses Node Agents to locate containers across multiple Docker Swarm nodes.
     /// </summary>
     public class ServerLogsHub : Hub
     {
         private readonly ILogger<ServerLogsHub> _logger;
-        private readonly NodeAgentClient _agentClient;
-        private readonly INodeAgentDiscovery _nodeDiscovery;
         private readonly IGameServerManager _serverManager;
-        private readonly IDockerClient _dockerClient;
+        private readonly INodeAgentDiscovery _nodeAgentDiscovery;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         public ServerLogsHub(
             ILogger<ServerLogsHub> logger,
-            NodeAgentClient agentClient,
-            INodeAgentDiscovery nodeDiscovery,
             IGameServerManager serverManager,
-            IDockerClient dockerClient)
+            INodeAgentDiscovery nodeAgentDiscovery,
+            IHttpClientFactory httpClientFactory)
         {
             _logger = logger;
-            _agentClient = agentClient;
-            _nodeDiscovery = nodeDiscovery;
             _serverManager = serverManager;
-            _dockerClient = dockerClient;
+            _nodeAgentDiscovery = nodeAgentDiscovery;
+            _httpClientFactory = httpClientFactory;
         }
 
         /// <summary>
-        /// Stream real-time logs from a game server container
+        /// Stream real-time logs from a game server container via Node Agent
         /// </summary>
         /// <param name="serverId">Game server ID</param>
         /// <param name="follow">Continuously stream new logs</param>
@@ -62,252 +57,110 @@ namespace GameServer.Docker.Hubs
                 yield break;
             }
 
-            _logger.LogInformation("Server {ServerId} found: Name={Name}, Status={Status}, ServiceName={ServiceName}, ContainerId={ContainerId}",
-                serverId, server.Name, server.Status, server.ServiceName, server.ContainerId ?? "(null)");
+            _logger.LogInformation("Server {ServerId} found: Name={Name}, Status={Status}, ContainerId={ContainerId}",
+                serverId, server.Name, server.Status, server.ContainerId ?? "(null)");
 
-            // Use the ContainerId from the server model (populated when server status is fetched)
+            // Get fresh container ID
             var containerId = server.ContainerId;
-            
-            // Fallback: Try other lookup methods if ContainerId is not available
             if (string.IsNullOrEmpty(containerId))
             {
-                _logger.LogWarning("ContainerId not available on server model, trying fallback lookups for server {ServerId}", serverId);
-                
-                // Method 1: Try label-based lookup
-                (containerId, _) = await _serverManager.GetContainerInfoAsync(serverId);
-
-                // Method 2: Try service/task-based lookup
-                if (string.IsNullOrEmpty(containerId))
-                {
-                    try
-                    {
-                        containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug(ex, "Fallback container lookup failed for server {ServerId}", serverId);
-                    }
-                }
-            }
-            else
-            {
-                // Even if we have a ContainerId, verify it's current by doing a quick refresh
-                // This handles the case where the container was recreated/restarted
-                _logger.LogDebug("Verifying ContainerId is current for server {ServerId}", serverId);
+                _logger.LogWarning("ContainerId not available, attempting to refresh for server {ServerId}", serverId);
                 try
                 {
-                    var freshContainerId = await _serverManager.GetRunningContainerIdAsync(serverId);
-                    if (!string.IsNullOrEmpty(freshContainerId) && freshContainerId != containerId)
-                    {
-                        _logger.LogInformation("ContainerId changed from {OldId} to {NewId} for server {ServerId}", 
-                            containerId.Substring(0, 12), freshContainerId.Substring(0, 12), serverId);
-                        containerId = freshContainerId;
-                    }
+                    containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "Could not verify ContainerId freshness, using cached value");
+                    _logger.LogError(ex, "Failed to get container ID for server {ServerId}", serverId);
                 }
             }
 
             if (string.IsNullOrEmpty(containerId))
             {
-                _logger.LogWarning("Could not find running container for server {ServerId}. Server state: {Status}, ServiceName: {ServiceName}", 
-                    serverId, server.Status, server.ServiceName);
-                    
-                yield return $"ERROR: Could not locate running container for server '{server.Name}' (ID: {serverId}).";
-                yield return "";
-                yield return "Possible reasons:";
-                yield return "  • The container is not running yet (check server status)";
-                yield return "  • The container failed to start (check Docker logs)";
-                yield return $"  • Service name: {server.ServiceName}";
-                yield return $"  • Server status: {server.Status}";
+                _logger.LogWarning("Could not find running container for server {ServerId}", serverId);
+                yield return $"ERROR: Could not locate running container for server '{server.Name}'.";
+                yield return "The server may not be started yet or has stopped.";
                 yield break;
             }
 
-            _logger.LogInformation("Streaming logs for server {ServerId}, container {ContainerId}",
-                serverId, containerId);
-
-            // Stream logs directly from Docker daemon
-            ContainerLogsParameters logsParameters;
-            MultiplexedStream? logStream = null;
-
-            logsParameters = new ContainerLogsParameters
-            {
-                ShowStdout = true,
-                ShowStderr = true,
-                Follow = follow,
-                Timestamps = timestamps,
-                Tail = tailLines > 0 ? tailLines.ToString() : "all"
-            };
-
-            _logger.LogDebug("Calling Docker API to get container logs for container {ContainerId}", containerId);
+            // Find which Node Agent has this container
+            _logger.LogInformation("Looking for container {ContainerId} across Node Agents", containerId);
+            var agent = await _nodeAgentDiscovery.GetAgentForContainerAsync(containerId);
             
-            logStream = await _dockerClient.Containers.GetContainerLogsAsync(
-                containerId,
-                false, // tty: false
-                logsParameters,
-                cancellationToken);
-
-            _logger.LogDebug("Docker API returned log stream successfully");
-
-            try
+            if (agent == null)
             {
-                var buffer = new byte[4096];
-                var lineBuffer = new System.Text.StringBuilder();
-                
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var result = await logStream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken);
-                    
-                    if (result.EOF)
-                    {
-                        // Yield any remaining content in the buffer
-                        if (lineBuffer.Length > 0)
-                        {
-                            yield return lineBuffer.ToString();
-                            lineBuffer.Clear();
-                        }
-                        break;
-                    }
-
-                    // Convert bytes to string and append to line buffer
-                    var chunk = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    lineBuffer.Append(chunk);
-                    
-                    // Split by newlines and yield complete lines
-                    var text = lineBuffer.ToString();
-                    var lines = text.Split(new[] { '\n' }, StringSplitOptions.None);
-                    
-                    // Yield all complete lines (all but the last one)
-                    for (int i = 0; i < lines.Length - 1; i++)
-                    {
-                        var line = lines[i].TrimEnd('\r'); // Remove carriage return if present
-                        if (!string.IsNullOrEmpty(line))
-                        {
-                            yield return line;
-                        }
-                    }
-                    
-                    // Keep the last incomplete line in the buffer
-                    lineBuffer.Clear();
-                    lineBuffer.Append(lines[^1]);
-                }
-
-                _logger.LogInformation("Log stream completed for server {ServerId}", serverId);
+                _logger.LogWarning("No Node Agent found with container {ContainerId} for server {ServerId}", 
+                    containerId, serverId);
+                yield return $"ERROR: Container {containerId.Substring(0, 12)}... not found on any node.";
+                yield return "The container may have been removed or is not accessible.";
+                yield break;
             }
-            finally
+
+            _logger.LogInformation("Found container {ContainerId} on Node Agent {AgentUrl}", 
+                containerId, agent.InternalUrl);
+
+            // Stream logs from the Node Agent
+            await foreach (var logLine in StreamLogsFromAgentAsync(
+                agent.InternalUrl, 
+                containerId, 
+                follow, 
+                tailLines, 
+                timestamps, 
+                cancellationToken))
             {
-                logStream?.Dispose();
-                
-                _logger.LogInformation("Log stream ended for server {ServerId} on connection {ConnectionId}",
-                    serverId, connectionId);
+                yield return logLine;
             }
+
+            _logger.LogInformation("Log stream completed for server {ServerId}", serverId);
         }
 
         /// <summary>
-        /// Stream real-time container statistics for a game server
+        /// Stream logs from a Node Agent's SignalR hub
         /// </summary>
-        public async IAsyncEnumerable<object> StreamServerStats(
-            string serverId,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        private async IAsyncEnumerable<string> StreamLogsFromAgentAsync(
+            string agentUrl,
+            string containerId,
+            bool follow,
+            int tailLines,
+            bool timestamps,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            var connectionId = Context.ConnectionId;
-            _logger.LogInformation("Client {ConnectionId} starting stats stream for server {ServerId}",
-                connectionId, serverId);
+            var hubUrl = $"{agentUrl}/hubs/nodeagent";
+            _logger.LogInformation("Connecting to Node Agent hub at {HubUrl} for container {ContainerId}", 
+                hubUrl, containerId);
+
+            var connection = new HubConnectionBuilder()
+                .WithUrl(hubUrl)
+                .WithAutomaticReconnect()
+                .ConfigureLogging(logging =>
+                {
+                    logging.SetMinimumLevel(LogLevel.Warning);
+                })
+                .Build();
+
+            await connection.StartAsync(cancellationToken);
+            _logger.LogInformation("Connected to Node Agent, streaming logs for container {ContainerId}", containerId);
 
             try
             {
-                var server = await _serverManager.GetServerById(serverId);
-                if (server == null)
-                {
-                    _logger.LogWarning("Server {ServerId} not found", serverId);
-                    yield break;
-                }
-
-                var nodeAgents = await _nodeDiscovery.DiscoverAgentsAsync();
-                string? agentUrl = null;
-                string? containerId = null;
-
-                foreach (var agent in nodeAgents)
-                {
-                    try
-                    {
-                        var serviceId = server.ServiceName;
-                        containerId = await GetContainerIdForServer(agent.InternalUrl, serviceId);
-
-                        if (!string.IsNullOrEmpty(containerId))
-                        {
-                            agentUrl = agent.InternalUrl;
-                            break;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug(ex, "Server {ServerId} not found on node {NodeUrl}",
-                            serverId, agent.InternalUrl);
-                    }
-                }
-
-                if (string.IsNullOrEmpty(agentUrl) || string.IsNullOrEmpty(containerId))
-                {
-                    _logger.LogWarning("Could not find container for server {ServerId}", serverId);
-                    yield break;
-                }
-
-                _logger.LogInformation("Streaming stats for server {ServerId} from node {NodeUrl}, container {ContainerId}",
-                    serverId, agentUrl, containerId);
-
-                await foreach (var stats in _agentClient.StreamContainerStatsAsync(
-                    agentUrl,
+                // Call the Node Agent's StreamContainerLogs method
+                await foreach (var logLine in connection.StreamAsync<string>(
+                    "StreamContainerLogs",
                     containerId,
+                    follow,
+                    tailLines,
+                    timestamps,
                     cancellationToken))
                 {
-                    yield return stats;
+                    yield return logLine;
                 }
+
+                _logger.LogDebug("Agent log stream completed for container {ContainerId}", containerId);
             }
             finally
             {
-                _logger.LogInformation("Stats stream ended for server {ServerId} on connection {ConnectionId}",
-                    serverId, connectionId);
-            }
-        }
-
-        /// <summary>
-        /// Helper method to get container ID for a server
-        /// Queries the Node Agent to find the container by service name or server ID
-        /// </summary>
-        private async Task<string?> GetContainerIdForServer(string nodeUrl, string serviceId)
-        {
-            try
-            {
-                // Try to get container list from the Node Agent
-                // The NodeAgentClient should have a method to list containers
-                // For now, we'll use the serviceId as a filter
-                
-                // If serviceId is actually a container ID already, return it
-                if (!string.IsNullOrEmpty(serviceId) && serviceId.Length >= 12)
-                {
-                    // Docker container IDs are typically 64 characters (full) or 12+ characters (short)
-                    // If it looks like a container ID, try using it directly
-                    if (serviceId.All(c => char.IsLetterOrDigit(c)))
-                    {
-                        _logger.LogDebug("ServiceId {ServiceId} looks like a container ID, using directly", serviceId);
-                        return serviceId;
-                    }
-                }
-
-                // Otherwise, we need to query the agent to find the container
-                // This would require a method in NodeAgentClient to list containers by label or name
-                // For now, log and return the serviceId hoping it's a valid container ID
-                _logger.LogDebug("Attempting to use serviceId {ServiceId} as container ID", serviceId);
-                return serviceId;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to resolve container ID for service {ServiceId} on node {NodeUrl}", 
-                    serviceId, nodeUrl);
-                return null;
+                await connection.DisposeAsync();
+                _logger.LogDebug("Disconnected from Node Agent hub");
             }
         }
 
@@ -331,4 +184,5 @@ namespace GameServer.Docker.Hubs
         }
     }
 }
+
 
