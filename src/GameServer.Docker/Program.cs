@@ -171,6 +171,9 @@ namespace GameServer.Docker
 
                 app.UseHttpsRedirection();
 
+                var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
+                mainLogger.LogInformation($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
+
                 // Initialize database on startup
                 // The GameTypeRepository.InitializeDatabaseAsync() method:
                 // - Creates the database if it doesn't exist
@@ -199,9 +202,9 @@ namespace GameServer.Docker
                 }
                 else
                 {
-                    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-                    logger.LogDebug("Database initialization skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
+                    mainLogger.LogDebug("Database initialization skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
                 }
+
 
                 // Enable CORS (must be before routing)
                 app.UseCors();

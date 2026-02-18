@@ -324,12 +324,14 @@ namespace GameServer.Docker.Agent.Controllers
             catch (DockerContainerNotFoundException)
             {
                 _logger.LogWarning("Container {ContainerId} not found during exec", id);
-                HttpContext.Response.StatusCode = 404;
+                // Cannot set StatusCode - WebSocket already upgraded
+                // Just log the error - client will see WebSocket close
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during WebSocket exec in container {ContainerId}", id);
-                HttpContext.Response.StatusCode = 500;
+                // Cannot set StatusCode - WebSocket already upgraded
+                // Just log the error - client will see WebSocket close
             }
         }
 
