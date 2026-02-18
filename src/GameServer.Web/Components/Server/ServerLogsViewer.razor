@@ -89,6 +89,7 @@
 @code {
 [Parameter] public string ServerId { get; set; } = "";
 [Parameter] public GameServer Server { get; set; } = new();
+[Parameter] public bool AutoConnect { get; set; } = true;
 
 [Inject] private ILogger<ServerLogsViewer>? _logger { get; set; }
 
@@ -115,11 +116,88 @@ private HubConnection? hubConnection;
 
   protected override async Task OnInitializedAsync()
   {
-    // Initialize SignalR connection
-    await InitializeHubConnectionAsync();
+    // Build the hub URL using the API base URI from configuration
+    var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
+    var hubUrl = $"{apiBaseUri}/hubs/serverlogs";
+    
+    _logger?.LogInformation("Connecting to ServerLogs hub at {HubUrl}", hubUrl);
+
+    hubConnection = new HubConnectionBuilder()
+      .WithUrl(hubUrl)
+      .WithAutomaticReconnect(new[] 
+      { 
+        TimeSpan.Zero, 
+        TimeSpan.FromSeconds(2), 
+        TimeSpan.FromSeconds(5), 
+        TimeSpan.FromSeconds(10) 
+      })
+      .ConfigureLogging(logging =>
+      {
+        logging.SetMinimumLevel(LogLevel.Debug);
+      })
+      .Build();
+
+    // Handle reconnection events
+    hubConnection.Reconnecting += error =>
+    {
+      connectionStatus = "Reconnecting...";
+      InvokeAsync(StateHasChanged);
+      return Task.CompletedTask;
+    };
+
+    hubConnection.Reconnected += connectionId =>
+    {
+      connectionStatus = "Connected";
+      NotificationService?.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Success,
+        Summary = "Reconnected",
+        Detail = "Log stream reconnected successfully",
+        Duration = 2000
+      });
+      InvokeAsync(StateHasChanged);
+      return Task.CompletedTask;
+    };
+
+    hubConnection.Closed += error =>
+    {
+      connectionStatus = error != null ? "Disconnected (error)" : "Disconnected";
+      if (error != null && isStreaming)
+      {
+        _logger?.LogError(error, "Hub connection closed with error");
+        NotificationService?.Notify(new NotificationMessage
+        {
+          Severity = NotificationSeverity.Error,
+          Summary = "Connection Lost",
+          Detail = $"Log stream connection lost: {error.Message}",
+          Duration = 4000
+        });
+      }
+      InvokeAsync(StateHasChanged);
+      return Task.CompletedTask;
+    };
+
+    try
+    {
+      await hubConnection.StartAsync();
+      connectionStatus = "Connected";
+      _logger?.LogInformation("Hub connection established successfully");
+    }
+    catch (Exception ex)
+    {
+      connectionStatus = $"Connection failed: {ex.Message}";
+      _logger?.LogError(ex, "Failed to connect to hub");
+      NotificationService?.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Error,
+        Summary = "Connection Error",
+        Detail = $"Failed to connect to log stream: {ex.Message}",
+        Duration = 5000
+      });
+    }
 
     // Auto-start if server ID is provided
-    if (!string.IsNullOrWhiteSpace(ServerId))
+    if (AutoConnect && !string.IsNullOrWhiteSpace(ServerId))
     {
       await StartStreaming();
     }
@@ -133,85 +211,6 @@ private HubConnection? hubConnection;
       await StopStreaming();
       logLines.Clear();
       await StartStreaming();
-    }
-  }
-
-  private async Task InitializeHubConnectionAsync()
-  {
-    try
-    {
-      connectionStatus = "Connecting...";
-      StateHasChanged();
-
-      // Build the hub URL using the API base URI from configuration
-      var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
-      var hubUrl = $"{apiBaseUri}/hubs/serverlogs";
-      
-      _logger?.LogInformation("Connecting to ServerLogs hub at {HubUrl}", hubUrl);
-
-      hubConnection = new HubConnectionBuilder()
-        .WithUrl(hubUrl)
-        .WithAutomaticReconnect(new[] 
-        { 
-          TimeSpan.Zero, 
-          TimeSpan.FromSeconds(2), 
-          TimeSpan.FromSeconds(5), 
-          TimeSpan.FromSeconds(10) 
-        })
-        .Build();
-
-      // Handle reconnection events
-      hubConnection.Reconnecting += error =>
-      {
-        connectionStatus = "Reconnecting...";
-        InvokeAsync(StateHasChanged);
-        return Task.CompletedTask;
-      };
-
-      hubConnection.Reconnected += connectionId =>
-      {
-        connectionStatus = "Connected";
-        NotificationService?.Notify(new NotificationMessage
-        {
-          Severity = NotificationSeverity.Success,
-          Summary = "Reconnected",
-          Detail = "Log stream reconnected successfully",
-          Duration = 2000
-        });
-        InvokeAsync(StateHasChanged);
-        return Task.CompletedTask;
-      };
-
-      hubConnection.Closed += error =>
-      {
-        connectionStatus = error != null ? "Disconnected (error)" : "Disconnected";
-        if (error != null && isStreaming)
-        {
-          NotificationService?.Notify(new NotificationMessage
-          {
-            Severity = NotificationSeverity.Error,
-            Summary = "Connection Lost",
-            Detail = "Log stream connection lost. Attempting to reconnect...",
-            Duration = 4000
-          });
-        }
-        InvokeAsync(StateHasChanged);
-        return Task.CompletedTask;
-      };
-
-      await hubConnection.StartAsync();
-      connectionStatus = "Connected";
-    }
-    catch (Exception ex)
-    {
-      connectionStatus = $"Connection failed: {ex.Message}";
-      NotificationService?.Notify(new NotificationMessage
-      {
-        Severity = NotificationSeverity.Error,
-        Summary = "Connection Error",
-        Detail = $"Failed to connect to log stream: {ex.Message}",
-        Duration = 5000
-      });
     }
   }
 
@@ -236,6 +235,7 @@ private HubConnection? hubConnection;
 
     if (hubConnection?.State != HubConnectionState.Connected)
     {
+      _logger?.LogWarning("Hub not connected, attempting to connect");
       NotificationService?.Notify(new NotificationMessage
       {
         Severity = NotificationSeverity.Warning,
@@ -246,10 +246,19 @@ private HubConnection? hubConnection;
 
       try
       {
-        await InitializeHubConnectionAsync();
+        await hubConnection!.StartAsync();
+        connectionStatus = "Connected";
       }
-      catch
+      catch (Exception ex)
       {
+        _logger?.LogError(ex, "Failed to reconnect to hub");
+        NotificationService?.Notify(new NotificationMessage
+        {
+          Severity = NotificationSeverity.Error,
+          Summary = "Connection Failed",
+          Detail = $"Failed to reconnect: {ex.Message}",
+          Duration = 5000
+        });
         return;
       }
     }
@@ -260,6 +269,8 @@ private HubConnection? hubConnection;
 
     try
     {
+      _logger?.LogInformation("Starting log stream for server {ServerId}", ServerId);
+      
       // Stream logs from SignalR hub
       await foreach (var logLine in hubConnection!.StreamAsync<string>(
         "StreamServerLogs",
@@ -291,6 +302,7 @@ private HubConnection? hubConnection;
     catch (OperationCanceledException)
     {
       // Expected when stopping
+      _logger?.LogDebug("Log streaming cancelled for server {ServerId}", ServerId);
     }
     catch (Exception ex)
     {

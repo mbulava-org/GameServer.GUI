@@ -50,8 +50,8 @@ namespace GameServer.Docker.Hubs
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var connectionId = Context.ConnectionId;
-            _logger.LogInformation("Client {ConnectionId} starting log stream for server {ServerId}", 
-                connectionId, serverId);
+            _logger.LogInformation("Client {ConnectionId} starting log stream for server {ServerId} (follow={Follow}, tail={Tail})", 
+                connectionId, serverId, follow, tailLines);
 
             // Get server info
             var server = await _serverManager.GetServerById(serverId);
@@ -61,6 +61,9 @@ namespace GameServer.Docker.Hubs
                 yield return "ERROR: Server not found";
                 yield break;
             }
+
+            _logger.LogInformation("Server {ServerId} found: Name={Name}, Status={Status}, ServiceName={ServiceName}, ContainerId={ContainerId}",
+                serverId, server.Name, server.Status, server.ServiceName, server.ContainerId ?? "(null)");
 
             // Use the ContainerId from the server model (populated when server status is fetched)
             var containerId = server.ContainerId;
@@ -86,6 +89,26 @@ namespace GameServer.Docker.Hubs
                     }
                 }
             }
+            else
+            {
+                // Even if we have a ContainerId, verify it's current by doing a quick refresh
+                // This handles the case where the container was recreated/restarted
+                _logger.LogDebug("Verifying ContainerId is current for server {ServerId}", serverId);
+                try
+                {
+                    var freshContainerId = await _serverManager.GetRunningContainerIdAsync(serverId);
+                    if (!string.IsNullOrEmpty(freshContainerId) && freshContainerId != containerId)
+                    {
+                        _logger.LogInformation("ContainerId changed from {OldId} to {NewId} for server {ServerId}", 
+                            containerId.Substring(0, 12), freshContainerId.Substring(0, 12), serverId);
+                        containerId = freshContainerId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not verify ContainerId freshness, using cached value");
+                }
+            }
 
             if (string.IsNullOrEmpty(containerId))
             {
@@ -109,39 +132,66 @@ namespace GameServer.Docker.Hubs
             ContainerLogsParameters logsParameters;
             MultiplexedStream? logStream = null;
 
+            logsParameters = new ContainerLogsParameters
+            {
+                ShowStdout = true,
+                ShowStderr = true,
+                Follow = follow,
+                Timestamps = timestamps,
+                Tail = tailLines > 0 ? tailLines.ToString() : "all"
+            };
+
+            _logger.LogDebug("Calling Docker API to get container logs for container {ContainerId}", containerId);
+            
+            logStream = await _dockerClient.Containers.GetContainerLogsAsync(
+                containerId,
+                false, // tty: false
+                logsParameters,
+                cancellationToken);
+
+            _logger.LogDebug("Docker API returned log stream successfully");
+
             try
             {
-                logsParameters = new ContainerLogsParameters
-                {
-                    ShowStdout = true,
-                    ShowStderr = true,
-                    Follow = follow,
-                    Timestamps = timestamps,
-                    Tail = tailLines > 0 ? tailLines.ToString() : "all"
-                };
-
-                logStream = await _dockerClient.Containers.GetContainerLogsAsync(
-                    containerId,
-                    false, // tty: false
-                    logsParameters,
-                    cancellationToken);
-
                 var buffer = new byte[4096];
+                var lineBuffer = new System.Text.StringBuilder();
                 
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     var result = await logStream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken);
                     
                     if (result.EOF)
-                        break;
-
-                    // Convert bytes to string
-                    var line = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    
-                    if (!string.IsNullOrEmpty(line))
                     {
-                        yield return line;
+                        // Yield any remaining content in the buffer
+                        if (lineBuffer.Length > 0)
+                        {
+                            yield return lineBuffer.ToString();
+                            lineBuffer.Clear();
+                        }
+                        break;
                     }
+
+                    // Convert bytes to string and append to line buffer
+                    var chunk = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    lineBuffer.Append(chunk);
+                    
+                    // Split by newlines and yield complete lines
+                    var text = lineBuffer.ToString();
+                    var lines = text.Split(new[] { '\n' }, StringSplitOptions.None);
+                    
+                    // Yield all complete lines (all but the last one)
+                    for (int i = 0; i < lines.Length - 1; i++)
+                    {
+                        var line = lines[i].TrimEnd('\r'); // Remove carriage return if present
+                        if (!string.IsNullOrEmpty(line))
+                        {
+                            yield return line;
+                        }
+                    }
+                    
+                    // Keep the last incomplete line in the buffer
+                    lineBuffer.Clear();
+                    lineBuffer.Append(lines[^1]);
                 }
 
                 _logger.LogInformation("Log stream completed for server {ServerId}", serverId);
