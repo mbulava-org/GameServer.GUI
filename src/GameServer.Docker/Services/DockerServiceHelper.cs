@@ -837,6 +837,56 @@ namespace GameServer.Docker.Services
             }
            
         }
+
+        /// <summary>
+        /// Query containers by Docker label to find a specific container
+        /// </summary>
+        public async Task<string?> GetContainerIdByLabelAsync(string labelKey, string labelValue)
+        {
+            try
+            {
+                logger.LogDebug("Querying containers with label {LabelKey}={LabelValue}", labelKey, labelValue);
+
+                // Build filter to query containers by label
+                var filters = new Dictionary<string, IDictionary<string, bool>>
+                {
+                    ["label"] = new Dictionary<string, bool>
+                    {
+                        [$"{labelKey}={labelValue}"] = true
+                    }
+                };
+
+                var containers = await client.Containers.ListContainersAsync(new ContainersListParameters
+                {
+                    All = false, // Only running containers
+                    Filters = filters
+                });
+
+                if (!containers.Any())
+                {
+                    logger.LogWarning("No running container found with label {LabelKey}={LabelValue}", labelKey, labelValue);
+                    return null;
+                }
+
+                if (containers.Count > 1)
+                {
+                    logger.LogWarning("Multiple containers found with label {LabelKey}={LabelValue}, using first one", 
+                        labelKey, labelValue);
+                }
+
+                var container = containers.First();
+                logger.LogInformation("Found container {ContainerId} ({Names}) with label {LabelKey}={LabelValue}", 
+                    container.ID, string.Join(", ", container.Names), labelKey, labelValue);
+
+                return container.ID;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to query container by label {LabelKey}={LabelValue}", labelKey, labelValue);
+                return null;
+            }
+        }
     }
 }
+
 

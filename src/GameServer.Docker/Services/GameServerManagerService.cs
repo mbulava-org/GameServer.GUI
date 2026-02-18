@@ -104,5 +104,31 @@ namespace GameServer.Docker.Services
 
         #endregion
 
+        #region Container Lookup by Labels
+
+        /// <summary>
+        /// Get the running container ID for a server by querying Docker labels
+        /// </summary>
+        public async Task<string?> GetContainerIdByServerIdAsync(string serverId)
+        {
+            return await dockerServiceHelper.GetContainerIdByLabelAsync("gameserver.docker.Id", serverId);
+        }
+
+        /// <summary>
+        /// Get container information including ID and node location
+        /// </summary>
+        public async Task<(string? containerId, string? nodeUrl)> GetContainerInfoAsync(string serverId)
+        {
+            var containerId = await GetContainerIdByServerIdAsync(serverId);
+            
+            // Note: In a swarm setup, you might need to query which node the container is on
+            // For single-node setups, nodeUrl can be null or localhost
+            string? nodeUrl = null; // TODO: Implement node discovery if using multi-node swarm
+            
+            return (containerId, nodeUrl);
+        }
+
+        #endregion
+
     }
 }

@@ -23,5 +23,10 @@ namespace GameServer.Docker.Interfaces
         public Task<string> GetRunningContainerIdAsync(string serverId);
         
         public Task<string> GetServiceIdAsync(string serverId);
+
+        // Container lookup by Docker labels
+        public Task<string?> GetContainerIdByServerIdAsync(string serverId);
+        
+        public Task<(string? containerId, string? nodeUrl)> GetContainerInfoAsync(string serverId);
     }
 }
