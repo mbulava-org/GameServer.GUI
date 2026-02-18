@@ -158,6 +158,74 @@ namespace GameServer.Docker.Hubs
         }
 
         /// <summary>
+        /// Start an interactive exec session (e.g., /bin/sh) in the container
+        /// Creates a new shell process and establishes bidirectional communication
+        /// </summary>
+        public async Task<bool> StartExecSession(string containerId, string shell = "/bin/sh")
+        {
+            var connectionId = Context.ConnectionId;
+            _logger.LogInformation("Client {ConnectionId} requesting interactive exec session in container {ContainerId} (shell={Shell})",
+                connectionId, containerId, shell);
+
+            try
+            {
+                // Find the node agent for this container
+                var agent = await _nodeAgentDiscovery.GetAgentForContainerAsync(containerId);
+                if (agent == null)
+                {
+                    _logger.LogWarning("No agent found for container {ContainerId}", containerId);
+                    await Clients.Caller.SendAsync("Error", $"Container {containerId} not found or agent unavailable");
+                    return false;
+                }
+
+                // Create WebSocket connection to agent's exec endpoint
+                var wsUrl = agent.InternalUrl.Replace("http://", "ws://").Replace("https://", "wss://");
+                var agentWsUrl = $"{wsUrl}/containers/{containerId}/exec/ws?shell={Uri.EscapeDataString(shell)}";
+
+                var session = new ConsoleSession
+                {
+                    ConnectionId = connectionId,
+                    ContainerId = containerId,
+                    AgentUrl = agent.InternalUrl,
+                    WebSocketUrl = agentWsUrl,
+                    IsExecSession = true
+                };
+
+                // Start WebSocket connection to agent
+                var clientWebSocket = new System.Net.WebSockets.ClientWebSocket();
+                await clientWebSocket.ConnectAsync(new Uri(agentWsUrl), Context.ConnectionAborted);
+
+                session.AgentWebSocket = clientWebSocket;
+                _activeSessions[connectionId] = session;
+
+                _logger.LogInformation("Exec session established for {ContainerId} with shell {Shell} via {AgentUrl}",
+                    containerId, shell, agent.InternalUrl);
+
+                // Start forwarding messages from agent to client
+                _ = Task.Run(async () => await ForwardAgentMessagesToClientAsync(session));
+
+                await Clients.Caller.SendAsync("SessionStarted", connectionId);
+                await Clients.Caller.SendAsync("Connected", containerId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting exec session in container {ContainerId}", containerId);
+                await Clients.Caller.SendAsync("Error", $"Failed to start exec session: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Stop an exec session
+        /// </summary>
+        public async Task StopExecSession(string sessionId)
+        {
+            _logger.LogInformation("Stopping exec session {SessionId}", sessionId);
+            await CleanupSession(sessionId);
+        }
+
+        /// <summary>
         /// Disconnect from container console
         /// </summary>
         public async Task Disconnect()
@@ -256,6 +324,7 @@ namespace GameServer.Docker.Hubs
             public string WebSocketUrl { get; set; } = string.Empty;
             public System.Net.WebSockets.ClientWebSocket? AgentWebSocket { get; set; }
             public DateTime ConnectedAt { get; set; } = DateTime.UtcNow;
+            public bool IsExecSession { get; set; } = false; // True for exec, false for attach
         }
     }
 }

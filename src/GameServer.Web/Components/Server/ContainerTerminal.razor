@@ -214,7 +214,7 @@
                 .Build();
 
             // Handle incoming data from container
-            hubConnection.On<string>("ReceiveOutput", async (data) =>
+            hubConnection.On<string>("Output", async (data) =>
             {
                 if (terminal != null)
                 {

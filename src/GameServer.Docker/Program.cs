@@ -189,7 +189,8 @@ namespace GameServer.Docker
                 app.UseAuthorization();
                 
                 // Map SignalR hubs
-                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");
+                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");   // TTY attach (read-only)
+                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell
                 app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
                 app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
 

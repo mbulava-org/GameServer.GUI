@@ -350,12 +350,16 @@ namespace GameServer.Docker.Agent.Services
             MultiplexedStream logsStream = null!;
             try
             {
+                _logger.LogDebug("Calling Docker API to get container logs stream");
+                
                 // Get the multiplexed log stream from Docker
                 logsStream = await _dockerClient.Containers.GetContainerLogsAsync(
                     containerId, 
                     false, // tty = false for proper demultiplexing
                     logsParams, 
                     cancellationToken);
+
+                _logger.LogDebug("Successfully got log stream from Docker, starting to read");
 
                 // Use channels for async streaming
                 var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
@@ -370,20 +374,31 @@ namespace GameServer.Docker.Agent.Services
 
                         // For streaming logs, we need to read continuously
                         var buffer = new byte[4096];
+                        int readCount = 0;
+                        
+                        _logger.LogDebug("Starting read loop for container logs");
                         
                         while (!cancellationToken.IsCancellationRequested)
                         {
+                            _logger.LogTrace("Calling ReadOutputAsync, iteration {Count}", ++readCount);
+                            
                             // Read from the multiplexed stream
                             var result = await logsStream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken);
                             
+                            _logger.LogTrace("ReadOutputAsync returned: EOF={EOF}, Count={Count}, Target={Target}", 
+                                result.EOF, result.Count, result.Target);
+                            
                             if (result.EOF)
                             {
-                                _logger.LogDebug("Reached end of log stream for container {ContainerId}", containerId);
+                                _logger.LogDebug("Reached end of log stream for container {ContainerId} after {ReadCount} reads", 
+                                    containerId, readCount);
                                 break;
                             }
 
                             if (result.Count > 0)
                             {
+                                _logger.LogDebug("Read {ByteCount} bytes from {Target}", result.Count, result.Target);
+                                
                                 // Convert bytes to string and write to channel
                                 var logLine = result.Target == MultiplexedStream.TargetStream.StandardOut 
                                     ? $"[stdout] {System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)}"
@@ -391,10 +406,17 @@ namespace GameServer.Docker.Agent.Services
 
                                 // Split by newlines and send each line
                                 var lines = logLine.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                _logger.LogDebug("Split into {LineCount} lines", lines.Length);
+                                
                                 foreach (var line in lines)
                                 {
+                                    _logger.LogTrace("Writing line to channel: {Line}", line.Length > 100 ? line.Substring(0, 100) + "..." : line);
                                     await channel.Writer.WriteAsync(line, cancellationToken);
                                 }
+                            }
+                            else
+                            {
+                                _logger.LogTrace("ReadOutputAsync returned 0 bytes, continuing");
                             }
 
                             // Small delay to prevent tight loop
@@ -403,6 +425,8 @@ namespace GameServer.Docker.Agent.Services
                                 await Task.Delay(10, cancellationToken);
                             }
                         }
+                        
+                        _logger.LogDebug("Exited read loop, total reads: {ReadCount}", readCount);
                     }
                     catch (OperationCanceledException)
                     {
@@ -414,16 +438,22 @@ namespace GameServer.Docker.Agent.Services
                     }
                     finally
                     {
+                        _logger.LogDebug("Completing channel writer");
                         channel.Writer.Complete();
                     }
                 }, cancellationToken);
 
+                _logger.LogDebug("Starting to yield lines from channel");
+                
                 // Yield log lines from channel
+                int yieldCount = 0;
                 await foreach (var logLine in channel.Reader.ReadAllAsync(cancellationToken))
                 {
+                    _logger.LogTrace("Yielding line {Count}", ++yieldCount);
                     yield return logLine;
                 }
 
+                _logger.LogDebug("Yielded {Count} log lines total", yieldCount);
                 await readerTask;
             }
             finally
