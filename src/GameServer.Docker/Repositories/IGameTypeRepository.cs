@@ -7,6 +7,9 @@ namespace GameServer.Docker.Repositories
     /// </summary>
     public interface IGameTypeRepository
     {
+        // Initialization
+        Task InitializeDatabaseAsync();
+        
         // Query methods
         Task<List<GameTypeDefinition>> GetAllAsync(bool includeInactive = false);
         Task<GameTypeDefinition?> GetByKeyAsync(string key);

@@ -534,6 +534,15 @@ namespace GameServer.Docker.Services
             // Count running tasks
             var runningTasks = tasks.Count(t => t.Status?.State == TaskState.Running);
             
+            // Get the container ID from the most recent running task
+            var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
+            var activeTask = tasks
+                .Where(t => activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
+                .OrderByDescending(t => t.UpdatedAt)
+                .FirstOrDefault();
+            
+            item.ContainerId = activeTask?.Status?.ContainerStatus?.ContainerID;
+            
             // Determine status using same logic as ResourceUsage.ServiceStatus
             item.Status = (desiredReplicas, runningTasks) switch
             {

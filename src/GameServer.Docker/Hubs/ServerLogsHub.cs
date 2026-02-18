@@ -62,23 +62,28 @@ namespace GameServer.Docker.Hubs
                 yield break;
             }
 
-            string? containerId = null;
-
-            // Method 1: Try label-based lookup to find container
-            _logger.LogInformation("Looking up container for server {ServerId} using Docker labels", serverId);
-            (containerId, _) = await _serverManager.GetContainerInfoAsync(serverId);
-
-            // Method 2: Fallback to service/task-based lookup if label lookup fails
+            // Use the ContainerId from the server model (populated when server status is fetched)
+            var containerId = server.ContainerId;
+            
+            // Fallback: Try other lookup methods if ContainerId is not available
             if (string.IsNullOrEmpty(containerId))
             {
-                _logger.LogWarning("Label-based lookup failed, trying service/task lookup for server {ServerId}", serverId);
-                try
+                _logger.LogWarning("ContainerId not available on server model, trying fallback lookups for server {ServerId}", serverId);
+                
+                // Method 1: Try label-based lookup
+                (containerId, _) = await _serverManager.GetContainerInfoAsync(serverId);
+
+                // Method 2: Try service/task-based lookup
+                if (string.IsNullOrEmpty(containerId))
                 {
-                    containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Service/task lookup also failed for server {ServerId}", serverId);
+                    try
+                    {
+                        containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Fallback container lookup failed for server {ServerId}", serverId);
+                    }
                 }
             }
 

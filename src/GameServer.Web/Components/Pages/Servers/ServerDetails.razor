@@ -216,9 +216,9 @@ else
                   <span><strong>Interactive Shell</strong> - Execute commands directly in the container using /bin/sh</span>
                 </div>
               </RadzenAlert>
-              <ContainerTerminal ContainerId="@(containerId ?? ServerId)" 
-                                 AutoConnect="true"
-                                 Shell="/bin/sh" />
+              <ContainerTerminal ContainerId="@containerId" 
+                                   AutoConnect="true"
+                                   Shell="/bin/sh" />
             }
             else
             {
@@ -251,8 +251,8 @@ else
                     <span><strong>Attached Console</strong> - View the main process output (requires TTY enabled)</span>
                   </div>
                 </RadzenAlert>
-                <ContainerConsole ServerId="@(containerId ?? ServerId)" 
-                                 AutoConnect="false" />
+                <ContainerConsole ServerId="@containerId" 
+                                   AutoConnect="false" />
               }
               else
               {
@@ -567,21 +567,26 @@ private async Task LoadServerAsync()
         {
             resourceUsage = await ServerApi.GetResourceUsageAsync(ServerId);
             
-            // Extract the first container ID if available
-            if (resourceUsage?.ContainerIds?.Any() == true)
+            // Use the ContainerId from the server model (most reliable)
+            if (!string.IsNullOrEmpty(server?.ContainerId))
+            {
+                containerId = server.ContainerId;
+            }
+            // Fallback to resource usage if server model doesn't have it yet
+            else if (resourceUsage?.ContainerIds?.Any() == true)
             {
                 containerId = resourceUsage.ContainerIds.First();
             }
             else
             {
-                // Fallback to ServerId if no containers yet
-                containerId = ServerId;
+                // Final fallback to ServerId if no container found
+                containerId = null; // Set to null so components know container isn't available yet
             }
         }
         catch
         {
-            // If resource usage fails, fall back to using ServerId
-            containerId = ServerId;
+            // If resource usage fails, try to get containerId from server model
+            containerId = server?.ContainerId;
         }
     }
 

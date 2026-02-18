@@ -151,16 +151,36 @@ namespace GameServer.Docker
 
                 app.UseHttpsRedirection();
 
-                // Initialize database via repository (happens on first repository instantiation)
-                // The GameTypeRepository constructor calls CreateAndMigrate() which:
+                // Initialize database on startup
+                // The GameTypeRepository.InitializeDatabaseAsync() method:
                 // - Creates the database if it doesn't exist
                 // - Migrates JSON files only if database is empty
-                if (!args.Contains("--no-db-init"))
+                // Skip initialization if:
+                // - Command line argument --no-db-init is present
+                // - Environment variable SKIP_DB_INIT is set
+                // - Running under NSwag (detected by checking for NSwag in the executing assembly path or command line)
+                var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
+                var commandLine = Environment.CommandLine;
+                var isNSwagExecution = entryAssembly.Contains("NSwag", StringComparison.OrdinalIgnoreCase) ||
+                                       commandLine.Contains("NSwag", StringComparison.OrdinalIgnoreCase);
+                var skipDbInit = args.Contains("--no-db-init") || 
+                                 Environment.GetEnvironmentVariable("SKIP_DB_INIT") == "true" ||
+                                 isNSwagExecution;
+                
+                if (!skipDbInit)
                 {
                     using var scope = app.Services.CreateScope();
                     var repository = scope.ServiceProvider.GetRequiredService<Repositories.IGameTypeRepository>();
                     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-                    logger.LogInformation("Database initialization complete via repository");
+                    
+                    logger.LogInformation("Initializing database...");
+                    await repository.InitializeDatabaseAsync();
+                    logger.LogInformation("Database initialization complete");
+                }
+                else
+                {
+                    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+                    logger.LogDebug("Database initialization skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
                 }
 
                 // Enable CORS (must be before routing)

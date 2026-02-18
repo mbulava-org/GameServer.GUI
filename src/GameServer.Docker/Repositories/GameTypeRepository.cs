@@ -13,7 +13,6 @@ namespace GameServer.Docker.Repositories
     /// </summary>
     public class GameTypeRepository : IGameTypeRepository
     {
-        private static bool _isInitialized = false;
         private readonly GameServerDbContext _context;
         private readonly ILogger<GameTypeRepository> _logger;
 
@@ -21,10 +20,6 @@ namespace GameServer.Docker.Repositories
         {
             _context = context;
             _logger = logger;
-            if (!_isInitialized)
-            {
-                CreateAndMigrate().Wait();
-            }
         }
 
         #region Query Methods
@@ -636,11 +631,14 @@ namespace GameServer.Docker.Repositories
         #endregion
 
 
-        private async Task CreateAndMigrate()
+        /// <summary>
+        /// Initialize and migrate the database. Should be called once during application startup.
+        /// </summary>
+        public async Task InitializeDatabaseAsync()
         {
             // Ensure database is created
             _logger.LogInformation("Initializing database...");
-            if (!_context.Database.EnsureCreatedAsync().Result)
+            if (!await _context.Database.EnsureCreatedAsync())
                 _logger.LogInformation("Database already exists");
 
             // Check if we need to migrate from JSON files
@@ -654,7 +652,6 @@ namespace GameServer.Docker.Repositories
             {
                 _logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
             }
-            _isInitialized = true;
         }
 
         /// <summary>
