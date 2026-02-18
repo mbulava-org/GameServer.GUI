@@ -636,21 +636,43 @@ namespace GameServer.Docker.Repositories
         /// </summary>
         public async Task InitializeDatabaseAsync()
         {
-            // Ensure database is created
             _logger.LogInformation("Initializing database...");
-            if (!await _context.Database.EnsureCreatedAsync())
-                _logger.LogInformation("Database already exists");
+            
+            try
+            {
+                // Use CanConnect() instead of EnsureCreatedAsync() for faster checks
+                var canConnect = await _context.Database.CanConnectAsync();
+                
+                if (!canConnect)
+                {
+                    _logger.LogInformation("Database does not exist, creating...");
+                    await _context.Database.EnsureCreatedAsync();
+                    _logger.LogInformation("Database created successfully");
+                }
+                else
+                {
+                    _logger.LogInformation("Database already exists");
+                }
 
-            // Check if we need to migrate from JSON files
-            var gameTypesCount = await _context.GameTypes.CountAsync();
-            if (gameTypesCount == 0)
-            {
-                _logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
-                await MigrateFromJsonIfExistsAsync();
+                // Use AnyAsync() instead of CountAsync() - much faster!
+                var hasGameTypes = await _context.GameTypes.AnyAsync();
+                
+                if (!hasGameTypes)
+                {
+                    _logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
+                    await MigrateFromJsonIfExistsAsync();
+                }
+                else
+                {
+                    // Only count if we need to log it (optional)
+                    var count = await _context.GameTypes.CountAsync();
+                    _logger.LogInformation("Database initialized. Found {Count} game types.", count);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                _logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
+                _logger.LogError(ex, "Error initializing database");
+                throw;
             }
         }
 

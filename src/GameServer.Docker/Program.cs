@@ -82,8 +82,28 @@ namespace GameServer.Docker
                 // Add SQLite Database for GameType management
                 var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
                     ?? "Data Source=./data/gameserver.db";//let this default to a sub path to avoid NSwag build errors.
+                
+                // Optimize SQLite connection string for performance
+                var optimizedConnectionString = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString)
+                {
+                    Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+                    Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared,
+                    Pooling = true
+                }.ToString();
+                
                 builder.Services.AddDbContext<Data.GameServerDbContext>(options =>
-                    options.UseSqlite(connectionString));
+                {
+                    options.UseSqlite(optimizedConnectionString, sqliteOptions =>
+                    {
+                        sqliteOptions.CommandTimeout(30); // 30 second timeout
+                    });
+                    
+                    // Only enable sensitive data logging in development
+                    if (builder.Environment.IsDevelopment())
+                    {
+                        options.EnableSensitiveDataLogging();
+                    }
+                });
 
                 // Add GameType Repository (database-backed) - This replaces file-based registries
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();

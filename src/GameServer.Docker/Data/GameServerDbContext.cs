@@ -11,6 +11,12 @@ namespace GameServer.Docker.Data
         public GameServerDbContext(DbContextOptions<GameServerDbContext> options)
             : base(options)
         {
+            // Enable SQLite performance optimizations
+            Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");      // Write-Ahead Logging for better concurrency
+            Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");    // Faster writes (still safe)
+            Database.ExecuteSqlRaw("PRAGMA cache_size=-64000;");     // 64MB cache
+            Database.ExecuteSqlRaw("PRAGMA temp_store=MEMORY;");     // Use memory for temp tables
+            Database.ExecuteSqlRaw("PRAGMA mmap_size=268435456;");   // 256MB memory-mapped I/O
         }
 
         // Main tables
