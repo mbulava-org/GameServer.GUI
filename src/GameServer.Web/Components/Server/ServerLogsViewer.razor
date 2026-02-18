@@ -3,9 +3,12 @@
 @using global::GameServer.Docker.Client
 @using Microsoft.AspNetCore.SignalR.Client
 @using System.Text
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
 @inject IGameServerApi ServerApi
 @inject NavigationManager Navigation
 @inject NotificationService NotificationService
+@inject IOptions<GameServerDockerApi> ApiConfig
 @implements IAsyncDisposable
 
 <div class="logs-viewer">
@@ -83,17 +86,19 @@
 </div>
 
 @code {
-  [Parameter] public string ServerId { get; set; } = "";
-  [Parameter] public GameServer Server { get; set; } = new();
+[Parameter] public string ServerId { get; set; } = "";
+[Parameter] public GameServer Server { get; set; } = new();
 
-  class LogLine
-  {
-    public DateTime Timestamp { get; set; }
-    public string Level { get; set; } = "INFO";
-    public string Message { get; set; } = "";
-  }
+[Inject] private ILogger<ServerLogsViewer>? _logger { get; set; }
 
-  private HubConnection? hubConnection;
+class LogLine
+{
+  public DateTime Timestamp { get; set; }
+  public string Level { get; set; } = "INFO";
+  public string Message { get; set; } = "";
+}
+
+private HubConnection? hubConnection;
   private List<LogLine> logLines = new();
   private bool loadingLogs = false;
   private bool isStreaming = false;
@@ -137,8 +142,14 @@
       connectionStatus = "Connecting...";
       StateHasChanged();
 
+      // Build the hub URL using the API base URI from configuration
+      var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
+      var hubUrl = $"{apiBaseUri}/hubs/serverlogs";
+      
+      _logger?.LogInformation("Connecting to ServerLogs hub at {HubUrl}", hubUrl);
+
       hubConnection = new HubConnectionBuilder()
-        .WithUrl(Navigation.ToAbsoluteUri("/hubs/serverlogs"))
+        .WithUrl(hubUrl)
         .WithAutomaticReconnect(new[] 
         { 
           TimeSpan.Zero, 

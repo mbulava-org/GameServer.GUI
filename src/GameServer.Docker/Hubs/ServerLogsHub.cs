@@ -2,12 +2,15 @@ using Microsoft.AspNetCore.SignalR;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
 using System.Runtime.CompilerServices;
+using Docker.DotNet;
+using Docker.DotNet.Models;
 
 namespace GameServer.Docker.Hubs
 {
     /// <summary>
     /// SignalR Hub for streaming real-time game server logs to web clients.
-    /// Acts as a proxy between web clients and Node Agent hubs.
+    /// Streams logs directly from Docker containers using Docker.DotNet.
+    /// </summary>
     /// </summary>
     public class ServerLogsHub : Hub
     {
@@ -15,17 +18,20 @@ namespace GameServer.Docker.Hubs
         private readonly NodeAgentClient _agentClient;
         private readonly INodeAgentDiscovery _nodeDiscovery;
         private readonly IGameServerManager _serverManager;
+        private readonly IDockerClient _dockerClient;
 
         public ServerLogsHub(
             ILogger<ServerLogsHub> logger,
             NodeAgentClient agentClient,
             INodeAgentDiscovery nodeDiscovery,
-            IGameServerManager serverManager)
+            IGameServerManager serverManager,
+            IDockerClient dockerClient)
         {
             _logger = logger;
             _agentClient = agentClient;
             _nodeDiscovery = nodeDiscovery;
             _serverManager = serverManager;
+            _dockerClient = dockerClient;
         }
 
         /// <summary>
@@ -47,66 +53,109 @@ namespace GameServer.Docker.Hubs
             _logger.LogInformation("Client {ConnectionId} starting log stream for server {ServerId}", 
                 connectionId, serverId);
 
+            // Get server info
+            var server = await _serverManager.GetServerById(serverId);
+            if (server == null)
+            {
+                _logger.LogWarning("Server {ServerId} not found", serverId);
+                yield return "ERROR: Server not found";
+                yield break;
+            }
+
+            // Use label-based lookup to find container
+            _logger.LogInformation("Looking up container for server {ServerId} using Docker labels", serverId);
+            var (containerId, nodeUrl) = await _serverManager.GetContainerInfoAsync(serverId);
+
+            // Fallback: Try to use existing method if label lookup fails
+            if (string.IsNullOrEmpty(containerId))
+            {
+                _logger.LogWarning("Label-based lookup failed, trying legacy method for server {ServerId}", serverId);
+                try
+                {
+                    containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Legacy container lookup also failed for server {ServerId}", serverId);
+                }
+            }
+
+            if (string.IsNullOrEmpty(containerId))
+            {
+                _logger.LogWarning("Could not find container for server {ServerId}", serverId);
+                yield return $"ERROR: Could not locate running container for server {serverId}. Make sure the server is started.";
+                yield break;
+            }
+
+            _logger.LogInformation("Streaming logs for server {ServerId}, container {ContainerId}",
+                serverId, containerId);
+
+            // Stream logs directly from Docker daemon
+            ContainerLogsParameters logsParameters;
+            Stream? logStream = null;
+            StreamReader? reader = null;
+
             try
             {
-                // Get server info
-                var server = await _serverManager.GetServerById(serverId);
-                if (server == null)
+                logsParameters = new ContainerLogsParameters
                 {
-                    _logger.LogWarning("Server {ServerId} not found", serverId);
-                    yield return "ERROR: Server not found";
-                    yield break;
-                }
+                    ShowStdout = true,
+                    ShowStderr = true,
+                    Follow = follow,
+                    Timestamps = timestamps,
+                    Tail = tailLines > 0 ? tailLines.ToString() : "all"
+                };
 
-                // Use label-based lookup to find container
-                _logger.LogInformation("Looking up container for server {ServerId} using Docker labels", serverId);
-                var (containerId, nodeUrl) = await _serverManager.GetContainerInfoAsync(serverId);
+                logStream = await _dockerClient.Containers.GetContainerLogsAsync(
+                    containerId,
+                    logsParameters,
+                    cancellationToken);
 
-                // Fallback: Try to use existing method if label lookup fails
-                if (string.IsNullOrEmpty(containerId))
+                reader = new StreamReader(logStream);
+                
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Label-based lookup failed, trying legacy method for server {ServerId}", serverId);
-                    try
+                    var line = await reader.ReadLineAsync();
+                    if (line == null)
+                        break;
+
+                    // Clean Docker log line (remove 8-byte header if present)
+                    var cleanLine = CleanDockerLogLine(line);
+                    
+                    if (!string.IsNullOrEmpty(cleanLine))
                     {
-                        containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug(ex, "Legacy container lookup also failed for server {ServerId}", serverId);
+                        yield return cleanLine;
                     }
                 }
 
-                if (string.IsNullOrEmpty(containerId))
-                {
-                    _logger.LogWarning("Could not find container for server {ServerId}", serverId);
-                    yield return $"ERROR: Could not locate running container for server {serverId}. Make sure the server is started.";
-                    yield break;
-                }
-
-                _logger.LogInformation("Streaming logs for server {ServerId}, container {ContainerId}",
-                    serverId, containerId);
-
-                // For single-node Docker (not swarm), we can stream directly from the local Docker daemon
-                // If using multi-node swarm with agents, you'd need to use nodeUrl and _agentClient
-                // For now, assume single-node and stream directly
-                
-                // Note: You'll need to implement a direct container log streaming method
-                // or use the existing NodeAgentClient if available
-                yield return $"INFO: Streaming logs for container {containerId}...";
-                yield return $"INFO: Tailing last {tailLines} lines...";
-                
-                // TODO: Implement actual log streaming here
-                // For multi-node: await foreach (var line in _agentClient.StreamContainerLogsAsync(...))
-                // For single-node: Use Docker.DotNet to stream logs directly
-                
-                yield return "INFO: Log streaming not yet fully implemented. Container found successfully.";
-                yield return $"INFO: Container ID: {containerId}";
+                _logger.LogInformation("Log stream completed for server {ServerId}", serverId);
             }
             finally
             {
+                reader?.Dispose();
+                logStream?.Dispose();
+                
                 _logger.LogInformation("Log stream ended for server {ServerId} on connection {ConnectionId}",
                     serverId, connectionId);
             }
+        }
+
+        /// <summary>
+        /// Clean Docker log line by removing 8-byte header if present
+        /// </summary>
+        private string CleanDockerLogLine(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+                return string.Empty;
+
+            // Docker logs may have 8-byte header: [stream_type(1)][padding(3)][size(4)]
+            // If line starts with non-printable characters, skip the first 8 bytes
+            if (line.Length > 8 && line[0] < 32)
+            {
+                return line.Substring(8);
+            }
+
+            return line;
         }
 
         /// <summary>
