@@ -4,6 +4,7 @@
   "documentGenerator": {
     "aspNetCoreToOpenApi": {
       "project": "../GameServer.Docker/GameServer.Docker.csproj",
+      "arguments": [ "--no-db-init" ],
       "documentName": "v1",
       "msBuildProjectExtensionsPath": null,
       "configuration": "$(Configuration)",

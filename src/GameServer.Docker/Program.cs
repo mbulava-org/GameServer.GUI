@@ -12,11 +12,13 @@ namespace GameServer.Docker
     {
         public static async Task Main(string[] args)
         {
+            // Bootstrap logger - minimal configuration for startup only
+            // Don't write to console here to avoid duplicates
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug()
+                .MinimumLevel.Information()
                 .Enrich.FromLogContext()
-                .WriteTo.Console()
                 .CreateBootstrapLogger();
+                
             try
             {
                 //Log startup information
@@ -25,7 +27,7 @@ namespace GameServer.Docker
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //Serilog configuration
+                //Serilog configuration - This replaces the bootstrap logger
                 builder.Services.AddSerilog((services, loggerConfig) =>
                     loggerConfig
                         .ReadFrom.Configuration(builder.Configuration)
@@ -132,6 +134,7 @@ namespace GameServer.Docker
                 });
 
                 
+                
                 var app = builder.Build();
 
                 // Add Serilog request logging
@@ -148,8 +151,17 @@ namespace GameServer.Docker
 
                 app.UseHttpsRedirection();
 
-                // Initialize database
-                //await InitializeDatabaseAsync(app.Services);
+                // Initialize database via repository (happens on first repository instantiation)
+                // The GameTypeRepository constructor calls CreateAndMigrate() which:
+                // - Creates the database if it doesn't exist
+                // - Migrates JSON files only if database is empty
+                if (!args.Contains("--no-db-init"))
+                {
+                    using var scope = app.Services.CreateScope();
+                    var repository = scope.ServiceProvider.GetRequiredService<Repositories.IGameTypeRepository>();
+                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+                    logger.LogInformation("Database initialization complete via repository");
+                }
 
                 // Enable CORS (must be before routing)
                 app.UseCors();
@@ -174,121 +186,5 @@ namespace GameServer.Docker
                 Log.CloseAndFlush();
             }
         }
-
-        /// <summary>
-        /// Initialize database on startup
-        /// </summary>
-        //private static async Task InitializeDatabaseAsync(IServiceProvider services)
-        //{
-        //    using var scope = services.CreateScope();
-        //    var context = scope.ServiceProvider.GetRequiredService<Data.GameServerDbContext>();
-        //    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-        //    try
-        //    {
-        //        // Ensure database is created
-        //        logger.LogInformation("Initializing database...");
-        //        await context.Database.EnsureCreatedAsync();
-                
-        //        // Check if we need to migrate from JSON files
-        //        var gameTypesCount = await context.GameTypes.CountAsync();
-        //        if (gameTypesCount == 0)
-        //        {
-        //            logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
-        //            await MigrateFromJsonIfExistsAsync(scope.ServiceProvider, logger);
-        //        }
-        //        else
-        //        {
-        //            logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        logger.LogError(ex, "Error initializing database");
-        //        throw;
-        //    }
-        //}
-
-        /// <summary>
-        /// Migrate data from existing JSON files if they exist
-        /// </summary>
-        //private static async Task MigrateFromJsonIfExistsAsync(IServiceProvider services, Microsoft.Extensions.Logging.ILogger logger)
-        //{
-        //    var configuration = services.GetRequiredService<IConfiguration>();
-        //    var dataDirectory = configuration.GetValue<string>("GameTypeStorage:DataDirectory") ?? "./data";
-        //    var gameTypesDir = Path.Combine(dataDirectory, "gametypes");
-
-        //    if (!Directory.Exists(gameTypesDir))
-        //    {
-        //        logger.LogInformation("No JSON files found to migrate.");
-        //        return;
-        //    }
-
-        //    var jsonFiles = Directory.GetFiles(gameTypesDir, "*.json");
-        //    if (jsonFiles.Length == 0)
-        //    {
-        //        logger.LogInformation("No JSON files found to migrate.");
-        //        return;
-        //    }
-
-        //    logger.LogInformation("Found {Count} JSON files to migrate.", jsonFiles.Length);
-
-        //    var context = services.GetRequiredService<Data.GameServerDbContext>();
-        //    var migrated = 0;
-
-        //    foreach (var file in jsonFiles)
-        //    {
-        //        try
-        //        {
-        //            var json = await File.ReadAllTextAsync(file);
-        //            var gameType = System.Text.Json.JsonSerializer.Deserialize<Models.GameTypeDefinition>(json);
-
-        //            if (gameType != null && !await context.GameTypes.AnyAsync(gt => gt.Key == gameType.Key))
-        //            {
-        //                var entity = new Data.GameTypeEntity
-        //                {
-        //                    Key = gameType.Key,
-        //                    DisplayName = gameType.DisplayName,
-        //                    Description = gameType.Description,
-        //                    Image = gameType.Image,
-        //                    ThumbnailUrl = gameType.ThumbnailUrl,
-        //                    DocumentationUrl = gameType.DocumentationUrl,
-        //                    IsActive = true,
-        //                    Ports = gameType.Ports?.Select(p => new Data.PortEntity
-        //                    {
-        //                        Port = (int)p.Port,
-        //                        Protocol = p.Protocol,
-        //                        IsDefaultPort = p.IsDefaultPort
-        //                    }).ToList() ?? new List<Data.PortEntity>(),
-        //                    Volumes = gameType.Volumes?.Select(v => new Data.VolumeEntity
-        //                    {
-        //                        Source = v.Source,
-        //                        Target = v.Target,
-        //                        ReadOnly = false  // Default to false, model doesn't have this property yet
-        //                    }).ToList() ?? new List<Data.VolumeEntity>(),
-        //                    DefaultSettings = gameType.DefaultSettings?.Select(ds => new Data.DefaultSettingEntity
-        //                    {
-        //                        SettingKey = ds.Key,
-        //                        SettingValue = ds.Value
-        //                    }).ToList() ?? new List<Data.DefaultSettingEntity>()
-        //                };
-
-        //                context.GameTypes.Add(entity);
-        //                migrated++;
-        //                logger.LogInformation("Migrated GameType: {Key}", gameType.Key);
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            logger.LogWarning(ex, "Error migrating file: {File}", file);
-        //        }
-        //    }
-
-        //    if (migrated > 0)
-        //    {
-        //        await context.SaveChangesAsync();
-        //        logger.LogInformation("Migration complete. Migrated {Count} game types from JSON to database.", migrated);
-        //    }
-        //}
     }
 }

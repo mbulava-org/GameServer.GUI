@@ -293,11 +293,27 @@ private HubConnection? hubConnection;
     }
     catch (Exception ex)
     {
+      var errorMessage = ex.Message;
+      var userFriendlyMessage = errorMessage;
+      
+      // Check for container not found - common when server is stopped
+      if (ex is HubException && ex.Message.Contains("An error occurred on the server"))
+      {
+        userFriendlyMessage = "Container not found. The server may be stopped or not yet started.";
+        errorMessage = "Container not found or not running";
+        
+        _logger?.LogWarning("Failed to stream logs for server {ServerId}: Container not found or not running", ServerId);
+      }
+      else
+      {
+        _logger?.LogError(ex, "Failed to stream logs for server {ServerId}", ServerId);
+      }
+      
       NotificationService?.Notify(new NotificationMessage
       {
         Severity = NotificationSeverity.Error,
         Summary = "Stream Error",
-        Detail = $"Log stream error: {ex.Message}",
+        Detail = userFriendlyMessage,
         Duration = 5000
       });
 
@@ -306,7 +322,14 @@ private HubConnection? hubConnection;
       {
         Timestamp = DateTime.Now,
         Level = "ERROR",
-        Message = $"[STREAM ERROR] {ex.Message}"
+        Message = $"[STREAM ERROR] {errorMessage}"
+      });
+      
+      logLines.Add(new LogLine
+      {
+        Timestamp = DateTime.Now,
+        Level = "INFO",
+        Message = "Tip: Check if the server container is running in Docker."
       });
     }
     finally

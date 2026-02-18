@@ -13,6 +13,7 @@ namespace GameServer.Docker.Repositories
     /// </summary>
     public class GameTypeRepository : IGameTypeRepository
     {
+        private static bool _isInitialized = false;
         private readonly GameServerDbContext _context;
         private readonly ILogger<GameTypeRepository> _logger;
 
@@ -20,7 +21,10 @@ namespace GameServer.Docker.Repositories
         {
             _context = context;
             _logger = logger;
-            CreateAndMigrate().Wait();
+            if (!_isInitialized)
+            {
+                CreateAndMigrate().Wait();
+            }
         }
 
         #region Query Methods
@@ -650,6 +654,7 @@ namespace GameServer.Docker.Repositories
             {
                 _logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
             }
+            _isInitialized = true;
         }
 
         /// <summary>
