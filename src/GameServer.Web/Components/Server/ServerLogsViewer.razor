@@ -1,4 +1,4 @@
-@using Microsoft.AspNetCore.SignalR
+﻿@using Microsoft.AspNetCore.SignalR
 @using Radzen
 @using Radzen.Blazor
 @using global::GameServer.Docker.Client
@@ -16,15 +16,11 @@
   <div class="logs-toolbar">
     <div class="toolbar-left">
       <RadzenButton Icon='@(isStreaming ? "pause" : "play_arrow")' 
-                    Text='@(isStreaming ? "Stop" : "Stream Logs")' 
+                    Text='@(isStreaming ? "Stop" : "Start Polling")' 
                     Click="ToggleStreaming" 
                     ButtonStyle='@(isStreaming ? ButtonStyle.Warning : ButtonStyle.Success)' />
       <RadzenButton Icon="refresh" Text="Refresh" Click="RefreshLogs" Disabled="@isStreaming" />
       <RadzenButton Icon="delete_sweep" Text="Clear" Click="ClearLogs" ButtonStyle="ButtonStyle.Secondary" />
-      @if (hubConnection?.State != HubConnectionState.Connected && !string.IsNullOrEmpty(connectionStatus))
-      {
-        <RadzenBadge BadgeStyle="@GetConnectionBadgeStyle()" Text="@connectionStatus" class="ms-2" />
-      }
     </div>
     <div class="toolbar-right">
       <RadzenCheckBox @bind-Value="autoScroll" />
@@ -73,15 +69,11 @@
     <span>Total: @logLines.Count lines | Filtered: @GetFilteredLogs().Count() lines</span>
     @if (isStreaming)
     {
-      <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="? Live Streaming" />
-      @if (hubConnection?.State == HubConnectionState.Connected)
-      {
-        <span class="ms-2 text-success">Connected via WebSocket</span>
-      }
+      <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="● Polling Active" />
     }
     else
     {
-      <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="? Stopped" />
+      <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="● Stopped" />
     }
   </div>
 </div>
@@ -89,7 +81,7 @@
 @code {
 [Parameter] public string ServerId { get; set; } = "";
 [Parameter] public GameServer Server { get; set; } = new();
-[Parameter] public bool AutoConnect { get; set; } = true;
+[Parameter] public bool AutoConnect { get; set; } = false;
 
 [Inject] private ILogger<ServerLogsViewer>? _logger { get; set; }
 
@@ -100,7 +92,11 @@ class LogLine
   public string Message { get; set; } = "";
 }
 
-private HubConnection? hubConnection;
+class ContainerLogsResponse
+{
+  public List<string> Logs { get; set; } = new();
+}
+
   private List<LogLine> logLines = new();
   private bool loadingLogs = false;
   private bool isStreaming = false;
@@ -111,90 +107,11 @@ private HubConnection? hubConnection;
   private string? selectedLogLevel;
   private string[] logLevels = new[] { "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
   private ElementReference logsContentRef;
-  private string connectionStatus = "";
   private CancellationTokenSource? streamCts;
 
   protected override async Task OnInitializedAsync()
   {
-    // Build the hub URL using the API base URI from configuration
-    var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
-    var hubUrl = $"{apiBaseUri}/hubs/serverlogs";
-    
-    _logger?.LogInformation("Connecting to ServerLogs hub at {HubUrl}", hubUrl);
-
-    hubConnection = new HubConnectionBuilder()
-      .WithUrl(hubUrl)
-      .WithAutomaticReconnect(new[] 
-      { 
-        TimeSpan.Zero, 
-        TimeSpan.FromSeconds(2), 
-        TimeSpan.FromSeconds(5), 
-        TimeSpan.FromSeconds(10) 
-      })
-      .ConfigureLogging(logging =>
-      {
-        logging.SetMinimumLevel(LogLevel.Debug);
-      })
-      .Build();
-
-    // Handle reconnection events
-    hubConnection.Reconnecting += error =>
-    {
-      connectionStatus = "Reconnecting...";
-      InvokeAsync(StateHasChanged);
-      return Task.CompletedTask;
-    };
-
-    hubConnection.Reconnected += connectionId =>
-    {
-      connectionStatus = "Connected";
-      NotificationService?.Notify(new NotificationMessage
-      {
-        Severity = NotificationSeverity.Success,
-        Summary = "Reconnected",
-        Detail = "Log stream reconnected successfully",
-        Duration = 2000
-      });
-      InvokeAsync(StateHasChanged);
-      return Task.CompletedTask;
-    };
-
-    hubConnection.Closed += error =>
-    {
-      connectionStatus = error != null ? "Disconnected (error)" : "Disconnected";
-      if (error != null && isStreaming)
-      {
-        _logger?.LogError(error, "Hub connection closed with error");
-        NotificationService?.Notify(new NotificationMessage
-        {
-          Severity = NotificationSeverity.Error,
-          Summary = "Connection Lost",
-          Detail = $"Log stream connection lost: {error.Message}",
-          Duration = 4000
-        });
-      }
-      InvokeAsync(StateHasChanged);
-      return Task.CompletedTask;
-    };
-
-    try
-    {
-      await hubConnection.StartAsync();
-      connectionStatus = "Connected";
-      _logger?.LogInformation("Hub connection established successfully");
-    }
-    catch (Exception ex)
-    {
-      connectionStatus = $"Connection failed: {ex.Message}";
-      _logger?.LogError(ex, "Failed to connect to hub");
-      NotificationService?.Notify(new NotificationMessage
-      {
-        Severity = NotificationSeverity.Error,
-        Summary = "Connection Error",
-        Detail = $"Failed to connect to log stream: {ex.Message}",
-        Duration = 5000
-      });
-    }
+    _logger?.LogInformation("ServerLogsViewer initialized for server {ServerId}", ServerId);
 
     // Auto-start if server ID is provided
     if (AutoConnect && !string.IsNullOrWhiteSpace(ServerId))
@@ -233,117 +150,84 @@ private HubConnection? hubConnection;
       return;
     }
 
-    if (hubConnection?.State != HubConnectionState.Connected)
-    {
-      _logger?.LogWarning("Hub not connected, attempting to connect");
-      NotificationService?.Notify(new NotificationMessage
-      {
-        Severity = NotificationSeverity.Warning,
-        Summary = "Not Connected",
-        Detail = "Attempting to reconnect to log stream...",
-        Duration = 3000
-      });
-
-      try
-      {
-        await hubConnection!.StartAsync();
-        connectionStatus = "Connected";
-      }
-      catch (Exception ex)
-      {
-        _logger?.LogError(ex, "Failed to reconnect to hub");
-        NotificationService?.Notify(new NotificationMessage
-        {
-          Severity = NotificationSeverity.Error,
-          Summary = "Connection Failed",
-          Detail = $"Failed to reconnect: {ex.Message}",
-          Duration = 5000
-        });
-        return;
-      }
-    }
-
     isStreaming = true;
     loadingLogs = true;
     streamCts = new CancellationTokenSource();
 
     try
     {
-      _logger?.LogInformation("Starting log stream for server {ServerId}", ServerId);
+      _logger?.LogInformation("Starting log polling for server {ServerId}", ServerId);
       
-      // Stream logs from SignalR hub
-      await foreach (var logLine in hubConnection!.StreamAsync<string>(
-        "StreamServerLogs",
-        ServerId,
-        true,      // follow
-        tailLines, // tailLines
-        true,      // timestamps
-        streamCts.Token))
+      // Poll logs via REST API instead of SignalR streaming
+      while (!streamCts.Token.IsCancellationRequested && isStreaming)
       {
-        // Parse and add log line
-        var parsedLine = ParseLogLine(logLine);
-        logLines.Add(parsedLine);
-
-        // Trim to max lines
-        while (logLines.Count > maxLines)
+        try
         {
-          logLines.RemoveAt(0);
-        }
+          // Fetch logs from REST API
+          var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
+          var httpClient = new HttpClient();
+          var response = await httpClient.GetFromJsonAsync<ContainerLogsResponse>(
+            $"{apiBaseUri}/api/servers/{ServerId}/logs?tailLines={tailLines}",
+            streamCts.Token);
+          
+          if (response != null && response.Logs.Any())
+          {
+            // Clear and reload logs each time
+            logLines.Clear();
+            
+            foreach (var logLine in response.Logs)
+            {
+              var parsedLine = ParseLogLine(logLine);
+              logLines.Add(parsedLine);
+            }
 
-        // Auto-scroll if enabled
-        if (autoScroll)
+            // Trim to max lines
+            while (logLines.Count > maxLines)
+            {
+              logLines.RemoveAt(0);
+            }
+
+            // Auto-scroll if enabled
+            if (autoScroll)
+            {
+              await ScrollToBottomAsync();
+            }
+
+            await InvokeAsync(StateHasChanged);
+          }
+          
+          loadingLogs = false;
+          
+          // Poll every 2 seconds
+          await Task.Delay(2000, streamCts.Token);
+        }
+        catch (OperationCanceledException)
         {
-          await ScrollToBottomAsync();
+          break;
         }
-
-        await InvokeAsync(StateHasChanged);
+        catch (Exception ex)
+        {
+          _logger?.LogError(ex, "Error polling logs for server {ServerId}", ServerId);
+          
+          // Show error in UI
+          logLines.Add(new LogLine
+          {
+            Timestamp = DateTime.Now,
+            Level = "ERROR",
+            Message = $"[POLLING ERROR] {ex.Message}"
+          });
+          
+          await InvokeAsync(StateHasChanged);
+          
+          // Wait a bit before retrying
+          await Task.Delay(5000, streamCts.Token);
+        }
       }
     }
     catch (OperationCanceledException)
     {
       // Expected when stopping
-      _logger?.LogDebug("Log streaming cancelled for server {ServerId}", ServerId);
-    }
-    catch (Exception ex)
-    {
-      var errorMessage = ex.Message;
-      var userFriendlyMessage = errorMessage;
-      
-      // Check for container not found - common when server is stopped
-      if (ex is HubException && ex.Message.Contains("An error occurred on the server"))
-      {
-        userFriendlyMessage = "Container not found. The server may be stopped or not yet started.";
-        errorMessage = "Container not found or not running";
-        
-        _logger?.LogWarning("Failed to stream logs for server {ServerId}: Container not found or not running", ServerId);
-      }
-      else
-      {
-        _logger?.LogError(ex, "Failed to stream logs for server {ServerId}", ServerId);
-      }
-      
-      NotificationService?.Notify(new NotificationMessage
-      {
-        Severity = NotificationSeverity.Error,
-        Summary = "Stream Error",
-        Detail = userFriendlyMessage,
-        Duration = 5000
-      });
-
-      // Add error message to logs
-      logLines.Add(new LogLine
-      {
-        Timestamp = DateTime.Now,
-        Level = "ERROR",
-        Message = $"[STREAM ERROR] {errorMessage}"
-      });
-      
-      logLines.Add(new LogLine
-      {
-        Timestamp = DateTime.Now,
-        Level = "INFO",
-        Message = "Tip: Check if the server container is running in Docker."
-      });
+      _logger?.LogDebug("Log polling cancelled for server {ServerId}", ServerId);
     }
     finally
     {
@@ -454,12 +338,7 @@ private HubConnection? hubConnection;
     _ => "log-line log-line-info"
   };
 
-  private BadgeStyle GetConnectionBadgeStyle() => connectionStatus switch
-  {
-    "Connected" => BadgeStyle.Success,
-    "Connecting..." or "Reconnecting..." => BadgeStyle.Warning,
-    _ => BadgeStyle.Danger
-  };
+  
 
   private async Task ScrollToBottomAsync()
   {
@@ -470,13 +349,8 @@ private HubConnection? hubConnection;
   public async ValueTask DisposeAsync()
   {
     await StopStreaming();
-    
-    if (hubConnection != null)
-    {
-      await hubConnection.StopAsync();
-      await hubConnection.DisposeAsync();
-    }
-    
     streamCts?.Dispose();
   }
 }
+
+

@@ -179,10 +179,11 @@ namespace GameServer.Docker.Hubs
                 }
 
                 // Create WebSocket connection to agent's exec endpoint
-                // Agent expects cmd as an array parameter for Docker exec
+                // For interactive terminal: just the shell command with TTY=true
+                // The TTY mode handles interactivity - no need for -i flag
                 var wsUrl = agent.InternalUrl.Replace("http://", "ws://").Replace("https://", "wss://");
                 var shellCmd = Uri.EscapeDataString(shell);
-                var agentWsUrl = $"{wsUrl}/containers/{containerId}/exec/ws?cmd={shellCmd}&cmd=-i&tty=true";
+                var agentWsUrl = $"{wsUrl}/containers/{containerId}/exec/ws?cmd={shellCmd}&tty=true";
 
                 var session = new ConsoleSession
                 {
