@@ -11,7 +11,10 @@
                  <ChildContent>
                      <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
                          <h4>Ports:</h4>
-                <PortMappingEditor Server="Server" OnChanged="@(s=> Server = s)" OnValidityChanged="@(a=> PortsValid = a)" />
+                <PortMappingEditor Server="Server" 
+                                   GameTypeDefinition="Definition"
+                                   OnChanged="@(s=> Server = s)" 
+                                   OnValidityChanged="@(a=> PortsValid = a)" />
                      </RadzenCard>
                     <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
                         <h4>Persistent Storage:</h4>
@@ -31,6 +34,10 @@
 
     [Parameter]
     public GameServer Server { get; set; } = new();
+    
+    [Parameter]
+    public GameTypeDefinition? Definition { get; set; }
+    
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
 

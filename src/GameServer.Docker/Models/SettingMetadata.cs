@@ -93,5 +93,37 @@ namespace GameServer.Docker.Models
         /// Error message to display when validation fails
         /// </summary>
         public string? ValidationMessage { get; set; }
+
+        /// <summary>
+        /// For port-type settings (MapsToContainerPort = true), defines relationships
+        /// with other ports that should be automatically updated when this port changes.
+        /// Example: When game port changes from 27015 to 28015, query port (game+1) 
+        /// should automatically change from 27016 to 28016.
+        /// </summary>
+        public List<PortRelationship>? PortRelationships { get; set; }
+
+        /// <summary>
+        /// For port-type settings, defines validation rules for the port value.
+        /// Includes min/max ranges, reserved ports, and availability checking.
+        /// </summary>
+        public PortValidationRule? PortValidation { get; set; }
+
+        /// <summary>
+        /// For port-type settings, whether this port must remain synchronized with
+        /// another port setting. Used for dependent ports that cannot be changed independently.
+        /// </summary>
+        public string? SynchronizedWithSetting { get; set; }
+
+        /// <summary>
+        /// For port-type settings, whether changes to this port should automatically
+        /// allocate/deallocate ports from the port management system.
+        /// </summary>
+        public bool AutoAllocatePort { get; set; } = false;
+
+        /// <summary>
+        /// For port-type settings, whether to validate that all related ports 
+        /// (defined in PortRelationships) are available before allowing the change.
+        /// </summary>
+        public bool ValidateRelatedPortsAvailability { get; set; } = true;
     }
 }

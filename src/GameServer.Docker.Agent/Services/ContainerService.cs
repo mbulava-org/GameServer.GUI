@@ -2,6 +2,7 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Interfaces;
 using Microsoft.Extensions.Options;
+using System.Runtime.CompilerServices;
 using DockerStatsResponse = Docker.DotNet.Models.ContainerStatsResponse;
 
 namespace GameServer.Docker.Agent.Services
@@ -289,35 +290,15 @@ namespace GameServer.Docker.Agent.Services
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(10));
 
-            var logsStream = await _dockerClient.Containers.GetContainerLogsAsync(containerId, logsParams, cts.Token);
+            // Use the new API that properly handles TTY demultiplexing
+            var logsStream = await _dockerClient.Containers.GetContainerLogsAsync(containerId, false, logsParams, cts.Token);
 
-            // The returned stream is a MultiplexedStream but cast to Stream
-            // We need to use it directly - it should be MultiplexedStream under the hood
+            // The new API returns MultiplexedStream directly
             using var stdoutStream = new MemoryStream();
             using var stderrStream = new MemoryStream();
 
-            // Try to call CopyOutputToAsync - it should work if logsStream is MultiplexedStream
-            try
-            {
-                await ((dynamic)logsStream).CopyOutputToAsync(null, stdoutStream, stderrStream, cts.Token);
-            }
-            catch
-            {
-                // Fallback: read directly as text if not multiplexed
-                using var reader = new StreamReader(logsStream);
-                var logText = await reader.ReadToEndAsync(cts.Token);
-                var logs = logText.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList();
-
-                _logger.LogDebug("Retrieved {Count} log lines for container {ContainerId}", logs.Count, containerId);
-
-                return new Models.ContainerLogsResponse
-                {
-                    ContainerId = containerId,
-                    Timestamp = DateTime.UtcNow,
-                    LogLines = logs.Count,
-                    Logs = logs
-                };
-            }
+            // Use CopyOutputToAsync to demultiplex stdout and stderr
+            await logsStream.CopyOutputToAsync(null, stdoutStream, stderrStream, cts.Token);
 
             // Convert streams to text
             var stdoutText = System.Text.Encoding.UTF8.GetString(stdoutStream.ToArray());
@@ -345,6 +326,141 @@ namespace GameServer.Docker.Agent.Services
                 LogLines = logLines.Count,
                 Logs = logLines
             };
+        }
+
+        public async IAsyncEnumerable<string> StreamContainerLogsAsync(
+            string containerId,
+            bool follow = true,
+            int tailLines = 100,
+            bool timestamps = true,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("Starting log stream for container {ContainerId} (follow={Follow}, tail={Tail})", 
+                containerId, follow, tailLines);
+
+            var logsParams = new ContainerLogsParameters
+            {
+                ShowStdout = true,
+                ShowStderr = true,
+                Follow = follow,
+                Timestamps = timestamps,
+                Tail = tailLines > 0 ? tailLines.ToString() : "all"
+            };
+
+            MultiplexedStream logsStream = null!;
+            try
+            {
+                _logger.LogDebug("Calling Docker API to get container logs stream");
+                
+                // Get the multiplexed log stream from Docker
+                logsStream = await _dockerClient.Containers.GetContainerLogsAsync(
+                    containerId, 
+                    false, // tty = false for proper demultiplexing
+                    logsParams, 
+                    cancellationToken);
+
+                _logger.LogDebug("Successfully got log stream from Docker, starting to read");
+
+                // Use channels for async streaming
+                var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
+
+                // Background task to read from Docker stream and write to channel
+                var readerTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var stdoutStream = new MemoryStream();
+                        using var stderrStream = new MemoryStream();
+
+                        // For streaming logs, we need to read continuously
+                        var buffer = new byte[4096];
+                        int readCount = 0;
+                        
+                        _logger.LogDebug("Starting read loop for container logs");
+                        
+                        while (!cancellationToken.IsCancellationRequested)
+                        {
+                            _logger.LogTrace("Calling ReadOutputAsync, iteration {Count}", ++readCount);
+                            
+                            // Read from the multiplexed stream
+                            var result = await logsStream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken);
+                            
+                            _logger.LogTrace("ReadOutputAsync returned: EOF={EOF}, Count={Count}, Target={Target}", 
+                                result.EOF, result.Count, result.Target);
+                            
+                            if (result.EOF)
+                            {
+                                _logger.LogDebug("Reached end of log stream for container {ContainerId} after {ReadCount} reads", 
+                                    containerId, readCount);
+                                break;
+                            }
+
+                            if (result.Count > 0)
+                            {
+                                _logger.LogDebug("Read {ByteCount} bytes from {Target}", result.Count, result.Target);
+                                
+                                // Convert bytes to string and write to channel
+                                var logLine = result.Target == MultiplexedStream.TargetStream.StandardOut 
+                                    ? $"[stdout] {System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)}"
+                                    : $"[stderr] {System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)}";
+
+                                // Split by newlines and send each line
+                                var lines = logLine.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                _logger.LogDebug("Split into {LineCount} lines", lines.Length);
+                                
+                                foreach (var line in lines)
+                                {
+                                    _logger.LogTrace("Writing line to channel: {Line}", line.Length > 100 ? line.Substring(0, 100) + "..." : line);
+                                    await channel.Writer.WriteAsync(line, cancellationToken);
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogTrace("ReadOutputAsync returned 0 bytes, continuing");
+                            }
+
+                            // Small delay to prevent tight loop
+                            if (!follow)
+                            {
+                                await Task.Delay(10, cancellationToken);
+                            }
+                        }
+                        
+                        _logger.LogDebug("Exited read loop, total reads: {ReadCount}", readCount);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogDebug("Log stream cancelled for container {ContainerId}", containerId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error streaming logs for container {ContainerId}", containerId);
+                    }
+                    finally
+                    {
+                        _logger.LogDebug("Completing channel writer");
+                        channel.Writer.Complete();
+                    }
+                }, cancellationToken);
+
+                _logger.LogDebug("Starting to yield lines from channel");
+                
+                // Yield log lines from channel
+                int yieldCount = 0;
+                await foreach (var logLine in channel.Reader.ReadAllAsync(cancellationToken))
+                {
+                    _logger.LogTrace("Yielding line {Count}", ++yieldCount);
+                    yield return logLine;
+                }
+
+                _logger.LogDebug("Yielded {Count} log lines total", yieldCount);
+                await readerTask;
+            }
+            finally
+            {
+                logsStream?.Dispose();
+                _logger.LogInformation("Log stream ended for container {ContainerId}", containerId);
+            }
         }
 
         public async Task<Models.ContainerInspectResponse> InspectContainerAsync(string containerId, CancellationToken cancellationToken = default)

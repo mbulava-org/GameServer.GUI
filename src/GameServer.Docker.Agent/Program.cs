@@ -25,7 +25,7 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 //Log startup information
-var asmb = Assembly.GetCallingAssembly();
+var asmb = Assembly.GetExecutingAssembly();
 Log.Information($"Starting GameServer.Docker.Agent Version - {asmb.GetName().Version}");
 
 builder.Host.UseSerilog();

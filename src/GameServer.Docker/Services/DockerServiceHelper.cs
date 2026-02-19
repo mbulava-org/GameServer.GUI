@@ -1,6 +1,7 @@
 ﻿using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Interfaces;
+using GameServer.Docker.Repositories;
 using Microsoft.Extensions.Options;
 using System.Threading.Tasks;
 
@@ -8,8 +9,7 @@ namespace GameServer.Docker.Services
 {
     public class DockerServiceHelper(ILogger<DockerServiceHelper> logger,
         IDockerClient client,
-        IGameTypeRegistry gameTypeRegistry,
-        IGameTypeExtendedMetadataRegistry extendedMetadataRegistry,
+        IGameTypeRepository gameTypeRepository,
         IOptions<Configurations.VolumeDriverConfigOptions> volOptions,
         IOptions<Configurations.NetworkOptions> netOptions)
     {
@@ -18,7 +18,7 @@ namespace GameServer.Docker.Services
         /// When updating, preserves settings that weren't explicitly changed.
         /// Volume mounts are IMMUTABLE - they are never changed after initial creation.
         /// </summary>
-        private ServiceSpec BuildGameServerServiceSpec(
+        private async Task<ServiceSpec> BuildGameServerServiceSpec(
             Models.GameServer server, 
             Models.GameTypeDefinition definition, 
             ServiceSpec? existingSpec = null,
@@ -89,7 +89,7 @@ namespace GameServer.Docker.Services
             SwarmUpdateConfig? rollbackConfig = existingSpec?.RollbackConfig;
 
             //Fetch extended metadata for this game type to determine if TTY should be enabled
-            var extendedMetadata = extendedMetadataRegistry.Get(definition.Key).Result;
+            var extendedMetadata = await gameTypeRepository.GetExtendedMetadataAsync(definition.Key);
 
             // 10. Construct the ServiceSpec
             var serviceSpec = new ServiceSpec
@@ -142,7 +142,7 @@ namespace GameServer.Docker.Services
         {
             var opts = netOptions.Value;
             
-            if (existing == null && opts != null 
+            if (opts != null 
                 && !string.IsNullOrEmpty(opts.NetworkName))
             {
                 //lookup the network name
@@ -158,6 +158,7 @@ namespace GameServer.Docker.Services
                 });
                 if (networks.Count > 0)
                 {
+                    logger.LogInformation("Attaching service to network: {NetworkName}", opts.NetworkName);
                     List<NetworkAttachmentConfig> myNets = new List<NetworkAttachmentConfig>
                     {
                         new NetworkAttachmentConfig
@@ -170,6 +171,7 @@ namespace GameServer.Docker.Services
                     return myNets;
                 }
             }
+            logger.LogWarning("No valid network configuration found. Service will be created without network attachments.");
             return new List<NetworkAttachmentConfig>();
         }
 
@@ -525,23 +527,34 @@ namespace GameServer.Docker.Services
 
             //Get Status...
             var tasks = await GetTasksForSwarmServiceAsync(service.ID);
-            var latestTask = tasks
+            
+            // Get desired replicas from service spec
+            var desiredReplicas = (int)(service.Spec?.Mode?.Replicated?.Replicas ?? 0);
+            
+            // Count running tasks
+            var runningTasks = tasks.Count(t => t.Status?.State == TaskState.Running);
+            
+            // Get the container ID from the most recent running task
+            var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
+            var activeTask = tasks
+                .Where(t => activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
                 .OrderByDescending(t => t.UpdatedAt)
                 .FirstOrDefault();
-
-            if (latestTask != null)
+            
+            item.ContainerId = activeTask?.Status?.ContainerStatus?.ContainerID;
+            
+            // Determine status using same logic as ResourceUsage.ServiceStatus
+            item.Status = (desiredReplicas, runningTasks) switch
             {
-                // Map task state to status
-                item.Status = latestTask.Status?.State.ToString() ?? "unknown";
+                (0, _) => "Stopped",
+                var (d, r) when r == d => "Running",
+                var (d, r) when r < d => "Starting",
+                var (d, r) when r > d => "Scaling Down",
+                _ => "Unknown"
+            };
 
-                // Determine if running based on task state
-                item.IsRunning = latestTask.Status?.State.ToString().ToLowerInvariant() == "running";
-            }
-            else
-            {
-                item.Status = "no-tasks";
-                item.IsRunning = false;
-            }
+            // Determine if running based on status
+            item.IsRunning = item.Status == "Running";
 
             return item;
         }
@@ -566,7 +579,7 @@ namespace GameServer.Docker.Services
             if (existing == null)
             {
                 logger.LogInformation($"Creating new GameServer: {server.Name} ({server.ServerId})");
-                var serviceSpec = BuildGameServerServiceSpec(server, definition);
+                var serviceSpec = await BuildGameServerServiceSpec(server, definition);
 
                 await client.Swarm.CreateServiceAsync(new ServiceCreateParameters
                 {
@@ -598,7 +611,7 @@ namespace GameServer.Docker.Services
                 var service = services.First();
 
                 // Build updated spec from the new configuration, passing existing spec for reference
-                var updatedSpec = BuildGameServerServiceSpec(server, definition, service.Spec, performShutdown);
+                var updatedSpec = await BuildGameServerServiceSpec(server, definition, service.Spec, performShutdown);
 
                 // Update the service with correct version
                 logger.LogDebug($"Updating service {service.ID} with version {service.Version.Index}");
@@ -727,10 +740,19 @@ namespace GameServer.Docker.Services
             // Find running task/container for this service
             var tasks = await client.Tasks.ListAsync();
 
+            // Accept tasks that are Running, Starting, or Preparing (container might not be fully running yet)
+            var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
+            
             var runningTask = tasks
-                .Where(t => t.ServiceID == service.ID && t.Status?.State == TaskState.Running)
+                .Where(t => t.ServiceID == service.ID && activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
                 .OrderByDescending(x => x.UpdatedAt)
                 .FirstOrDefault();
+
+            if (runningTask == null)
+            {
+                logger.LogWarning("No active task found for service {ServiceId} ({ServiceName}). Available tasks: {TaskCount}",
+                    service.ID, server.ServiceName, tasks.Count(t => t.ServiceID == service.ID));
+            }
 
             return runningTask?.Status?.ContainerStatus?.ContainerID ?? "";
         }
@@ -738,7 +760,7 @@ namespace GameServer.Docker.Services
         internal async Task StartGameServerAsync(string serverId)
         {
             var server = await GetGameServerById(serverId);
-            var definition = await gameTypeRegistry.Get(server!.GameType);
+            var definition = await gameTypeRepository.GetByKeyAsync(server!.GameType);
             if (definition == null)
             {
                 throw new ArgumentException($"Unable to locate gameType {server.GameType}");
@@ -749,7 +771,7 @@ namespace GameServer.Docker.Services
         internal async Task StopGameServerAsync(string serverId)
         {
             var server = await GetGameServerById(serverId);
-            var definition = await gameTypeRegistry.Get(server!.GameType);
+            var definition = await gameTypeRepository.GetByKeyAsync(server!.GameType);
             if (definition == null)
             {
                 throw new ArgumentException($"Unable to locate gameType {server.GameType}");
@@ -794,36 +816,95 @@ namespace GameServer.Docker.Services
                     .Replace("{serverId}", server.ServerId)
                     .Replace("{Source}", v.Target.Replace("/", ""))
                     .Replace("{gameTypeKey}", server.GameType);
-                var mappedPath = Path.Combine(volOptions?.Value?.LocalStoragePath, subFolder);
-                if (removeStorage)
+                
+                // Only process if we have valid paths
+                if (!string.IsNullOrEmpty(volOptions?.Value?.LocalStoragePath) && !string.IsNullOrEmpty(subFolder))
                 {
-                    logger.LogInformation("Deleting storage for volume {Volume} at path {Path}", v.Target, mappedPath);
-                    try
+                    var mappedPath = Path.Combine(volOptions.Value.LocalStoragePath, subFolder);
+                    if (removeStorage)
                     {
-                        if (Directory.Exists(mappedPath))
+                        logger.LogInformation("Deleting storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                        try
                         {
-                            Directory.Delete(mappedPath, recursive: true);
-                            logger.LogInformation("Storage for volume {Volume} deleted successfully", v.Target);
+                            if (Directory.Exists(mappedPath))
+                            {
+                                Directory.Delete(mappedPath, recursive: true);
+                                logger.LogInformation("Storage for volume {Volume} deleted successfully", v.Target);
                         }
                         else
                         {
                             logger.LogWarning("Storage path {Path} for volume {Volume} does not exist", mappedPath, v.Target);
                         }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "Failed to delete storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                            // Continue with other deletions even if one fails
+                        }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        logger.LogError(ex, "Failed to delete storage for volume {Volume} at path {Path}", v.Target, mappedPath);
-                        // Continue with other deletions even if one fails
+                        logger.LogInformation("Preserving storage for volume {Volume} at path {Path}", v.Target, mappedPath);
                     }
                 }
                 else
                 {
-                    logger.LogInformation("Preserving storage for volume {Volume} at path {Path}", v.Target, mappedPath);
+                    logger.LogWarning("Skipping volume cleanup - invalid path configuration for volume {Volume}", v.Target);
                 }
 
             }
            
         }
+
+        /// <summary>
+        /// Query containers by Docker label to find a specific container
+        /// </summary>
+        public async Task<string?> GetContainerIdByLabelAsync(string labelKey, string labelValue)
+        {
+            try
+            {
+                logger.LogDebug("Querying containers with label {LabelKey}={LabelValue}", labelKey, labelValue);
+
+                // Build filter to query containers by label
+                var filters = new Dictionary<string, IDictionary<string, bool>>
+                {
+                    ["label"] = new Dictionary<string, bool>
+                    {
+                        [$"{labelKey}={labelValue}"] = true
+                    }
+                };
+
+                var containers = await client.Containers.ListContainersAsync(new ContainersListParameters
+                {
+                    All = false, // Only running containers
+                    Filters = filters
+                });
+
+                if (!containers.Any())
+                {
+                    logger.LogWarning("No running container found with label {LabelKey}={LabelValue}", labelKey, labelValue);
+                    return null;
+                }
+
+                if (containers.Count > 1)
+                {
+                    logger.LogWarning("Multiple containers found with label {LabelKey}={LabelValue}, using first one", 
+                        labelKey, labelValue);
+                }
+
+                var container = containers.First();
+                logger.LogInformation("Found container {ContainerId} ({Names}) with label {LabelKey}={LabelValue}", 
+                    container.ID, string.Join(", ", container.Names), labelKey, labelValue);
+
+                return container.ID;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to query container by label {LabelKey}={LabelValue}", labelKey, labelValue);
+                return null;
+            }
+        }
     }
 }
+
 

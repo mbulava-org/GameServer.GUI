@@ -12,6 +12,11 @@
 
         //Only supplied when the server is actually deployed
         public string ServiceName { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// The actual Docker container ID (only available when container is running)
+        /// </summary>
+        public string? ContainerId { get; set; }
 
         public List<VolumeDefinition> Volumes { get; set; } = new();
 

@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOTNET_VERSION: '10.0.x'
-      SEMANTIC_VERSION: '0.0.3.120'
+      SEMANTIC_VERSION: '0.0.4.120'
       PRIMARY_BRANCH: 'main'
       FORCE_PUSH_CLIENT: false
     outputs:

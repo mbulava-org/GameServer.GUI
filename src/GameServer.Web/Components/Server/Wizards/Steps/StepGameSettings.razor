@@ -6,15 +6,16 @@
 
 <RadzenCard>
     <h4>@(Definition?.DisplayName ?? "Game") Settings</h4>
+    <p class="text-muted mb-3">Configure environment variables and game-specific settings.</p>
     
     <EditForm Model="Server">
         <DataAnnotationsValidator/>
         
-        <GameSettingsEditor GameTypeDefinition="@Definition" 
-                           Server="@Server" 
-                           ServerChanged="@OnServerChanged"
-                           OnValidationChanged="@OnValidationChanged"
-                           @ref="settingsEditor" />
+        <ServerEnvironmentEditor GameTypeDefinition="@Definition" 
+                                Server="@Server" 
+                                ServerChanged="@OnServerChanged"
+                                OnValidationChanged="@OnValidationChanged"
+                                @ref="environmentEditor" />
     </EditForm>
     
     <div class="wizard-actions">
@@ -44,7 +45,7 @@
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
 
-    private GameSettingsEditor? settingsEditor;
+    private ServerEnvironmentEditor? environmentEditor;
     private bool isValid = true;
 
     private async Task OnServerChanged(GameServer server)
@@ -62,12 +63,12 @@
     async Task NextAsync()
     {
         // Validate using the editor component
-        if (settingsEditor != null)
+        if (environmentEditor != null)
         {
-            var valid = await settingsEditor.ValidateAsync();
+            var valid = await environmentEditor.ValidateAsync();
             if (!valid)
             {
-                var errors = settingsEditor.GetValidationErrors();
+                var errors = environmentEditor.GetValidationErrors();
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Warning,

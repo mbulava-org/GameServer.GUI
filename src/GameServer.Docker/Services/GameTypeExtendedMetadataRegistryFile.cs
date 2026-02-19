@@ -7,10 +7,13 @@ using System.Text.Json;
 namespace GameServer.Docker.Services
 {
     /// <summary>
-    /// File-based registry for GameType extended metadata.
+    /// OBSOLETE: File-based registry for GameType extended metadata. Use GameTypeRepository with database storage instead.
     /// Each game type is stored in its own file: {DirectoryPath}/{GameTypeKey}.json
     /// </summary>
+    [Obsolete("GameTypeExtendedMetadataRegistryFile is obsolete. Use GameTypeRepository from GameServer.Docker.Repositories for extended metadata operations. This file-based implementation will be removed in a future version.")]
+#pragma warning disable CS0618 // Type or member is obsolete
     public class GameTypeExtendedMetadataRegistryFile : IGameTypeExtendedMetadataRegistry
+#pragma warning restore CS0618 // Type or member is obsolete
     {
         private readonly GameTypeExtendedMetadataRegistryData _fileOptions;
         private Dictionary<string, GameTypeExtendedMetadata> _metadata = new();

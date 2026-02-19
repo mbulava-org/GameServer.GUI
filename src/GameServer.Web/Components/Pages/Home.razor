@@ -73,9 +73,23 @@
                         </div>
                         <h3>Real-Time Monitoring</h3>
                         <p>
-                            Monitor your servers with real-time resource usage metrics including replica health, 
-                            service status, and task information. View live logs and track server performance 
-                            to ensure optimal operation.
+                            Monitor your servers with real-time resource usage metrics including CPU, memory, 
+                            and network I/O. Stream live container logs, track performance metrics, and get 
+                            instant updates via SignalR connections for optimal server operation.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="terminal" Style="font-size: 3rem; color: var(--rz-success);" />
+                        </div>
+                        <h3>Interactive Terminal</h3>
+                        <p>
+                            Execute commands directly in your containers using the built-in web-based terminal. 
+                            Full xterm support with color output, command history, and real-time bidirectional 
+                            communication. No SSH required!
                         </p>
                     </RadzenCard>
                 </div>
@@ -102,8 +116,22 @@
                         <h3>Game Type Templates</h3>
                         <p>
                             Manage game type definitions with pre-configured Docker images, default settings, 
-                            port mappings, and volume configurations. Create custom templates for your 
-                            favorite games or modify existing ones.
+                            intelligent port mappings with automatic port relationships, and volume configurations. 
+                            Define complex port dependencies (like Valheim's 3-port setup) that update automatically.
+                        </p>
+                    </RadzenCard>
+                </div>
+
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <RadzenCard class="feature-card h-100">
+                        <div class="feature-icon">
+                            <RadzenIcon Icon="settings_ethernet" Style="font-size: 3rem; color: var(--rz-warning);" />
+                        </div>
+                        <h3>Smart Port Management</h3>
+                        <p>
+                            Advanced port configuration with automatic port relationships. Define offset-based, 
+                            fixed, or multiplier port mappings. The system automatically calculates and updates 
+                            related ports when the base port changes, ensuring complex multi-port games work seamlessly.
                         </p>
                     </RadzenCard>
                 </div>
@@ -139,7 +167,8 @@
                         <ul class="tech-list">
                             <li><strong>Blazor Server (.NET 10)</strong> - Interactive web UI with real-time updates</li>
                             <li><strong>Radzen Blazor Components</strong> - Professional UI component library</li>
-                            <li><strong>SignalR</strong> - Real-time communication for live updates</li>
+                            <li><strong>SignalR</strong> - Real-time communication for logs, terminal, and monitoring</li>
+                            <li><strong>XtermBlazor</strong> - Full-featured terminal emulator in the browser</li>
                         </ul>
                     </RadzenCard>
                 </div>
@@ -151,9 +180,11 @@
                             Backend
                         </h4>
                         <ul class="tech-list">
-                            <li><strong>Docker Swarm</strong> - Container orchestration and management</li>
-                            <li><strong>GameServer.Docker.Client</strong> - REST API client library</li>
-                            <li><strong>ASP.NET Core</strong> - Web server and API integration</li>
+                            <li><strong>Docker Swarm</strong> - Container orchestration and high availability</li>
+                            <li><strong>Docker.DotNet</strong> - Direct Docker API integration</li>
+                            <li><strong>ASP.NET Core Web API</strong> - RESTful API and SignalR hubs</li>
+                            <li><strong>Entity Framework Core</strong> - SQLite database for persistence</li>
+                            <li><strong>Docker Labels</strong> - Container discovery and management</li>
                         </ul>
                     </RadzenCard>
                 </div>
@@ -181,9 +212,59 @@
                     </div>
                 </div>
             </RadzenCard>
+
+            <div class="row mt-4">
+                <div class="col-md-12">
+                    <RadzenCard>
+                        <h4 class="mb-3">Quick Links</h4>
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <RadzenButton Text="View Servers" 
+                                              Icon="dns" 
+                                              ButtonStyle="ButtonStyle.Light" 
+                                              Style="width: 100%;"
+                                              Click='@(() => Navigation.NavigateTo("/servers"))' />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <RadzenButton Text="Manage Game Types" 
+                                              Icon="sports_esports" 
+                                              ButtonStyle="ButtonStyle.Light" 
+                                              Style="width: 100%;"
+                                              Click='@(() => Navigation.NavigateTo("/gametypes"))' />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <RadzenButton Text="Documentation" 
+                                              Icon="description" 
+                                              ButtonStyle="ButtonStyle.Light" 
+                                              Style="width: 100%;"
+                                              Click='@(() => OpenDocumentation())' />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <RadzenButton Text="GitHub Repository" 
+                                              Icon="code" 
+                                              ButtonStyle="ButtonStyle.Light" 
+                                              Style="width: 100%;"
+                                              Click='@(() => OpenGitHub())' />
+                            </div>
+                        </div>
+                    </RadzenCard>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+@code {
+    private void OpenDocumentation()
+    {
+        Navigation.NavigateTo("https://github.com/mbulava-org/GameServer.GUI/blob/main/docs/CURRENT-FEATURES.md", true);
+    }
+
+    private void OpenGitHub()
+    {
+        Navigation.NavigateTo("https://github.com/mbulava-org/GameServer.GUI", true);
+    }
+}
 
 <style>
     .home-container {

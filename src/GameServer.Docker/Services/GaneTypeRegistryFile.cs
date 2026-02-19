@@ -6,7 +6,13 @@ using System.Text.Json;
 
 namespace GameServer.Docker.Services
 {
+    /// <summary>
+    /// OBSOLETE: File-based game type registry implementation. Use GameTypeRepository with database storage instead.
+    /// </summary>
+    [Obsolete("GaneTypeRegistryFile is obsolete. Use GameTypeRepository from GameServer.Docker.Repositories instead. This file-based implementation will be removed in a future version.")]
+#pragma warning disable CS0618 // Type or member is obsolete
     public class GaneTypeRegistryFile : IGameTypeRegistry
+#pragma warning restore CS0618 // Type or member is obsolete
     {
         private readonly GameTypeRegistryData _fileOptions;
         private Dictionary<string, GameTypeDefinition> _definitions = new();

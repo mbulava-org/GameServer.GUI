@@ -1,4 +1,5 @@
 ﻿using GameServer.Docker.Interfaces;
+using GameServer.Docker.Repositories;
 using GameServer.Docker.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,18 +10,18 @@ namespace GameServer.Docker.Controllers
     public class GameServerController : ControllerBase
     {
         private readonly IGameServerManager _manager;
-        private readonly IGameTypeRegistry _registry;
+        private readonly IGameTypeRepository _repository;
         private readonly IGameServerFileManager _fileManager;
         private readonly ILogger<GameServerController> _logger;
 
         public GameServerController(
             IGameServerManager orchestrator,
             IGameServerFileManager fileManager,
-            IGameTypeRegistry registry,
+            IGameTypeRepository repository,
             ILogger<GameServerController> logger)
         {
             _manager = orchestrator;
-            _registry = registry;
+            _repository = repository;
             _fileManager = fileManager;
             _logger = logger;
         }
@@ -28,7 +29,7 @@ namespace GameServer.Docker.Controllers
         [HttpPost("deploy")]
         public async Task<IActionResult> Deploy([FromBody] Models.GameServer server)
         {
-            var def = await _registry.Get(server.GameType);
+            var def = await _repository.GetByKeyAsync(server.GameType);
             if (def == null)
                 return BadRequest($"Unknown game type: {server.GameType}");
 

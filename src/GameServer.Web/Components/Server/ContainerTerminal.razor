@@ -1,0 +1,356 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.JSInterop
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
+@using XtermBlazor
+@using Radzen
+@inject IOptions<GameServerDockerApi> ApiConfig
+@inject NotificationService NotificationService
+@inject ILogger<ContainerTerminal> Logger
+@implements IAsyncDisposable
+
+<div class="terminal-container">
+    <div class="terminal-header">
+        <div class="terminal-title">
+            <RadzenIcon Icon="terminal" Style="font-size: 1rem;" />
+            <span class="ms-2">Interactive Shell (@Shell)</span>
+        </div>
+        <div class="terminal-controls">
+            @if (isConnected)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="? Connected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                <RadzenButton Icon="refresh" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Light"
+                             Click="@ClearTerminal"
+                             title="Clear terminal" />
+                <RadzenButton Icon="close" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Danger"
+                             Click="@DisconnectAsync"
+                             title="Disconnect" />
+            }
+            else if (isConnecting)
+            {
+                <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" Style="width: 20px; height: 20px;" />
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" Size="BadgeSize.Small" />
+            }
+            else
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="? Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                <RadzenButton Icon="play_arrow" 
+                             Text="Connect" 
+                             Size="ButtonSize.Small" 
+                             ButtonStyle="ButtonStyle.Success"
+                             Click="@ConnectAsync"
+                             Disabled="@string.IsNullOrEmpty(ContainerId)"
+                             title="Connect to terminal" />
+            }
+        </div>
+    </div>
+
+    <div class="xterm-wrapper">
+        <Xterm @ref="terminal" 
+               Options="@terminalOptions"
+               OnFirstRender="@OnTerminalReady"
+               OnData="@OnTerminalData" />
+    </div>
+</div>
+
+<style>
+    .terminal-container {
+        display: flex;
+        flex-direction: column;
+        height: 650px;
+        background: #000;
+        border: 1px solid var(--rz-border-color);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .terminal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        background: #1e1e1e;
+        border-bottom: 1px solid #333;
+        color: #d4d4d4;
+        flex-shrink: 0;
+    }
+
+    .terminal-title {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+        font-size: 0.875rem;
+    }
+
+    .terminal-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .xterm-wrapper {
+        flex: 1;
+        overflow: hidden;
+        background: #000;
+    }
+
+    .xterm-wrapper ::deep .xterm {
+        height: 100%;
+        padding: 0.5rem;
+    }
+
+    .xterm-wrapper ::deep .xterm-viewport {
+        background-color: transparent !important;
+    }
+
+    @@media (max-width: 768px) {
+        .terminal-container {
+            height: 450px;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public string? ContainerId { get; set; }
+    [Parameter] public bool AutoConnect { get; set; } = false;
+    [Parameter] public string Shell { get; set; } = "/bin/sh";
+
+    private Xterm? terminal;
+    private TerminalOptions terminalOptions = new()
+    {
+        CursorBlink = true,
+        CursorStyle = CursorStyle.Block,
+        DisableStdin = false,
+        Theme = new XtermBlazor.Theme
+        {
+            Background = "#000000",
+            Foreground = "#00ff00",
+            Cursor = "#00ff00",
+            CursorAccent = "#00ff00",
+            SelectionBackground = "#264f78",
+            Black = "#000000",
+            Red = "#ff5555",
+            Green = "#50fa7b",
+            Yellow = "#f1fa8c",
+            Blue = "#8be9fd",
+            Magenta = "#ff79c6",
+            Cyan = "#8be9fd",
+            White = "#f8f8f2",
+            BrightBlack = "#6272a4",
+            BrightRed = "#ff6e6e",
+            BrightGreen = "#69ff94",
+            BrightYellow = "#ffffa5",
+            BrightBlue = "#d6fcff",
+            BrightMagenta = "#ff92df",
+            BrightCyan = "#a4ffff",
+            BrightWhite = "#ffffff"
+        },
+        FontSize = 14,
+        FontFamily = "'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace",
+        Scrollback = 5000,
+        AllowTransparency = false,
+    };
+
+    private HubConnection? hubConnection;
+    private bool isConnected = false;
+    private bool isConnecting = false;
+    private string? sessionId;
+    private CancellationTokenSource? cts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoConnect && !string.IsNullOrEmpty(ContainerId))
+        {
+            await Task.Delay(500); // Wait for terminal to initialize
+            await ConnectAsync();
+        }
+    }
+
+    private async Task OnTerminalReady()
+    {
+        if (terminal == null) return;
+
+        await terminal.WriteLine("\x1b[1;32m=== Container Interactive Terminal ===\x1b[0m");
+        await terminal.WriteLine($"\x1b[36mShell: {Shell}\x1b[0m");
+        await terminal.WriteLine($"\x1b[36mContainer: {ContainerId ?? "Unknown"}\x1b[0m");
+        await terminal.WriteLine("");
+        
+        if (!AutoConnect)
+        {
+            await terminal.WriteLine("\x1b[33mClick 'Connect' to start an interactive shell session\x1b[0m");
+        }
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (string.IsNullOrEmpty(ContainerId))
+        {
+            await WriteError("Error: No container ID provided");
+            return;
+        }
+
+        if (isConnected || isConnecting) return;
+
+        isConnecting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Build hub URL
+            var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
+            var hubUrl = $"{baseUri}/hubs/terminal";
+
+            Logger.LogInformation("Connecting to terminal hub at {HubUrl} for container {ContainerId}", hubUrl, ContainerId);
+
+            // Create SignalR connection
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(hubUrl)
+                .WithAutomaticReconnect()
+                .Build();
+
+            // Handle incoming data from container
+            hubConnection.On<string>("Output", async (data) =>
+            {
+                if (terminal != null)
+                {
+                    await terminal.Write(data);
+                }
+            });
+
+            // Handle session started
+            hubConnection.On<string>("SessionStarted", (sid) =>
+            {
+                sessionId = sid;
+                Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
+            });
+
+            // Handle errors
+            hubConnection.On<string>("Error", async (error) =>
+            {
+                await WriteError($"Error: {error}");
+            });
+
+            // Connect to hub
+            cts = new CancellationTokenSource();
+            await hubConnection.StartAsync(cts.Token);
+
+            // Start exec session
+            await hubConnection.InvokeAsync("StartExecSession", ContainerId, Shell, cts.Token);
+
+            isConnected = true;
+            isConnecting = false;
+
+            await WriteSuccess($"Connected! Shell session active.\n");
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Terminal Connected",
+                Detail = $"Interactive shell session started in container",
+                Duration = 3000
+            });
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            isConnecting = false;
+            isConnected = false;
+            Logger.LogError(ex, "Failed to connect to terminal");
+            await WriteError($"Connection failed: {ex.Message}");
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Connection Failed",
+                Detail = ex.Message,
+                Duration = 5000
+            });
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnTerminalData(string data)
+    {
+        if (!isConnected || hubConnection == null || string.IsNullOrEmpty(sessionId))
+            return;
+
+        try
+        {
+            // Send input to container
+            await hubConnection.InvokeAsync("SendInput", sessionId, data);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send terminal input");
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        if (hubConnection != null && !string.IsNullOrEmpty(sessionId))
+        {
+            try
+            {
+                await hubConnection.InvokeAsync("StopExecSession", sessionId);
+            }
+            catch { }
+        }
+
+        isConnected = false;
+        cts?.Cancel();
+
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+            hubConnection = null;
+        }
+
+        await WriteInfo("Disconnected from terminal");
+        StateHasChanged();
+    }
+
+    private async Task ClearTerminal()
+    {
+        if (terminal != null)
+        {
+            await terminal.Clear();
+            await terminal.WriteLine("\x1b[1;32m=== Terminal Cleared ===\x1b[0m\n");
+        }
+    }
+
+    private async Task WriteSuccess(string message)
+    {
+        if (terminal != null)
+            await terminal.WriteLine($"\x1b[1;32m{message}\x1b[0m");
+    }
+
+    private async Task WriteError(string message)
+    {
+        if (terminal != null)
+            await terminal.WriteLine($"\x1b[1;31m{message}\x1b[0m");
+    }
+
+    private async Task WriteInfo(string message)
+    {
+        if (terminal != null)
+            await terminal.WriteLine($"\x1b[1;36m{message}\x1b[0m");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

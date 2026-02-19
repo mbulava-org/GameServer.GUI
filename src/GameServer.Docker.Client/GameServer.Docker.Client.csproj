@@ -36,7 +36,7 @@
 		<Exec Command="$(NSwagExe_Net100) run nswag.json /variables:Configuration=$(Configuration),OutDir=$(OutDir)" />
 		<RemoveDir Directories="$(OutDir)References" />
 		<ItemGroup>
-			<Compile Include="**/*.g.cs" Exclude="@(Compile)" />
+			<Compile Include="**/*.g.cs" Exclude="@(Compile);$(IntermediateOutputPath)**/*.g.cs;$(BaseIntermediateOutputPath)**/*.g.cs" />
 		</ItemGroup>
 	</Target>
 

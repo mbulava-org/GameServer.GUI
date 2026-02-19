@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System.Reflection;
 using Scalar.AspNetCore;
@@ -9,29 +10,32 @@ namespace GameServer.Docker
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
+            // Bootstrap logger - minimal configuration for startup only
+            // Don't write to console here to avoid duplicates
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug()
+                .MinimumLevel.Information()
                 .Enrich.FromLogContext()
-                .WriteTo.Console()
                 .CreateBootstrapLogger();
+                
             try
             {
                 //Log startup information
-                var asmb = Assembly.GetCallingAssembly();
+                var asmb = Assembly.GetExecutingAssembly();
                 Log.Information($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //Serilog configuration
+                //Serilog configuration - This replaces the bootstrap logger
                 builder.Services.AddSerilog((services, loggerConfig) =>
                     loggerConfig
                         .ReadFrom.Configuration(builder.Configuration)
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
                         .Enrich.WithProperty("ApplicationName", "GameServer.Docker")
-                        .WriteTo.Console());
+                        .WriteTo.Console(
+                            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
 
                 //Add configuration sources
                 builder.Services.Configure<Configurations.DockerConnection>(builder.Configuration.GetSection("DockerConnection"));
@@ -67,13 +71,51 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 
+                // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
+                builder.Services.AddSingleton<NodeAgentClient>();
+                
                 // Add Resource Monitoring (uses Node Agents for real-time stats)
                 builder.Services.AddSingleton<IGameServerResourceMonitor, GameServerResourceMonitorService>();
 
                 builder.Services.AddSingleton<PortAllocator>();
 
-                builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
-                builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
+                // Add SQLite Database for GameType management
+                var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
+                    ?? "Data Source=./data/gameserver.db";//let this default to a sub path to avoid NSwag build errors.
+                
+                // Optimize SQLite connection string for performance
+                var optimizedConnectionString = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString)
+                {
+                    Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+                    Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared,
+                    Pooling = true
+                }.ToString();
+                
+                builder.Services.AddDbContext<Data.GameServerDbContext>(options =>
+                {
+                    options.UseSqlite(optimizedConnectionString, sqliteOptions =>
+                    {
+                        sqliteOptions.CommandTimeout(30); // 30 second timeout
+                        
+                        // Use SplitQuery to prevent cartesian explosion with multiple collections
+                        // This fixes the EF Core warning about QuerySplittingBehavior
+                        sqliteOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                    });
+                    
+                    // Only enable sensitive data logging in development
+                    if (builder.Environment.IsDevelopment())
+                    {
+                        options.EnableSensitiveDataLogging();
+                    }
+                });
+
+                // Add GameType Repository (database-backed) - This replaces file-based registries
+                builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
+                
+                // Keep file-based registries as fallback/migration helpers (optional)
+                // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
+                // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
+                
                 builder.Services.AddSingleton<GameTypeMetadataApplier>();
                 builder.Services.AddScoped<ServerLifecycleService>();
 
@@ -115,6 +157,10 @@ namespace GameServer.Docker
                     opts.Description = "GameServer.Docker ASP.NET Core Web API";
                 });
 
+                // Terminal Session Manager (singleton for long-lived terminal sessions)
+                builder.Services.AddSingleton<Services.TerminalSessionManager>();
+
+                
                 
                 var app = builder.Build();
 
@@ -130,7 +176,47 @@ namespace GameServer.Docker
                     options.WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
                 });
 
-                app.UseHttpsRedirection();
+                // Only use HTTPS redirection in development with proper HTTPS setup
+                // In Docker/Production, this is typically handled by a reverse proxy
+                if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("UseHttpsRedirection", false))
+                {
+                    app.UseHttpsRedirection();
+                }
+
+                var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
+                mainLogger.LogInformation($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
+
+                // Initialize database on startup
+                // The GameTypeRepository.InitializeDatabaseAsync() method:
+                // - Creates the database if it doesn't exist
+                // - Migrates JSON files only if database is empty
+                // Skip initialization if:
+                // - Command line argument --no-db-init is present
+                // - Environment variable SKIP_DB_INIT is set
+                // - Running under NSwag (detected by checking for NSwag in the executing assembly path or command line)
+                var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
+                var commandLine = Environment.CommandLine;
+                var isNSwagExecution = entryAssembly.Contains("NSwag", StringComparison.OrdinalIgnoreCase) ||
+                                       commandLine.Contains("NSwag", StringComparison.OrdinalIgnoreCase);
+                var skipDbInit = args.Contains("--no-db-init") || 
+                                 Environment.GetEnvironmentVariable("SKIP_DB_INIT") == "true" ||
+                                 isNSwagExecution;
+                
+                if (!skipDbInit)
+                {
+                    using var scope = app.Services.CreateScope();
+                    var repository = scope.ServiceProvider.GetRequiredService<Repositories.IGameTypeRepository>();
+                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+                    
+                    logger.LogInformation("Initializing database...");
+                    await repository.InitializeDatabaseAsync();
+                    logger.LogInformation("Database initialization complete");
+                }
+                else
+                {
+                    mainLogger.LogDebug("Database initialization skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
+                }
+
 
                 // Enable CORS (must be before routing)
                 app.UseCors();
@@ -138,8 +224,10 @@ namespace GameServer.Docker
                 app.UseAuthorization();
                 
                 // Map SignalR hubs
-                app.MapHub<GameServer.Docker.Hubs.ContainerConsoleHub>("/hubs/console");
-                app.MapHub<GameServer.Docker.Hubs.ResourceMonitoringHub>("/hubs/resources");
+                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");   // TTY attach (read-only)
+                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell
+                app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
+                app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
 
                 app.MapControllers();
 

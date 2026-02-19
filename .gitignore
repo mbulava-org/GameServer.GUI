@@ -416,3 +416,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+/src/GameServer.Docker/Data/gameserver.db
+/src/**/*.g.cs
+/src/GameServer.Docker.Client/GameServer.Docker.Client.v1.g.cs

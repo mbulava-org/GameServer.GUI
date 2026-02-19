@@ -338,7 +338,7 @@
                 DefaultSettings = new Dictionary<string, string>(gameType.DefaultSettings ?? new Dictionary<string, string>())
             };
 
-            await GameTypeApi.SaveAsync(duplicate);
+            await GameTypeApi.CreateAsync(duplicate);
             
             NotificationService.Notify(new NotificationMessage
             {

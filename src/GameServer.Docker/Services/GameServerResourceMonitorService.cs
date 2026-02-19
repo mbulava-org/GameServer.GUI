@@ -107,7 +107,11 @@ namespace GameServer.Docker.Services
                 {
                     try
                     {
-                        service = await _dockerServiceHelper.GetSwarmServiceByServiceId(serviceId);
+                        var refreshedService = await _dockerServiceHelper.GetSwarmServiceByServiceId(serviceId);
+                        if (refreshedService != null)
+                        {
+                            service = refreshedService;
+                        }
                         tasks = await _dockerServiceHelper.GetTasksForSwarmServiceAsync(serviceId);
                     }
                     catch (Exception ex)

@@ -5,6 +5,7 @@
 @using System.Text.Json
 @inject HttpClient Http
 @inject NotificationService NotificationService
+@inject IGameTypeExtendedMetadataApi ExtendedMetadataApi
 
 <RadzenCard class="review-card">
   
@@ -50,7 +51,13 @@
             </div>
             <div class="info-row">
               <span class="info-label">Published Port:</span>
-              <span class="info-value">@GetFirstPublishedPort()</span>
+              <span class="info-value">
+                @GetDefaultPublishedPort()
+                @if (HasDefaultPort())
+                {
+                  <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Default" Size="BadgeSize.Small" class="ms-2" />
+                }
+              </span>
             </div>
             <div class="info-row">
               <span class="info-label">Connection:</span>
@@ -63,14 +70,33 @@
           
           <ChildContent>
               <p>Settings Summary</p>
-            @if (Server.Settings?.Any() == true)
+            @if (isLoadingMetadata)
+            {
+              <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+            }
+            else if (GetDisplaySettings().Any())
             {
               <div class="settings-list">
-                @foreach (var kvp in Server.Settings.OrderBy(k => k.Key))
+                @foreach (var setting in GetDisplaySettings())
                 {
                   <div class="info-row">
-                    <span class="info-label">@kvp.Key:</span>
-                    <span class="info-value">@kvp.Value</span>
+                    <span class="info-label">
+                      @setting.Key
+                      @if (setting.IsRequired)
+                      {
+                        <span class="required-indicator">*</span>
+                      }:
+                    </span>
+                    <span class="info-value">
+                      @if (string.IsNullOrWhiteSpace(setting.Value))
+                      {
+                        <span class="text-muted">(default: @setting.DefaultValue)</span>
+                      }
+                      else
+                      {
+                        @setting.Value
+                      }
+                    </span>
                   </div>
                 }
               </div>
@@ -93,8 +119,16 @@
               <div class="ports-list">
                 @foreach (var port in Server.Ports)
                 {
+                  var isDefault = IsDefaultPort(port);
                   <div class="port-item">
-                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text='@($"{port.PublishedPort} → {port.ContainerPort}")' />
+                    <div class="d-flex align-items-center gap-2">
+                      <RadzenBadge BadgeStyle="@(isDefault ? BadgeStyle.Success : BadgeStyle.Info)" 
+                                   Text='@($"{port.PublishedPort} → {port.ContainerPort} ({port.Protocol})")' />
+                      @if (isDefault)
+                      {
+                        <RadzenIcon Icon="star" Style="color: var(--rz-warning); font-size: 1rem;" title="Default connection port" />
+                      }
+                    </div>
                   </div>
                 }
               </div>
@@ -115,7 +149,16 @@
                 @foreach (var vol in Server.Volumes)
                 {
                   <div class="info-row">
-                    <span class="info-label">@vol.Source</span>
+                    <span class="info-label">
+                      @if (string.IsNullOrWhiteSpace(vol.Source))
+                      {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Create New" Size="BadgeSize.Small" />
+                      }
+                      else
+                      {
+                        @vol.Source
+                      }
+                    </span>
                     <span class="info-value">→ @vol.Target</span>
                   </div>
                 }
@@ -139,19 +182,106 @@
 </RadzenCard>
 
 @code {
-  [Parameter] public GameTypeDefinition? Definition { get; set; }
-  [Parameter] public GameServer Server { get; set; } = new();
-  [Parameter] public EventCallback OnCreate { get; set; }
-  [Parameter] public EventCallback OnBack { get; set; }
+[Parameter] public GameTypeDefinition? Definition { get; set; }
+[Parameter] public GameServer Server { get; set; } = new();
+[Parameter] public EventCallback OnCreate { get; set; }
+[Parameter] public EventCallback OnBack { get; set; }
 
-  string publicIp = "Loading...";
-  bool loadingIp = true;
+string publicIp = "Loading...";
+bool loadingIp = true;
+bool isLoadingMetadata = false;
+GameTypeExtendedMetadata? extendedMetadata;
 
+  protected override async Task OnInitializedAsync()
+  {
+      await Task.WhenAll(
+          LoadPublicIpAsync(),
+          LoadExtendedMetadataAsync()
+      );
+  }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadPublicIpAsync();
-    }
+  async Task LoadExtendedMetadataAsync()
+  {
+      if (Definition == null || string.IsNullOrEmpty(Definition.Key))
+          return;
+
+      isLoadingMetadata = true;
+      try
+      {
+          extendedMetadata = await ExtendedMetadataApi.GetAsync(Definition.Key);
+      }
+      catch
+      {
+          // Extended metadata is optional
+          extendedMetadata = null;
+      }
+      finally
+      {
+          isLoadingMetadata = false;
+          StateHasChanged();
+      }
+  }
+
+  class DisplaySetting
+  {
+      public string Key { get; set; } = "";
+      public string Value { get; set; } = "";
+      public string DefaultValue { get; set; } = "";
+      public bool IsRequired { get; set; }
+      public int DisplayOrder { get; set; }
+  }
+
+  List<DisplaySetting> GetDisplaySettings()
+  {
+      var displaySettings = new List<DisplaySetting>();
+
+      // If we have extended metadata, use it to determine which settings to show
+      if (extendedMetadata?.SettingsMetadata != null)
+      {
+          foreach (var meta in extendedMetadata.SettingsMetadata.Values)
+          {
+              var currentValue = Server.Settings?.TryGetValue(meta.Key, out var val) == true ? val : "";
+              var defaultValue = Definition?.DefaultSettings?.TryGetValue(meta.Key, out var defVal) == true ? defVal : "";
+
+              // Show setting if:
+              // 1. It's required (always show)
+              // 2. It has a non-default value
+              if (meta.IsRequired || (!string.IsNullOrWhiteSpace(currentValue) && currentValue != defaultValue))
+              {
+                  displaySettings.Add(new DisplaySetting
+                  {
+                      Key = meta.Key,
+                      Value = currentValue,
+                      DefaultValue = defaultValue,
+                      IsRequired = meta.IsRequired,
+                      DisplayOrder = meta.DisplayOrder
+                  });
+              }
+          }
+      }
+      else
+      {
+          // Fallback: show all settings that have values
+          if (Server.Settings != null)
+          {
+              foreach (var kvp in Server.Settings)
+              {
+                  var defaultValue = Definition?.DefaultSettings?.TryGetValue(kvp.Key, out var defVal) == true ? defVal : "";
+                    
+                  displaySettings.Add(new DisplaySetting
+                  {
+                      Key = kvp.Key,
+                      Value = kvp.Value,
+                      DefaultValue = defaultValue,
+                      IsRequired = false,
+                      DisplayOrder = 999
+                  });
+              }
+          }
+      }
+
+      return displaySettings.OrderBy(s => s.DisplayOrder).ThenBy(s => s.Key).ToList();
+  }
 
     async Task LoadPublicIpAsync()
     {
@@ -193,15 +323,72 @@
         }
     }
 
-    string GetFirstPublishedPort()
+    string GetDefaultPublishedPort()
     {
-        var port = Server.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
-        return port > 0 ? port.ToString() : "Not configured";
+        var defaultPort = GetDefaultPort();
+        return defaultPort?.PublishedPort.ToString() ?? "Not configured";
+    }
+
+    bool HasDefaultPort()
+    {
+        return Definition?.Ports?.Any(p => p.IsDefaultPort) == true;
+    }
+
+    bool IsDefaultPort(PortMapping port)
+    {
+        if (!HasDefaultPort() || Definition?.Ports == null)
+            return false;
+
+        // Find the default port definition
+        var defaultPortDef = Definition.Ports.FirstOrDefault(p => p.IsDefaultPort);
+        if (defaultPortDef == null)
+            return false;
+
+        // Find the index of the default port in the definition
+        var portDefsList = Definition.Ports.ToList();
+        var defaultIndex = portDefsList.IndexOf(defaultPortDef);
+
+        if (defaultIndex < 0)
+            return false;
+
+        // Check if this port is at the same index in Server.Ports
+        var serverPortsList = Server.Ports?.ToList();
+        if (serverPortsList == null || defaultIndex >= serverPortsList.Count)
+            return false;
+
+        return serverPortsList[defaultIndex] == port;
+    }
+
+    PortMapping? GetDefaultPort()
+    {
+        if (!HasDefaultPort() || Definition?.Ports == null || Server.Ports == null)
+            return Server.Ports?.FirstOrDefault();
+
+        // Find the default port definition
+        var defaultPortDef = Definition.Ports.FirstOrDefault(p => p.IsDefaultPort);
+        if (defaultPortDef == null)
+            return Server.Ports.FirstOrDefault();
+
+        // Find the index of the default port in the definition
+        var portDefsList = Definition.Ports.ToList();
+        var defaultIndex = portDefsList.IndexOf(defaultPortDef);
+
+        if (defaultIndex < 0)
+            return Server.Ports.FirstOrDefault();
+
+        // Get the port at the same index in Server.Ports
+        var serverPortsList = Server.Ports.ToList();
+        if (defaultIndex < serverPortsList.Count)
+            return serverPortsList[defaultIndex];
+
+        return Server.Ports.FirstOrDefault();
     }
 
     string GetConnectionString()
     {
-        var port = Server.Ports?.FirstOrDefault()?.PublishedPort ?? 0;
+        var defaultPort = GetDefaultPort();
+        var port = defaultPort?.PublishedPort ?? 0;
+        
         if (port > 0 && !string.IsNullOrEmpty(publicIp) && publicIp != "Loading..." && publicIp != "Unable to determine")
         {
             return $"{publicIp}:{port}";

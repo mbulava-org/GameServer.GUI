@@ -281,7 +281,7 @@
                         <EditForm Model="Server">
                         <DataAnnotationsValidator/>
         
-                        <GameSettingsEditor GameTypeDefinition="@gameType" 
+                        <ServerEnvironmentEditor GameTypeDefinition="@gameType" 
                            Server="@Server" 
                            ServerChanged="@OnServerChanged"
                            OnValidationChanged="@OnValidationChanged"
@@ -308,7 +308,6 @@
         await LoadServerAsync();
     }
 
-    private GameSettingsEditor? settingsEditor;
     private bool isValid = true;
 
     private async Task OnServerChanged(GameServer server)
