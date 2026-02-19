@@ -15,10 +15,12 @@
 <div class="logs-viewer">
   <div class="logs-toolbar">
     <div class="toolbar-left">
+       <!-- Disable the Streaming button for now. I'll have to come back and look at whats wrong with it.-->
       <RadzenButton Icon='@(isStreaming ? "pause" : "play_arrow")' 
                     Text='@(isStreaming ? "Stop" : "Start Polling")' 
                     Click="ToggleStreaming" 
-                    ButtonStyle='@(isStreaming ? ButtonStyle.Warning : ButtonStyle.Success)' />
+                    ButtonStyle='@(isStreaming ? ButtonStyle.Warning : ButtonStyle.Success)' 
+                    Disabled="true"/>
       <RadzenButton Icon="refresh" Text="Refresh" Click="RefreshLogs" Disabled="@isStreaming" />
       <RadzenButton Icon="delete_sweep" Text="Clear" Click="ClearLogs" ButtonStyle="ButtonStyle.Secondary" />
     </div>
@@ -79,57 +81,61 @@
 </div>
 
 @code {
-[Parameter] public string ServerId { get; set; } = "";
-[Parameter] public GameServer Server { get; set; } = new();
-[Parameter] public bool AutoConnect { get; set; } = false;
+    [Parameter] public string ServerId { get; set; } = "";
+    [Parameter] public GameServer Server { get; set; } = new();
+    [Parameter] public bool AutoConnect { get; set; } = false;
 
-[Inject] private ILogger<ServerLogsViewer>? _logger { get; set; }
+    [Inject] private ILogger<ServerLogsViewer>? _logger { get; set; }
 
-class LogLine
-{
-  public DateTime Timestamp { get; set; }
-  public string Level { get; set; } = "INFO";
-  public string Message { get; set; } = "";
-}
-
-class ContainerLogsResponse
-{
-  public List<string> Logs { get; set; } = new();
-}
-
-  private List<LogLine> logLines = new();
-  private bool loadingLogs = false;
-  private bool isStreaming = false;
-  private bool autoScroll = true;
-  private int maxLines = 10000;
-  private int tailLines = 100;
-  private string filterText = "";
-  private string? selectedLogLevel;
-  private string[] logLevels = new[] { "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
-  private ElementReference logsContentRef;
-  private CancellationTokenSource? streamCts;
-
-  protected override async Task OnInitializedAsync()
-  {
-    _logger?.LogInformation("ServerLogsViewer initialized for server {ServerId}", ServerId);
-
-    // Auto-start if server ID is provided
-    if (AutoConnect && !string.IsNullOrWhiteSpace(ServerId))
+    class LogLine
     {
-      await StartStreaming();
+        public DateTime Timestamp { get; set; }
+        public string Level { get; set; } = "INFO";
+        public string Message { get; set; } = "";
     }
-  }
 
-  protected override async Task OnParametersSetAsync()
-  {
-    // Restart streaming if server ID changes
-    if (isStreaming)
+    class ContainerLogsResponse
     {
-      await StopStreaming();
-      logLines.Clear();
-      await StartStreaming();
+        public List<string> Logs { get; set; } = new();
     }
-  }
+
+    private List<LogLine> logLines = new();
+    private bool loadingLogs = false;
+    private bool isStreaming = false;
+    private bool autoScroll = true;
+    private int maxLines = 10000;
+    private int tailLines = 100;
+    private string filterText = "";
+    private string? selectedLogLevel;
+    private string[] logLevels = new[] { "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
+    private ElementReference logsContentRef;
+    private CancellationTokenSource? streamCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _logger?.LogInformation("ServerLogsViewer initialized for server {ServerId}", ServerId);
+
+        // Auto-start if server ID is provided
+        if (AutoConnect && !string.IsNullOrWhiteSpace(ServerId))
+        {
+            await StartStreaming();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Restart streaming if server ID changes
+        if (isStreaming)
+        {
+            await StopStreaming();
+            logLines.Clear();
+            await StartStreaming();
+        } else
+        {
+            //otherwise just refresh logs for new server
+            await RefreshLogs();
+        }
+    }
 
   private async Task ToggleStreaming()
   {
