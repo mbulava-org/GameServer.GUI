@@ -20,7 +20,7 @@ namespace GameServer.Web
             {
                 //Log startup information
                 var asmb = Assembly.GetExecutingAssembly();
-                Log.Information($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
+                Log.Information($"Starting GameServer.Web Version - {asmb.GetName().Version}");
 
 
                 var builder = WebApplication.CreateBuilder(args);

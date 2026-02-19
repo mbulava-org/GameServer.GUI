@@ -88,21 +88,24 @@ else if (extendedMetadata?.SettingsMetadata?.Any() == true || GameTypeDefinition
 else
 {
     @* Fallback: Render basic settings without metadata *@
-    <div class="settings-grid">
-        @foreach (var setting in GameTypeDefinition.DefaultSettings.OrderBy(s => s.Key))
-        {
-            <div class="setting-item">
-                <label class="setting-label">@setting.Key</label>
-                <RadzenFormField Variant="@Variant.Outlined" class="w-100">
-                    <RadzenTextBox Value="@GetSettingValue(setting.Key)" 
-                                   ValueChanged="@((string value) => SetSettingValue(setting.Key, value))"
-                                   Placeholder="@setting.Value"
-                                   class="w-100" />
-                </RadzenFormField>
-                <small class="text-muted">Default: @setting.Value</small>
-            </div>
-        }
-    </div>
+    @if (GameTypeDefinition?.DefaultSettings != null)
+    {
+        <div class="settings-grid">
+            @foreach (var setting in GameTypeDefinition.DefaultSettings.OrderBy(s => s.Key))
+            {
+                <div class="setting-item">
+                    <label class="setting-label">@setting.Key</label>
+                    <RadzenFormField Variant="@Variant.Outlined" class="w-100">
+                        <RadzenTextBox Value="@GetSettingValue(setting.Key)" 
+                                       ValueChanged="@((string value) => SetSettingValue(setting.Key, value))"
+                                       Placeholder="@setting.Value"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted">Default: @setting.Value</small>
+                </div>
+            }
+        </div>
+    }
 }
 
 @if (validationErrors.Any())
@@ -243,6 +246,10 @@ else
             
             foreach (var settingMeta in settings)
             {
+                // Skip settings without a key or with invalid data
+                if (string.IsNullOrWhiteSpace(settingMeta.Key))
+                    continue;
+                    
                 builder.OpenElement(sequence++, "div");
                 builder.AddAttribute(sequence++, "class", "setting-item");
                 builder.AddContent(sequence++, RenderSettingControl(settingMeta));
@@ -524,6 +531,12 @@ else
             // Render appropriate control based on DataType
             var dataType = settingMeta.DataType?.ToLowerInvariant() ?? "string";
             
+            // Normalize null or empty dataType to "string"
+            if (string.IsNullOrWhiteSpace(dataType))
+            {
+                dataType = "string";
+            }
+            
             if (dataType == "boolean")
             {
                 RenderBooleanControl(builder, ref sequence, settingMeta);
@@ -542,6 +555,7 @@ else
             }
             else
             {
+                // Default to text control for string or unknown types
                 RenderTextControl(builder, ref sequence, settingMeta);
             }
 
