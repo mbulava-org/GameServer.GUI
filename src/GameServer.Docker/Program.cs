@@ -157,6 +157,9 @@ namespace GameServer.Docker
                     opts.Description = "GameServer.Docker ASP.NET Core Web API";
                 });
 
+                // Terminal Session Manager (singleton for long-lived terminal sessions)
+                builder.Services.AddSingleton<Services.TerminalSessionManager>();
+
                 
                 
                 var app = builder.Build();
