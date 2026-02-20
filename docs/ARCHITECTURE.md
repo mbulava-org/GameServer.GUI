@@ -147,21 +147,22 @@ public class MyHub : Hub
 - `Controllers/` - REST API endpoints for CRUD operations
 - `Hubs/` - SignalR hubs for real-time features
   - **MUST use Node Agents for container operations**
-- `Services/` - Business logic, Swarm service management
+- `Services/` - Business logic, service orchestration
 - `Repositories/` - Data access layer
 
 **Key Services:**
-- `DockerServiceHelper` - Swarm **service** operations (uses `IDockerClient`)
-- `GameServerManagerService` - Server lifecycle management
+- `IServiceOperations` - **[NEW]** Abstraction for all Docker operations
+  - `ServiceOperationsViaDirect` - Direct Docker client (legacy, requires Docker connection)
+  - `ServiceOperationsViaAgent` - Delegates to manager agent (no Docker connection needed!)
+- `DockerServiceHelper` - Server lifecycle management (uses `IServiceOperations`)
 - `AgentRegistryService` - **[NEW]** Agent registration and container→agent mappings
 - `NodeAgentDiscoveryService` - **[DEPRECATED]** Legacy Docker Swarm polling (will be removed)
 
-**⚠️ DEPRECATION NOTICE:**
-- `NodeAgentDiscoveryService` background polling is **deprecated**
-- It queries Docker Swarm API every 15 seconds to find agents
-- **Use `AgentRegistry` instead** - agents push their state via SignalR
-- To disable legacy discovery: Set `NodeAgentOptions:EnableBackgroundDiscovery=false`
-- Legacy discovery will be **removed in a future version**
+**✅ PHASE 5 COMPLETE:**
+- Primary Service can run **without any Docker connection** when `ServiceOperations:Mode=Agent`
+- All Docker operations (services, tasks, networks) delegated to manager agent
+- `IDockerClient` is optional and only used in Direct mode
+- Container operations always go through agents (logs, exec, stats, attach)
 - `Repositories/` - Data access layer
 
 **Key Services:**

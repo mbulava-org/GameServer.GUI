@@ -26,9 +26,10 @@ namespace GameServer.Docker.Agent.Configurations
 
         /// <summary>
         /// Capabilities this agent supports
-        /// Default: logs, exec, stats, attach
+        /// Default: logs, exec, stats, attach, services
+        /// Note: 'services' capability is only active if agent is on a manager node
         /// </summary>
-        public List<string> Capabilities { get; set; } = new() { "logs", "exec", "stats", "attach" };
+        public List<string> Capabilities { get; set; } = new() { "logs", "exec", "stats", "attach", "services" };
 
         /// <summary>
         /// Timeout in seconds for initial connection to Primary Service

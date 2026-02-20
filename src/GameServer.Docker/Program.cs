@@ -45,14 +45,55 @@ namespace GameServer.Docker
                 builder.Services.Configure<Configurations.VolumeDriverConfigOptions>(builder.Configuration.GetSection("VolumeDriverConfigOptions"));
                 builder.Services.Configure<Configurations.NetworkOptions>(builder.Configuration.GetSection("NetworkOptions"));
                 builder.Services.Configure<Configurations.NodeAgentOptions>(builder.Configuration.GetSection("NodeAgentOptions"));
+                builder.Services.Configure<Configurations.ServiceOperationsOptions>(builder.Configuration.GetSection("ServiceOperations"));
 
-                // Add services to the container.
-                builder.Services.AddSingleton<DockerClientFactory>();   
-                builder.Services.AddSingleton<IDockerClient>(sp =>
+                // Docker Client - Only needed for Direct mode
+                // In Agent mode, all Docker operations are delegated to manager agents
+                var serviceOpsMode = builder.Configuration.GetValue<string>("ServiceOperations:Mode") ?? "Direct";
+
+                if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
                 {
-                    var dockerClientFactory = sp.GetRequiredService<DockerClientFactory>();
-                    return dockerClientFactory.Create();
+                    builder.Services.AddSingleton<DockerClientFactory>();   
+                    builder.Services.AddSingleton<IDockerClient>(sp =>
+                    {
+                        var dockerClientFactory = sp.GetRequiredService<DockerClientFactory>();
+                        return dockerClientFactory.Create();
+                    });
+                }
+                else
+                {
+                    // In Agent mode, we don't need IDockerClient
+                    // Provide a null implementation to satisfy any remaining dependencies
+                    builder.Services.AddSingleton<IDockerClient>(sp =>
+                    {
+                        throw new InvalidOperationException(
+                            "IDockerClient is not available when ServiceOperations:Mode=Agent. " +
+                            "All Docker operations should go through IServiceOperations.");
+                    });
+                }
+
+                // Service Operations - Choose implementation based on configuration
+                builder.Services.AddSingleton<IServiceOperations>(sp =>
+                {
+                    var config = sp.GetRequiredService<IConfiguration>();
+                    var mode = config.GetValue<string>("ServiceOperations:Mode") ?? "Direct";
+                    var logger = sp.GetRequiredService<ILogger<Program>>();
+
+                    if (mode.Equals("Agent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        logger.LogInformation("🔄 Service operations mode: AGENT (via manager node agent)");
+                        return sp.GetRequiredService<ServiceOperationsViaAgent>();
+                    }
+                    else
+                    {
+                        logger.LogInformation("🔄 Service operations mode: DIRECT (via Docker client)");
+                        return sp.GetRequiredService<ServiceOperationsViaDirect>();
+                    }
                 });
+
+                // Register both implementations
+                builder.Services.AddSingleton<ServiceOperationsViaDirect>();
+                builder.Services.AddSingleton<ServiceOperationsViaAgent>();
 
                 builder.Services.AddSingleton<DockerServiceHelper>();
 

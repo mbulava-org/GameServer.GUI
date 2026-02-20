@@ -22,6 +22,11 @@ namespace GameServer.Docker.Models
         /// Last time a heartbeat was received from this agent
         /// </summary>
         public DateTime LastHeartbeat { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Whether this agent is running on a Docker Swarm manager node
+        /// </summary>
+        public bool IsManagerNode { get; set; }
     }
 
     /// <summary>
@@ -34,6 +39,12 @@ namespace GameServer.Docker.Models
         public string InternalUrl { get; set; } = string.Empty;
         public List<string> Capabilities { get; set; } = new();
         public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Whether this agent is running on a Docker Swarm manager node
+        /// Only manager nodes can perform service-level operations
+        /// </summary>
+        public bool IsManagerNode { get; set; }
     }
 
     /// <summary>

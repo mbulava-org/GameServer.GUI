@@ -18,6 +18,7 @@ namespace GameServer.Docker.Agent.Services
         private string? _nodeId;
         private string? _nodeName;
         private string? _agentUrl;
+        private bool _isManagerNode;
 
         public AgentRegistrationService(
             IDockerClient dockerClient,
@@ -88,6 +89,10 @@ namespace GameServer.Docker.Agent.Services
                 _nodeId = info.Swarm?.NodeID ?? Guid.NewGuid().ToString();
                 _nodeName = Environment.GetEnvironmentVariable("NODE_NAME") ?? info.Name ?? Environment.MachineName;
 
+                // Detect if this node is a Swarm manager
+                // A node is a manager if Swarm.ControlAvailable is true
+                _isManagerNode = info.Swarm?.ControlAvailable ?? false;
+
                 // Determine agent URL
                 // In Docker Swarm overlay network, use the task's network IP
                 // For now, construct from environment or use hostname
@@ -96,10 +101,11 @@ namespace GameServer.Docker.Agent.Services
                 _agentUrl = $"http://{agentHost}:{agentPort}";
 
                 _logger.LogInformation(
-                    "Agent initialized: NodeId={NodeId}, NodeName={NodeName}, Url={Url}",
+                    "Agent initialized: NodeId={NodeId}, NodeName={NodeName}, Url={Url}, IsManager={IsManager}",
                     _nodeId,
                     _nodeName,
-                    _agentUrl);
+                    _agentUrl,
+                    _isManagerNode);
             }
             catch (Exception ex)
             {
@@ -146,16 +152,18 @@ namespace GameServer.Docker.Agent.Services
                 NodeName = _nodeName,
                 InternalUrl = _agentUrl,
                 Capabilities = _options.Capabilities,
-                RegisteredAt = DateTime.UtcNow
+                RegisteredAt = DateTime.UtcNow,
+                IsManagerNode = _isManagerNode
             };
 
             await _hubConnection!.InvokeAsync("RegisterAgent", registration);
 
             _logger.LogInformation(
-                "Agent registered with Primary Service: Node={NodeName} ({NodeId}), Capabilities={Capabilities}",
+                "Agent registered with Primary Service: Node={NodeName} ({NodeId}), Capabilities={Capabilities}, Manager={IsManager}",
                 _nodeName,
                 _nodeId,
-                string.Join(", ", _options.Capabilities));
+                string.Join(", ", _options.Capabilities),
+                _isManagerNode);
         }
 
         private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)

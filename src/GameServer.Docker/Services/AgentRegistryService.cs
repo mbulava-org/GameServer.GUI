@@ -39,19 +39,21 @@ namespace GameServer.Docker.Services
                 IsHealthy = true,
                 ConnectionId = connectionId,
                 TaskId = string.Empty, // Not used in registration-based system
-                ContainerId = string.Empty // Agent's own container ID not needed
+                ContainerId = string.Empty, // Agent's own container ID not needed
+                IsManagerNode = info.IsManagerNode
             };
 
             _agentsByConnection[connectionId] = endpoint;
             _connectionByNode[info.NodeId] = connectionId;
 
             _logger.LogInformation(
-                "Agent registered: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Url={Url}, Capabilities={Capabilities}",
+                "Agent registered: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Url={Url}, Capabilities={Capabilities}, Manager={IsManager}",
                 info.NodeName,
                 info.NodeId,
                 connectionId,
                 info.InternalUrl,
-                string.Join(", ", info.Capabilities));
+                string.Join(", ", info.Capabilities),
+                info.IsManagerNode);
         }
 
         public void UpdateAgentContainers(string connectionId, List<string> containerIds)
@@ -167,6 +169,30 @@ namespace GameServer.Docker.Services
         public NodeAgentEndpoint? GetAgentByConnectionId(string connectionId)
         {
             return _agentsByConnection.TryGetValue(connectionId, out var agent) ? agent : null;
+        }
+
+        public List<NodeAgentEndpoint> GetManagerAgents()
+        {
+            return _agentsByConnection.Values
+                .Where(a => a.IsManagerNode)
+                .ToList();
+        }
+
+        public NodeAgentEndpoint? GetHealthyManagerAgent()
+        {
+            var managerAgent = _agentsByConnection.Values
+                .FirstOrDefault(a => a.IsManagerNode && a.IsHealthy);
+
+            if (managerAgent == null)
+            {
+                _logger.LogWarning(
+                    "No healthy manager agent found. Total agents: {Total}, Manager agents: {Managers}, Healthy managers: {HealthyManagers}",
+                    _agentsByConnection.Count,
+                    _agentsByConnection.Values.Count(a => a.IsManagerNode),
+                    _agentsByConnection.Values.Count(a => a.IsManagerNode && a.IsHealthy));
+            }
+
+            return managerAgent;
         }
     }
 }

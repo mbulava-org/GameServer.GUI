@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace GameServer.Docker.Services
 {
     public class DockerServiceHelper(ILogger<DockerServiceHelper> logger,
-        IDockerClient client,
+        IServiceOperations serviceOperations,
         IGameTypeRepository gameTypeRepository,
         IOptions<Configurations.VolumeDriverConfigOptions> volOptions,
         IOptions<Configurations.NetworkOptions> netOptions)
@@ -142,12 +142,12 @@ namespace GameServer.Docker.Services
         private async Task<IList<NetworkAttachmentConfig>> CreateNetworkConfig(IList<NetworkAttachmentConfig>? existing)
         {
             var opts = netOptions.Value;
-            
+
             if (opts != null 
                 && !string.IsNullOrEmpty(opts.NetworkName))
             {
                 //lookup the network name
-                var networks = await client.Networks.ListNetworksAsync(new NetworksListParameters
+                var networks = await serviceOperations.ListNetworksAsync(new NetworksListParameters
                 {
                     Filters = new Dictionary<string, IDictionary<string, bool>>
                     {
@@ -442,11 +442,11 @@ namespace GameServer.Docker.Services
         public async Task<List<Models.GameServer>> ListGameServersAsync()
         {
             logger.LogInformation("Fetching services from Docker Swarm...");
-            var servicesTask = client.Swarm.ListServicesAsync();
+            var servicesTask = serviceOperations.ListServicesAsync();
 
             // Fetch ALL tasks in parallel with services - huge performance gain!
             logger.LogInformation("Fetching all tasks from Docker Swarm...");
-            var allTasksTask = client.Tasks.ListAsync(new TasksListParameters());
+            var allTasksTask = serviceOperations.ListTasksAsync(new TasksListParameters());
 
             // Wait for both to complete
             await Task.WhenAll(servicesTask, allTasksTask);
@@ -597,10 +597,10 @@ namespace GameServer.Docker.Services
                 Label = new[] { $"{ServiceLabels.ServerId}={Id}" }
             };
 
-            var servicesTask = client.Swarm.ListServicesAsync(new ServicesListParameters { Filters = filters });
+            var servicesTask = serviceOperations.ListServicesAsync(new ServicesListParameters { Filters = filters });
 
             // Fetch tasks for this specific service in parallel
-            var allTasksTask = client.Tasks.ListAsync(new TasksListParameters());
+            var allTasksTask = serviceOperations.ListTasksAsync(new TasksListParameters());
 
             await Task.WhenAll(servicesTask, allTasksTask);
 
@@ -639,7 +639,7 @@ namespace GameServer.Docker.Services
                 logger.LogInformation($"Creating new GameServer: {server.Name} ({server.ServerId})");
                 var serviceSpec = await BuildGameServerServiceSpec(server, definition);
 
-                await client.Swarm.CreateServiceAsync(new ServiceCreateParameters
+                await serviceOperations.CreateServiceAsync(new ServiceCreateParameters
                 {
                     Service = serviceSpec
                 });
@@ -655,7 +655,7 @@ namespace GameServer.Docker.Services
                     Name = new[] { existing.ServiceName }
                 };
 
-                var services = await client.Swarm.ListServicesAsync(new ServicesListParameters
+                var services = await serviceOperations.ListServicesAsync(new ServicesListParameters
                 {
                     Filters = serviceFilter
                 });
@@ -674,7 +674,7 @@ namespace GameServer.Docker.Services
                 // Update the service with correct version
                 logger.LogDebug($"Updating service {service.ID} with version {service.Version.Index}");
 
-                await client.Swarm.UpdateServiceAsync(
+                await serviceOperations.UpdateServiceAsync(
                     service.ID,
                     new ServiceUpdateParameters
                     {
@@ -707,6 +707,10 @@ namespace GameServer.Docker.Services
 
             try
             {
+                // TODO: Service logs are deprecated - use container logs via agents instead
+                throw new NotImplementedException("Service logs are deprecated. Use container logs via agent instead.");
+
+                /*
                 var logStream = await client.Swarm.GetServiceLogsAsync(serviceId, logsParams, CancellationToken.None);
                 var logLines = new List<string>();
 
@@ -725,8 +729,8 @@ namespace GameServer.Docker.Services
                     }
                 }
 
-                logger.LogInformation($"Retrieved {logLines.Count} log lines for server {serverId}");
                 return logLines;
+                */
             }
             catch (Exception ex)
             {
@@ -740,7 +744,7 @@ namespace GameServer.Docker.Services
         {
             logger.LogInformation($"Getting service ID for server {serverId}");
 
-            var services = await client.Swarm.ListServicesAsync();
+            var services = await serviceOperations.ListServicesAsync();
 
             foreach (var svc in services)
             {
@@ -761,7 +765,7 @@ namespace GameServer.Docker.Services
 
         public async Task<SwarmService?> GetSwarmServiceByServiceId(string serviceId)
         {
-            return await client.Swarm.InspectServiceAsync(serviceId);
+            return await serviceOperations.InspectServiceAsync(serviceId);
         }
 
         public async Task<List<TaskResponse>> GetTasksForSwarmServiceAsync(string serviceId)
@@ -772,7 +776,7 @@ namespace GameServer.Docker.Services
                 ["service"] = new Dictionary<string, bool> { [serviceId] = true }
             };
 
-            var allTasks = await client.Tasks.ListAsync(new TasksListParameters { Filters = filters });
+            var allTasks = await serviceOperations.ListTasksAsync(new TasksListParameters { Filters = filters });
 
             return allTasks.ToList();
         }
@@ -783,7 +787,7 @@ namespace GameServer.Docker.Services
             if (server == null)
                 throw new InvalidOperationException($"Server {serverId} not found");
 
-            var serviceDetails = await client.Swarm.ListServicesAsync(new ServicesListParameters
+            var serviceDetails = await serviceOperations.ListServicesAsync(new ServicesListParameters
             {
                 Filters = new ServiceFilter
                 {
@@ -796,7 +800,7 @@ namespace GameServer.Docker.Services
                 throw new InvalidOperationException($"Unable to locate Service by name {server.ServiceName}");
 
             // Find running task/container for this service
-            var tasks = await client.Tasks.ListAsync();
+            var tasks = await serviceOperations.ListTasksAsync();
 
             // Accept tasks that are Running, Starting, or Preparing (container might not be fully running yet)
             var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
@@ -854,7 +858,7 @@ namespace GameServer.Docker.Services
                 try
                 {
                     logger.LogInformation("Removing Docker service {ServiceName}", server.ServiceName);
-                    await client.Swarm.RemoveServiceAsync(server.ServiceName);
+                    await serviceOperations.RemoveServiceAsync(server.ServiceName);
                     logger.LogInformation("Docker service {ServiceName} removed successfully", server.ServiceName);
                 }
                 catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -932,6 +936,10 @@ namespace GameServer.Docker.Services
                     }
                 };
 
+                // TODO: Container operations should go through agents
+                // This volume cleanup logic needs to be refactored to use agent APIs
+                logger.LogWarning("Volume cleanup is disabled when using Agent mode. Manual cleanup may be required.");
+                /*
                 var containers = await client.Containers.ListContainersAsync(new ContainersListParameters
                 {
                     All = false, // Only running containers
@@ -955,6 +963,8 @@ namespace GameServer.Docker.Services
                     container.ID, string.Join(", ", container.Names), labelKey, labelValue);
 
                 return container.ID;
+                */
+                return null; // Disabled in Agent mode
             }
             catch (Exception ex)
             {

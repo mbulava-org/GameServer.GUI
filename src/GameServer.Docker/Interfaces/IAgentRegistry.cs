@@ -47,5 +47,15 @@ namespace GameServer.Docker.Interfaces
         /// Get agent by connection ID
         /// </summary>
         NodeAgentEndpoint? GetAgentByConnectionId(string connectionId);
+
+        /// <summary>
+        /// Get all agents running on manager nodes (for service operations)
+        /// </summary>
+        List<NodeAgentEndpoint> GetManagerAgents();
+
+        /// <summary>
+        /// Get a healthy manager agent (for service operations)
+        /// </summary>
+        NodeAgentEndpoint? GetHealthyManagerAgent();
     }
 }
