@@ -6,6 +6,15 @@ namespace GameServer.Docker.Configurations
     public class NodeAgentOptions
     {
         /// <summary>
+        /// Enable background discovery of agents via Docker Swarm API polling
+        /// DEPRECATED: This legacy discovery method will be removed in a future version.
+        /// Use agent registration (AgentRegistry) instead for better performance and reliability.
+        /// Default: true (for backward compatibility)
+        /// </summary>
+        [Obsolete("Background discovery via Docker Swarm polling is deprecated. Use agent registration instead. This will be removed in a future version.")]
+        public bool EnableBackgroundDiscovery { get; set; } = true;
+
+        /// <summary>
         /// The name of the Node Agent service in Docker Swarm
         /// Default: "gameserver-agent"
         /// </summary>
@@ -49,5 +58,3 @@ namespace GameServer.Docker.Configurations
         public List<string> ActiveTaskStates { get; set; } = new() { "running", "starting", "ready" };
     }
 }
-
-

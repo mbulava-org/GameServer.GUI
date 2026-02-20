@@ -41,6 +41,7 @@ Historical: Documentation reorganization plan (Feb 2026).
 Detailed guides for specific features and subsystems:
 
 - **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deploy and configure Node Agents
+- **[AGENT-REGISTRATION-MIGRATION.md](AGENT-REGISTRATION-MIGRATION.md)** - ⚠️ Migrate from pull-based discovery to push-based registration
 - **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
 - **[GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata system
 - **[GameType-Editor-Complete-Functionality-Guide.md](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI

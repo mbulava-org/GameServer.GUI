@@ -54,6 +54,24 @@ namespace GameServer.Docker.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            #pragma warning disable CS0618 // Type or member is obsolete
+            if (!_agentOptions.EnableBackgroundDiscovery)
+            {
+                _logger.LogWarning(
+                    "⚠️ Background agent discovery is DISABLED. Using agent registration system only. " +
+                    "If agents fail to register, container operations may fail.");
+                return;
+            }
+            #pragma warning restore CS0618
+
+            #pragma warning disable CS0618 // Type or member is obsolete
+            _logger.LogWarning(
+                "⚠️ DEPRECATION WARNING: Background agent discovery via Docker Swarm polling is deprecated. " +
+                "This feature will be removed in a future version. " +
+                "Please ensure agents are configured to register via AgentRegistration. " +
+                "Set NodeAgentOptions:EnableBackgroundDiscovery=false to disable this legacy system.");
+            #pragma warning restore CS0618
+
             _logger.LogInformation("Node Agent Discovery background service starting (refresh interval: {Interval}s)", 
                 _agentOptions.BackgroundRefreshIntervalSeconds);
 

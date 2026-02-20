@@ -4,7 +4,49 @@
 
 ## System Architecture
 
-### Multi-Node Docker Swarm Deployment
+### Agent Registration (Current - Recommended)
+
+**As of 2025, the system uses push-based agent registration:**
+
+```
+┌─────────────────────────────────┐
+│   Primary Service               │
+│   (GameServer.Docker)           │
+│                                 │
+│   ┌──────────────────────┐     │
+│   │  AgentRegistry       │     │
+│   │  (In-Memory)         │     │
+│   │  - Agent metadata    │     │
+│   │  - Container→Agent   │     │
+│   │    mappings          │     │
+│   └──────────────────────┘     │
+└──────────▲──────────────────────┘
+           │ SignalR Registration
+           │ + Heartbeats (every 30s)
+           │
+    ┌──────┴───────┬──────────────┬─────────────┐
+    │              │              │             │
+┌───▼────┐    ┌───▼────┐    ┌───▼────┐   ┌───▼────┐
+│ Agent  │    │ Agent  │    │ Agent  │   │ Agent  │
+│ Node 1 │    │ Node 2 │    │ Node 3 │   │ Node N │
+│        │    │        │    │        │   │        │
+│ Docker │    │ Docker │    │ Docker │   │ Docker │
+│ Socket │    │ Socket │    │ Socket │   │ Socket │
+└────────┘    └────────┘    └────────┘   └────────┘
+```
+
+**Benefits:**
+- ✅ No Docker Swarm queries needed from Primary Service
+- ✅ Real-time agent health tracking via heartbeats
+- ✅ O(1) container-to-agent lookups (dictionary, not API calls)
+- ✅ Agents can run outside Docker Swarm (standalone Docker, K8s, etc.)
+- ✅ Primary Service can run without Docker access
+
+**Configuration:**
+- **Agent**: `appsettings.json` → `AgentRegistration:PrimaryServiceUrl`
+- **Primary**: Automatic - agents connect to `/hubs/agentregistration`
+
+### Multi-Node Docker Swarm Deployment (Legacy)
 
 ```
 ???????????????????????????????????????????????????????????????
@@ -106,6 +148,20 @@ public class MyHub : Hub
 - `Hubs/` - SignalR hubs for real-time features
   - **MUST use Node Agents for container operations**
 - `Services/` - Business logic, Swarm service management
+- `Repositories/` - Data access layer
+
+**Key Services:**
+- `DockerServiceHelper` - Swarm **service** operations (uses `IDockerClient`)
+- `GameServerManagerService` - Server lifecycle management
+- `AgentRegistryService` - **[NEW]** Agent registration and container→agent mappings
+- `NodeAgentDiscoveryService` - **[DEPRECATED]** Legacy Docker Swarm polling (will be removed)
+
+**⚠️ DEPRECATION NOTICE:**
+- `NodeAgentDiscoveryService` background polling is **deprecated**
+- It queries Docker Swarm API every 15 seconds to find agents
+- **Use `AgentRegistry` instead** - agents push their state via SignalR
+- To disable legacy discovery: Set `NodeAgentOptions:EnableBackgroundDiscovery=false`
+- Legacy discovery will be **removed in a future version**
 - `Repositories/` - Data access layer
 
 **Key Services:**
