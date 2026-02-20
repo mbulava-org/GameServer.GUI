@@ -70,7 +70,12 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<NodeAgentDiscoveryService>();
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
-                
+
+                // Agent Registry (new registration-based system)
+                // Agents connect to the Primary Service and push their state
+                // This will eventually replace NodeAgentDiscoveryService
+                builder.Services.AddSingleton<IAgentRegistry, AgentRegistryService>();
+
                 // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
                 builder.Services.AddSingleton<NodeAgentClient>();
                 
@@ -228,6 +233,7 @@ namespace GameServer.Docker
                 app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell
                 app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
                 app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
+                app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration"); // Agent registration
 
                 app.MapControllers();
 

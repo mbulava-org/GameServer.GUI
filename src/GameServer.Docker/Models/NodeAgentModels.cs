@@ -12,6 +12,39 @@ namespace GameServer.Docker.Models
         public string InternalUrl { get; set; } = string.Empty;
         public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
         public bool IsHealthy { get; set; } = true;
+
+        /// <summary>
+        /// SignalR connection ID when agent is connected via registration
+        /// </summary>
+        public string? ConnectionId { get; set; }
+
+        /// <summary>
+        /// Last time a heartbeat was received from this agent
+        /// </summary>
+        public DateTime LastHeartbeat { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Information sent by agent during initial registration
+    /// </summary>
+    public class AgentRegistrationInfo
+    {
+        public string NodeId { get; set; } = string.Empty;
+        public string NodeName { get; set; } = string.Empty;
+        public string InternalUrl { get; set; } = string.Empty;
+        public List<string> Capabilities { get; set; } = new();
+        public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Heartbeat information sent periodically by agents
+    /// </summary>
+    public class AgentHeartbeatInfo
+    {
+        public string NodeId { get; set; } = string.Empty;
+        public List<string> ContainerIds { get; set; } = new();
+        public string Health { get; set; } = "healthy";
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 
     /// <summary>
