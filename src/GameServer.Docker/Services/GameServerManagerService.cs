@@ -1,6 +1,7 @@
 ﻿using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Interfaces;
+using GameServer.Docker.Constants;
 using System.Text;
 
 namespace GameServer.Docker.Services
@@ -111,7 +112,7 @@ namespace GameServer.Docker.Services
         /// </summary>
         public async Task<string?> GetContainerIdByServerIdAsync(string serverId)
         {
-            return await dockerServiceHelper.GetContainerIdByLabelAsync("gameserver.docker.Id", serverId);
+            return await dockerServiceHelper.GetContainerIdByLabelAsync(ServiceLabels.ServerId, serverId);
         }
 
         /// <summary>

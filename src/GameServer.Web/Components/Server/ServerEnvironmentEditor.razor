@@ -674,14 +674,14 @@ else
             var s2 = 0;
             b2.OpenComponent<RadzenDropDown<string>>(s2++);
             b2.AddAttribute(s2++, "Data", settingMeta.AllowedValues);
-            
+
             // Get current value or empty string
             var currentValue = "";
             if (Server.Settings.TryGetValue(settingMeta.Key, out var val))
             {
                 currentValue = val;
             }
-            
+
             b2.AddAttribute(s2++, "Value", currentValue);
             b2.AddAttribute(s2++, "ValueChanged", EventCallback.Factory.Create<string>(this, async value =>
             {
@@ -690,16 +690,19 @@ else
             b2.AddAttribute(s2++, "Placeholder", settingMeta.Placeholder ?? "Select an option");
             b2.AddAttribute(s2++, "class", "w-100");
             b2.AddAttribute(s2++, "AllowClear", true);
-            
-            // Use ValueMappings for display text if available
+            b2.AddAttribute(s2++, "AllowFiltering", true);
+
+            // Use Template for custom display when ValueMappings exist
             if (settingMeta.ValueMappings?.Any() == true)
             {
-                b2.AddAttribute(s2++, "TextProperty", (Func<string, string>)(item =>
+                b2.AddAttribute(s2++, "Template", (RenderFragment<object>)((item) => (builder3) =>
                 {
-                    return settingMeta.ValueMappings.TryGetValue(item, out var label) ? label : item;
+                    var itemStr = item?.ToString() ?? "";
+                    var displayText = settingMeta.ValueMappings.TryGetValue(itemStr, out var label) ? label : itemStr;
+                    builder3.AddContent(0, displayText);
                 }));
             }
-            
+
             b2.CloseComponent();
         }));
         builder.CloseComponent();

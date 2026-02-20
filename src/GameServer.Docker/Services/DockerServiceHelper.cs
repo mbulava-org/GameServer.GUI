@@ -2,6 +2,7 @@
 using Docker.DotNet.Models;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Repositories;
+using GameServer.Docker.Constants;
 using Microsoft.Extensions.Options;
 using System.Threading.Tasks;
 
@@ -67,11 +68,11 @@ namespace GameServer.Docker.Services
             // 6. Build labels to identify this as a managed GameServer
             var labels = new Dictionary<string, string>
             {
-                ["gameserver.docker.managed"] = "true",
-                ["gameserver.docker.Id"] = server.ServerId,
-                ["gameserver.docker.name"] = server.Name,
-                ["gameserver.docker.description"] = server.Description,
-                ["gameserver.docker.gametype"] = server.GameType
+                [ServiceLabels.Managed] = ServiceLabels.ManagedValue,
+                [ServiceLabels.ServerId] = server.ServerId,
+                [ServiceLabels.Name] = server.Name,
+                [ServiceLabels.Description] = server.Description,
+                [ServiceLabels.GameType] = server.GameType
             };
 
             // 7. Preserve existing mode (replicated/global) if updating
@@ -441,48 +442,65 @@ namespace GameServer.Docker.Services
         public async Task<List<Models.GameServer>> ListGameServersAsync()
         {
             logger.LogInformation("Fetching services from Docker Swarm...");
-            var services = await client.Swarm.ListServicesAsync();
-            logger.LogInformation("Converting services to GameServer list.");
-            var servers = new List<Models.GameServer>();
-            foreach (var svc in services)
-            {
-                var item = await TryCastGameServer(svc);
-                if (item != null)
-                {
-                    servers.Add(item);
-                }
-            }
-            logger.LogInformation($"Found {servers.Count} GameServers");
+            var servicesTask = client.Swarm.ListServicesAsync();
+
+            // Fetch ALL tasks in parallel with services - huge performance gain!
+            logger.LogInformation("Fetching all tasks from Docker Swarm...");
+            var allTasksTask = client.Tasks.ListAsync(new TasksListParameters());
+
+            // Wait for both to complete
+            await Task.WhenAll(servicesTask, allTasksTask);
+
+            var services = (await servicesTask).ToList();
+            var allTasks = (await allTasksTask).ToList();
+
+            logger.LogInformation($"Found {services.Count} total services and {allTasks.Count} tasks");
+
+            // Group tasks by service ID for O(1) lookup instead of N API calls
+            var tasksByService = allTasks
+                .GroupBy(t => t.ServiceID)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            logger.LogInformation("Converting services to GameServers in parallel...");
+
+            // Process all services in parallel, passing pre-fetched tasks
+            var serverTasks = services.Select(svc => TryCastGameServer(svc, tasksByService));
+            var serversWithNulls = await Task.WhenAll(serverTasks);
+
+            // Filter out non-GameServer services (nulls)
+            var servers = serversWithNulls.Where(s => s != null).Select(s => s!).ToList();
+
+            logger.LogInformation($"Found {servers.Count} GameServers out of {services.Count} services");
             return servers;
         }
 
-        private async Task<Models.GameServer?> TryCastGameServer(SwarmService service)
+        private async Task<Models.GameServer?> TryCastGameServer(SwarmService service, Dictionary<string, List<TaskResponse>>? tasksByService = null)
         {
-            if (!service.Spec.Labels.ContainsKey("gameserver.docker.managed") || service.Spec.Labels["gameserver.docker.managed"] != "true")
+            if (!service.Spec.Labels.ContainsKey(ServiceLabels.Managed) || service.Spec.Labels[ServiceLabels.Managed] != ServiceLabels.ManagedValue)
             {
                 return null;
             }
             //Otherwise, we have a managed GameServer
             var item = new Models.GameServer();
-            if (service.Spec.Labels.ContainsKey("gameserver.docker.Id"))
+            if (service.Spec.Labels.ContainsKey(ServiceLabels.ServerId))
             {
-                item.ServerId = service.Spec.Labels["gameserver.docker.Id"];
+                item.ServerId = service.Spec.Labels[ServiceLabels.ServerId];
             }
-            if (service.Spec.Labels.ContainsKey("gameserver.docker.name"))
+            if (service.Spec.Labels.ContainsKey(ServiceLabels.Name))
             {
-                item.Name = service.Spec.Labels["gameserver.docker.name"];
+                item.Name = service.Spec.Labels[ServiceLabels.Name];
             }
-            if (service.Spec.Labels.ContainsKey("gameserver.docker.description"))
+            if (service.Spec.Labels.ContainsKey(ServiceLabels.Description))
             {
-                item.Description = service.Spec.Labels["gameserver.docker.description"];
+                item.Description = service.Spec.Labels[ServiceLabels.Description];
             }
-            if (service.Spec.Labels.ContainsKey("gameserver.docker.gametype"))
+            if (service.Spec.Labels.ContainsKey(ServiceLabels.GameType))
             {
-                item.GameType = service.Spec.Labels["gameserver.docker.gametype"];
+                item.GameType = service.Spec.Labels[ServiceLabels.GameType];
             }
 
             item.ServiceName = service.Spec.Name;
-            
+
 
             if (service.Spec.TaskTemplate != null && service.Spec.TaskTemplate.ContainerSpec != null
                 && service.Spec.TaskTemplate.ContainerSpec.Env != null)
@@ -526,23 +544,33 @@ namespace GameServer.Docker.Services
             }
 
             //Get Status...
-            var tasks = await GetTasksForSwarmServiceAsync(service.ID);
-            
+            // Use pre-fetched tasks if available, otherwise fetch them
+            List<TaskResponse> tasks;
+            if (tasksByService != null && tasksByService.TryGetValue(service.ID, out var cachedTasks))
+            {
+                tasks = cachedTasks;
+            }
+            else
+            {
+                // Fallback: fetch tasks for this specific service (backwards compatibility)
+                tasks = await GetTasksForSwarmServiceAsync(service.ID);
+            }
+
             // Get desired replicas from service spec
             var desiredReplicas = (int)(service.Spec?.Mode?.Replicated?.Replicas ?? 0);
-            
+
             // Count running tasks
             var runningTasks = tasks.Count(t => t.Status?.State == TaskState.Running);
-            
+
             // Get the container ID from the most recent running task
             var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
             var activeTask = tasks
                 .Where(t => activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
                 .OrderByDescending(t => t.UpdatedAt)
                 .FirstOrDefault();
-            
+
             item.ContainerId = activeTask?.Status?.ContainerStatus?.ContainerID;
-            
+
             // Determine status using same logic as ResourceUsage.ServiceStatus
             item.Status = (desiredReplicas, runningTasks) switch
             {
@@ -561,16 +589,46 @@ namespace GameServer.Docker.Services
 
         public async Task<Models.GameServer?> GetGameServerById(string Id)
         {
-            logger.LogInformation("Fetching services from Docker Swarm...");
-            var services = await client.Swarm.ListServicesAsync();
-            logger.LogInformation("Converting services to GameServer list.");
-            foreach (var svc in services)
+            logger.LogInformation($"Fetching service with ID: {Id}");
+
+            // Use Docker label filter to fetch only the specific service - MUCH faster!
+            var filters = new ServiceFilter
             {
-                var item = await TryCastGameServer(svc);
-                if (item?.ServerId == Id)
-                    return item;
+                Label = new[] { $"{ServiceLabels.ServerId}={Id}" }
+            };
+
+            var servicesTask = client.Swarm.ListServicesAsync(new ServicesListParameters { Filters = filters });
+
+            // Fetch tasks for this specific service in parallel
+            var allTasksTask = client.Tasks.ListAsync(new TasksListParameters());
+
+            await Task.WhenAll(servicesTask, allTasksTask);
+
+            var services = (await servicesTask).ToList();
+            var allTasks = (await allTasksTask).ToList();
+
+            if (services.Count == 0)
+            {
+                logger.LogWarning($"No service found with ID: {Id}");
+                return null;
             }
-            return null;
+
+            if (services.Count > 1)
+            {
+                logger.LogWarning($"Multiple services found with ID: {Id}, returning first");
+            }
+
+            var service = services.First();
+
+            // Group tasks by service ID for efficient lookup
+            var tasksByService = allTasks
+                .GroupBy(t => t.ServiceID)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // Convert to GameServer using optimized method
+            var gameServer = await TryCastGameServer(service, tasksByService);
+
+            return gameServer;
         }
 
         public async Task CreateOrUpdateGameServerAsync(Models.GameServer server, Models.GameTypeDefinition definition, bool performShutdown = false)
