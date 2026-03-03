@@ -453,6 +453,42 @@
                                                                 </div>
                                                             }
 
+                                                            @if (metadata.DataType == "timezone")
+                                                            {
+                                                                <div class="col-12">
+                                                                    <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
+                                                                        <div class="d-flex align-items-start gap-2">
+                                                                            <RadzenIcon Icon="info" Style="font-size: 1rem;" />
+                                                                            <div>
+                                                                                <strong>Time Zone Input:</strong>
+                                                                                <p class="mb-0 mt-1" style="font-size: 0.875rem;">
+                                                                                    This setting will display as a searchable dropdown with all available time zones. 
+                                                                                    Users can type to filter the list. The time zone ID (e.g., "America/New_York") will be stored.
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </RadzenAlert>
+                                                                </div>
+
+                                                                <div class="col-12">
+                                                                    <RadzenFormField Text="Preview - Available Time Zones" Variant="@Variant.Outlined" class="w-100">
+                                                                        <RadzenDropDown @bind-Value="@metadata.AllowedValues"
+                                                                                       Data="@availableTimeZones"
+                                                                                       AllowFiltering="true"
+                                                                                       AllowClear="true"
+                                                                                       FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                                                       Placeholder="Select a time zone to preview..."
+                                                                                       class="w-100"
+                                                                                       Disabled="true"
+                                                                                       Style="opacity: 0.6;" />
+                                                                    </RadzenFormField>
+                                                                    <small class="text-muted">
+                                                                        <RadzenIcon Icon="visibility" Style="font-size: 0.875rem;" />
+                                                                        Preview only - Shows how the time zone dropdown will appear to users (@availableTimeZones.Count zones available)
+                                                                    </small>
+                                                                </div>
+                                                            }
+
                                                             @if (metadata.DataType == "port")
                                                             {
                                                                 <div class="col-12">
@@ -1043,7 +1079,8 @@ private Dictionary<string, SettingMetadata> settingsMetadata = new();
 private HashSet<string> expandedSettingsKeys = new();
 private string? selectedSettingKey = null;
 private bool enableTTY = false;
-private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port" };
+private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port", "timezone" };
+private List<string> availableTimeZones = new();
 private PortRelationshipType[] portRelationshipTypes = Enum.GetValues<PortRelationshipType>();
 private bool isNew = false;
 private bool isLoading = true;
@@ -1051,6 +1088,12 @@ private bool isSaving = false;
 
 protected override async Task OnInitializedAsync()
 {
+    // Load all available time zones
+    availableTimeZones = TimeZoneInfo.GetSystemTimeZones()
+        .Select(tz => tz.Id)
+        .OrderBy(id => id)
+        .ToList();
+
     await LoadGameTypeAsync();
 }
 

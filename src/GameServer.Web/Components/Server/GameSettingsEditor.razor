@@ -266,7 +266,7 @@ else
 
             // Render appropriate control based on DataType
             var dataType = settingMeta.DataType?.ToLowerInvariant() ?? "string";
-            
+
             if (dataType == "boolean")
             {
                 RenderBooleanControl(builder, ref sequence, settingMeta);
@@ -278,6 +278,10 @@ else
             else if (dataType == "enum" && settingMeta.AllowedValues?.Any() == true)
             {
                 RenderEnumControl(builder, ref sequence, settingMeta);
+            }
+            else if (dataType == "timezone")
+            {
+                RenderTimezoneControl(builder, ref sequence, settingMeta);
             }
             else
             {
@@ -412,6 +416,47 @@ else
                 }));
             }
             
+            b2.CloseComponent();
+        }));
+        builder.CloseComponent();
+    }
+
+    private void RenderTimezoneControl(RenderTreeBuilder builder, ref int sequence, SettingMetadata settingMeta)
+    {
+        if (Server == null) return;
+
+        // Get all available time zones
+        var timeZones = TimeZoneInfo.GetSystemTimeZones()
+            .Select(tz => tz.Id)
+            .OrderBy(id => id)
+            .ToList();
+
+        builder.OpenComponent<RadzenFormField>(sequence++);
+        builder.AddAttribute(sequence++, "Variant", Variant.Outlined);
+        builder.AddAttribute(sequence++, "class", "w-100");
+        builder.AddAttribute(sequence++, "ChildContent", (RenderFragment)(b2 =>
+        {
+            var s2 = 0;
+            b2.OpenComponent<RadzenDropDown<string>>(s2++);
+            b2.AddAttribute(s2++, "Data", timeZones);
+
+            // Get current value or default
+            var currentValue = "";
+            if (Server.Settings.TryGetValue(settingMeta.Key, out var val))
+            {
+                currentValue = val;
+            }
+
+            b2.AddAttribute(s2++, "Value", currentValue);
+            b2.AddAttribute(s2++, "ValueChanged", EventCallback.Factory.Create<string>(this, async value =>
+            {
+                await SetSettingValue(settingMeta.Key, value);
+            }));
+            b2.AddAttribute(s2++, "AllowFiltering", true);
+            b2.AddAttribute(s2++, "FilterCaseSensitivity", FilterCaseSensitivity.CaseInsensitive);
+            b2.AddAttribute(s2++, "Placeholder", settingMeta.Placeholder ?? "Select a time zone");
+            b2.AddAttribute(s2++, "class", "w-100");
+
             b2.CloseComponent();
         }));
         builder.CloseComponent();
