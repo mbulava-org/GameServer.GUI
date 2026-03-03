@@ -1,0 +1,73 @@
+@using global::GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+
+<RadzenCard>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="flex-grow-1">
+            <h5 class="mb-1">Volume Definitions</h5>
+            <small class="text-muted">Define container mount points. Volume sources are managed by the server deployment.</small>
+        </div>
+        <RadzenButton Text="Add Volume" 
+                      Icon="add" 
+                      Size="ButtonSize.Small"
+                      Click="@AddVolume" />
+    </div>
+
+    @if (Volumes == null || !Volumes.Any())
+    {
+        <p class="text-muted text-center py-4">No volumes configured. Add a volume to get started.</p>
+    }
+    else
+    {
+        <div class="volume-list">
+            @foreach (var volume in Volumes.ToList())
+            {
+                <div class="volume-item mb-3 p-3 border rounded">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-10">
+                            <RadzenFormField Text="Target (Container Path)" Variant="@Variant.Outlined" class="w-100">
+                                <RadzenTextBox @bind-Value="@volume.Target" 
+                                               Placeholder="/data"
+                                               class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted">The path inside the container where data will be mounted</small>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <RadzenButton Icon="delete" 
+                                          ButtonStyle="ButtonStyle.Danger" 
+                                          Size="ButtonSize.Small"
+                                          Click="@(() => RemoveVolume(volume))" />
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</RadzenCard>
+
+@code {
+    [Parameter]
+    public ICollection<VolumeDefinition> Volumes { get; set; } = new List<VolumeDefinition>();
+
+    [Parameter]
+    public EventCallback VolumesChanged { get; set; }
+
+    private async Task NotifyChanged()
+    {
+        await VolumesChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task AddVolume()
+    {
+        Volumes.Add(new VolumeDefinition { Source = null, Target = "" });
+        await NotifyChanged();
+    }
+
+    private async Task RemoveVolume(VolumeDefinition volume)
+    {
+        Volumes.Remove(volume);
+        await NotifyChanged();
+    }
+}
