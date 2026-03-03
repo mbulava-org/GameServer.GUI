@@ -136,25 +136,42 @@ namespace GameServer.Docker.Agent.Services
                 var info = await _dockerClient.System.GetSystemInfoAsync(cancellationToken);
 
                 _nodeId = info.Swarm?.NodeID ?? Guid.NewGuid().ToString();
+
+                // For node name, use the Docker node's hostname
+                // This identifies which physical/VM node the agent is running on
                 _nodeName = Environment.GetEnvironmentVariable("NODE_NAME") ?? info.Name ?? Environment.MachineName;
 
                 // Detect if this node is a Swarm manager
-                // A node is a manager if Swarm.ControlAvailable is true
                 _isManagerNode = info.Swarm?.ControlAvailable ?? false;
 
-                // Determine agent URL
-                // In Docker Swarm overlay network, use the task's network IP
-                // For now, construct from environment or use hostname
-                var agentHost = Environment.GetEnvironmentVariable("AGENT_HOST") ?? _nodeName;
+                // ===== AGENT URL CONFIGURATION =====
+                // CRITICAL: In Docker Swarm overlay networks, we must use the TASK hostname,
+                // not the Docker node hostname. The task hostname is how other services reach us.
+                //
+                // Docker Swarm sets the container's hostname to the task name, which looks like:
+                // gameserver-agent.1.abcd1234efgh5678
+                //
+                // Environment.MachineName returns this task hostname in .NET
+                // 
+                // WRONG: info.Name (returns Docker node hostname like "newdev-docker-004")
+                // RIGHT: Environment.MachineName (returns task hostname in Swarm)
+
+                var agentHost = Environment.GetEnvironmentVariable("AGENT_HOST") ?? Environment.MachineName;
                 var agentPort = Environment.GetEnvironmentVariable("AGENT_PORT") ?? "8080";
                 _agentUrl = $"http://{agentHost}:{agentPort}";
 
                 _logger.LogInformation(
-                    "Agent initialized: NodeId={NodeId}, NodeName={NodeName}, Url={Url}, IsManager={IsManager}",
+                    "Agent initialized: NodeId={NodeId}, NodeName={NodeName}, AgentUrl={Url}, IsManager={IsManager}",
                     _nodeId,
                     _nodeName,
                     _agentUrl,
                     _isManagerNode);
+
+                _logger.LogDebug(
+                    "Agent network identity: DockerNodeHostname={DockerNode}, TaskHostname={TaskHostname}, ServiceUrl={ServiceUrl}",
+                    info.Name,
+                    Environment.MachineName,
+                    _agentUrl);
             }
             catch (Exception ex)
             {

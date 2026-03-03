@@ -27,6 +27,7 @@ jobs:
       semantic_version: ${{ steps.config.outputs.semantic_version }}
       primary_branch: ${{ steps.config.outputs.primary_branch }}
       push_client_output: ${{ steps.detect-api-changes.outputs.push_client_output }}
+      new_version: ${{ steps.config.outputs.new_version }} 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,6 +40,24 @@ jobs:
           echo "dotnet_version=${{ env.DOTNET_VERSION }}" >> $GITHUB_OUTPUT
           echo "semantic_version=${{ env.SEMANTIC_VERSION }}" >> $GITHUB_OUTPUT
           echo "primary_branch=${{ env.PRIMARY_BRANCH }}" >> $GITHUB_OUTPUT
+          echo "Calculating new version based on semantic versioning..."
+          IFS='.'
+          read -ra arr <<< ${{ env.SEMANTIC_VERSION }}
+          inc=${{ github.run_number }}
+          old=${arr[3]}
+          build="$(( inc + old ))"
+          newV=${arr[0]}.${arr[1]}.${arr[2]}.$build
+          IFS=" "
+          echo "NEW_VERSION=$newV" >> $GITHUB_ENV
+          echo "VERSION_BUILD=$build" >> $GITHUB_ENV
+          echo "VERSION_MAJOR=${arr[0]}" >> $GITHUB_ENV
+          echo "VERSION_MINOR=${arr[1]}" >> $GITHUB_ENV
+          echo "VERSION_PATCH=${arr[2]}" >> $GITHUB_ENV
+          echo "Successfully parsed ${{ env.SEMANTIC_VERSION }} and calculated new value $newV"
+          echo "Successfully calculated VERSION_BUILD value $build"
+          echo "Successfully calculated VERSION_MAJOR value ${arr[0]}"
+          echo "Successfully calculated VERSION_MINOR value ${arr[1]}"
+          echo "Successfully calculated VERSION_PATCH value ${arr[2]}"
       
       - name: Detect API changes
         id: detect-api-changes
