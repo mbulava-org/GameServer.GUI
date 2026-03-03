@@ -72,11 +72,60 @@ namespace GameServer.Docker.Agent.Services
             _hubConnection.Reconnected += OnReconnected;
             _hubConnection.Closed += OnClosed;
 
-            // Connect and register
-            await ConnectAndRegisterAsync(stoppingToken);
+            // Connect and register with retry logic
+            await ConnectAndRegisterWithRetryAsync(stoppingToken);
 
             // Start heartbeat loop
             await HeartbeatLoopAsync(stoppingToken);
+        }
+
+        private async Task ConnectAndRegisterWithRetryAsync(CancellationToken cancellationToken)
+        {
+            var maxRetries = _options.MaxStartupRetries > 0 ? _options.MaxStartupRetries : 30;
+            var currentRetry = 0;
+            var baseDelay = TimeSpan.FromSeconds(_options.StartupRetryDelaySeconds > 0 ? _options.StartupRetryDelaySeconds : 5);
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await ConnectAndRegisterAsync(cancellationToken);
+                    _logger.LogInformation("Successfully connected and registered with Primary Service");
+                    return; // Success!
+                }
+                catch (Exception ex) when (currentRetry < maxRetries)
+                {
+                    currentRetry++;
+                    var delay = TimeSpan.FromSeconds(Math.Min(baseDelay.TotalSeconds * Math.Pow(1.5, currentRetry - 1), 60));
+
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to connect to Primary Service (attempt {Attempt}/{MaxRetries}). Retrying in {Delay}s...",
+                        currentRetry,
+                        maxRetries,
+                        delay.TotalSeconds);
+
+                    try
+                    {
+                        await Task.Delay(delay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogInformation("Agent startup cancelled during retry delay");
+                        throw;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to connect to Primary Service after {Attempts} attempts. Giving up.",
+                        currentRetry);
+                    throw;
+                }
+            }
+
+            throw new OperationCanceledException("Agent startup cancelled before successful connection");
         }
 
         private async Task InitializeAgentInfoAsync(CancellationToken cancellationToken)

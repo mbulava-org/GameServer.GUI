@@ -42,5 +42,19 @@ namespace GameServer.Docker.Agent.Configurations
         /// Default: 0, 2, 10, 30 seconds
         /// </summary>
         public List<int> ReconnectDelaySeconds { get; set; } = new() { 0, 2, 10, 30 };
+
+        /// <summary>
+        /// Maximum number of connection attempts at startup before giving up
+        /// Default: 30 attempts (with exponential backoff, ~5-10 minutes total)
+        /// Set to 0 or negative for unlimited retries
+        /// </summary>
+        public int MaxStartupRetries { get; set; } = 30;
+
+        /// <summary>
+        /// Base delay in seconds between startup connection retry attempts
+        /// Uses exponential backoff: delay * 1.5^(attempt-1), capped at 60s
+        /// Default: 5 seconds
+        /// </summary>
+        public int StartupRetryDelaySeconds { get; set; } = 5;
     }
 }
