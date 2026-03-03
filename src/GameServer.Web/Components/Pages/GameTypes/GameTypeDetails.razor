@@ -2,6 +2,7 @@
 @page "/gametypes/new"
 @rendermode InteractiveServer
 @using global::GameServer.Docker.Client
+@using GameServer.Web.Components.Pages.GameTypes.Components
 @using Radzen
 @using Radzen.Blazor
 @inject IGameTypeApi GameTypeApi
@@ -50,65 +51,9 @@
                 <Tabs>
                     <RadzenTabsItem Text="Basic Information">
                     <div class="p-4">
-                        <RadzenCard>
-                            <h5 class="mb-4">Basic Information</h5>
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Key" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.Key" 
-                                                       Disabled="@(!isNew)"
-                                                       Placeholder="e.g., minecraft"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                    @if (isNew)
-                                    {
-                                        <small class="text-muted">Unique identifier (cannot be changed later)</small>
-                                    }
-                                </div>
-
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Display Name" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.DisplayName" 
-                                                       Placeholder="e.g., Minecraft Server"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-
-                                <div class="col-12">
-                                    <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextArea @bind-Value="@gameType.Description" 
-                                                        Rows="3"
-                                                        Placeholder="Brief description of this game server type"
-                                                        class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-
-                                <div class="col-12">
-                                    <RadzenFormField Text="Docker Image" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.Image" 
-                                                       Placeholder="e.g., itzg/minecraft-server:latest"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                    <small class="text-muted">Full Docker image name including tag</small>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Thumbnail URL" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.ThumbnailUrl" 
-                                                       Placeholder="https://example.com/image.png"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Documentation URL" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.DocumentationUrl" 
-                                                       Placeholder="https://docs.example.com"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-                            </div>
-                        </RadzenCard>
+                        <GameTypeBasicInfo GameType="@gameType" 
+                                           IsNew="@isNew" 
+                                           GameTypeChanged="@OnGameTypeChanged" />
                     </div>
                 </RadzenTabsItem>
 
@@ -1673,6 +1618,12 @@ private async Task LoadGameTypeAsync()
         if (portValidation.ReservedPorts == null || !portValidation.ReservedPorts.Any())
             return "";
         return string.Join(",", portValidation.ReservedPorts);
+    }
+
+    private void OnGameTypeChanged(GameTypeDefinition updatedGameType)
+    {
+        gameType = updatedGameType;
+        StateHasChanged();
     }
 
     private void SetReservedPorts(SettingMetadata metadata, string value)
