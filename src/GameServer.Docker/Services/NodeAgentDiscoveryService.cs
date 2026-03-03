@@ -13,6 +13,7 @@ namespace GameServer.Docker.Services
     /// <summary>
     /// Background service that continuously discovers and monitors Node Agents in the Docker Swarm cluster.
     /// Maintains a thread-safe list of healthy agents with automatic eviction of unhealthy agents.
+    /// NOTE: This service will be deprecated in favor of AgentRegistry which uses push-based registration.
     /// </summary>
     public class NodeAgentDiscoveryService : BackgroundService, INodeAgentDiscovery
     {
@@ -21,16 +22,17 @@ namespace GameServer.Docker.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IGameServerManager _serverManager;
         private readonly NodeAgentOptions _agentOptions;
+        private readonly IAgentRegistry _agentRegistry;
 
         // Thread-safe agent storage - key is NodeId
         private readonly ConcurrentDictionary<string, NodeAgentEndpoint> _agents = new();
         private readonly SemaphoreSlim _discoveryLock = new(1, 1);
         private DateTime _lastDiscoveryTime = DateTime.MinValue;
-        
+
         // Per-node HttpClient cache for better connection pooling and isolation
         // Key is the agent's InternalUrl (base address)
         private readonly ConcurrentDictionary<string, HttpClient> _httpClients = new();
-        
+
         // SignalR connections to Node Agents - key is NodeId
         private readonly ConcurrentDictionary<string, HubConnection> _agentConnections = new();
 
@@ -39,17 +41,37 @@ namespace GameServer.Docker.Services
             ILogger<NodeAgentDiscoveryService> logger,
             IHttpClientFactory httpClientFactory,
             IGameServerManager serverManager,
-            IOptions<NodeAgentOptions> agentOptions)
+            IOptions<NodeAgentOptions> agentOptions,
+            IAgentRegistry agentRegistry)
         {
             _client = client;
             _logger = logger;
             _httpClientFactory = httpClientFactory;
             _serverManager = serverManager;
             _agentOptions = agentOptions.Value;
+            _agentRegistry = agentRegistry;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            #pragma warning disable CS0618 // Type or member is obsolete
+            if (!_agentOptions.EnableBackgroundDiscovery)
+            {
+                _logger.LogWarning(
+                    "⚠️ Background agent discovery is DISABLED. Using agent registration system only. " +
+                    "If agents fail to register, container operations may fail.");
+                return;
+            }
+            #pragma warning restore CS0618
+
+            #pragma warning disable CS0618 // Type or member is obsolete
+            _logger.LogWarning(
+                "⚠️ DEPRECATION WARNING: Background agent discovery via Docker Swarm polling is deprecated. " +
+                "This feature will be removed in a future version. " +
+                "Please ensure agents are configured to register via AgentRegistration. " +
+                "Set NodeAgentOptions:EnableBackgroundDiscovery=false to disable this legacy system.");
+            #pragma warning restore CS0618
+
             _logger.LogInformation("Node Agent Discovery background service starting (refresh interval: {Interval}s)", 
                 _agentOptions.BackgroundRefreshIntervalSeconds);
 
@@ -148,14 +170,37 @@ namespace GameServer.Docker.Services
 
         public Task<List<NodeAgentEndpoint>> DiscoverAgentsAsync()
         {
-            // Return current snapshot from thread-safe dictionary
-            var agents = _agents.Values.ToList();
-            
+            // PHASE 2: Merge agents from both systems
+            // Priority: Registry agents (connected via registration) take precedence
+            var registryAgents = _agentRegistry.GetAllAgents();
+            var discoveryAgents = _agents.Values.ToList();
+
+            // Build combined list, preferring registry agents
+            var agentsByNode = new Dictionary<string, NodeAgentEndpoint>();
+
+            // Add discovery agents first
+            foreach (var agent in discoveryAgents)
+            {
+                agentsByNode[agent.NodeId] = agent;
+            }
+
+            // Overlay registry agents (these take precedence)
+            foreach (var agent in registryAgents)
+            {
+                agentsByNode[agent.NodeId] = agent;
+            }
+
+            var allAgents = agentsByNode.Values.ToList();
+
             var timeSinceLastDiscovery = DateTime.UtcNow - _lastDiscoveryTime;
-            _logger.LogDebug("Returning {Count} cached agents (last discovery: {Seconds:F1}s ago)", 
-                agents.Count, timeSinceLastDiscovery.TotalSeconds);
-            
-            return Task.FromResult(agents);
+            _logger.LogDebug(
+                "Returning {Total} agents ({Registry} from registry, {Discovery} from discovery, last discovery: {Seconds:F1}s ago)", 
+                allAgents.Count,
+                registryAgents.Count,
+                discoveryAgents.Count,
+                timeSinceLastDiscovery.TotalSeconds);
+
+            return Task.FromResult(allAgents);
         }
 
         private async Task<List<NodeAgentEndpoint>> DiscoverAgentsInternalAsync(CancellationToken cancellationToken)
@@ -279,6 +324,23 @@ namespace GameServer.Docker.Services
         {
             _logger.LogDebug("Finding agent for container {ContainerId}", containerId);
 
+            // PHASE 2: Try registry first (new push-based registration system)
+            var registryAgent = _agentRegistry.GetAgentForContainer(containerId);
+            if (registryAgent != null)
+            {
+                _logger.LogDebug(
+                    "✅ Found agent via REGISTRY (push-based) for container {ContainerId}: {AgentUrl} on node {NodeName}",
+                    containerId.Substring(0, Math.Min(12, containerId.Length)),
+                    registryAgent.InternalUrl,
+                    registryAgent.NodeName);
+                return registryAgent;
+            }
+
+            _logger.LogDebug(
+                "⚠️ Agent not found in registry for container {ContainerId}, falling back to Docker Swarm query (pull-based discovery)",
+                containerId.Substring(0, Math.Min(12, containerId.Length)));
+
+            // FALLBACK: Use legacy Docker Swarm query method
             // First, find which node the container is on
             _logger.LogTrace("Querying Docker for all running tasks to locate container {ContainerId}", containerId);
             var tasks = await _client.Tasks.ListAsync(new TasksListParameters
@@ -320,8 +382,11 @@ namespace GameServer.Docker.Services
             // Find agent on that node from our cached list
             if (_agents.TryGetValue(nodeId, out var agent) && agent.IsHealthy)
             {
-                _logger.LogDebug("Found healthy agent for container {ContainerId}: {AgentUrl} on node {NodeName}",
-                    containerId, agent.InternalUrl, agent.NodeName);
+                _logger.LogDebug(
+                    "✅ Found agent via DISCOVERY (pull-based) for container {ContainerId}: {AgentUrl} on node {NodeName}",
+                    containerId,
+                    agent.InternalUrl,
+                    agent.NodeName);
                 return agent;
             }
 

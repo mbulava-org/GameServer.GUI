@@ -4,7 +4,49 @@
 
 ## System Architecture
 
-### Multi-Node Docker Swarm Deployment
+### Agent Registration (Current - Recommended)
+
+**As of 2025, the system uses push-based agent registration:**
+
+```
+┌─────────────────────────────────┐
+│   Primary Service               │
+│   (GameServer.Docker)           │
+│                                 │
+│   ┌──────────────────────┐     │
+│   │  AgentRegistry       │     │
+│   │  (In-Memory)         │     │
+│   │  - Agent metadata    │     │
+│   │  - Container→Agent   │     │
+│   │    mappings          │     │
+│   └──────────────────────┘     │
+└──────────▲──────────────────────┘
+           │ SignalR Registration
+           │ + Heartbeats (every 30s)
+           │
+    ┌──────┴───────┬──────────────┬─────────────┐
+    │              │              │             │
+┌───▼────┐    ┌───▼────┐    ┌───▼────┐   ┌───▼────┐
+│ Agent  │    │ Agent  │    │ Agent  │   │ Agent  │
+│ Node 1 │    │ Node 2 │    │ Node 3 │   │ Node N │
+│        │    │        │    │        │   │        │
+│ Docker │    │ Docker │    │ Docker │   │ Docker │
+│ Socket │    │ Socket │    │ Socket │   │ Socket │
+└────────┘    └────────┘    └────────┘   └────────┘
+```
+
+**Benefits:**
+- ✅ No Docker Swarm queries needed from Primary Service
+- ✅ Real-time agent health tracking via heartbeats
+- ✅ O(1) container-to-agent lookups (dictionary, not API calls)
+- ✅ Agents can run outside Docker Swarm (standalone Docker, K8s, etc.)
+- ✅ Primary Service can run without Docker access
+
+**Configuration:**
+- **Agent**: `appsettings.json` → `AgentRegistration:PrimaryServiceUrl`
+- **Primary**: Automatic - agents connect to `/hubs/agentregistration`
+
+### Multi-Node Docker Swarm Deployment (Legacy)
 
 ```
 ???????????????????????????????????????????????????????????????
@@ -105,7 +147,22 @@ public class MyHub : Hub
 - `Controllers/` - REST API endpoints for CRUD operations
 - `Hubs/` - SignalR hubs for real-time features
   - **MUST use Node Agents for container operations**
-- `Services/` - Business logic, Swarm service management
+- `Services/` - Business logic, service orchestration
+- `Repositories/` - Data access layer
+
+**Key Services:**
+- `IServiceOperations` - **[NEW]** Abstraction for all Docker operations
+  - `ServiceOperationsViaDirect` - Direct Docker client (legacy, requires Docker connection)
+  - `ServiceOperationsViaAgent` - Delegates to manager agent (no Docker connection needed!)
+- `DockerServiceHelper` - Server lifecycle management (uses `IServiceOperations`)
+- `AgentRegistryService` - **[NEW]** Agent registration and container→agent mappings
+- `NodeAgentDiscoveryService` - **[DEPRECATED]** Legacy Docker Swarm polling (will be removed)
+
+**✅ PHASE 5 COMPLETE:**
+- Primary Service can run **without any Docker connection** when `ServiceOperations:Mode=Agent`
+- All Docker operations (services, tasks, networks) delegated to manager agent
+- `IDockerClient` is optional and only used in Direct mode
+- Container operations always go through agents (logs, exec, stats, attach)
 - `Repositories/` - Data access layer
 
 **Key Services:**

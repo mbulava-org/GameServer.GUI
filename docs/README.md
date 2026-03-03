@@ -6,7 +6,9 @@ Welcome to the GameServer.Docker documentation! This comprehensive guide will he
 
 ### Getting Started
 - **[Quick Start Guide](QUICK-START.md)** - Get up and running in 5 minutes
+- **[Agent Quick Start](AGENT-QUICK-START.md)** - ⭐ **NEW:** Agent-based architecture setup
 - **[Architecture Overview](ARCHITECTURE.md)** - Understand the system design
+- **[Implementation Summary](AGENT-IMPLEMENTATION-SUMMARY.md)** - 🎉 **NEW:** Complete architecture transformation
 - **[Current Features](CURRENT-FEATURES.md)** - See what's implemented
 
 ### For Developers
@@ -40,7 +42,10 @@ Historical: Documentation reorganization plan (Feb 2026).
 
 Detailed guides for specific features and subsystems:
 
-- **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deploy and configure Node Agents
+- **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deploy and configure Node Agents (legacy)
+- **[AGENT-QUICK-START.md](AGENT-QUICK-START.md)** - ⭐ **NEW:** Quick start for agent-based architecture
+- **[AGENT-REGISTRATION-MIGRATION.md](AGENT-REGISTRATION-MIGRATION.md)** - ⚠️ Migrate from pull-based discovery to push-based registration
+- **[AGENT-ARCHITECTURE-TESTING.md](AGENT-ARCHITECTURE-TESTING.md)** - 🧪 Comprehensive testing guide for agent architecture
 - **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
 - **[GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata system
 - **[GameType-Editor-Complete-Functionality-Guide.md](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI
