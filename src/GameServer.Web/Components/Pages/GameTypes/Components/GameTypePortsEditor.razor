@@ -1,0 +1,145 @@
+@using global::GameServer.Docker.Client
+@using Radzen
+@using Radzen.Blazor
+
+<RadzenCard>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h5 class="mb-1">Port Definitions</h5>
+            <small class="text-muted">Define which ports this game server requires</small>
+        </div>
+        <RadzenButton Text="Add Port" 
+                      Icon="add" 
+                      Size="ButtonSize.Small"
+                      Click="@AddPort" />
+    </div>
+
+    @if (Ports == null || !Ports.Any())
+    {
+        <p class="text-muted text-center py-4">No ports configured. Add a port to get started.</p>
+    }
+    else
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenIcon Icon="info" Style="font-size: 1rem;" />
+                <small>Mark one port as the <strong>Default Port</strong> - this will be used in connection strings and server details.</small>
+            </div>
+        </RadzenAlert>
+
+        <div class="port-list">
+            @foreach (var port in Ports.ToList())
+            {
+                <RadzenCard class="port-definition-card mb-3" Style="@(port.IsDefaultPort ? "border: 2px solid var(--rz-primary);" : "")">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <RadzenFormField Text="Port Number" Variant="@Variant.Outlined" class="w-100">
+                                <RadzenNumeric @bind-Value="@port.Port" 
+                                               Min="1" 
+                                               Max="65535"
+                                               class="w-100" />
+                            </RadzenFormField>
+                        </div>
+                        <div class="col-md-3">
+                            <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
+                                <RadzenDropDown @bind-Value="@port.Protocol" 
+                                                Data="@(new[] { "tcp", "udp" })"
+                                                class="w-100" />
+                            </RadzenFormField>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center gap-2 pb-2">
+                                <RadzenCheckBox @bind-Value="@port.IsDefaultPort"
+                                               Change="@((bool value) => OnDefaultPortChanged(port, value))" />
+                                <RadzenLabel Text="Default Port" class="mb-0" />
+                                @if (port.IsDefaultPort)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Success" 
+                                                Text="Primary" 
+                                                Size="BadgeSize.Small" 
+                                                Variant="Variant.Flat" />
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-1 text-end">
+                            <div class="d-flex gap-2 pb-2">
+                                <RadzenButton Icon="@(port.IsDefaultPort ? "star" : "star_border")" 
+                                             ButtonStyle="ButtonStyle.Light"
+                                             Size="ButtonSize.Small"
+                                             Style="@(port.IsDefaultPort ? "color: var(--rz-warning);" : "")"
+                                             title="@(port.IsDefaultPort ? "Primary connection port" : "Not primary port")"
+                                             Disabled="true" />
+                                <RadzenButton Icon="delete" 
+                                             ButtonStyle="ButtonStyle.Danger" 
+                                             Size="ButtonSize.Small"
+                                             Click="@(() => RemovePort(port))" />
+                            </div>
+                        </div>
+                    </div>
+                </RadzenCard>
+            }
+        </div>
+    }
+</RadzenCard>
+
+@code {
+    [Parameter]
+    public ICollection<PortDefinition> Ports { get; set; } = new List<PortDefinition>();
+
+    [Parameter]
+    public EventCallback PortsChanged { get; set; }
+
+    private async Task NotifyChanged()
+    {
+        await PortsChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task AddPort()
+    {
+        var newPort = new PortDefinition { Port = 25565, Protocol = "tcp", IsDefaultPort = false };
+        Ports.Add(newPort);
+        
+        // If this is the first port, make it default
+        if (Ports.Count == 1)
+        {
+            newPort.IsDefaultPort = true;
+        }
+        
+        await NotifyChanged();
+    }
+
+    private async Task RemovePort(PortDefinition port)
+    {
+        var wasDefault = port.IsDefaultPort;
+        Ports.Remove(port);
+        
+        // If we removed the default port and there are still ports left, make the first one default
+        if (wasDefault && Ports.Any())
+        {
+            Ports.First().IsDefaultPort = true;
+        }
+        
+        await NotifyChanged();
+    }
+
+    private async Task OnDefaultPortChanged(PortDefinition selectedPort, bool isChecked)
+    {
+        if (!isChecked)
+        {
+            // Don't allow unchecking the default port - there must always be one
+            selectedPort.IsDefaultPort = true;
+            return;
+        }
+
+        // Clear all other IsDefaultPort flags
+        foreach (var port in Ports)
+        {
+            port.IsDefaultPort = false;
+        }
+
+        // Set the selected port as default
+        selectedPort.IsDefaultPort = true;
+        await NotifyChanged();
+    }
+}
