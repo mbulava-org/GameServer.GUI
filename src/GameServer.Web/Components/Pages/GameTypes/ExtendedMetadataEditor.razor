@@ -134,10 +134,11 @@
                                   <RadzenFormField Text="Data Type" Variant="@Variant.Outlined" class="w-100">
                                     <RadzenDropDown @bind-Value="@setting.DataType"
                                                     Data="@dataTypes"
-                                                    AllowClear="true"
-                                                    Placeholder="Auto-detect"
+                                                    AllowClear="false"
+                                                    Placeholder="Select type..."
                                                     class="w-100" />
                                   </RadzenFormField>
+                                  <small class="text-muted">Default: string</small>
                                 </div>
 
                                 <div class="col-12">
@@ -466,12 +467,12 @@
 
 @code {
 [Parameter] public string GameTypeKey { get; set; } = "";
-  
+
 private GameTypeExtendedMetadata? metadata;
 private GameTypeDefinition? gameTypeDefinition;
 private bool loading = false;
 private HashSet<string> expandedSettings = new();
-private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port" };
+private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port", "timezone" };
 
 protected override async Task OnInitializedAsync()
 {
@@ -582,7 +583,7 @@ private async Task AddNewSettingMetadata()
     {
       Key = keyValue,
       Description = $"Default value: {defaultValue}",
-      DataType = DetectDataType(defaultValue),
+      DataType = "string", // Default to string type
       DisplayOrder = metadata.SettingsMetadata.Count,
       Category = "General",
       Placeholder = defaultValue
@@ -727,7 +728,7 @@ private void SetValueMappings(SettingMetadata setting, string json)
           Description = $"Default value: {setting.Value}",
           IsRequired = false,
           CannotBeEmpty = false,
-          DataType = DetectDataType(setting.Value),
+          DataType = "string", // Default to string type
           DisplayOrder = displayOrder++,
           Category = "General",
           Placeholder = setting.Value
@@ -746,31 +747,6 @@ private void SetValueMappings(SettingMetadata setting, string json)
     }
 
     await SaveMetadata();
-  }
-
-  private string? DetectDataType(string value)
-  {
-    if (string.IsNullOrWhiteSpace(value))
-      return null;
-
-    // Boolean detection
-    if (bool.TryParse(value, out _))
-      return "boolean";
-
-    // Number detection
-    if (int.TryParse(value, out _) || double.TryParse(value, out _))
-      return "number";
-
-    // Port detection (common port numbers)
-    if (int.TryParse(value, out var port) && port >= 1 && port <= 65535)
-      return "port";
-
-    // List detection (comma-separated)
-    if (value.Contains(','))
-      return "list";
-
-    // Default to string
-    return "string";
   }
 
   private async Task ShowAddCustomProperty()

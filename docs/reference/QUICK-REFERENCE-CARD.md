@@ -147,6 +147,7 @@ new GameTypeDefinition
 | `enum` | Dropdown selection | Difficulty, Game Mode |
 | `list` | Comma-separated | Mod URLs, Banned IPs |
 | `port` | Port number + mapping | Server Port |
+| `timezone` | Timezone selection | TZ environment variable |
 
 ---
 

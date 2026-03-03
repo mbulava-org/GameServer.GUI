@@ -142,7 +142,9 @@ var filters = new ServiceFilter
 "number"   // Numeric input
 "boolean"  // Checkbox
 "enum"     // Dropdown (requires AllowedValues)
+"list"     // Comma-separated list input
 "port"     // Port input with validation
+"timezone" // Timezone dropdown
 ```
 
 **Enum Configuration:**

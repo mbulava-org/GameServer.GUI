@@ -349,7 +349,10 @@ namespace GameServer.Docker.Repositories
             metaEntity.Description = metadata.Description;
             metaEntity.IsRequired = metadata.IsRequired;
             metaEntity.CannotBeEmpty = metadata.CannotBeEmpty;
-            metaEntity.DataType = metadata.DataType;
+
+            // Validate and normalize DataType
+            metaEntity.DataType = NormalizeDataType(metadata.DataType);
+
             metaEntity.Category = metadata.Category;
             metaEntity.DisplayOrder = metadata.DisplayOrder;
             metaEntity.Placeholder = metadata.Placeholder;
@@ -416,6 +419,26 @@ namespace GameServer.Docker.Repositories
                     });
                 }
             }
+        }
+
+        /// <summary>
+        /// Validates and normalizes DataType values to match database CHECK constraint.
+        /// Returns null for invalid values to prevent constraint violations.
+        /// </summary>
+        private static string? NormalizeDataType(string? dataType)
+        {
+            if (string.IsNullOrWhiteSpace(dataType))
+            {
+                return null;
+            }
+
+            // Valid DataType values according to CK_SettingsMetadata_DataType constraint
+            var validTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "string", "number", "boolean", "enum", "list", "port", "timezone"
+            };
+
+            return validTypes.Contains(dataType) ? dataType.ToLowerInvariant() : null;
         }
 
         private GameTypeDefinition MapToModel(GameTypeEntity entity)
