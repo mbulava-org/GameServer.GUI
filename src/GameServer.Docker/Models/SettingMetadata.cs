@@ -27,7 +27,7 @@ namespace GameServer.Docker.Models
 
         /// <summary>
         /// The data type for this setting. Overrides automatic type detection.
-        /// Supported values: "string", "number", "boolean", "list", "enum", "port"
+        /// Supported values: "string", "number", "boolean", "list", "enum", "port", "timezone"
         /// </summary>
         public string? DataType { get; set; }
 
@@ -57,9 +57,10 @@ namespace GameServer.Docker.Models
         public string ListDelimiter { get; set; } = ",";
 
         /// <summary>
-        /// For "enum" data types, the list of allowed values.
+        /// For "enum" and "timezone" data types, the list of allowed values.
         /// Displayed as a dropdown in the UI.
-        /// Example: ["peaceful", "easy", "normal", "hard"]
+        /// Example for enum: ["peaceful", "easy", "normal", "hard"]
+        /// For timezone: This is automatically populated with available time zones.
         /// </summary>
         public List<string>? AllowedValues { get; set; }
 

@@ -131,7 +131,7 @@ namespace GameServer.Docker.Data
                 entity.ToTable("SettingsMetadata", t =>
                 {
                     t.HasCheckConstraint("CK_SettingsMetadata_DataType",
-                        "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port')");
+                        "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port', 'timezone')");
                 });
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.DefaultSettingId).IsUnique();
