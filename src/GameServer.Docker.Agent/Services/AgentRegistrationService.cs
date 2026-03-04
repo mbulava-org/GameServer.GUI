@@ -233,12 +233,16 @@ namespace GameServer.Docker.Agent.Services
 
         private async Task RegisterAsync()
         {
+            // Filter capabilities based on node role
+            // Only manager nodes can perform service/swarm operations
+            var capabilities = FilterCapabilitiesByNodeRole(_options.Capabilities, _isManagerNode);
+
             var registration = new
             {
                 NodeId = _nodeId,
                 NodeName = _nodeName,
                 InternalUrl = _agentUrl,
-                Capabilities = _options.Capabilities,
+                Capabilities = capabilities,
                 RegisteredAt = DateTime.UtcNow,
                 IsManagerNode = _isManagerNode
             };
@@ -249,8 +253,37 @@ namespace GameServer.Docker.Agent.Services
                 "Agent registered with Primary Service: Node={NodeName} ({NodeId}), Capabilities={Capabilities}, Manager={IsManager}",
                 _nodeName,
                 _nodeId,
-                string.Join(", ", _options.Capabilities),
+                string.Join(", ", capabilities),
                 _isManagerNode);
+        }
+
+        private static List<string> FilterCapabilitiesByNodeRole(List<string> configuredCapabilities, bool isManagerNode)
+        {
+            // Capabilities that require manager node access to Docker Swarm API
+            // These operations use Docker.DotNet endpoints that are only available on manager nodes:
+            // - ISwarmOperations (services, tasks, nodes)
+            // - Service management (create, update, delete)
+            var managerOnlyCapabilities = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "services",  // Service operations: IDockerClient.Swarm.* (requires manager)
+                "tasks",     // Task operations: IDockerClient.Tasks.* (requires manager)
+                "nodes",     // Node operations: IDockerClient.Swarm.* nodes (requires manager)
+                "swarm"      // Swarm operations: IDockerClient.Swarm.* config (requires manager)
+            };
+
+            // Worker nodes can only perform container-level operations
+            // These use IContainerOperations which works on any node
+            if (!isManagerNode)
+            {
+                var filtered = configuredCapabilities
+                    .Where(cap => !managerOnlyCapabilities.Contains(cap))
+                    .ToList();
+
+                return filtered;
+            }
+
+            // Manager nodes get all configured capabilities
+            return configuredCapabilities;
         }
 
         private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)

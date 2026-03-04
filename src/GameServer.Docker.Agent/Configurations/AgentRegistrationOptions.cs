@@ -25,9 +25,25 @@ namespace GameServer.Docker.Agent.Configurations
         public bool Enabled { get; set; } = true;
 
         /// <summary>
-        /// Capabilities this agent supports
+        /// Capabilities this agent supports.
+        /// 
         /// Default: logs, exec, stats, attach, services
-        /// Note: 'services' capability is only active if agent is on a manager node
+        /// 
+        /// AUTOMATIC FILTERING:
+        /// Manager-only capabilities ('services', 'tasks', 'nodes', 'swarm') are automatically 
+        /// removed for worker nodes. Only manager nodes can perform Docker Swarm management operations.
+        /// 
+        /// Container Capabilities (all nodes):
+        /// - logs: Stream container logs
+        /// - exec: Execute commands in containers
+        /// - stats: Get container resource stats
+        /// - attach: Attach to container TTY
+        /// 
+        /// Manager-Only Capabilities (manager nodes only):
+        /// - services: Create/update/delete/list Docker Swarm services
+        /// - tasks: List and inspect Docker Swarm tasks
+        /// - nodes: List and manage Docker Swarm nodes
+        /// - swarm: Inspect and configure Docker Swarm cluster
         /// </summary>
         public List<string> Capabilities { get; set; } = new() { "logs", "exec", "stats", "attach", "services" };
 
