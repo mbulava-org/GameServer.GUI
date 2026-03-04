@@ -657,33 +657,10 @@ namespace GameServer.Docker.Repositories
 
             try
             {
-                // Check if database can connect
-                var canConnect = await _context.Database.CanConnectAsync();
-
-                if (!canConnect)
-                {
-                    // Database doesn't exist - create it with migrations
-                    _logger.LogInformation("Database does not exist. Creating with migrations...");
-                    await _context.Database.MigrateAsync();
-                    _logger.LogInformation("Database created successfully with migrations");
-                }
-                else
-                {
-                    // Database exists - check if it has migrations history
-                    var hasMigrationsTable = await HasMigrationsHistoryTableAsync();
-
-                    if (!hasMigrationsTable)
-                    {
-                        // Database was created with EnsureCreated() - need to manually drop constraint
-                        _logger.LogWarning("Database exists but was not created with migrations. Attempting to fix schema...");
-                        await FixLegacyDatabaseSchemaAsync();
-                    }
-
-                    // Now apply any pending migrations
-                    _logger.LogInformation("Applying any pending database migrations...");
-                    await _context.Database.MigrateAsync();
-                    _logger.LogInformation("Database migrations applied successfully");
-                }
+                // Apply any pending migrations (this will create the database if it doesn't exist)
+                _logger.LogInformation("Applying database migrations...");
+                await _context.Database.MigrateAsync();
+                _logger.LogInformation("Database migrations applied successfully");
 
                 // Use AnyAsync() instead of CountAsync() - much faster!
                 var hasGameTypes = await _context.GameTypes.AnyAsync();
@@ -704,87 +681,6 @@ namespace GameServer.Docker.Repositories
             {
                 _logger.LogError(ex, "Error initializing database");
                 throw;
-            }
-        }
-
-        /// <summary>
-        /// Check if the __EFMigrationsHistory table exists
-        /// </summary>
-        private async Task<bool> HasMigrationsHistoryTableAsync()
-        {
-            try
-            {
-                var connection = _context.Database.GetDbConnection();
-                await connection.OpenAsync();
-
-                using var command = connection.CreateCommand();
-                command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory'";
-                var result = await command.ExecuteScalarAsync();
-
-                return result != null;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Fix legacy database schema that was created with EnsureCreated() instead of migrations
-        /// </summary>
-        private async Task FixLegacyDatabaseSchemaAsync()
-        {
-            _logger.LogInformation("Fixing legacy database schema...");
-
-            try
-            {
-                var connection = _context.Database.GetDbConnection();
-                await connection.OpenAsync();
-
-                // Drop the constraint if it exists
-                using var command = connection.CreateCommand();
-                command.CommandText = @"
-                    -- Create a new table without the constraint
-                    CREATE TABLE IF NOT EXISTS SettingsMetadata_New (
-                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        DefaultSettingId INTEGER NOT NULL,
-                        Description TEXT,
-                        IsRequired INTEGER NOT NULL DEFAULT 0,
-                        CannotBeEmpty INTEGER NOT NULL DEFAULT 0,
-                        DataType TEXT,
-                        Category TEXT,
-                        DisplayOrder INTEGER NOT NULL DEFAULT 0,
-                        Placeholder TEXT,
-                        ValidationPattern TEXT,
-                        ValidationMessage TEXT,
-                        MapsToContainerPort INTEGER NOT NULL DEFAULT 0,
-                        LinkedContainerPort INTEGER,
-                        PortProtocol TEXT NOT NULL DEFAULT 'tcp',
-                        SynchronizedWithSetting TEXT,
-                        AutoAllocatePort INTEGER NOT NULL DEFAULT 0,
-                        ValidateRelatedPortsAvailability INTEGER NOT NULL DEFAULT 1,
-                        ListDelimiter TEXT NOT NULL DEFAULT ',',
-                        AllowedValuesJson TEXT,
-                        ValueMappingsJson TEXT,
-                        FOREIGN KEY (DefaultSettingId) REFERENCES DefaultSettings(Id) ON DELETE CASCADE
-                    );
-
-                    -- Copy data
-                    INSERT OR IGNORE INTO SettingsMetadata_New 
-                    SELECT * FROM SettingsMetadata;
-
-                    -- Drop old table and rename new one
-                    DROP TABLE IF EXISTS SettingsMetadata;
-                    ALTER TABLE SettingsMetadata_New RENAME TO SettingsMetadata;
-                ";
-
-                await command.ExecuteNonQueryAsync();
-                _logger.LogInformation("Legacy database schema fixed - constraint removed");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to fix legacy database schema");
-                // Don't throw - let migrations try anyway
             }
         }
 
