@@ -13,6 +13,8 @@ permissions:
   packages: write
   contents: write
 
+# We want to make some updates so we only Determine the version once and Only rebuild containers IF there are changes in the source...
+# But we should always Build and Test
 jobs:
    # Configuration job - Single source of truth for all workflow variables
   setup:
