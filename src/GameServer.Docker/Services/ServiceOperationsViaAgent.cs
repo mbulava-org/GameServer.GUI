@@ -162,16 +162,32 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/services{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<ServiceOperationResponse>(cancellationToken);
+            // Deserialize using JsonElement to preserve type information
+            var jsonDoc = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
 
-            if (result?.Success != true || result.Data == null)
+            if (jsonDoc == null)
             {
-                throw new Exception($"Failed to list services: {result?.Message}");
+                throw new Exception("Failed to deserialize response from agent");
             }
 
-            // Parse services from response
-            var servicesJson = JsonSerializer.Serialize(result.Data["services"]);
-            var services = JsonSerializer.Deserialize<List<SwarmService>>(servicesJson) ?? new List<SwarmService>();
+            // Extract the nested data
+            if (!jsonDoc.RootElement.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
+            {
+                var message = jsonDoc.RootElement.TryGetProperty("message", out var msgProp) 
+                    ? msgProp.GetString() 
+                    : "Unknown error";
+                throw new Exception($"Failed to list services: {message}");
+            }
+
+            if (!jsonDoc.RootElement.TryGetProperty("data", out var dataProp) ||
+                !dataProp.TryGetProperty("services", out var servicesProp))
+            {
+                throw new Exception("Response missing 'data.services' property");
+            }
+
+            // Deserialize services array directly from the JSON element
+            var services = JsonSerializer.Deserialize<List<SwarmService>>(servicesProp.GetRawText()) 
+                ?? new List<SwarmService>();
 
             _logger.LogDebug("Listed {Count} services via agent", services.Count);
 
