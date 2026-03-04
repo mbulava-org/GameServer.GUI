@@ -2,6 +2,7 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace GameServer.Docker.Agent.Controllers
 {
@@ -256,7 +257,18 @@ namespace GameServer.Docker.Agent.Controllers
 
                 _logger.LogDebug("Found {Count} services", servicesList.Count);
 
-                return Ok(new ServiceOperationResponse
+                // Log first service details for debugging
+                if (servicesList.Count > 0)
+                {
+                    var first = servicesList[0];
+                    _logger.LogWarning("📤 [Agent-ListServices] First service from Docker: ID={Id}, Spec={HasSpec}, SpecName={Name}, Labels={LabelCount}", 
+                        first.ID, 
+                        first.Spec != null, 
+                        first.Spec?.Name ?? "NULL",
+                        first.Spec?.Labels?.Count ?? 0);
+                }
+
+                var response = new ServiceOperationResponse
                 {
                     Success = true,
                     Message = $"Found {servicesList.Count} services",
@@ -265,7 +277,14 @@ namespace GameServer.Docker.Agent.Controllers
                         // Return full SwarmService objects so they deserialize correctly
                         ["services"] = servicesList
                     }
-                });
+                };
+
+                // Log what we're about to send
+                var responseJson = JsonSerializer.Serialize(response);
+                _logger.LogWarning("📤 [Agent-ListServices] Sending response (first 500 chars): {Json}", 
+                    responseJson.Length > 500 ? responseJson[..500] : responseJson);
+
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -290,7 +309,13 @@ namespace GameServer.Docker.Agent.Controllers
 
                 var service = await _dockerClient.Swarm.InspectServiceAsync(serviceId);
 
-                return Ok(new ServiceOperationResponse
+                _logger.LogWarning("📤 [Agent-InspectService] Service from Docker: ID={Id}, Spec={HasSpec}, SpecName={Name}, Labels={LabelCount}",
+                    service.ID,
+                    service.Spec != null,
+                    service.Spec?.Name ?? "NULL",
+                    service.Spec?.Labels?.Count ?? 0);
+
+                var response = new ServiceOperationResponse
                 {
                     Success = true,
                     ServiceId = serviceId,
@@ -299,7 +324,13 @@ namespace GameServer.Docker.Agent.Controllers
                     {
                         ["service"] = service
                     }
-                });
+                };
+
+                var responseJson = JsonSerializer.Serialize(response);
+                _logger.LogWarning("📤 [Agent-InspectService] Sending response (first 500 chars): {Json}",
+                    responseJson.Length > 500 ? responseJson[..500] : responseJson);
+
+                return Ok(response);
             }
             catch (Exception ex)
             {

@@ -58,14 +58,19 @@ namespace GameServer.Docker.Services
             var response = await httpClient.PostAsJsonAsync("/api/services", request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<ServiceOperationResponse>(cancellationToken);
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [CreateService] Raw JSON from agent: {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options);
 
             if (result?.Success != true)
             {
+                _logger.LogError("❌ [CreateService] Failed response. JSON: {Json}", rawJson);
                 throw new Exception($"Failed to create service: {result?.Message}");
             }
 
-            _logger.LogInformation("Service created successfully: {ServiceId}", result.ServiceId);
+            _logger.LogInformation("✅ [CreateService] Service created: {ServiceId}", result.ServiceId);
 
             return new ServiceCreateResponse
             {
@@ -104,14 +109,19 @@ namespace GameServer.Docker.Services
             var response = await httpClient.PutAsJsonAsync($"/api/services/{serviceId}", request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<ServiceOperationResponse>(cancellationToken);
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [UpdateService] Raw JSON from agent: {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options);
 
             if (result?.Success != true)
             {
+                _logger.LogError("❌ [UpdateService] Failed response. JSON: {Json}", rawJson);
                 throw new Exception($"Failed to update service: {result?.Message}");
             }
 
-            _logger.LogInformation("Service updated successfully: {ServiceId}", serviceId);
+            _logger.LogInformation("✅ [UpdateService] Service updated: {ServiceId}", serviceId);
         }
 
         public async Task RemoveServiceAsync(string serviceId, CancellationToken cancellationToken = default)
@@ -130,14 +140,19 @@ namespace GameServer.Docker.Services
             var response = await httpClient.DeleteAsync($"/api/services/{serviceId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<ServiceOperationResponse>(cancellationToken);
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [RemoveService] Raw JSON from agent: {Json}", rawJson);
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options);
 
             if (result?.Success != true)
             {
+                _logger.LogError("❌ [RemoveService] Failed response. JSON: {Json}", rawJson);
                 throw new Exception($"Failed to delete service: {result?.Message}");
             }
 
-            _logger.LogInformation("Service deleted successfully: {ServiceId}", serviceId);
+            _logger.LogInformation("✅ [RemoveService] Service deleted: {ServiceId}", serviceId);
         }
 
         public async Task<IList<SwarmService>> ListServicesAsync(
@@ -225,8 +240,12 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/services/{serviceId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
+            // Read raw JSON for debugging
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [InspectService] Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
+
             // Use JsonDocument to preserve type information (avoid double serialization)
-            var jsonDoc = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
+            var jsonDoc = JsonDocument.Parse(rawJson);
 
             if (jsonDoc == null)
             {
@@ -244,16 +263,26 @@ namespace GameServer.Docker.Services
             if (!jsonDoc.RootElement.TryGetProperty("data", out var dataProp) ||
                 !dataProp.TryGetProperty("service", out var serviceProp))
             {
+                _logger.LogError("❌ [InspectService] Response missing 'data.service'. JSON: {Json}", rawJson.Length > 1000 ? rawJson[..1000] : rawJson);
                 throw new Exception("Response missing 'data.service' property");
             }
+
+            _logger.LogWarning("📦 [InspectService] Service JSON (first 300 chars): {Json}", 
+                serviceProp.GetRawText().Length > 300 ? serviceProp.GetRawText()[..300] : serviceProp.GetRawText());
 
             // Deserialize service directly from the JSON element
             var service = JsonSerializer.Deserialize<SwarmService>(serviceProp.GetRawText());
 
             if (service == null)
             {
+                _logger.LogError("❌ [InspectService] Failed to deserialize service from JSON");
                 throw new Exception($"Failed to deserialize service: {serviceId}");
             }
+
+            _logger.LogWarning("🔍 [InspectService] Result: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
+                service.ID, 
+                service.Spec != null, 
+                service.Spec?.Name ?? "NULL");
 
             return service;
         }
@@ -281,12 +310,22 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/tasks{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<AgentApiResponse>(cancellationToken);
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [ListTasks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+
+            // Use camelCase options to match ASP.NET Core default
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
 
             if (result?.Success != true || result.Tasks == null)
             {
+                _logger.LogError("❌ [ListTasks] Failed response. JSON: {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
                 throw new Exception($"Failed to list tasks: {result?.Message}");
             }
+
+            _logger.LogWarning("✅ [ListTasks] Found {Count} tasks, First task has Status: {HasStatus}", 
+                result.Tasks.Count, 
+                result.Tasks.Count > 0 ? result.Tasks[0].Status != null : false);
 
             return result.Tasks;
         }
@@ -314,12 +353,19 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/networks{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<AgentApiResponse>(cancellationToken);
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [ListNetworks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
 
             if (result?.Success != true || result.Networks == null)
             {
+                _logger.LogError("❌ [ListNetworks] Failed response. JSON: {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
                 throw new Exception($"Failed to list networks: {result?.Message}");
             }
+
+            _logger.LogWarning("✅ [ListNetworks] Found {Count} networks", result.Networks.Count);
 
             return result.Networks;
         }
@@ -337,12 +383,19 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/networks/{networkId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<AgentApiResponse>(cancellationToken);
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 [InspectNetwork] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
 
             if (result?.Success != true || result.Network == null)
             {
+                _logger.LogError("❌ [InspectNetwork] Failed response. JSON: {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
                 throw new Exception($"Failed to inspect network: {result?.Message}");
             }
+
+            _logger.LogWarning("✅ [InspectNetwork] Network: ID={Id}, Name={Name}", result.Network.ID, result.Network.Name);
 
             return result.Network;
         }
