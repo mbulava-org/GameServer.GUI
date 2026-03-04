@@ -145,11 +145,21 @@ namespace GameServer.Docker
 
                 // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
                 builder.Services.AddSingleton<NodeAgentClient>();
-                
+
                 // Add Resource Monitoring (uses Node Agents for real-time stats)
                 builder.Services.AddSingleton<IGameServerResourceMonitor, GameServerResourceMonitorService>();
 
-                builder.Services.AddSingleton<PortAllocator>();
+                // PortAllocator - Conditionally provide IDockerClient
+                builder.Services.AddSingleton<PortAllocator>(sp =>
+                {
+                    var portOptions = sp.GetRequiredService<IOptions<PortAllocation>>();
+                    IDockerClient? dockerClient = null;
+                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dockerClient = sp.GetRequiredService<IDockerClient>();
+                    }
+                    return new PortAllocator(dockerClient, portOptions);
+                });
 
                 // Add SQLite Database for GameType management
                 var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 

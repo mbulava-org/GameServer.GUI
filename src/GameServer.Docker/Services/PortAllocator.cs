@@ -9,14 +9,19 @@ using Microsoft.Extensions.Options;
 
 namespace GameServer.Docker.Services
 {
+    /// <summary>
+    /// Allocates ports for game servers by querying Docker Swarm for already-used ports.
+    /// NOTE: Only works in Direct mode where IDockerClient is available.
+    /// In Agent mode, port allocation should be handled differently.
+    /// </summary>
     public class PortAllocator
     {
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private readonly PortAllocation _portOptions;
-        private readonly IDockerClient client;
+        private readonly IDockerClient? client;
 
         public PortAllocator(
-            IDockerClient client,
+            IDockerClient? client,
             IOptions<PortAllocation> portOptions)
         {
             _portOptions = portOptions.Value;
@@ -39,7 +44,14 @@ namespace GameServer.Docker.Services
                 return false;
 
             protocol = (protocol ?? "tcp").ToLowerInvariant();
-                        
+
+            if (client == null)
+            {
+                throw new InvalidOperationException(
+                    "PortAllocator requires IDockerClient which is not available in Agent mode. " +
+                    "Port allocation in Agent mode needs a different implementation.");
+            }
+
             // Check Docker Swarm services for the same published port + protocol
             var services = await client.Swarm.ListServicesAsync();
             foreach (var svc in services)
