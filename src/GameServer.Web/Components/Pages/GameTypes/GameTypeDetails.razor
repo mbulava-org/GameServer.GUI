@@ -1206,12 +1206,15 @@ private async Task LoadGameTypeAsync()
                 DisplayOrder = settingsMetadata.Count
             };
         }
-        // Ensure DataType is always set to string if null/empty
-        if (string.IsNullOrWhiteSpace(settingsMetadata[key].DataType))
+
+        // Ensure DataType is set - default to "string" if null/empty
+        var metadata = settingsMetadata[key];
+        if (string.IsNullOrWhiteSpace(metadata.DataType))
         {
-            settingsMetadata[key].DataType = "string";
+            metadata.DataType = "string";
         }
-        return settingsMetadata[key];
+
+        return metadata;
     }
 
     private string GetAllowedValuesString(SettingMetadata setting)
@@ -1318,9 +1321,21 @@ private async Task LoadGameTypeAsync()
                     .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
                 // Update the Key property to match dictionary key (in case it changed)
+                // Also normalize DataType values for consistency
                 foreach (var kvp in cleanedMetadata)
                 {
                     kvp.Value.Key = kvp.Key;
+
+                    // Normalize DataType to lowercase for consistency
+                    if (!string.IsNullOrWhiteSpace(kvp.Value.DataType))
+                    {
+                        kvp.Value.DataType = kvp.Value.DataType.ToLowerInvariant();
+                    }
+                    else
+                    {
+                        // Empty or whitespace - set to null
+                        kvp.Value.DataType = null;
+                    }
                 }
 
                 var extendedMetadata = new GameTypeExtendedMetadata
@@ -1339,13 +1354,24 @@ private async Task LoadGameTypeAsync()
                 catch (Exception metadataEx)
                 {
                     Console.WriteLine($"GameTypeDetails: Failed to save extended metadata: {metadataEx.Message}");
+                    Console.WriteLine($"GameTypeDetails: ExtendedMetadata being saved - EnableTTY: {extendedMetadata.EnableTTY}, Settings count: {extendedMetadata.SettingsMetadata?.Count ?? 0}");
+
+                    // Log each setting's metadata for debugging
+                    if (extendedMetadata.SettingsMetadata != null)
+                    {
+                        foreach (var setting in extendedMetadata.SettingsMetadata)
+                        {
+                            Console.WriteLine($"  - Setting '{setting.Key}': DataType='{setting.Value.DataType ?? "null"}', Description='{setting.Value.Description}'");
+                        }
+                    }
+
                     // Don't fail the whole save if metadata fails, just warn
                     NotificationService.Notify(new NotificationMessage
                     {
                         Severity = NotificationSeverity.Warning,
                         Summary = "Metadata Save Warning",
-                        Detail = "Game type saved, but extended metadata may not have been saved completely.",
-                        Duration = 4000,
+                        Detail = $"Game type saved, but extended metadata failed: {metadataEx.Message}",
+                        Duration = 5000,
                         CloseOnClick = true
                     });
                 }

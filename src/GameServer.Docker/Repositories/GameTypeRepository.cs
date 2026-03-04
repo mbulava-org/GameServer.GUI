@@ -422,8 +422,8 @@ namespace GameServer.Docker.Repositories
         }
 
         /// <summary>
-        /// Validates and normalizes DataType values to match database CHECK constraint.
-        /// Returns null for invalid values to prevent constraint violations.
+        /// Normalizes DataType values to lowercase for consistency.
+        /// No longer enforces valid types - application layer handles validation.
         /// </summary>
         private static string? NormalizeDataType(string? dataType)
         {
@@ -432,13 +432,7 @@ namespace GameServer.Docker.Repositories
                 return null;
             }
 
-            // Valid DataType values according to CK_SettingsMetadata_DataType constraint
-            var validTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "string", "number", "boolean", "enum", "list", "port", "timezone"
-            };
-
-            return validTypes.Contains(dataType) ? dataType.ToLowerInvariant() : null;
+            return dataType.ToLowerInvariant();
         }
 
         private GameTypeDefinition MapToModel(GameTypeEntity entity)
