@@ -471,6 +471,26 @@ namespace GameServer.Docker.Services
             var servers = serversWithNulls.Where(s => s != null).Select(s => s!).ToList();
 
             logger.LogInformation($"Found {servers.Count} GameServers out of {services.Count} services");
+
+            // DEBUG: Log service label details to diagnose filtering
+            if (servers.Count == 0 && services.Count > 0)
+            {
+                logger.LogWarning($"No GameServers found among {services.Count} services. Checking labels...");
+                foreach (var svc in services.Take(5)) // Log first 5 services
+                {
+                    var hasLabels = svc.Spec?.Labels != null;
+                    var hasManagedLabel = hasLabels && svc.Spec!.Labels.ContainsKey(ServiceLabels.Managed);
+                    var managedValue = hasManagedLabel ? svc.Spec!.Labels[ServiceLabels.Managed] : "N/A";
+
+                    logger.LogDebug(
+                        "Service: {Name}, HasLabels: {HasLabels}, HasManagedLabel: {HasManaged}, ManagedValue: {Value}",
+                        svc.Spec?.Name ?? "unknown",
+                        hasLabels,
+                        hasManagedLabel,
+                        managedValue);
+                }
+            }
+
             return servers;
         }
 
