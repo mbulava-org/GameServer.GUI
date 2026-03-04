@@ -178,27 +178,50 @@ namespace GameServer.Docker
                     options.UseSqlite(optimizedConnectionString, sqliteOptions =>
                     {
                         sqliteOptions.CommandTimeout(30); // 30 second timeout
-                        
+
                         // Use SplitQuery to prevent cartesian explosion with multiple collections
                         // This fixes the EF Core warning about QuerySplittingBehavior
                         sqliteOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
                     });
-                    
-                    // Only enable sensitive data logging in development
-                    //if (builder.Environment.IsDevelopment())
-                    //{
+
+                    // Disable sensitive data logging in production for performance
+                    if (builder.Environment.IsDevelopment())
+                    {
                         options.EnableSensitiveDataLogging();
-                    //}
+                    }
+
+                    // Lazy initialization - don't validate connections during service registration
+                    options.EnableServiceProviderCaching(false);
                 });
 
                 // Add GameType Repository (database-backed) - This replaces file-based registries
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
-                
+
                 // Keep file-based registries as fallback/migration helpers (optional)
                 // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
                 // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
-                
+
                 builder.Services.AddSingleton<GameTypeMetadataApplier>();
+
+                // Database Initialization - Runs in background after webhost starts
+                // This allows the webhost and SignalR hubs to be available immediately
+                // Skip if running under NSwag or if --no-db-init flag is present
+                var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
+                var commandLine = Environment.CommandLine;
+                var isNSwagExecution = entryAssembly.Contains("NSwag", StringComparison.OrdinalIgnoreCase) ||
+                                       commandLine.Contains("NSwag", StringComparison.OrdinalIgnoreCase);
+                var skipDbInit = args.Contains("--no-db-init") || 
+                                 Environment.GetEnvironmentVariable("SKIP_DB_INIT") == "true" ||
+                                 isNSwagExecution;
+
+                if (!skipDbInit)
+                {
+                    builder.Services.AddHostedService<Services.DatabaseInitializationService>();
+                }
+                else
+                {
+                    Log.Debug("Database initialization will be skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
+                }
 
                 //// ServerLifecycleService - Conditionally provide IDockerClient
                 //// NOTE: This service is deprecated and should be refactored to use IServiceOperations
@@ -253,9 +276,11 @@ namespace GameServer.Docker
                 // Terminal Session Manager (singleton for long-lived terminal sessions)
                 builder.Services.AddSingleton<Services.TerminalSessionManager>();
 
-                
-                
+
                 var app = builder.Build();
+
+                var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
+                mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
 
                 // Add Serilog request logging
                 app.UseSerilogRequestLogging();
@@ -276,46 +301,11 @@ namespace GameServer.Docker
                     app.UseHttpsRedirection();
                 }
 
-                var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
-                mainLogger.LogInformation($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
-
-                // Initialize database on startup
-                // The GameTypeRepository.InitializeDatabaseAsync() method:
-                // - Creates the database if it doesn't exist
-                // - Migrates JSON files only if database is empty
-                // Skip initialization if:
-                // - Command line argument --no-db-init is present
-                // - Environment variable SKIP_DB_INIT is set
-                // - Running under NSwag (detected by checking for NSwag in the executing assembly path or command line)
-                var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
-                var commandLine = Environment.CommandLine;
-                var isNSwagExecution = entryAssembly.Contains("NSwag", StringComparison.OrdinalIgnoreCase) ||
-                                       commandLine.Contains("NSwag", StringComparison.OrdinalIgnoreCase);
-                var skipDbInit = args.Contains("--no-db-init") || 
-                                 Environment.GetEnvironmentVariable("SKIP_DB_INIT") == "true" ||
-                                 isNSwagExecution;
-                
-                if (!skipDbInit)
-                {
-                    using var scope = app.Services.CreateScope();
-                    var repository = scope.ServiceProvider.GetRequiredService<Repositories.IGameTypeRepository>();
-                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-                    
-                    //logger.LogInformation("Initializing database...");
-                    _ = repository.InitializeDatabaseAsync();
-                    //logger.LogInformation("Database initialization complete");
-                }
-                else
-                {
-                    mainLogger.LogDebug("Database initialization skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
-                }
-
-
                 // Enable CORS (must be before routing)
                 app.UseCors();
 
                 app.UseAuthorization();
-                
+
                 // Map SignalR hubs
                 app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");   // TTY attach (read-only)
                 app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell
@@ -324,6 +314,8 @@ namespace GameServer.Docker
                 app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration"); // Agent registration
 
                 app.MapControllers();
+
+                mainLogger.LogInformation("🎯 WebHost is ready to accept connections. Database initialization will run in background...");
 
                 app.Run();
             }
