@@ -162,8 +162,12 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/services{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
+            // Read raw JSON for debugging
+            var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("📥 Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
+
             // Deserialize using JsonElement to preserve type information
-            var jsonDoc = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
+            var jsonDoc = JsonDocument.Parse(rawJson);
 
             if (jsonDoc == null)
             {
@@ -182,14 +186,28 @@ namespace GameServer.Docker.Services
             if (!jsonDoc.RootElement.TryGetProperty("data", out var dataProp) ||
                 !dataProp.TryGetProperty("services", out var servicesProp))
             {
+                _logger.LogError("❌ Response JSON structure: {Json}", rawJson.Length > 1000 ? rawJson[..1000] : rawJson);
                 throw new Exception("Response missing 'data.services' property");
             }
+
+            _logger.LogWarning("📦 Services JSON (first 500 chars): {Json}", 
+                servicesProp.GetRawText().Length > 500 ? servicesProp.GetRawText()[..500] : servicesProp.GetRawText());
 
             // Deserialize services array directly from the JSON element
             var services = JsonSerializer.Deserialize<List<SwarmService>>(servicesProp.GetRawText()) 
                 ?? new List<SwarmService>();
 
             _logger.LogDebug("Listed {Count} services via agent", services.Count);
+
+            // Log first service details for debugging
+            if (services.Count > 0)
+            {
+                var first = services[0];
+                _logger.LogWarning("🔍 First service: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
+                    first.ID, 
+                    first.Spec != null, 
+                    first.Spec?.Name ?? "NULL");
+            }
 
             return services;
         }
