@@ -1,7 +1,9 @@
 using Docker.DotNet;
+using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Serilog;
 using System.Reflection;
 using Scalar.AspNetCore;
@@ -107,8 +109,32 @@ namespace GameServer.Docker
                 // Registered as both singleton and hosted service for background discovery
                 // HttpClient instances are created per node agent for optimal connection pooling
                 // Timeout is configured per-client via NodeAgentOptions in the service
+                // NOTE: In Agent mode, IDockerClient is not available, so discovery service
+                // will skip Docker Swarm polling and rely solely on agent registration
                 builder.Services.AddHttpClient(); // Default factory for creating per-node clients
-                builder.Services.AddSingleton<NodeAgentDiscoveryService>();
+                builder.Services.AddSingleton<NodeAgentDiscoveryService>(sp =>
+                {
+                    var logger = sp.GetRequiredService<ILogger<NodeAgentDiscoveryService>>();
+                    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                    var serverManager = sp.GetRequiredService<IGameServerManager>();
+                    var agentOptions = sp.GetRequiredService<IOptions<NodeAgentOptions>>();
+                    var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
+
+                    // Try to get IDockerClient, but don't fail if unavailable (Agent mode)
+                    IDockerClient? dockerClient = null;
+                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dockerClient = sp.GetRequiredService<IDockerClient>();
+                    }
+
+                    return new NodeAgentDiscoveryService(
+                        logger,
+                        httpClientFactory,
+                        serverManager,
+                        agentOptions,
+                        agentRegistry,
+                        dockerClient);
+                });
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
 

@@ -17,7 +17,7 @@ namespace GameServer.Docker.Services
     /// </summary>
     public class NodeAgentDiscoveryService : BackgroundService, INodeAgentDiscovery
     {
-        private readonly IDockerClient _client;
+        private readonly IDockerClient? _client;
         private readonly ILogger<NodeAgentDiscoveryService> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IGameServerManager _serverManager;
@@ -37,12 +37,12 @@ namespace GameServer.Docker.Services
         private readonly ConcurrentDictionary<string, HubConnection> _agentConnections = new();
 
         public NodeAgentDiscoveryService(
-            IDockerClient client,
             ILogger<NodeAgentDiscoveryService> logger,
             IHttpClientFactory httpClientFactory,
             IGameServerManager serverManager,
             IOptions<NodeAgentOptions> agentOptions,
-            IAgentRegistry agentRegistry)
+            IAgentRegistry agentRegistry,
+            IDockerClient? client = null)
         {
             _client = client;
             _logger = logger;
@@ -63,6 +63,17 @@ namespace GameServer.Docker.Services
                 return;
             }
             #pragma warning restore CS0618
+
+            // Check if IDockerClient is available (required for background discovery)
+            if (_client == null)
+            {
+                _logger.LogWarning(
+                    "⚠️ IDockerClient is not available (likely running in Agent mode). " +
+                    "Background agent discovery via Docker Swarm polling is not possible. " +
+                    "Using agent registration system only. " +
+                    "Set NodeAgentOptions:EnableBackgroundDiscovery=false to suppress this warning.");
+                return;
+            }
 
             #pragma warning disable CS0618 // Type or member is obsolete
             _logger.LogWarning(
@@ -205,6 +216,12 @@ namespace GameServer.Docker.Services
 
         private async Task<List<NodeAgentEndpoint>> DiscoverAgentsInternalAsync(CancellationToken cancellationToken)
         {
+            if (_client == null)
+            {
+                _logger.LogWarning("Cannot discover agents: IDockerClient is not available");
+                return new List<NodeAgentEndpoint>();
+            }
+
             _logger.LogTrace("Discovering node agents in swarm (service: {ServiceName}, network: {NetworkName})", 
                 _agentOptions.ServiceName, _agentOptions.NetworkName);
 
@@ -330,20 +347,28 @@ namespace GameServer.Docker.Services
             {
                 _logger.LogDebug(
                     "✅ Found agent via REGISTRY (push-based) for container {ContainerId}: {AgentUrl} on node {NodeName}",
-                    containerId.Substring(0, Math.Min(12, containerId.Length)),
-                    registryAgent.InternalUrl,
-                    registryAgent.NodeName);
-                return registryAgent;
-            }
+                            containerId.Substring(0, Math.Min(12, containerId.Length)),
+                            registryAgent.InternalUrl,
+                            registryAgent.NodeName);
+                        return registryAgent;
+                    }
 
-            _logger.LogDebug(
-                "⚠️ Agent not found in registry for container {ContainerId}, falling back to Docker Swarm query (pull-based discovery)",
-                containerId.Substring(0, Math.Min(12, containerId.Length)));
+                    if (_client == null)
+                    {
+                        _logger.LogWarning(
+                            "⚠️ Agent not found in registry for container {ContainerId} and IDockerClient is not available for fallback discovery",
+                            containerId.Substring(0, Math.Min(12, containerId.Length)));
+                        return null;
+                    }
 
-            // FALLBACK: Use legacy Docker Swarm query method
-            // First, find which node the container is on
-            _logger.LogTrace("Querying Docker for all running tasks to locate container {ContainerId}", containerId);
-            var tasks = await _client.Tasks.ListAsync(new TasksListParameters
+                    _logger.LogDebug(
+                        "⚠️ Agent not found in registry for container {ContainerId}, falling back to Docker Swarm query (pull-based discovery)",
+                        containerId.Substring(0, Math.Min(12, containerId.Length)));
+
+                    // FALLBACK: Use legacy Docker Swarm query method
+                    // First, find which node the container is on
+                    _logger.LogTrace("Querying Docker for all running tasks to locate container {ContainerId}", containerId);
+                    var tasks = await _client.Tasks.ListAsync(new TasksListParameters
             {
                 Filters = new Dictionary<string, IDictionary<string, bool>>
                 {
