@@ -93,7 +93,98 @@
                             {
                                 <div class="settings-master-detail">
                                     <div class="settings-list-panel">
-                                        @foreach (var setting in settingsList.ToList())
+                                        @* Filter, Sort, Group Controls *@
+                                        <div class="settings-list-controls mb-3">
+                                            <RadzenStack Gap="0.5rem">
+                                                <RadzenTextBox @bind-Value="@settingsFilter" 
+                                                               Placeholder="Search settings..." 
+                                                               class="w-100"
+                                                               Style="font-size: 0.875rem;">
+                                                    <ChildContent>
+                                                        <i class="rzi rzi-search" style="margin-right: 0.5rem;"></i>
+                                                    </ChildContent>
+                                                </RadzenTextBox>
+
+                                                <div class="d-flex gap-2">
+                                                    <RadzenDropDown @bind-Value="@settingsSortBy" 
+                                                                    Data="@settingsSortOptions"
+                                                                    Placeholder="Sort by..."
+                                                                    AllowClear="true"
+                                                                    Style="font-size: 0.875rem; flex: 1;" />
+
+                                                    <RadzenButton Icon="@(settingsGroupByCategory ? "group_work" : "list")" 
+                                                                  ButtonStyle="@(settingsGroupByCategory ? ButtonStyle.Primary : ButtonStyle.Light)"
+                                                                  Size="ButtonSize.Small"
+                                                                  title="@(settingsGroupByCategory ? "Ungroup" : "Group by Category")"
+                                                                  Click="@(() => { settingsGroupByCategory = !settingsGroupByCategory; StateHasChanged(); })" />
+                                                </div>
+                                            </RadzenStack>
+                                        </div>
+
+                                        @* Settings List *@
+                                        @if (settingsGroupByCategory)
+                                        {
+                                            @* Grouped by Category *@
+                                            @foreach (var group in GetFilteredAndSortedSettings().GroupBy(s => GetSettingMetadata(s.Key!).Category ?? "Uncategorized").OrderBy(g => g.Key))
+                                            {
+                                                <div class="settings-group mb-3">
+                                                    <div class="settings-group-header">
+                                                        <RadzenIcon Icon="folder" Style="font-size: 0.875rem;" />
+                                                        <span class="settings-group-title">@group.Key</span>
+                                                        <RadzenBadge Text="@group.Count().ToString()" 
+                                                                     BadgeStyle="BadgeStyle.Secondary" 
+                                                                     Variant="Variant.Outlined"
+                                                                     Size="BadgeSize.ExtraSmall" />
+                                                    </div>
+                                                    @foreach (var setting in group)
+                                                    {
+                                                        var metadata = GetSettingMetadata(setting.Key!);
+                                                        var isSelected = selectedSettingKey == setting.Key;
+
+                                                        <div class="setting-list-item @(isSelected ? "selected" : "")" 
+                                                             @onclick="@(() => SelectSetting(setting.Key!))">
+                                                            <div class="setting-list-item-content">
+                                                                <div class="setting-list-item-header">
+                                                                    <code class="setting-key">@setting.Key</code>
+                                                                    <div class="setting-badges">
+                                                                        @if (metadata?.IsRequired == true)
+                                                                        {
+                                                                            <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Required" Size="BadgeSize.ExtraSmall" />
+                                                                        }
+                                                                        @if (!string.IsNullOrWhiteSpace(metadata?.DataType))
+                                                                        {
+                                                                            <RadzenBadge BadgeStyle="BadgeStyle.Info" 
+                                                                                         Text="@metadata.DataType" 
+                                                                                         Variant="Variant.Outlined"
+                                                                                         Size="BadgeSize.ExtraSmall" />
+                                                                        }
+                                                                        @if (metadata?.MapsToContainerPort == true)
+                                                                        {
+                                                                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" 
+                                                                                         Text="Port" 
+                                                                                         Size="BadgeSize.ExtraSmall" />
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                                <div class="setting-list-item-value">
+                                                                    <code>@(string.IsNullOrEmpty(setting.Value) ? "(empty)" : setting.Value)</code>
+                                                                </div>
+                                                                @if (!string.IsNullOrWhiteSpace(metadata?.Description))
+                                                                {
+                                                                    <div class="setting-list-item-description">
+                                                                        @metadata.Description
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @* Flat List *@
+                                            @foreach (var setting in GetFilteredAndSortedSettings())
                                         {
                                             if (string.IsNullOrEmpty(setting.Key))
                                             {
@@ -138,6 +229,7 @@
                                                     }
                                                 </div>
                                             </div>
+                                        }
                                         }
                                     </div>
 
@@ -662,6 +754,34 @@
     max-height: 70vh;
 }
 
+.settings-list-controls {
+    padding: 0.5rem;
+    background: var(--rz-base-50);
+    border-radius: 6px;
+    border: 1px solid var(--rz-border-color);
+}
+
+.settings-group {
+    margin-bottom: 1rem;
+}
+
+.settings-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--rz-base-100);
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--rz-text-secondary-color);
+}
+
+.settings-group-title {
+    flex: 1;
+}
+
 .setting-list-item {
     padding: 0.75rem;
     border-radius: 6px;
@@ -913,6 +1033,19 @@ private bool isNew = false;
 private bool isLoading = true;
 private bool isSaving = false;
 
+// Filter, Sort, Group state
+private string settingsFilter = "";
+private string? settingsSortBy = null;
+private bool settingsGroupByCategory = false;
+private readonly List<string> settingsSortOptions = new() 
+{ 
+    "Key (A-Z)", 
+    "Key (Z-A)", 
+    "Display Order", 
+    "Category",
+    "Data Type"
+};
+
 protected override async Task OnInitializedAsync()
 {
     // Load all available time zones
@@ -1070,6 +1203,55 @@ private async Task LoadGameTypeAsync()
         selectedSettingKey = newKey;
 
         StateHasChanged();
+    }
+
+    private IEnumerable<SettingItem> GetFilteredAndSortedSettings()
+    {
+        var filtered = settingsList.Where(s => !string.IsNullOrEmpty(s.Key));
+
+        // Apply filter
+        if (!string.IsNullOrWhiteSpace(settingsFilter))
+        {
+            var filterLower = settingsFilter.ToLower();
+            filtered = filtered.Where(s =>
+            {
+                var metadata = GetSettingMetadata(s.Key!);
+                return s.Key!.ToLower().Contains(filterLower) ||
+                       (s.Value?.ToLower().Contains(filterLower) ?? false) ||
+                       (metadata?.Description?.ToLower().Contains(filterLower) ?? false) ||
+                       (metadata?.Category?.ToLower().Contains(filterLower) ?? false);
+            });
+        }
+
+        // Apply sort
+        IOrderedEnumerable<SettingItem> sorted;
+        switch (settingsSortBy)
+        {
+            case "Key (A-Z)":
+                sorted = filtered.OrderBy(s => s.Key);
+                break;
+            case "Key (Z-A)":
+                sorted = filtered.OrderByDescending(s => s.Key);
+                break;
+            case "Display Order":
+                sorted = filtered.OrderBy(s => GetSettingMetadata(s.Key!).DisplayOrder);
+                break;
+            case "Category":
+                sorted = filtered.OrderBy(s => GetSettingMetadata(s.Key!).Category ?? "")
+                                .ThenBy(s => s.Key);
+                break;
+            case "Data Type":
+                sorted = filtered.OrderBy(s => GetSettingMetadata(s.Key!).DataType ?? "string")
+                                .ThenBy(s => s.Key);
+                break;
+            default:
+                // Default: Display Order, then Key
+                sorted = filtered.OrderBy(s => GetSettingMetadata(s.Key!).DisplayOrder)
+                                .ThenBy(s => s.Key);
+                break;
+        }
+
+        return sorted.ToList();
     }
 
     private void RemoveSetting(SettingItem setting)
