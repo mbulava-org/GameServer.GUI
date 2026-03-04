@@ -476,6 +476,12 @@ namespace GameServer.Docker.Services
 
         private async Task<Models.GameServer?> TryCastGameServer(SwarmService service, Dictionary<string, List<TaskResponse>>? tasksByService = null)
         {
+            // Guard against services without labels
+            if (service.Spec?.Labels == null)
+            {
+                return null;
+            }
+
             if (!service.Spec.Labels.ContainsKey(ServiceLabels.Managed) || service.Spec.Labels[ServiceLabels.Managed] != ServiceLabels.ManagedValue)
             {
                 return null;
