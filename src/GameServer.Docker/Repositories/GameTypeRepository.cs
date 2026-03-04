@@ -657,33 +657,30 @@ namespace GameServer.Docker.Repositories
 
             try
             {
-                // Check if database can connect
+                // Check if database exists and whether it has migrations history
                 var canConnect = await _context.Database.CanConnectAsync();
 
-                if (!canConnect)
+                if (canConnect)
                 {
-                    // Database doesn't exist - create it with migrations
-                    _logger.LogInformation("Database does not exist. Creating with migrations...");
-                    await _context.Database.MigrateAsync();
-                    _logger.LogInformation("Database created successfully with migrations");
-                }
-                else
-                {
-                    // Database exists - check if it has migrations history
+                    // Database exists - check if it has migrations table
                     var hasMigrationsTable = await HasMigrationsHistoryTableAsync();
 
                     if (!hasMigrationsTable)
                     {
-                        // Database was created with EnsureCreated() - need to manually drop constraint
-                        _logger.LogWarning("Database exists but was not created with migrations. Attempting to fix schema...");
+                        // Legacy database - created with EnsureCreated()
+                        _logger.LogWarning("⚠️ Legacy database detected (created without migrations). Fixing schema...");
                         await FixLegacyDatabaseSchemaAsync();
-                    }
 
-                    // Now apply any pending migrations
-                    _logger.LogInformation("Applying any pending database migrations...");
-                    await _context.Database.MigrateAsync();
-                    _logger.LogInformation("Database migrations applied successfully");
+                        // After fixing, seed the migrations history so EF Core knows what's been applied
+                        await SeedMigrationsHistoryAsync();
+                        _logger.LogInformation("✅ Legacy database migrated to use migrations");
+                    }
                 }
+
+                // Now apply any new pending migrations
+                _logger.LogInformation("Applying any pending database migrations...");
+                await _context.Database.MigrateAsync();
+                _logger.LogInformation("✅ Database migrations applied successfully");
 
                 // Use AnyAsync() instead of CountAsync() - much faster!
                 var hasGameTypes = await _context.GameTypes.AnyAsync();
@@ -715,7 +712,8 @@ namespace GameServer.Docker.Repositories
             try
             {
                 var connection = _context.Database.GetDbConnection();
-                await connection.OpenAsync();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
 
                 using var command = connection.CreateCommand();
                 command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory'";
@@ -723,9 +721,54 @@ namespace GameServer.Docker.Repositories
 
                 return result != null;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning(ex, "Failed to check for migrations history table");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Seed the migrations history table to mark existing schema as "migrated"
+        /// </summary>
+        private async Task SeedMigrationsHistoryAsync()
+        {
+            try
+            {
+                var connection = _context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
+
+                using var command = connection.CreateCommand();
+
+                // Create migrations history table
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (
+                        MigrationId TEXT PRIMARY KEY,
+                        ProductVersion TEXT NOT NULL
+                    );
+                ";
+                await command.ExecuteNonQueryAsync();
+
+                // Mark the initial migrations as applied
+                command.CommandText = @"
+                    INSERT OR IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion) 
+                    VALUES ('20260214202510_InitalCreate', '10.0.0');
+
+                    INSERT OR IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion) 
+                    VALUES ('20260303160530_AddTimezoneDataType', '10.0.0');
+
+                    INSERT OR IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion) 
+                    VALUES ('20260304191221_RemoveDataTypeCheckConstraint', '10.0.0');
+                ";
+                await command.ExecuteNonQueryAsync();
+
+                _logger.LogInformation("Seeded migrations history with existing schema versions");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to seed migrations history");
+                throw;
             }
         }
 
@@ -734,18 +777,26 @@ namespace GameServer.Docker.Repositories
         /// </summary>
         private async Task FixLegacyDatabaseSchemaAsync()
         {
-            _logger.LogInformation("Fixing legacy database schema...");
+            _logger.LogInformation("Fixing legacy database schema (removing CHECK constraint)...");
 
             try
             {
                 var connection = _context.Database.GetDbConnection();
-                await connection.OpenAsync();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
 
-                // Drop the constraint if it exists
                 using var command = connection.CreateCommand();
+
+                // SQLite doesn't support DROP CONSTRAINT, so we need to recreate the table
                 command.CommandText = @"
-                    -- Create a new table without the constraint
-                    CREATE TABLE IF NOT EXISTS SettingsMetadata_New (
+                    -- Disable foreign keys temporarily
+                    PRAGMA foreign_keys=OFF;
+
+                    -- Start transaction
+                    BEGIN TRANSACTION;
+
+                    -- Create new table without the constraint
+                    CREATE TABLE SettingsMetadata_New (
                         Id INTEGER PRIMARY KEY AUTOINCREMENT,
                         DefaultSettingId INTEGER NOT NULL,
                         Description TEXT,
@@ -766,25 +817,38 @@ namespace GameServer.Docker.Repositories
                         ListDelimiter TEXT NOT NULL DEFAULT ',',
                         AllowedValuesJson TEXT,
                         ValueMappingsJson TEXT,
-                        FOREIGN KEY (DefaultSettingId) REFERENCES DefaultSettings(Id) ON DELETE CASCADE
+                        CONSTRAINT FK_SettingsMetadata_DefaultSettings_DefaultSettingId 
+                            FOREIGN KEY (DefaultSettingId) REFERENCES DefaultSettings(Id) ON DELETE CASCADE
                     );
 
-                    -- Copy data
-                    INSERT OR IGNORE INTO SettingsMetadata_New 
+                    -- Copy all data
+                    INSERT INTO SettingsMetadata_New 
                     SELECT * FROM SettingsMetadata;
 
-                    -- Drop old table and rename new one
-                    DROP TABLE IF EXISTS SettingsMetadata;
+                    -- Drop old table
+                    DROP TABLE SettingsMetadata;
+
+                    -- Rename new table
                     ALTER TABLE SettingsMetadata_New RENAME TO SettingsMetadata;
+
+                    -- Recreate indexes if any
+                    CREATE INDEX IF NOT EXISTS IX_SettingsMetadata_DefaultSettingId 
+                        ON SettingsMetadata (DefaultSettingId);
+
+                    -- Commit transaction
+                    COMMIT;
+
+                    -- Re-enable foreign keys
+                    PRAGMA foreign_keys=ON;
                 ";
 
                 await command.ExecuteNonQueryAsync();
-                _logger.LogInformation("Legacy database schema fixed - constraint removed");
+                _logger.LogInformation("✅ Legacy database schema fixed - CHECK constraint removed");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fix legacy database schema");
-                // Don't throw - let migrations try anyway
+                _logger.LogError(ex, "❌ Failed to fix legacy database schema");
+                throw;
             }
         }
 
