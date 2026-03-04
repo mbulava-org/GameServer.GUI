@@ -2,6 +2,7 @@
 @page "/gametypes/new"
 @rendermode InteractiveServer
 @using global::GameServer.Docker.Client
+@using GameServer.Web.Components.Pages.GameTypes.Components
 @using Radzen
 @using Radzen.Blazor
 @inject IGameTypeApi GameTypeApi
@@ -50,197 +51,23 @@
                 <Tabs>
                     <RadzenTabsItem Text="Basic Information">
                     <div class="p-4">
-                        <RadzenCard>
-                            <h5 class="mb-4">Basic Information</h5>
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Key" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.Key" 
-                                                       Disabled="@(!isNew)"
-                                                       Placeholder="e.g., minecraft"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                    @if (isNew)
-                                    {
-                                        <small class="text-muted">Unique identifier (cannot be changed later)</small>
-                                    }
-                                </div>
-
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Display Name" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.DisplayName" 
-                                                       Placeholder="e.g., Minecraft Server"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-
-                                <div class="col-12">
-                                    <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextArea @bind-Value="@gameType.Description" 
-                                                        Rows="3"
-                                                        Placeholder="Brief description of this game server type"
-                                                        class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-
-                                <div class="col-12">
-                                    <RadzenFormField Text="Docker Image" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.Image" 
-                                                       Placeholder="e.g., itzg/minecraft-server:latest"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                    <small class="text-muted">Full Docker image name including tag</small>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Thumbnail URL" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.ThumbnailUrl" 
-                                                       Placeholder="https://example.com/image.png"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <RadzenFormField Text="Documentation URL" Variant="@Variant.Outlined" class="w-100">
-                                        <RadzenTextBox @bind-Value="@gameType.DocumentationUrl" 
-                                                       Placeholder="https://docs.example.com"
-                                                       class="w-100" />
-                                    </RadzenFormField>
-                                </div>
-                            </div>
-                        </RadzenCard>
+                        <GameTypeBasicInfo GameType="@gameType" 
+                                           IsNew="@isNew" 
+                                           GameTypeChanged="@OnGameTypeChanged" />
                     </div>
                 </RadzenTabsItem>
 
                 <RadzenTabsItem Text="Ports">
                     <div class="p-4">
-                        <RadzenCard>
-                            <div class="d-flex justify-content-between align-items-center mb-4">
-                                <div>
-                                    <h5 class="mb-1">Port Definitions</h5>
-                                    <small class="text-muted">Define which ports this game server requires</small>
-                                </div>
-                                <RadzenButton Text="Add Port" 
-                                              Icon="add" 
-                                              Size="ButtonSize.Small"
-                                              Click="@AddPort" />
-                            </div>
-
-                            @if (gameType.Ports == null || !gameType.Ports.Any())
-                            {
-                                <p class="text-muted text-center py-4">No ports configured. Add a port to get started.</p>
-                            }
-                            else
-                            {
-                                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mb-3">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <RadzenIcon Icon="info" Style="font-size: 1rem;" />
-                                        <small>Mark one port as the <strong>Default Port</strong> - this will be used in connection strings and server details.</small>
-                                    </div>
-                                </RadzenAlert>
-
-                                <div class="port-list">
-                                    @foreach (var port in gameType.Ports.ToList())
-                                    {
-                                        <RadzenCard class="port-definition-card mb-3" Style="@(port.IsDefaultPort ? "border: 2px solid var(--rz-primary);" : "")">
-                                            <div class="row g-3 align-items-end">
-                                                <div class="col-md-4">
-                                                    <RadzenFormField Text="Port Number" Variant="@Variant.Outlined" class="w-100">
-                                                        <RadzenNumeric @bind-Value="@port.Port" 
-                                                                       Min="1" 
-                                                                       Max="65535"
-                                                                       class="w-100" />
-                                                    </RadzenFormField>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <RadzenFormField Text="Protocol" Variant="@Variant.Outlined" class="w-100">
-                                                        <RadzenDropDown @bind-Value="@port.Protocol" 
-                                                                        Data="@(new[] { "tcp", "udp" })"
-                                                                        class="w-100" />
-                                                    </RadzenFormField>
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <div class="d-flex align-items-center gap-2 pb-2">
-                                                        <RadzenCheckBox @bind-Value="@port.IsDefaultPort"
-                                                                       Change="@((bool value) => OnDefaultPortChanged(port, value))" />
-                                                        <RadzenLabel Text="Default Port" class="mb-0" />
-                                                        @if (port.IsDefaultPort)
-                                                        {
-                                                            <RadzenBadge BadgeStyle="BadgeStyle.Success" 
-                                                                        Text="Primary" 
-                                                                        Size="BadgeSize.Small" 
-                                                                        Variant="Variant.Flat" />
-                                                        }
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-1 text-end">
-                                                    <div class="d-flex gap-2 pb-2">
-                                                        <RadzenButton Icon="@(port.IsDefaultPort ? "star" : "star_border")" 
-                                                                     ButtonStyle="ButtonStyle.Light"
-                                                                     Size="ButtonSize.Small"
-                                                                     Style="@(port.IsDefaultPort ? "color: var(--rz-warning);" : "")"
-                                                                     title="@(port.IsDefaultPort ? "Primary connection port" : "Not primary port")"
-                                                                     Disabled="true" />
-                                                        <RadzenButton Icon="delete" 
-                                                                     ButtonStyle="ButtonStyle.Danger" 
-                                                                     Size="ButtonSize.Small"
-                                                                     Click="@(() => RemovePort(port))" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </RadzenCard>
-                                    }
-                                </div>
-                            }
-                        </RadzenCard>
+                        <GameTypePortsEditor Ports="@gameType.Ports" 
+                                             PortsChanged="@StateHasChanged" />
                     </div>
                 </RadzenTabsItem>
 
                 <RadzenTabsItem Text="Volumes">
                     <div class="p-4">
-                        <RadzenCard>
-                            <div class="d-flex justify-content-between align-items-center mb-4">
-                                <div class="flex-grow-1">
-                                    <h5 class="mb-1">Volume Definitions</h5>
-                                    <small class="text-muted">Define container mount points. Volume sources are managed by the server deployment.</small>
-                                </div>
-                                <RadzenButton Text="Add Volume" 
-                                              Icon="add" 
-                                              Size="ButtonSize.Small"
-                                              Click="@AddVolume" />
-                            </div>
-
-                            @if (gameType.Volumes == null || !gameType.Volumes.Any())
-                            {
-                                <p class="text-muted text-center py-4">No volumes configured. Add a volume to get started.</p>
-                            }
-                            else
-                            {
-                                <div class="volume-list">
-                                    @foreach (var volume in gameType.Volumes.ToList())
-                                    {
-                                        <div class="volume-item mb-3 p-3 border rounded">
-                                            <div class="row g-2 align-items-center">
-                                                <div class="col-md-10">
-                                                    <RadzenFormField Text="Target (Container Path)" Variant="@Variant.Outlined" class="w-100">
-                                                        <RadzenTextBox @bind-Value="@volume.Target" 
-                                                                       Placeholder="/data"
-                                                                       class="w-100" />
-                                                    </RadzenFormField>
-                                                    <small class="text-muted">The path inside the container where data will be mounted</small>
-                                                </div>
-                                                <div class="col-md-2 text-end">
-                                                    <RadzenButton Icon="delete" 
-                                                                  ButtonStyle="ButtonStyle.Danger" 
-                                                                  Size="ButtonSize.Small"
-                                                                  Click="@(() => RemoveVolume(volume))" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </RadzenCard>
+                        <GameTypeVolumesEditor Volumes="@gameType.Volumes" 
+                                               VolumesChanged="@StateHasChanged" />
                     </div>
                 </RadzenTabsItem>
 
@@ -1224,66 +1051,6 @@ private async Task LoadGameTypeAsync()
     }
 }
 
-    private void AddPort()
-    {
-        var newPort = new PortDefinition { Port = 25565, Protocol = "tcp", IsDefaultPort = false };
-        gameType!.Ports.Add(newPort);
-        
-        // If this is the first port, make it default
-        if (gameType.Ports.Count == 1)
-        {
-            newPort.IsDefaultPort = true;
-        }
-        
-        StateHasChanged();
-    }
-
-    private void RemovePort(PortDefinition port)
-    {
-        var wasDefault = port.IsDefaultPort;
-        gameType!.Ports.Remove(port);
-        
-        // If we removed the default port and there are still ports left, make the first one default
-        if (wasDefault && gameType.Ports.Any())
-        {
-            gameType.Ports.First().IsDefaultPort = true;
-        }
-        
-        StateHasChanged();
-    }
-
-    private void OnDefaultPortChanged(PortDefinition selectedPort, bool isChecked)
-    {
-        if (!isChecked)
-        {
-            // Don't allow unchecking the default port - there must always be one
-            selectedPort.IsDefaultPort = true;
-            return;
-        }
-
-        // Clear all other IsDefaultPort flags
-        foreach (var port in gameType!.Ports)
-        {
-            port.IsDefaultPort = false;
-        }
-
-        // Set the selected port as default
-        selectedPort.IsDefaultPort = true;
-        StateHasChanged();
-    }
-
-    private void AddVolume()
-    {
-        gameType!.Volumes.Add(new VolumeDefinition { Source = null, Target = "" });
-        StateHasChanged();
-    }
-
-    private void RemoveVolume(VolumeDefinition volume)
-    {
-        gameType!.Volumes.Remove(volume);
-        StateHasChanged();
-    }
-
     private void AddSetting()
     {
         var newKey = $"NEW_SETTING_{settingsList.Count + 1}";
@@ -1673,6 +1440,12 @@ private async Task LoadGameTypeAsync()
         if (portValidation.ReservedPorts == null || !portValidation.ReservedPorts.Any())
             return "";
         return string.Join(",", portValidation.ReservedPorts);
+    }
+
+    private void OnGameTypeChanged(GameTypeDefinition updatedGameType)
+    {
+        gameType = updatedGameType;
+        StateHasChanged();
     }
 
     private void SetReservedPorts(SettingMetadata metadata, string value)
