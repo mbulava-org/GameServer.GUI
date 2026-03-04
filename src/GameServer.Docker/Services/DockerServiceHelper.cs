@@ -482,7 +482,8 @@ namespace GameServer.Docker.Services
                     var hasManagedLabel = hasLabels && svc.Spec!.Labels.ContainsKey(ServiceLabels.Managed);
                     var managedValue = hasManagedLabel ? svc.Spec!.Labels[ServiceLabels.Managed] : "N/A";
 
-                    logger.LogDebug(
+                    // Use WARNING so it shows in default log level
+                    logger.LogWarning(
                         "Service: {Name}, HasLabels: {HasLabels}, HasManagedLabel: {HasManaged}, ManagedValue: {Value}",
                         svc.Spec?.Name ?? "unknown",
                         hasLabels,
