@@ -654,26 +654,17 @@ namespace GameServer.Docker.Repositories
         public async Task InitializeDatabaseAsync()
         {
             _logger.LogInformation("Initializing database...");
-            
+
             try
             {
-                // Use CanConnect() instead of EnsureCreatedAsync() for faster checks
-                var canConnect = await _context.Database.CanConnectAsync();
-                
-                if (!canConnect)
-                {
-                    _logger.LogInformation("Database does not exist, creating...");
-                    await _context.Database.EnsureCreatedAsync();
-                    _logger.LogInformation("Database created successfully");
-                }
-                else
-                {
-                    _logger.LogInformation("Database already exists");
-                }
+                // Apply any pending migrations (this will create the database if it doesn't exist)
+                _logger.LogInformation("Applying database migrations...");
+                await _context.Database.MigrateAsync();
+                _logger.LogInformation("Database migrations applied successfully");
 
                 // Use AnyAsync() instead of CountAsync() - much faster!
                 var hasGameTypes = await _context.GameTypes.AnyAsync();
-                
+
                 if (!hasGameTypes)
                 {
                     _logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
