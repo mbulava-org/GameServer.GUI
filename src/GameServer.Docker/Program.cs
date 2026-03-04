@@ -301,9 +301,9 @@ namespace GameServer.Docker
                     var repository = scope.ServiceProvider.GetRequiredService<Repositories.IGameTypeRepository>();
                     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
                     
-                    logger.LogInformation("Initializing database...");
-                    await repository.InitializeDatabaseAsync();
-                    logger.LogInformation("Database initialization complete");
+                    //logger.LogInformation("Initializing database...");
+                    _ = repository.InitializeDatabaseAsync();
+                    //logger.LogInformation("Database initialization complete");
                 }
                 else
                 {

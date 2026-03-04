@@ -262,15 +262,8 @@ namespace GameServer.Docker.Agent.Controllers
                     Message = $"Found {servicesList.Count} services",
                     Data = new Dictionary<string, object>
                     {
-                        ["services"] = servicesList.Select(s => new
-                        {
-                            s.ID,
-                            s.Spec.Name,
-                            s.Spec.Labels,
-                            s.Version,
-                            s.CreatedAt,
-                            s.UpdatedAt
-                        }).ToList()
+                        // Return full SwarmService objects so they deserialize correctly
+                        ["services"] = servicesList
                     }
                 });
             }
