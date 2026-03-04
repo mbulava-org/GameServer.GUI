@@ -94,11 +94,6 @@
         public string Message { get; set; } = "";
     }
 
-    class ContainerLogsResponse
-    {
-        public List<string> Logs { get; set; } = new();
-    }
-
     private List<LogLine> logLines = new();
     private bool loadingLogs = false;
     private bool isStreaming = false;
@@ -169,19 +164,19 @@
       {
         try
         {
-          // Fetch logs from REST API
+          // Fetch logs from REST API (container logs via agent, not deprecated service logs)
           var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
           var httpClient = new HttpClient();
-          var response = await httpClient.GetFromJsonAsync<ContainerLogsResponse>(
-            $"{apiBaseUri}/api/servers/{ServerId}/logs?tailLines={tailLines}",
+          var response = await httpClient.GetFromJsonAsync<List<string>>(
+            $"{apiBaseUri}/api/servers/{ServerId}/container/logs?tail={tailLines}",
             streamCts.Token);
-          
-          if (response != null && response.Logs.Any())
+
+          if (response != null && response.Any())
           {
             // Clear and reload logs each time
             logLines.Clear();
-            
-            foreach (var logLine in response.Logs)
+
+            foreach (var logLine in response)
             {
               var parsedLine = ParseLogLine(logLine);
               logLines.Add(parsedLine);
@@ -260,7 +255,11 @@
     loadingLogs = true;
     try
     {
-      var logs = await ServerApi.GetServiceLogsAsync(ServerId, tailLines);
+      // Use container logs endpoint (not deprecated service logs)
+      var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
+      using var httpClient = new HttpClient();
+      var logs = await httpClient.GetFromJsonAsync<List<string>>(
+        $"{apiBaseUri}/api/servers/{ServerId}/container/logs?tail={tailLines}");
 
       if (logs != null && logs.Any())
       {
