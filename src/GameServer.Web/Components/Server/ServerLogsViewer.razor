@@ -158,17 +158,17 @@
     try
     {
       _logger?.LogInformation("Starting log polling for server {ServerId}", ServerId);
-      
-      // Poll logs via REST API instead of SignalR streaming
+
+      // Poll logs via REST API - using service logs (aggregated from all replicas)
       while (!streamCts.Token.IsCancellationRequested && isStreaming)
       {
         try
         {
-          // Fetch logs from REST API (container logs via agent, not deprecated service logs)
+          // Fetch service logs from REST API (aggregated logs from all replicas via manager node agent)
           var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
           var httpClient = new HttpClient();
           var response = await httpClient.GetFromJsonAsync<List<string>>(
-            $"{apiBaseUri}/api/servers/{ServerId}/container/logs?tail={tailLines}",
+            $"{apiBaseUri}/api/servers/{ServerId}/logs?tail={tailLines}",
             streamCts.Token);
 
           if (response != null && response.Any())
@@ -255,11 +255,11 @@
     loadingLogs = true;
     try
     {
-      // Use container logs endpoint (not deprecated service logs)
+      // Use service logs endpoint (aggregated logs from all replicas via manager node agent)
       var apiBaseUri = ApiConfig.Value.BaseUri.TrimEnd('/');
       using var httpClient = new HttpClient();
       var logs = await httpClient.GetFromJsonAsync<List<string>>(
-        $"{apiBaseUri}/api/servers/{ServerId}/container/logs?tail={tailLines}");
+        $"{apiBaseUri}/api/servers/{ServerId}/logs?tail={tailLines}");
 
       if (logs != null && logs.Any())
       {

@@ -342,5 +342,69 @@ namespace GameServer.Docker.Agent.Controllers
                 });
             }
         }
+
+        /// <summary>
+        /// Get logs from a Docker Swarm service (aggregated from all replicas/tasks)
+        /// Only available on manager nodes.
+        /// </summary>
+        [HttpGet("{serviceId}/logs")]
+        public async Task<ActionResult<ServiceOperationResponse>> GetServiceLogs(
+            string serviceId,
+            [FromQuery] int tail = 1000)
+        {
+            try
+            {
+                _logger.LogInformation("Fetching last {TailLines} lines of service logs for service {ServiceId}", tail, serviceId);
+
+                var logsParams = new ServiceLogsParameters
+                {
+                    Follow = false,
+                    ShowStdout = true,
+                    ShowStderr = true,
+                    Timestamps = true,
+                    Tail = tail.ToString()
+                };
+
+                var logStream = await _dockerClient.Swarm.GetServiceLogsAsync(serviceId, logsParams, CancellationToken.None);
+                var logLines = new List<string>();
+
+                using var reader = new StreamReader(logStream);
+                string? line;
+                while ((line = await reader.ReadLineAsync()) != null)
+                {
+                    // Docker logs come with 8-byte header (stream type + size), skip it if present
+                    if (line.Length > 8 && (line[0] == 1 || line[0] == 2))
+                    {
+                        logLines.Add(line[8..]);
+                    }
+                    else
+                    {
+                        logLines.Add(line);
+                    }
+                }
+
+                _logger.LogInformation("Successfully fetched {Count} log lines for service {ServiceId}", logLines.Count, serviceId);
+
+                return Ok(new ServiceOperationResponse
+                {
+                    Success = true,
+                    ServiceId = serviceId,
+                    Message = $"Retrieved {logLines.Count} log lines",
+                    Data = new Dictionary<string, object>
+                    {
+                        ["logs"] = logLines
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get service logs for service: {ServiceId}", serviceId);
+                return StatusCode(500, new ServiceOperationResponse
+                {
+                    Success = false,
+                    Message = $"Failed to get service logs: {ex.Message}"
+                });
+            }
+        }
     }
 }

@@ -736,6 +736,78 @@ namespace GameServer.Docker.Services
             }
         }
 
+        public async Task<List<string>?> GetServiceLogsAsync(string serviceId, int tailLines = 1000)
+        {
+            _logger.LogDebug("Fetching service logs for {ServiceId} (tail: {TailLines})", serviceId, tailLines);
+
+            // Service logs must be retrieved from a manager node
+            var managerAgent = await GetManagerAgentAsync();
+            if (managerAgent == null)
+            {
+                _logger.LogWarning("Cannot fetch service logs: no manager agent available");
+                return null;
+            }
+
+            try
+            {
+                var httpClient = GetOrCreateHttpClientForAgent(managerAgent.InternalUrl);
+                var url = $"{managerAgent.InternalUrl}/api/services/{serviceId}/logs?tail={tailLines}";
+                _logger.LogDebug("Fetching service logs from agent: GET {Url}", url);
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var response = await httpClient.GetAsync(url);
+                stopwatch.Stop();
+
+                _logger.LogTrace("Agent response: {StatusCode} in {Duration}ms", response.StatusCode, stopwatch.ElapsedMilliseconds);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync();
+                _logger.LogTrace("Received service logs JSON: {Length} bytes", json.Length);
+
+                var doc = JsonDocument.Parse(json);
+
+                // Parse the ServiceOperationResponse structure
+                var success = doc.RootElement.GetProperty("success").GetBoolean();
+                if (!success)
+                {
+                    var message = doc.RootElement.GetProperty("message").GetString();
+                    _logger.LogWarning("Service logs request failed: {Message}", message);
+                    return null;
+                }
+
+                var logsArray = doc.RootElement.GetProperty("data").GetProperty("logs");
+
+                var logs = new List<string>();
+                foreach (var logLine in logsArray.EnumerateArray())
+                {
+                    logs.Add(logLine.GetString() ?? string.Empty);
+                }
+
+                _logger.LogDebug("Successfully fetched {Count} log lines for service {ServiceId}", logs.Count, serviceId);
+                return logs;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching service logs from agent for service {ServiceId}", serviceId);
+                return null;
+            }
+        }
+
+        private async Task<NodeAgentEndpoint?> GetManagerAgentAsync()
+        {
+            var agents = await DiscoverAgentsAsync();
+
+            // Find a manager node
+            var managerAgent = agents.FirstOrDefault(a => a.IsManagerNode);
+
+            if (managerAgent == null)
+            {
+                _logger.LogWarning("No manager agent available for service operations");
+            }
+
+            return managerAgent;
+        }
+
         private async Task<bool> CheckAgentHealthAsync(NodeAgentEndpoint agent)
         {
             try

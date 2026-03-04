@@ -48,5 +48,12 @@ namespace GameServer.Docker.Interfaces
         /// Returns null if no agent is available or container is not running.
         /// </summary>
         Task<List<string>?> GetContainerLogsAsync(string containerId, int tailLines = 100);
+
+        /// <summary>
+        /// Get Docker Swarm service logs (aggregated from all replicas/tasks).
+        /// This must be retrieved from a manager node agent.
+        /// Returns null if no manager agent is available.
+        /// </summary>
+        Task<List<string>?> GetServiceLogsAsync(string serviceId, int tailLines = 1000);
     }
 }

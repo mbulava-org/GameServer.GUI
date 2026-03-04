@@ -16,6 +16,7 @@ public class DockerServiceHelperTests
     private readonly Mock<IGameTypeRepository> _mockGameTypeRepository;
     private readonly Mock<IOptions<Configurations.VolumeDriverConfigOptions>> _mockVolOptions;
     private readonly Mock<IOptions<Configurations.NetworkOptions>> _mockNetOptions;
+    private readonly Mock<INodeAgentDiscovery> _mockAgentDiscovery;
 
     public DockerServiceHelperTests()
     {
@@ -24,6 +25,7 @@ public class DockerServiceHelperTests
         _mockGameTypeRepository = new Mock<IGameTypeRepository>();
         _mockVolOptions = new Mock<IOptions<Configurations.VolumeDriverConfigOptions>>();
         _mockNetOptions = new Mock<IOptions<Configurations.NetworkOptions>>();
+        _mockAgentDiscovery = new Mock<INodeAgentDiscovery>();
 
         // Setup default options
         _mockVolOptions.Setup(x => x.Value).Returns(new Configurations.VolumeDriverConfigOptions());
@@ -37,7 +39,8 @@ public class DockerServiceHelperTests
             _mockServiceOperations.Object,
             _mockGameTypeRepository.Object,
             _mockVolOptions.Object,
-            _mockNetOptions.Object
+            _mockNetOptions.Object,
+            _mockAgentDiscovery.Object
         );
     }
 

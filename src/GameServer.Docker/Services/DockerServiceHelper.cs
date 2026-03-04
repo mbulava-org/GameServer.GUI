@@ -12,7 +12,8 @@ namespace GameServer.Docker.Services
         IServiceOperations serviceOperations,
         IGameTypeRepository gameTypeRepository,
         IOptions<Configurations.VolumeDriverConfigOptions> volOptions,
-        IOptions<Configurations.NetworkOptions> netOptions)
+        IOptions<Configurations.NetworkOptions> netOptions,
+        INodeAgentDiscovery agentDiscovery)
     {
         /// <summary>
         /// Builds a Docker Swarm ServiceSpec from a GameServer and GameTypeDefinition.
@@ -723,41 +724,19 @@ namespace GameServer.Docker.Services
             if (string.IsNullOrEmpty(serviceId))
                 throw new InvalidOperationException($"No service found for server {serverId}");
 
-            var logsParams = new ServiceLogsParameters
-            {
-                Follow = false,
-                ShowStdout = true,
-                ShowStderr = true,
-                Timestamps = true,
-                Tail = tailLines.ToString()
-            };
-
             try
             {
-                // TODO: Service logs are deprecated - use container logs via agents instead
-                throw new NotImplementedException("Service logs are deprecated. Use container logs via agent instead.");
+                // Use Node Agent Discovery to fetch service logs from manager node
+                var logs = await agentDiscovery.GetServiceLogsAsync(serviceId, tailLines);
 
-                /*
-                var logStream = await client.Swarm.GetServiceLogsAsync(serviceId, logsParams, CancellationToken.None);
-                var logLines = new List<string>();
-
-                using var reader = new StreamReader(logStream);
-                string? line;
-                while ((line = await reader.ReadLineAsync()) != null)
+                if (logs == null || !logs.Any())
                 {
-                    // Docker logs come with 8-byte header (stream type + size), skip it if present
-                    if (line.Length > 8 && (line[0] == 1 || line[0] == 2))
-                    {
-                        logLines.Add(line[8..]);
-                    }
-                    else
-                    {
-                        logLines.Add(line);
-                    }
+                    logger.LogWarning("No service logs available for server {ServerId}", serverId);
+                    return new List<string>();
                 }
 
-                return logLines;
-                */
+                logger.LogInformation("Successfully fetched {Count} service log lines for server {ServerId}", logs.Count, serverId);
+                return logs;
             }
             catch (Exception ex)
             {
