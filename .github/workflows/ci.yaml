@@ -101,7 +101,7 @@ jobs:
 
   backend:
     needs: [setup]
-    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -112,11 +112,11 @@ jobs:
       push_branch: true
       version_tag: false
       semantic_version_rollup_tag: false 
-      target_repo: 'gameserver-docker' 
+      target_repo: 'gameserver-docker'
 
   agent-backend:
     needs: [setup]
-    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -143,7 +143,7 @@ jobs:
 
   web-gui:
     needs: [setup]
-    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -155,4 +155,4 @@ jobs:
       push_branch: true
       version_tag: true
       semantic_version_rollup_tag: false 
-      target_repo: 'gameserver-web'   
+      target_repo: 'gameserver-web'
