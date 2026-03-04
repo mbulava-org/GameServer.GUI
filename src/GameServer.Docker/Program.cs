@@ -189,7 +189,18 @@ namespace GameServer.Docker
                 // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
                 
                 builder.Services.AddSingleton<GameTypeMetadataApplier>();
-                builder.Services.AddScoped<ServerLifecycleService>();
+
+                // ServerLifecycleService - Conditionally provide IDockerClient
+                // NOTE: This service is deprecated and should be refactored to use IServiceOperations
+                builder.Services.AddScoped<ServerLifecycleService>(sp =>
+                {
+                    IDockerClient? dockerClient = null;
+                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dockerClient = sp.GetRequiredService<IDockerClient>();
+                    }
+                    return new ServerLifecycleService(dockerClient);
+                });
 
                 builder.Services.AddControllers();
                 
