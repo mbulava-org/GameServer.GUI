@@ -150,7 +150,7 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<IGameServerResourceMonitor, GameServerResourceMonitorService>();
 
                 // PortAllocator - Conditionally provide IDockerClient
-                builder.Services.AddSingleton<PortAllocator>(sp =>
+                builder.Services.AddSingleton<PortAllocator>();/* sp =>
                 {
                     var portOptions = sp.GetRequiredService<IOptions<PortAllocation>>();
                     IDockerClient? dockerClient = null;
@@ -159,7 +159,7 @@ namespace GameServer.Docker
                         dockerClient = sp.GetRequiredService<IDockerClient>();
                     }
                     return new PortAllocator(dockerClient, portOptions);
-                });
+                });*/
 
                 // Add SQLite Database for GameType management
                 var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
@@ -185,10 +185,10 @@ namespace GameServer.Docker
                     });
                     
                     // Only enable sensitive data logging in development
-                    if (builder.Environment.IsDevelopment())
-                    {
+                    //if (builder.Environment.IsDevelopment())
+                    //{
                         options.EnableSensitiveDataLogging();
-                    }
+                    //}
                 });
 
                 // Add GameType Repository (database-backed) - This replaces file-based registries
@@ -200,17 +200,17 @@ namespace GameServer.Docker
                 
                 builder.Services.AddSingleton<GameTypeMetadataApplier>();
 
-                // ServerLifecycleService - Conditionally provide IDockerClient
-                // NOTE: This service is deprecated and should be refactored to use IServiceOperations
-                builder.Services.AddScoped<ServerLifecycleService>(sp =>
-                {
-                    IDockerClient? dockerClient = null;
-                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                    {
-                        dockerClient = sp.GetRequiredService<IDockerClient>();
-                    }
-                    return new ServerLifecycleService(dockerClient);
-                });
+                //// ServerLifecycleService - Conditionally provide IDockerClient
+                //// NOTE: This service is deprecated and should be refactored to use IServiceOperations
+                //builder.Services.AddScoped<ServerLifecycleService>(sp =>
+                //{
+                //    IDockerClient? dockerClient = null;
+                //    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
+                //    {
+                //        dockerClient = sp.GetRequiredService<IDockerClient>();
+                //    }
+                //    return new ServerLifecycleService(dockerClient);
+                //});
 
                 builder.Services.AddControllers();
                 

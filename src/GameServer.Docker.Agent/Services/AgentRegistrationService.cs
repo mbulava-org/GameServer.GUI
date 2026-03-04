@@ -119,12 +119,13 @@ namespace GameServer.Docker.Agent.Services
                     currentRetry++;
                     var delay = TimeSpan.FromSeconds(Math.Min(baseDelay.TotalSeconds * Math.Pow(1.5, currentRetry - 1), 60));
 
-                    _logger.LogWarning(
-                        ex,
-                        "Failed to connect to Primary Service (attempt {Attempt}/{MaxRetries}). Retrying in {Delay}s...",
-                        currentRetry,
-                        maxRetries,
-                        delay.TotalSeconds);
+                    if(currentRetry % 5 == 0) // Log every 5 attempts
+                        _logger.LogWarning(
+                            ex,
+                            "Failed to connect to Primary Service (attempt {Attempt}/{MaxRetries}). Retrying in {Delay}s...",
+                            currentRetry,
+                            maxRetries,
+                            delay.TotalSeconds);
 
                     try
                     {

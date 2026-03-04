@@ -8,6 +8,7 @@ namespace GameServer.Docker.Services
     /// NOTE: This service is DEPRECATED and should be refactored to use IServiceOperations.
     /// Currently only works in Direct mode where IDockerClient is available.
     /// </summary>
+    [Obsolete("ServerLifecycleService is deprecated and should be refactored to use IServiceOperations.")]
     public class ServerLifecycleService
     {
         private readonly IDockerClient? _client;

@@ -12,7 +12,6 @@ namespace GameServer.Docker.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly IGameTypeRepository _repository;
-        private readonly ServerLifecycleService _lifecycle;
         private readonly IGameServerManager _manager;
 
         //// In a real system, you'd load servers from a DB or JSON file.
@@ -20,11 +19,9 @@ namespace GameServer.Docker.Controllers
 
         public DashboardController(
             IGameTypeRepository repository,
-            ServerLifecycleService lifecycle,
             IGameServerManager manager)
         {
             _repository = repository;
-            _lifecycle = lifecycle;
             _manager = manager;
         }
 
