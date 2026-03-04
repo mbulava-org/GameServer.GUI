@@ -20,7 +20,7 @@ namespace GameServer.Docker.Services
         private readonly IDockerClient? _client;
         private readonly ILogger<NodeAgentDiscoveryService> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IGameServerManager _serverManager;
+        private readonly IServiceProvider _serviceProvider; // Use IServiceProvider to avoid circular dependency
         private readonly NodeAgentOptions _agentOptions;
         private readonly IAgentRegistry _agentRegistry;
 
@@ -39,7 +39,7 @@ namespace GameServer.Docker.Services
         public NodeAgentDiscoveryService(
             ILogger<NodeAgentDiscoveryService> logger,
             IHttpClientFactory httpClientFactory,
-            IGameServerManager serverManager,
+            IServiceProvider serviceProvider, // Inject IServiceProvider to avoid circular dependency
             IOptions<NodeAgentOptions> agentOptions,
             IAgentRegistry agentRegistry,
             IDockerClient? client = null)
@@ -47,7 +47,7 @@ namespace GameServer.Docker.Services
             _client = client;
             _logger = logger;
             _httpClientFactory = httpClientFactory;
-            _serverManager = serverManager;
+            _serviceProvider = serviceProvider;
             _agentOptions = agentOptions.Value;
             _agentRegistry = agentRegistry;
         }
@@ -433,10 +433,13 @@ namespace GameServer.Docker.Services
         {
             _logger.LogDebug("Finding agent for server {ServerId}", serverId);
 
+            // Resolve IGameServerManager lazily to avoid circular dependency during construction
+            var serverManager = _serviceProvider.GetRequiredService<IGameServerManager>();
+
             // Get running container ID for this server
             _logger.LogTrace("Looking up container ID for server {ServerId}", serverId);
-            var containerId = await _serverManager.GetRunningContainerIdAsync(serverId);
-            
+            var containerId = await serverManager.GetRunningContainerIdAsync(serverId);
+
             if (string.IsNullOrEmpty(containerId))
             {
                 _logger.LogWarning("No running container found for server {ServerId}. Server may be stopped or not yet started", serverId);
@@ -445,13 +448,13 @@ namespace GameServer.Docker.Services
 
             _logger.LogDebug("Server {ServerId} has container {ContainerId}, looking up agent", serverId, containerId);
             var agent = await GetAgentForContainerAsync(containerId);
-            
+
             if (agent != null)
             {
                 _logger.LogDebug("Found agent for server {ServerId} on node {NodeName}: {AgentUrl}",
                     serverId, agent.NodeName, agent.InternalUrl);
             }
-            
+
             return agent;
         }
 

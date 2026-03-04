@@ -116,7 +116,6 @@ namespace GameServer.Docker
                 {
                     var logger = sp.GetRequiredService<ILogger<NodeAgentDiscoveryService>>();
                     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-                    var serverManager = sp.GetRequiredService<IGameServerManager>();
                     var agentOptions = sp.GetRequiredService<IOptions<NodeAgentOptions>>();
                     var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
 
@@ -130,7 +129,7 @@ namespace GameServer.Docker
                     return new NodeAgentDiscoveryService(
                         logger,
                         httpClientFactory,
-                        serverManager,
+                        sp, // Pass IServiceProvider to avoid circular dependency
                         agentOptions,
                         agentRegistry,
                         dockerClient);
