@@ -207,16 +207,30 @@ namespace GameServer.Docker.Services
             var response = await httpClient.GetAsync($"/api/services/{serviceId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<ServiceOperationResponse>(cancellationToken);
+            // Use JsonDocument to preserve type information (avoid double serialization)
+            var jsonDoc = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
 
-            if (result?.Success != true || result.Data == null)
+            if (jsonDoc == null)
             {
-                throw new Exception($"Failed to inspect service: {result?.Message}");
+                throw new Exception("Failed to deserialize response from agent");
             }
 
-            // Parse service from response
-            var serviceJson = JsonSerializer.Serialize(result.Data["service"]);
-            var service = JsonSerializer.Deserialize<SwarmService>(serviceJson);
+            if (!jsonDoc.RootElement.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
+            {
+                var message = jsonDoc.RootElement.TryGetProperty("message", out var msgProp) 
+                    ? msgProp.GetString() 
+                    : "Unknown error";
+                throw new Exception($"Failed to inspect service: {message}");
+            }
+
+            if (!jsonDoc.RootElement.TryGetProperty("data", out var dataProp) ||
+                !dataProp.TryGetProperty("service", out var serviceProp))
+            {
+                throw new Exception("Response missing 'data.service' property");
+            }
+
+            // Deserialize service directly from the JSON element
+            var service = JsonSerializer.Deserialize<SwarmService>(serviceProp.GetRawText());
 
             if (service == null)
             {
