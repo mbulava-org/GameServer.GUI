@@ -208,8 +208,9 @@ namespace GameServer.Docker.Services
             _logger.LogWarning("📦 Services JSON (first 500 chars): {Json}", 
                 servicesProp.GetRawText().Length > 500 ? servicesProp.GetRawText()[..500] : servicesProp.GetRawText());
 
-            // Deserialize services array directly from the JSON element
-            var services = JsonSerializer.Deserialize<List<SwarmService>>(servicesProp.GetRawText()) 
+            // Deserialize services array directly from the JSON element (case-insensitive for camelCase from agent)
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var services = JsonSerializer.Deserialize<List<SwarmService>>(servicesProp.GetRawText(), options) 
                 ?? new List<SwarmService>();
 
             _logger.LogDebug("Listed {Count} services via agent", services.Count);
@@ -270,8 +271,9 @@ namespace GameServer.Docker.Services
             _logger.LogWarning("📦 [InspectService] Service JSON (first 300 chars): {Json}", 
                 serviceProp.GetRawText().Length > 300 ? serviceProp.GetRawText()[..300] : serviceProp.GetRawText());
 
-            // Deserialize service directly from the JSON element
-            var service = JsonSerializer.Deserialize<SwarmService>(serviceProp.GetRawText());
+            // Deserialize service directly from the JSON element (case-insensitive for camelCase from agent)
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var service = JsonSerializer.Deserialize<SwarmService>(serviceProp.GetRawText(), options);
 
             if (service == null)
             {
@@ -281,7 +283,7 @@ namespace GameServer.Docker.Services
 
             _logger.LogWarning("🔍 [InspectService] Result: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
                 service.ID, 
-                service.Spec != null, 
+                service.Spec != null,
                 service.Spec?.Name ?? "NULL");
 
             return service;
