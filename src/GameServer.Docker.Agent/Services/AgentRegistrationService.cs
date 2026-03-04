@@ -49,6 +49,27 @@ namespace GameServer.Docker.Agent.Services
                 _options.PrimaryServiceUrl,
                 _options.HeartbeatIntervalSeconds);
 
+            // Diagnostic: Log network connectivity details
+            try
+            {
+                var primaryUri = new Uri(_options.PrimaryServiceUrl);
+                _logger.LogDebug(
+                    "Primary Service connectivity check: Host={Host}, Port={Port}, Scheme={Scheme}",
+                    primaryUri.Host,
+                    primaryUri.Port,
+                    primaryUri.Scheme);
+
+                // Log environment info
+                _logger.LogDebug(
+                    "Agent environment: Hostname={Hostname}, Machine={Machine}",
+                    Environment.GetEnvironmentVariable("HOSTNAME") ?? "not set",
+                    Environment.MachineName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse Primary Service URL for diagnostics");
+            }
+
             // Initialize agent information
             await InitializeAgentInfoAsync(stoppingToken);
 
