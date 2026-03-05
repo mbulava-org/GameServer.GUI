@@ -51,6 +51,12 @@
   border-radius: 4px;
 }
 
+/* Parent directory (..) styling */
+.file-name-cell:has(.file-name:first-child:contains("..")) {
+  background: var(--rz-base-50, #f8f9fa);
+  border-bottom: 1px solid var(--rz-border-color, #e0e0e0);
+}
+
 .file-icon {
   color: var(--rz-primary, #007bff);
 }

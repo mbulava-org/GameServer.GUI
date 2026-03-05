@@ -42,12 +42,19 @@
   }
   else if (selectedVolume != null)
   {
-    <RadzenDataGrid Data="currentFiles" TItem="FileItem" class="file-grid" AllowSorting="true" AllowFiltering="true">
+    <RadzenDataGrid Data="GetFilesWithParentNav()" TItem="FileItem" class="file-grid" AllowSorting="true" AllowFiltering="true">
       <Columns>
         <RadzenDataGridColumn TItem="FileItem" Property="Name" Title="Name" Width="50%">
           <Template Context="file">
             <div class="file-name-cell" @onclick='@(() => OnFileClick(file))' style="cursor: pointer;">
-              <RadzenIcon Icon='@(file.IsDirectory ? "folder" : GetFileIcon(file.Name))' class="file-icon" />
+              @if (file.Name == "..")
+              {
+                <RadzenIcon Icon="arrow_upward" class="file-icon" Style="color: var(--rz-secondary);" />
+              }
+              else
+              {
+                <RadzenIcon Icon='@(file.IsDirectory ? "folder" : GetFileIcon(file.Name))' class="file-icon" />
+              }
               <span class="file-name">@file.Name</span>
             </div>
           </Template>
@@ -74,11 +81,14 @@
                               ButtonStyle="ButtonStyle.Light"
                               title="Edit" />
               }
-              <RadzenButton Icon="delete" 
-                            Size="ButtonSize.Small" 
-                            Click='@(() => DeleteFile(file))' 
-                            ButtonStyle="ButtonStyle.Danger"
-                            title="Delete" />
+              @if (file.Name != "..")
+              {
+                <RadzenButton Icon="delete" 
+                              Size="ButtonSize.Small" 
+                              Click='@(() => DeleteFile(file))' 
+                              ButtonStyle="ButtonStyle.Danger"
+                              title="Delete" />
+              }
             </div>
           </Template>
         </RadzenDataGridColumn>
@@ -177,9 +187,63 @@
   {
     if (file.IsDirectory)
     {
-      currentPath = file.Path;
-      await LoadFilesAsync();
+      if (file.Name == "..")
+      {
+        // Navigate to parent directory
+        await NavigateToParent();
+      }
+      else
+      {
+        // Navigate to subdirectory
+        currentPath = file.Path;
+        await LoadFilesAsync();
+      }
     }
+  }
+
+  private async Task NavigateToParent()
+  {
+    if (currentPath == "/")
+    {
+      return; // Already at root
+    }
+
+    // Remove the last path segment
+    var lastSlashIndex = currentPath.TrimEnd('/').LastIndexOf('/');
+    if (lastSlashIndex <= 0)
+    {
+      currentPath = "/";
+    }
+    else
+    {
+      currentPath = currentPath.Substring(0, lastSlashIndex);
+    }
+
+    await LoadFilesAsync();
+  }
+
+  private List<FileItem> GetFilesWithParentNav()
+  {
+    var files = new List<FileItem>();
+
+    // Add parent directory link if not at root
+    if (currentPath != "/")
+    {
+      files.Add(new FileItem
+      {
+        Name = "..",
+        Path = "", // Will be handled specially
+        IsDirectory = true,
+        Size = 0,
+        LastModified = DateTime.MinValue,
+        Permissions = ""
+      });
+    }
+
+    // Add all current files
+    files.AddRange(currentFiles);
+
+    return files;
   }
 
   private async Task RefreshFiles()
@@ -317,12 +381,12 @@
     }
 
     // Check file size first
-    const long maxEditableSize = 5 * 1024; // 5KB
-    
+    const long maxEditableSize = 5 * 1024 * 1024; // 5MB
+
     if (file.Size > maxEditableSize)
     {
       var confirmed = await DialogService.Confirm(
-        $"This file is {FormatFileSize(file.Size)}. Files larger than 5KB cannot be edited in the browser.\n\nWould you like to download it instead?",
+        $"This file is {FormatFileSize(file.Size)}. Files larger than 5MB cannot be edited in the browser.\n\nWould you like to download it instead?",
         "File Too Large",
         new ConfirmOptions { OkButtonText = "Download", CancelButtonText = "Cancel" });
       
@@ -346,10 +410,11 @@
       },
       new DialogOptions
       {
-        Width = "900px",
-        Height = "700px",
+        Width = "90vw",
+        Height = "85vh",
         Resizable = true,
-        Draggable = true
+        Draggable = true,
+        CloseDialogOnOverlayClick = false
       });
 
     // Refresh file list if file was saved
