@@ -13,7 +13,8 @@ namespace GameServer.Docker.Services
         IGameTypeRepository gameTypeRepository,
         IOptions<Configurations.VolumeDriverConfigOptions> volOptions,
         IOptions<Configurations.NetworkOptions> netOptions,
-        INodeAgentDiscovery agentDiscovery)
+        INodeAgentDiscovery agentDiscovery,
+        WebHostResolver webHostResolver)
     {
         /// <summary>
         /// Builds a Docker Swarm ServiceSpec from a GameServer and GameTypeDefinition.
@@ -58,13 +59,17 @@ namespace GameServer.Docker.Services
             }
 
             // 4. Extract memory reservation from settings (if specified)
-            var memoryLimit = ExtractMemoryLimit(server, definition);
+            long? memoryLimit = null;// ExtractMemoryLimit(server, definition); //I'll do something else with this...  
+            //TODO:Reservation and Limits need some thought...  
 
             // 5. Build service name - preserve existing name if updating
             var serviceName = existingSpec?.Name ?? 
                               (string.IsNullOrWhiteSpace(server.ServiceName)
                                   ? $"{server.GameType}_{server.ServerId}"
                                   : server.ServiceName);
+
+            //5a. Fetch extended metadata for this game type
+            var extendedMetadata = await gameTypeRepository.GetExtendedMetadataAsync(definition.Key);
 
             // 6. Build labels to identify this as a managed GameServer
             var labels = new Dictionary<string, string>
@@ -75,6 +80,26 @@ namespace GameServer.Docker.Services
                 [ServiceLabels.Description] = server.Description,
                 [ServiceLabels.GameType] = server.GameType
             };
+
+            // 6a. Auto-generate reverse proxy labels if web hosts are defined
+            if (extendedMetadata?.WebHosts?.Any() == true)
+            {
+                var resolvedHosts = webHostResolver.ResolveWebHosts(
+                    extendedMetadata.WebHosts,
+                    server.Settings);
+
+                if (resolvedHosts.Any())
+                {
+                    var proxyLabels = GenerateReverseProxyLabels(server, resolvedHosts, serviceName);
+                    foreach (var label in proxyLabels)
+                    {
+                        labels[label.Key] = label.Value;
+                    }
+
+                    logger.LogInformation("Generated {Count} reverse proxy labels for {HostCount} web hosts",
+                        proxyLabels.Count, resolvedHosts.Count);
+                }
+            }
 
             // 7. Preserve existing mode (replicated/global) if updating
             ServiceMode? mode = GenerateServiceMode(stopService, existingSpec?.Mode);
@@ -89,9 +114,6 @@ namespace GameServer.Docker.Services
 
             // 9. Preserve rollback config if exists - FIXED: Use SwarmUpdateConfig
             SwarmUpdateConfig? rollbackConfig = existingSpec?.RollbackConfig;
-
-            //Fetch extended metadata for this game type to determine if TTY should be enabled
-            var extendedMetadata = await gameTypeRepository.GetExtendedMetadataAsync(definition.Key);
 
             // 10. Construct the ServiceSpec
             var serviceSpec = new ServiceSpec
@@ -126,7 +148,7 @@ namespace GameServer.Docker.Services
                         Delay = 5000000000
                     }
                 },
-                Networks = CreateNetworkConfig(existingSpec?.Networks).Result,
+                Networks = CreateNetworkConfig(existingSpec?.Networks, extendedMetadata?.WebHosts).Result,
                 EndpointSpec = new EndpointSpec
                 {
                     Ports = portConfigs
@@ -140,41 +162,46 @@ namespace GameServer.Docker.Services
             return serviceSpec;
         }
 
-        private async Task<IList<NetworkAttachmentConfig>> CreateNetworkConfig(IList<NetworkAttachmentConfig>? existing)
+        /// <summary>
+        /// Creates network configuration for the service.
+        /// Only attaches to networks if functionality is enabled.
+        /// </summary>
+        private async Task<IList<NetworkAttachmentConfig>> CreateNetworkConfig(
+            IList<NetworkAttachmentConfig>? existing,
+            List<Models.WebHostDefinition>? webHosts)
         {
             var opts = netOptions.Value;
+            var networks = new List<NetworkAttachmentConfig>();
 
-            if (opts != null 
-                && !string.IsNullOrEmpty(opts.NetworkName))
+            //We don't need to connect to any network if we don't have any web hosts, since we won't be exposing ports or using reverse proxy features
+
+            // Add load balancer network ONLY if web hosts are configured
+            if (webHosts?.Any() == true)
             {
-                //lookup the network name
-                var networks = await serviceOperations.ListNetworksAsync(new NetworksListParameters
+                var lbNetwork = opts?.LoadBalancerNetwork;
+                if (!string.IsNullOrWhiteSpace(lbNetwork) && lbNetwork != opts?.NetworkName)
                 {
-                    Filters = new Dictionary<string, IDictionary<string, bool>>
+                    logger.LogInformation("Attaching service to load balancer network: {NetworkName} (for {Count} web hosts)", 
+                        lbNetwork, webHosts.Count);
+                    networks.Add(new NetworkAttachmentConfig
                     {
-                        ["name"] = new Dictionary<string, bool>
-                        {
-                            [opts.NetworkName] = true
-                        }
-                    }
-                });
-                if (networks.Count > 0)
+                        Target = lbNetwork,
+                        Aliases = new List<string>(),
+                        DriverOpts = null,
+                    });
+                }
+                else if (string.IsNullOrWhiteSpace(lbNetwork))
                 {
-                    logger.LogInformation("Attaching service to network: {NetworkName}", opts.NetworkName);
-                    List<NetworkAttachmentConfig> myNets = new List<NetworkAttachmentConfig>
-                    {
-                        new NetworkAttachmentConfig
-                        {
-                            Target = opts.NetworkName,
-                            Aliases = new List<string>(),
-                            DriverOpts = null,
-                        }
-                    };
-                    return myNets;
+                    logger.LogWarning("Service has web hosts configured but no LoadBalancerNetwork is set. Web interfaces will not be accessible via reverse proxy.");
                 }
             }
-            logger.LogWarning("No valid network configuration found. Service will be created without network attachments.");
-            return new List<NetworkAttachmentConfig>();
+
+            if (!networks.Any())
+            {
+                logger.LogDebug("Service will be created without network attachments (ports will be exposed directly).");
+            }
+
+            return networks;
         }
 
         private ServiceMode GenerateServiceMode(bool stopped, ServiceMode? existing)
@@ -186,7 +213,7 @@ namespace GameServer.Docker.Services
                         Replicated = new ReplicatedService
                         {
                             Replicas = 1,
-
+                            
                         }
                     };
             }
@@ -978,6 +1005,87 @@ namespace GameServer.Docker.Services
                 return null;
             }
         }
+
+        /// <summary>
+        /// Generates reverse proxy labels based on the configured provider.
+        /// </summary>
+        private Dictionary<string, string> GenerateReverseProxyLabels(
+            Models.GameServer server,
+            List<ResolvedWebHost> webHosts,
+            string serviceName)
+        {
+            var provider = netOptions.Value?.LoadBalancerProvider?.ToLowerInvariant() ?? "none";
+
+            return provider switch
+            {
+                "traefik" => GenerateTraefikLabels(server, webHosts, serviceName),
+                //"nginx" => GenerateNginxLabels(server, webHosts, serviceName),
+                //"caddy" => GenerateCaddyLabels(server, webHosts, serviceName),
+                "none" => new Dictionary<string, string>(),
+                _ => throw new NotSupportedException($"Load balancer provider '{provider}' is not supported. Supported providers: traefik & none")
+            };
+        }
+
+        /// <summary>
+        /// Generates Traefik-specific labels for service discovery and routing.
+        /// </summary>
+        private Dictionary<string, string> GenerateTraefikLabels(
+            Models.GameServer server,
+            List<ResolvedWebHost> webHosts,
+            string serviceName)
+        {
+            var labels = new Dictionary<string, string>();
+
+            // Global enable for Traefik
+            labels["traefik.enable"] = "true";
+
+            // Generate labels for each web host
+            for (int i = 0; i < webHosts.Count; i++)
+            {
+                var host = webHosts[i];
+
+                // Create unique router name (first host uses base name, others append path segment)
+                var routerName = i == 0
+                    ? serviceName
+                    : $"{serviceName}-{host.PathSegment}";
+
+                // Build path prefix (first host gets base path, others get subpaths)
+                var pathPrefix = i == 0
+                    ? $"/game-{server.ServerId}"
+                    : $"/game-{server.ServerId}/{host.PathSegment}";
+
+                // Router rule - match path prefix
+                labels[$"traefik.http.routers.{routerName}.rule"] = $"PathPrefix(`{pathPrefix}`)";
+
+                // Link router to service
+                labels[$"traefik.http.routers.{routerName}.service"] = routerName;
+
+                // Service backend configuration
+                labels[$"traefik.http.services.{routerName}.loadbalancer.server.port"] = host.ContainerPort.ToString();
+
+                // Create strip prefix middleware
+                labels[$"traefik.http.middlewares.{routerName}-strip.stripprefix.prefixes"] = pathPrefix;
+
+                // Apply middleware to router
+                var middlewares = new List<string> { $"{routerName}-strip" };
+
+                // Add auth middleware if required
+                if (host.RequiresAuth)
+                {
+                    middlewares.Add($"{routerName}-auth");
+                    // Note: Auth configuration is typically handled globally in Traefik config
+                }
+
+                labels[$"traefik.http.routers.{routerName}.middlewares"] = string.Join(",", middlewares);
+
+                logger.LogDebug("Generated Traefik labels for web host '{Name}' on port {Port} with path {Path}",
+                    host.Name, host.ContainerPort, pathPrefix);
+            }
+
+            return labels;
+        }
+
+        
     }
 }
 

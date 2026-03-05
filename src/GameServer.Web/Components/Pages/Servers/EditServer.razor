@@ -6,6 +6,7 @@
 @using Radzen.Blazor
 @inject IGameServerApi ServerApi
 @inject IGameTypeApi GameTypeApi
+@inject IGameTypeExtendedMetadataApi ExtendedMetadataApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject DialogService DialogService
@@ -280,13 +281,21 @@
                     <div class="p-3">
                         <EditForm Model="Server">
                         <DataAnnotationsValidator/>
-        
+
                         <ServerEnvironmentEditor GameTypeDefinition="@gameType" 
                            Server="@Server" 
                            ServerChanged="@OnServerChanged"
                            OnValidationChanged="@OnValidationChanged"
                            />
                            </EditForm>
+
+                        @if (extendedMetadata?.WebHosts?.Any() == true)
+                        {
+                            <div class="mt-4">
+                                <WebHostsPreview WebHosts="@extendedMetadata.WebHosts"
+                                                 ServerSettings="@Server.Settings" />
+                            </div>
+                        }
                     </div>
                 </RadzenTabsItem>
             </Tabs>
@@ -299,6 +308,7 @@
 
     private GameServer? Server;
     private GameTypeDefinition? gameType;
+    private GameTypeExtendedMetadata? extendedMetadata;
     private bool loading = true;
     private bool saving = false;
     private List<string> protocols = new() { "tcp", "udp" };
@@ -328,12 +338,26 @@
         try
         {
             Server = await ServerApi.GetAsync(ServerId);
-            
+
             if (Server != null)
             {
                 // Load game type definition
                 var allGameTypes = await GameTypeApi.GetAllAsync();
                 gameType = allGameTypes.FirstOrDefault(gt => gt.Key == Server.GameType);
+
+                // Load extended metadata for web hosts preview
+                if (!string.IsNullOrWhiteSpace(Server.GameType))
+                {
+                    try
+                    {
+                        extendedMetadata = await ExtendedMetadataApi.GetAsync(Server.GameType);
+                    }
+                    catch
+                    {
+                        // Extended metadata is optional
+                        extendedMetadata = null;
+                    }
+                }
 
                 // Initialize collections if null
                 Server.Settings ??= new Dictionary<string, string>();

@@ -1,0 +1,290 @@
+@using GameServer.Docker.Client
+@inject DialogService DialogService
+
+<RadzenStack Gap="1rem">
+    <RadzenFormField Text="Name" Variant="@Variant.Outlined">
+        <ChildContent>
+            <RadzenTextBox @bind-Value="WebHost.Name" 
+                           Placeholder="e.g., Dynmap, Admin Panel, Metrics" 
+                           Style="width: 100%;" />
+        </ChildContent>
+        <Helper>
+            <small class="text-muted">Display name for this web interface</small>
+        </Helper>
+    </RadzenFormField>
+
+    <RadzenFormField Text="Description" Variant="@Variant.Outlined">
+        <RadzenTextArea @bind-Value="WebHost.Description" 
+                        Placeholder="Brief description of this interface"
+                        Rows="2"
+                        Style="width: 100%;" />
+    </RadzenFormField>
+
+    <!-- Port Configuration -->
+    <RadzenFieldset Text="Port Configuration">
+        <RadzenStack Gap="0.5rem">
+            <RadzenRadioButtonList @bind-Value="portSource" 
+                                   TValue="PortSource"
+                                   Orientation="Orientation.Vertical">
+                <Items>
+                    <RadzenRadioButtonListItem Text="Fixed Port" Value="PortSource.Fixed" />
+                    <RadzenRadioButtonListItem Text="From Environment Variable" Value="PortSource.Variable" />
+                </Items>
+            </RadzenRadioButtonList>
+
+            @if (portSource == PortSource.Fixed)
+            {
+                <RadzenFormField Text="Container Port" Variant="@Variant.Outlined">
+                    <ChildContent>
+                        <RadzenNumeric @bind-Value="containerPortInt" 
+                                       TValue="int" 
+                                       Min="1" 
+                                       Max="65535"
+                                       Style="width: 100%;" />
+                    </ChildContent>
+                    <Helper>
+                        <small class="text-muted">Fixed port number the web interface listens on</small>
+                    </Helper>
+                </RadzenFormField>
+            }
+            else
+            {
+                <RadzenFormField Text="Port Variable Name" Variant="@Variant.Outlined">
+                    <ChildContent>
+                        <RadzenTextBox @bind-Value="WebHost.ContainerPortVariable" 
+                                       Placeholder="e.g., WEBUI_PORT, ADMIN_PORT"
+                                       Style="width: 100%;" />
+                    </ChildContent>
+                    <Helper>
+                        <small class="text-muted">Environment variable containing the port number</small>
+                    </Helper>
+                </RadzenFormField>
+
+                @if (AvailableSettings?.Any() == true)
+                {
+                    <div class="mt-2">
+                        <small class="text-muted">Available settings:</small>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            @foreach (var setting in AvailableSettings)
+                            {
+                                <RadzenBadge Text="@setting" 
+                                             BadgeStyle="BadgeStyle.Light"
+                                             Style="cursor: pointer;"
+                                             @onclick="@(() => WebHost.ContainerPortVariable = setting)" />
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </RadzenStack>
+    </RadzenFieldset>
+
+    <!-- Conditional Enabling -->
+    <RadzenFieldset Text="Conditional Enabling (Optional)">
+        <RadzenStack Gap="0.5rem">
+            <RadzenFormField Text="Enabled When" Variant="@Variant.Outlined">
+                <ChildContent>
+                    <RadzenTextBox @bind-Value="WebHost.EnabledWhen" 
+                                   Placeholder="e.g., DYNMAP_ENABLED=true, WEB_MODE!=disabled"
+                                   Style="width: 100%;" />
+                </ChildContent>
+                <Helper>
+                    <small class="text-muted">
+                        Condition in format: <code>VARIABLE=value</code> or <code>VARIABLE!=value</code>
+                        <br />
+                        Leave empty to always enable this host.
+                    </small>
+                </Helper>
+            </RadzenFormField>
+
+            @if (AvailableSettings?.Any() == true && string.IsNullOrWhiteSpace(WebHost.EnabledWhen))
+            {
+                <div>
+                    <small class="text-muted">Quick conditions from available settings:</small>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                        @foreach (var setting in AvailableSettings)
+                        {
+                            <RadzenBadge Text="@($"{setting}=true")" 
+                                         BadgeStyle="BadgeStyle.Light"
+                                         Style="cursor: pointer;"
+                                         @onclick="@(() => WebHost.EnabledWhen = $"{setting}=true")" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(WebHost.EnabledWhen))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Size="AlertSize.Small">
+                    <RadzenIcon Icon="info" Style="font-size: 1rem;" />
+                    This route will only be created when the condition is met
+                </RadzenAlert>
+            }
+        </RadzenStack>
+    </RadzenFieldset>
+
+    <!-- Advanced Options -->
+    <RadzenFieldset Text="Advanced Options">
+        <RadzenStack Gap="0.5rem">
+            <RadzenFormField Text="URL Path Segment (Optional)" Variant="@Variant.Outlined">
+                <ChildContent>
+                    <RadzenTextBox @bind-Value="WebHost.PathSegment" 
+                                   Placeholder="@GetPathPlaceholder()"
+                                   Style="width: 100%;" />
+                </ChildContent>
+                <Helper>
+                    <small class="text-muted">
+                        Custom URL path. Leave empty to auto-generate: 
+                        <code>@GetPathPlaceholder()</code>
+                    </small>
+                </Helper>
+            </RadzenFormField>
+
+            <RadzenFormField Text="Requires Authentication" Variant="@Variant.Outlined">
+                <ChildContent>
+                    <RadzenSwitch @bind-Value="WebHost.RequiresAuth" />
+                </ChildContent>
+                <Helper>
+                    <small class="text-muted">Protect this interface with authentication (future feature)</small>
+                </Helper>
+            </RadzenFormField>
+        </RadzenStack>
+    </RadzenFieldset>
+
+    <!-- Preview -->
+    @if (!string.IsNullOrEmpty(WebHost.Name))
+    {
+        <RadzenCard Variant="Variant.Outlined" class="mt-2">
+            <h6 class="mb-2">
+                <RadzenIcon Icon="visibility" />
+                Preview
+            </h6>
+            <div class="preview-info">
+                <div class="preview-row">
+                    <span class="preview-label">URL Pattern:</span>
+                    <code>https://yourdomain.com/game-{serverId}/@(WebHost.PathSegment ?? WebHost.Name.ToLower().Replace(" ", "-"))/</code>
+                </div>
+                <div class="preview-row">
+                    <span class="preview-label">Port:</span>
+                    <code>
+                        @if (portSource == PortSource.Fixed)
+                        {
+                            <text>@WebHost.ContainerPort (fixed)</text>
+                        }
+                        else
+                        {
+                            <text>${@(WebHost.ContainerPortVariable ?? "VARIABLE")} (dynamic)</text>
+                        }
+                    </code>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(WebHost.EnabledWhen))
+                {
+                    <div class="preview-row">
+                        <span class="preview-label">Enabled:</span>
+                        <code>@WebHost.EnabledWhen</code>
+                    </div>
+                }
+            </div>
+        </RadzenCard>
+    }
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" 
+                      ButtonStyle="ButtonStyle.Light" 
+                      Click="Cancel" />
+        <RadzenButton Text="@(IsNew ? "Add" : "Save")" 
+                      ButtonStyle="ButtonStyle.Primary" 
+                      Disabled="@(!IsValid())"
+                      Click="Save" />
+    </div>
+</RadzenStack>
+
+<style>
+    .preview-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .preview-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .preview-label {
+        font-weight: 600;
+        min-width: 80px;
+    }
+</style>
+
+@code {
+    [Parameter] public WebHostDefinition WebHost { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public List<string>? AvailableSettings { get; set; }
+
+    private PortSource portSource = PortSource.Fixed;
+    private int containerPortInt = 8080;
+
+    protected override void OnInitialized()
+    {
+        // Determine initial port source
+        portSource = string.IsNullOrWhiteSpace(WebHost.ContainerPortVariable) 
+            ? PortSource.Fixed 
+            : PortSource.Variable;
+
+        // Initialize int port for RadzenNumeric
+        containerPortInt = (int)WebHost.ContainerPort;
+
+        base.OnInitialized();
+    }
+
+    private string GetPathPlaceholder()
+    {
+        if (string.IsNullOrWhiteSpace(WebHost.Name))
+            return "auto-generated";
+
+        return WebHost.Name.ToLower().Replace(" ", "-");
+    }
+
+    private bool IsValid()
+    {
+        if (string.IsNullOrWhiteSpace(WebHost.Name))
+            return false;
+
+        if (portSource == PortSource.Fixed && WebHost.ContainerPort == 0)
+            return false;
+
+        if (portSource == PortSource.Variable && string.IsNullOrWhiteSpace(WebHost.ContainerPortVariable))
+            return false;
+
+        return true;
+    }
+
+    private void Save()
+    {
+        // Convert int back to int (WebHost.ContainerPort is int in generated client)
+        if (portSource == PortSource.Fixed)
+        {
+            WebHost.ContainerPort = containerPortInt;
+            WebHost.ContainerPortVariable = null;
+        }
+        else
+        {
+            // ContainerPortVariable is set, port might be ignored
+        }
+
+        DialogService.Close(WebHost);
+    }
+
+    private void Cancel()
+    {
+        DialogService.Close(null);
+    }
+
+    private enum PortSource
+    {
+        Fixed,
+        Variable
+    }
+}

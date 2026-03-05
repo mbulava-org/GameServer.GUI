@@ -315,6 +315,13 @@
               </RadzenCard>
             </div>
           </RadzenTabsItem>
+
+          <RadzenTabsItem Text="Web Hosts">
+            <div class="p-3">
+              <WebHostsEditor WebHosts="@(metadata.WebHosts?.ToList() ?? new List<global::GameServer.Docker.Client.WebHostDefinition>())" 
+                              AvailableSettings="@GetAvailableSettings()" />
+            </div>
+          </RadzenTabsItem>
         </Tabs>
       </RadzenTabs>
 
@@ -814,13 +821,12 @@ private void SetValueMappings(SettingMetadata setting, string json)
       });
     }
   }
-}
-      {
-        Severity = NotificationSeverity.Error,
-        Summary = "Save Failed",
-        Detail = $"Failed to save metadata: {ex.Message}",
-        Duration = 5000
-      });
-    }
+
+  private List<string> GetAvailableSettings()
+  {
+    if (gameTypeDefinition?.DefaultSettings == null)
+      return new List<string>();
+
+    return gameTypeDefinition.DefaultSettings.Keys.ToList();
   }
 }

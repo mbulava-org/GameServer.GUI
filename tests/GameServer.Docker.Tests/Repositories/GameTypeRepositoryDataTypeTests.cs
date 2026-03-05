@@ -137,29 +137,26 @@ public class GameTypeRepositoryDataTypeTests : IDisposable
 
     #endregion
 
-    #region Invalid DataType Tests
+    #region DataType Normalization Tests (No Validation)
 
     [Theory]
-    [InlineData("invalid")]
-    [InlineData("text")]
-    [InlineData("integer")]
-    [InlineData("float")]
-    [InlineData("date")]
-    [InlineData("datetime")]
-    [InlineData("json")]
-    public async Task SaveExtendedMetadata_WithInvalidDataType_ShouldConvertToNull(string invalidType)
+    [InlineData("invalid", "invalid")]
+    [InlineData("text", "text")]
+    [InlineData("integer", "integer")]
+    [InlineData("CustomType", "customtype")]
+    public async Task SaveExtendedMetadata_WithAnyDataType_ShouldNormalizeCaseOnly(string inputType, string expectedType)
     {
         // Arrange
-        var gameType = await CreateTestGameTypeAsync($"test-game-invalid-{invalidType}");
-        var metadata = CreateTestMetadata(gameType.Key, invalidType);
+        var gameType = await CreateTestGameTypeAsync($"test-game-custom-{inputType}");
+        var metadata = CreateTestMetadata(gameType.Key, inputType);
 
         // Act
         var result = await _repository.SaveExtendedMetadataAsync(gameType.Key, metadata);
 
         // Assert
         Assert.NotNull(result);
-        // Invalid types should be normalized to null (allowed by constraint)
-        Assert.Null(result.SettingsMetadata["TEST_SETTING"].DataType);
+        // Any type should be normalized to lowercase, not converted to null
+        Assert.Equal(expectedType, result.SettingsMetadata["TEST_SETTING"].DataType);
     }
 
     #endregion
@@ -179,7 +176,7 @@ public class GameTypeRepositoryDataTypeTests : IDisposable
             {
                 ["STRING_SETTING"] = new() { Key = "STRING_SETTING", DataType = "STRING" },
                 ["NUMBER_SETTING"] = new() { Key = "NUMBER_SETTING", DataType = "number" },
-                ["INVALID_SETTING"] = new() { Key = "INVALID_SETTING", DataType = "invalid" },
+                ["CUSTOM_SETTING"] = new() { Key = "CUSTOM_SETTING", DataType = "custom" }, // Custom type allowed
                 ["NULL_SETTING"] = new() { Key = "NULL_SETTING", DataType = null },
                 ["EMPTY_SETTING"] = new() { Key = "EMPTY_SETTING", DataType = "" },
                 ["TIMEZONE_SETTING"] = new() { Key = "TIMEZONE_SETTING", DataType = "timezone" }
@@ -200,7 +197,7 @@ public class GameTypeRepositoryDataTypeTests : IDisposable
         Assert.NotNull(result);
         Assert.Equal("string", result.SettingsMetadata["STRING_SETTING"].DataType); // Normalized to lowercase
         Assert.Equal("number", result.SettingsMetadata["NUMBER_SETTING"].DataType);
-        Assert.Null(result.SettingsMetadata["INVALID_SETTING"].DataType); // Invalid converted to null
+        Assert.Equal("custom", result.SettingsMetadata["CUSTOM_SETTING"].DataType); // Custom type preserved (lowercase)
         Assert.Null(result.SettingsMetadata["NULL_SETTING"].DataType);
         Assert.Null(result.SettingsMetadata["EMPTY_SETTING"].DataType); // Empty converted to null
         Assert.Equal("timezone", result.SettingsMetadata["TIMEZONE_SETTING"].DataType);
@@ -211,20 +208,20 @@ public class GameTypeRepositoryDataTypeTests : IDisposable
     #region Update Existing Metadata Tests
 
     [Fact]
-    public async Task SaveExtendedMetadata_UpdateExistingWithInvalidDataType_ShouldNormalize()
+    public async Task SaveExtendedMetadata_UpdateExistingWithCustomDataType_ShouldPreserveIt()
     {
         // Arrange - Create initial metadata with valid type
         var gameType = await CreateTestGameTypeAsync("test-game-update");
         var initialMetadata = CreateTestMetadata(gameType.Key, "string");
         await _repository.SaveExtendedMetadataAsync(gameType.Key, initialMetadata);
 
-        // Act - Update with invalid type
-        var updatedMetadata = CreateTestMetadata(gameType.Key, "invalid_type");
+        // Act - Update with custom type
+        var updatedMetadata = CreateTestMetadata(gameType.Key, "custom_type");
         var result = await _repository.SaveExtendedMetadataAsync(gameType.Key, updatedMetadata);
 
-        // Assert - Should be normalized to null
+        // Assert - Should be normalized to lowercase, not converted to null
         Assert.NotNull(result);
-        Assert.Null(result.SettingsMetadata["TEST_SETTING"].DataType);
+        Assert.Equal("custom_type", result.SettingsMetadata["TEST_SETTING"].DataType);
     }
 
     [Fact]

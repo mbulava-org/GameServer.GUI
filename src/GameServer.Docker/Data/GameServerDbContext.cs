@@ -128,11 +128,7 @@ namespace GameServer.Docker.Data
             // SettingMetadata configuration
             modelBuilder.Entity<SettingMetadataEntity>(entity =>
             {
-                entity.ToTable("SettingsMetadata", t =>
-                {
-                    t.HasCheckConstraint("CK_SettingsMetadata_DataType",
-                        "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port', 'timezone')");
-                });
+                entity.ToTable("SettingsMetadata");
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.DefaultSettingId).IsUnique();
                 entity.HasIndex(e => e.Category);

@@ -98,6 +98,7 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<ServiceOperationsViaAgent>();
 
                 builder.Services.AddSingleton<DockerServiceHelper>();
+                builder.Services.AddSingleton<WebHostResolver>();
 
                 // File Management
                 builder.Services.AddSingleton<IGameServerFileManager, GameServerFileManagerService>();
