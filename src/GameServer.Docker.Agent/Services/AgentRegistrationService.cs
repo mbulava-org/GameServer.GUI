@@ -280,11 +280,11 @@ namespace GameServer.Docker.Agent.Services
                     .Where(cap => !managerOnlyCapabilities.Contains(cap))
                     .ToList();
 
-                return filtered;
+                return filtered.Distinct().ToList();
             }
 
             // Manager nodes get all configured capabilities
-            return configuredCapabilities;
+            return configuredCapabilities.Distinct().ToList();
         }
 
         private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)

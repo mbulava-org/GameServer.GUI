@@ -1,0 +1,95 @@
+version: '3.7'
+##BETA Deployments
+networks:
+  exposed-services:
+    external: true
+    name: external-2
+  gameserver-network:
+    external: true
+    name: gameserver-network-test
+
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=192.168.53.235,rw,nfsvers=3,soft,sync,noatime"
+      device: ":/volume1/newdev-docker/gameservers"
+
+services:
+# No longer going to expose the Beta GUI since I'm really using this Stack to Test Current Changes to the GUI...  
+#  gameserver-gui:
+#    image: mbulava/gameserver-web:beta
+#    ports:
+#      - 7071:8080
+#    networks:
+#      - exposed-services
+#    environment:
+#      - GameServerDockerApi__BaseUri=http://gameserver-docker-test_gameserver-docker:8080/
+      
+  gameserver-docker:
+    image: mbulava/gameserver-docker:webredirects
+    user: "1000:1000"
+    networks:
+      - gameserver-network
+    ports:
+      - 5163:8080
+    volumes:
+      #- data:/data
+      - type: volume
+        source: data
+        target: /data
+        volume:
+          nocopy: true
+    deploy:
+      placement:
+        constraints:
+          - "node.labels.size == small"
+    environment:
+      - PortAllocation__StartPort=2000
+      - PortAllocation__EndPort=65535
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Logging__LogLevel__Default=Trace
+      - ConnectionStrings__GameServerDb=Data Source=/data/test-data/gameserver-test.db
+      
+      - VolumeDriverConfigOptions__Name=local
+      - VolumeDriverConfigOptions__Options__type=nfs
+      - VolumeDriverConfigOptions__Options__o=addr=192.168.53.235,rw,nfsvers=3,soft,sync,noatime
+      - VolumeDriverConfigOptions__Options__device=:{RootStoragePath}/{gameTypeKey}_{serverId}/{Source}
+      - VolumeDriverConfigOptions__RootStoragePath=/volume1/newdev-docker/gameservers
+      - VolumeDriverConfigOptions__SubPathFormat={gameTypeKey}_{serverId}/{Source}
+      - VolumeDriverConfigOptions__LocalStoragePath=/data
+      
+      - NetworkOptions__NetworkName=gameserver-network-test
+      - NetworkOptions__LoadBalancerNetwork=external-2
+      - NetworkOptions__LoadBalancerProvider=traefik
+
+      - NodeAgentOptions__ServiceName=gameserver-docker-test_gameserver-agent
+      - NodeAgentOptions__NetworkName=gameserver-network-test
+      - NodeAgentOptions__Port=8080
+      - NodeAgentOptions__TimeoutSeconds=45
+      - NodeAgentOptions__CacheTimeoutSeconds=30
+      - NodeAgentOptions__EnableBackgroundDiscovery=false
+      - ServiceOperations__Mode=Agent
+
+  gameserver-agent:
+    image: mbulava/gameserver-docker-agent:webredirects
+    deploy:
+      mode: global  # Deploy one replica per node
+    restart: unless-stopped  
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - gameserver-network
+    environment:
+      - NODE_NAME={{.Node.Hostname}}
+      - NODE_ID={{.Node.ID}}
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - Logging__LogLevel__Default=Trace
+      - Logging__LogLevel__Microsoft.AspNetCore=Information      
+      - ContainerStatsStreamOptions__MaxStreamDurationSeconds=10
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker-test_gameserver-docker:8080/
+      - AgentRegistration__HeartbeatIntervalSeconds=30
+      - AgentRegistration__Enabled=true
+      - AgentRegistration__MaxStartupRetries=20
