@@ -81,7 +81,7 @@
   [Parameter] public string FileName { get; set; } = "";
   [Parameter] public long FileSize { get; set; }
 
-  private const long MaxFileSize = 5 * 1024; // 5KB in bytes
+  private const long MaxFileSize = 5 * 1024 * 1024; // 5MB in bytes
   private string fileContent = "";
   private string originalContent = "";
   private bool loading = true;
@@ -257,8 +257,8 @@
   .file-editor-dialog {
     display: flex;
     flex-direction: column;
-    height: 600px;
-    max-height: 80vh;
+    height: 100%;
+    min-height: 400px;
   }
 
   .editor-header {
@@ -267,6 +267,7 @@
     align-items: center;
     padding: 16px;
     border-bottom: 1px solid var(--rz-border-color);
+    flex-shrink: 0;
   }
 
   .file-info {
@@ -301,12 +302,14 @@
     flex: 1;
     overflow: auto;
     padding: 16px;
+    min-height: 0; /* Important for Firefox flexbox */
   }
 
   .file-editor-textarea {
     width: 100%;
-    resize: vertical;
-    min-height: 400px;
+    height: 100%;
+    resize: none; /* Disable textarea resize since dialog is resizable */
+    min-height: 300px;
   }
 
   .editor-footer {
@@ -315,6 +318,7 @@
     align-items: center;
     padding: 16px;
     border-top: 1px solid var(--rz-border-color);
+    flex-shrink: 0;
   }
 
   .footer-info {
