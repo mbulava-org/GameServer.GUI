@@ -248,6 +248,20 @@
 
   private async Task RefreshFiles()
   {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Refreshing", 
+      Detail = "Refreshing file list...", 
+      Duration = 2000,
+      CloseOnClick = true
+    });
+
     await LoadFilesAsync();
   }
 
