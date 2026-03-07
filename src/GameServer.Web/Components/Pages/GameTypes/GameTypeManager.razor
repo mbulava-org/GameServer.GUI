@@ -142,7 +142,7 @@
 
                     <RadzenDataGridColumn TItem="GameTypeDefinition" 
                                          Title="Actions" 
-                                         Width="140px"
+                                         Width="180px"
                                          Sortable="false"
                                          Filterable="false"
                                          TextAlign="TextAlign.Center">
@@ -153,6 +153,12 @@
                                             ButtonStyle="ButtonStyle.Light" 
                                             Click="@(() => NavigateToGameType(gameType.Key))"
                                             title="Edit"
+                                            Variant="Variant.Flat" />
+                                <RadzenButton Icon="extension" 
+                                            Size="ButtonSize.Small" 
+                                            ButtonStyle="ButtonStyle.Info" 
+                                            Click="@(() => EditExtendedMetadata(gameType.Key))"
+                                            title="Edit Extended Metadata"
                                             Variant="Variant.Flat" />
                                 <RadzenButton Icon="content_copy" 
                                             Size="ButtonSize.Small" 
@@ -425,6 +431,13 @@
         // URL encode the key to handle special characters
         var encodedKey = Uri.EscapeDataString(key);
         Navigation.NavigateTo($"/gametypes/{encodedKey}");
+    }
+
+    private void EditExtendedMetadata(string key)
+    {
+        // URL encode the key to handle special characters
+        var encodedKey = Uri.EscapeDataString(key);
+        Navigation.NavigateTo($"/gametypes/{encodedKey}/metadata");
     }
 
     private void OnRowDoubleClick(DataGridRowMouseEventArgs<GameTypeDefinition> args)

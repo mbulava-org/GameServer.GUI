@@ -252,7 +252,7 @@
         if (string.IsNullOrWhiteSpace(WebHost.Name))
             return false;
 
-        if (portSource == PortSource.Fixed && WebHost.ContainerPort == 0)
+        if (portSource == PortSource.Fixed && containerPortInt <= 0)
             return false;
 
         if (portSource == PortSource.Variable && string.IsNullOrWhiteSpace(WebHost.ContainerPortVariable))

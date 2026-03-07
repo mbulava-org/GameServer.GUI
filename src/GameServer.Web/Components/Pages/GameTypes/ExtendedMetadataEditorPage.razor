@@ -1,0 +1,95 @@
+@page "/gametypes/{GameTypeKey}/metadata"
+@rendermode InteractiveServer
+@using global::GameServer.Docker.Client
+@inject IGameTypeApi GameTypeApi
+@inject NavigationManager Navigation
+
+<PageTitle>Extended Metadata - @gameTypeName</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="mb-4">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <RadzenButton Icon="arrow_back" 
+                          ButtonStyle="ButtonStyle.Light" 
+                          Size="ButtonSize.Small"
+                          Click="@(() => Navigation.NavigateTo("/gametypes"))" 
+                          title="Back to Game Types" />
+            <h2 class="mb-0">Extended Metadata</h2>
+        </div>
+        @if (!string.IsNullOrEmpty(gameTypeName))
+        {
+            <p class="text-muted mb-0">
+                <RadzenIcon Icon="sports_esports" Style="font-size: 1rem;" />
+                <strong>@gameTypeName</strong> (@GameTypeKey)
+            </p>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            <p class="mt-3">Loading...</p>
+        </div>
+    }
+    else if (gameTypeNotFound)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenIcon Icon="error" />
+                <div>
+                    <strong>Game Type Not Found</strong>
+                    <p class="mb-0">The game type "@GameTypeKey" could not be found.</p>
+                </div>
+            </div>
+        </RadzenAlert>
+    }
+    else
+    {
+        <ExtendedMetadataEditor GameTypeKey="@GameTypeKey" />
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string GameTypeKey { get; set; } = "";
+
+    private bool isLoading = true;
+    private bool gameTypeNotFound = false;
+    private string gameTypeName = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(GameTypeKey))
+        {
+            await LoadGameType();
+        }
+    }
+
+    private async Task LoadGameType()
+    {
+        isLoading = true;
+        gameTypeNotFound = false;
+        
+        try
+        {
+            var gameType = await GameTypeApi.GetAsync(GameTypeKey);
+            if (gameType != null)
+            {
+                gameTypeName = gameType.DisplayName;
+            }
+            else
+            {
+                gameTypeNotFound = true;
+            }
+        }
+        catch
+        {
+            gameTypeNotFound = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
