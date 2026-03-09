@@ -108,6 +108,16 @@ else
                       <span class="label">Service Name:</span>
                       <span class="value">@server.ServiceName</span>
                     </div>
+                    @if (!string.IsNullOrWhiteSpace(containerUserGroup))
+                    {
+                      <div class="info-row">
+                        <span class="label">Container User/Group:</span>
+                        <span class="value">
+                          <code>@containerUserGroup</code>
+                          <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="File Ownership" Size="BadgeSize.Small" class="ms-2" title="Files created by this server will be owned by this UID:GID" />
+                        </span>
+                      </div>
+                    }
                     @if (!string.IsNullOrWhiteSpace(server.Description))
                     {
                       <div class="info-row-full">
@@ -489,12 +499,14 @@ private bool actionInProgress = false;
 private int selectedTab = 0;
 private string? publicIp;
 private string? containerId;
+private string? containerUserGroup;
 
 protected override async Task OnInitializedAsync()
 {
     await LoadServerAsync();
     await LoadPublicIpAsync();
     await LoadResourceUsageAsync();
+    await LoadContainerUserGroupAsync();
 }
 
 protected override async Task OnParametersSetAsync()
@@ -587,6 +599,30 @@ private async Task LoadServerAsync()
         {
             // If resource usage fails, try to get containerId from server model
             containerId = server?.ContainerId;
+        }
+    }
+
+    private async Task LoadContainerUserGroupAsync()
+    {
+        try
+        {
+            if (server == null) return;
+
+            // Get the container user/group from the API
+            using var http = new HttpClient { BaseAddress = new Uri(NavigationManager.BaseUri) };
+            var response = await http.GetAsync($"api/servers/{server.ServerId}/usergroup");
+
+            if (response.IsSuccessStatusCode)
+            {
+                containerUserGroup = await response.Content.ReadAsStringAsync();
+                // Remove quotes if JSON string
+                containerUserGroup = containerUserGroup?.Trim('"');
+            }
+        }
+        catch
+        {
+            // If we can't get it, just don't display it
+            containerUserGroup = null;
         }
     }
 

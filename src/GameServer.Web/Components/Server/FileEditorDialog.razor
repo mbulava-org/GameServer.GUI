@@ -68,7 +68,7 @@
         <RadzenButton Text="Save" 
                       Click="SaveFile" 
                       ButtonStyle="ButtonStyle.Primary" 
-                      Disabled="@(!hasChanges || saving)"
+                      Disabled="@saving"
                       Icon="@(saving ? "hourglass_empty" : "save")" />
       </div>
     </div>

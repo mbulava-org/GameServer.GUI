@@ -50,6 +50,34 @@ namespace GameServer.Docker.Controllers
             return Ok(server);
         }
 
+        [HttpGet("{id}/usergroup")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(string))]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetUserGroup(string id, [FromServices] DockerServiceHelper serviceHelper)
+        {
+            var server = await _manager.GetServerById(id);
+            if (server == null)
+                return NotFound();
+
+            try
+            {
+                var swarmService = await serviceHelper.GetSwarmServiceByServiceId(id);
+                var userSpec = swarmService?.Spec?.TaskTemplate?.ContainerSpec?.User;
+
+                if (string.IsNullOrEmpty(userSpec))
+                {
+                    return Ok("root (0:0)");
+                }
+
+                return Ok(userSpec);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting user/group for server {id}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(List<Models.GameServer>))]
         public async Task<IActionResult> List()
