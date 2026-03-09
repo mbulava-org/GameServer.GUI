@@ -680,7 +680,7 @@ namespace GameServer.Docker.Services
                 // Get the existing service from Docker
                 var serviceFilter = new ServiceFilter
                 {
-                    Name = new[] { existing.ServiceName }
+                    Label = new[] { $"{ServiceLabels.ServerId}={server.ServerId}" }
                 };
 
                 var services = await serviceOperations.ListServicesAsync(new ServicesListParameters
@@ -693,8 +693,16 @@ namespace GameServer.Docker.Services
                     logger.LogError("Failed to find existing service for update.");
                     throw new InvalidOperationException($"Existing service '{existing.ServiceName}' not found for update.");
                 }
+                if (services.Count > 1)
+                {
+                    logger.LogError("❌ CRITICAL: Multiple services found with ServerId={ServerId}! Services: {ServiceNames}",
+                        server.ServerId,
+                        string.Join(", ", services.Select(s => $"{s.Spec?.Name}({s.ID})")));
+                    throw new InvalidOperationException($"Multiple services found with ServerId '{server.ServerId}'. This indicates duplicate services in Docker Swarm!");
+                }
 
                 var service = services.First();
+                logger.LogInformation("Found service to update: ID={ServiceId}, Name={ServiceName}", service.ID, service.Spec?.Name);
 
                 // Build updated spec from the new configuration, passing existing spec for reference
                 var updatedSpec = await BuildGameServerServiceSpec(server, definition, service.Spec, performShutdown);
