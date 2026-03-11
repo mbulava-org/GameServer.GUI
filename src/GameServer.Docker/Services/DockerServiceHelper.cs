@@ -10,11 +10,30 @@ namespace GameServer.Docker.Services
 {
     public class DockerServiceHelper(ILogger<DockerServiceHelper> logger,
         IServiceOperations serviceOperations,
-        IGameTypeRepository gameTypeRepository,
+        IServiceProvider serviceProvider,
         IOptions<Configurations.VolumeDriverConfigOptions> volOptions,
         IOptions<Configurations.NetworkOptions> netOptions,
         INodeAgentDiscovery agentDiscovery)
     {
+        /// <summary>
+        /// Helper method to get IGameTypeRepository with proper scoping
+        /// </summary>
+        private async Task<T> WithRepositoryAsync<T>(Func<IGameTypeRepository, Task<T>> action)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IGameTypeRepository>();
+            return await action(repository);
+        }
+
+        /// <summary>
+        /// Helper method to get IGameTypeRepository with proper scoping (void version)
+        /// </summary>
+        private async Task WithRepositoryAsync(Func<IGameTypeRepository, Task> action)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IGameTypeRepository>();
+            await action(repository);
+        }
         /// <summary>
         /// Builds a Docker Swarm ServiceSpec from a GameServer and GameTypeDefinition.
         /// When updating, preserves settings that weren't explicitly changed.
@@ -91,7 +110,7 @@ namespace GameServer.Docker.Services
             SwarmUpdateConfig? rollbackConfig = existingSpec?.RollbackConfig;
 
             //Fetch extended metadata for this game type to determine if TTY should be enabled
-            var extendedMetadata = await gameTypeRepository.GetExtendedMetadataAsync(definition.Key);
+            var extendedMetadata = await WithRepositoryAsync(repo => repo.GetExtendedMetadataAsync(definition.Key));
 
             // 10. Construct the ServiceSpec
             var serviceSpec = new ServiceSpec
@@ -832,7 +851,7 @@ namespace GameServer.Docker.Services
         internal async Task StartGameServerAsync(string serverId)
         {
             var server = await GetGameServerById(serverId);
-            var definition = await gameTypeRepository.GetByKeyAsync(server!.GameType);
+            var definition = await WithRepositoryAsync(repo => repo.GetByKeyAsync(server!.GameType));
             if (definition == null)
             {
                 throw new ArgumentException($"Unable to locate gameType {server.GameType}");
@@ -843,7 +862,7 @@ namespace GameServer.Docker.Services
         internal async Task StopGameServerAsync(string serverId)
         {
             var server = await GetGameServerById(serverId);
-            var definition = await gameTypeRepository.GetByKeyAsync(server!.GameType);
+            var definition = await WithRepositoryAsync(repo => repo.GetByKeyAsync(server!.GameType));
             if (definition == null)
             {
                 throw new ArgumentException($"Unable to locate gameType {server.GameType}");
