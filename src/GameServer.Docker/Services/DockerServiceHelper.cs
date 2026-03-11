@@ -625,15 +625,7 @@ namespace GameServer.Docker.Services
                 Label = new[] { $"{ServiceLabels.ServerId}={Id}" }
             };
 
-            var servicesTask = serviceOperations.ListServicesAsync(new ServicesListParameters { Filters = filters });
-
-            // Fetch tasks for this specific service in parallel
-            var allTasksTask = serviceOperations.ListTasksAsync(new TasksListParameters());
-
-            await Task.WhenAll(servicesTask, allTasksTask);
-
-            var services = (await servicesTask).ToList();
-            var allTasks = (await allTasksTask).ToList();
+            var services = (await serviceOperations.ListServicesAsync(new ServicesListParameters { Filters = filters })).ToList();
 
             if (services.Count == 0)
             {
@@ -648,10 +640,14 @@ namespace GameServer.Docker.Services
 
             var service = services.First();
 
-            // Group tasks by service ID for efficient lookup
-            var tasksByService = allTasks
-                .GroupBy(t => t.ServiceID)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            // Fetch tasks ONLY for this specific service using the Docker service ID
+            var serviceTasks = await GetTasksForSwarmServiceAsync(service.ID);
+
+            // Group tasks by service ID for efficient lookup (maintains compatibility with TryCastGameServer)
+            var tasksByService = new Dictionary<string, List<TaskResponse>>
+            {
+                [service.ID] = serviceTasks
+            };
 
             // Convert to GameServer using optimized method
             var gameServer = await TryCastGameServer(service, tasksByService);

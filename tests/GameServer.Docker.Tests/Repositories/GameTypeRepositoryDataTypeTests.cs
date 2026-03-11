@@ -2,6 +2,7 @@ using GameServer.Docker.Data;
 using GameServer.Docker.Models;
 using GameServer.Docker.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -15,6 +16,7 @@ public class GameTypeRepositoryDataTypeTests : IDisposable
 {
     private readonly GameServerDbContext _context;
     private readonly Mock<ILogger<GameTypeRepository>> _mockLogger;
+    private readonly IMemoryCache _cache;
     private readonly GameTypeRepository _repository;
     private readonly string _dbPath;
 
@@ -31,13 +33,15 @@ public class GameTypeRepositoryDataTypeTests : IDisposable
         _context.Database.EnsureCreated(); // Create schema
 
         _mockLogger = new Mock<ILogger<GameTypeRepository>>();
-        _repository = new GameTypeRepository(_context, _mockLogger.Object);
+        _cache = new MemoryCache(new MemoryCacheOptions());
+        _repository = new GameTypeRepository(_context, _mockLogger.Object, _cache);
     }
 
     public void Dispose()
     {
         _context.Database.CloseConnection();
         _context.Dispose();
+        (_cache as IDisposable)?.Dispose();
     }
 
     #region Valid DataType Tests
