@@ -461,25 +461,37 @@ namespace GameServer.Docker.Services
 
         public async Task<List<Models.GameServer>> ListGameServersAsync()
         {
-            logger.LogInformation("Fetching services from Docker Swarm...");
-            var servicesTask = serviceOperations.ListServicesAsync();
+            logger.LogInformation("Fetching managed services from Docker Swarm...");
 
-            // Fetch ALL tasks in parallel with services - huge performance gain!
-            logger.LogInformation("Fetching all tasks from Docker Swarm...");
-            var allTasksTask = serviceOperations.ListTasksAsync(new TasksListParameters());
+            // Filter services by managed label to reduce API load
+            var filters = new ServiceFilter
+            {
+                Label = [$"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}"]
+            };
 
-            // Wait for both to complete
-            await Task.WhenAll(servicesTask, allTasksTask);
+            var services = (await serviceOperations.ListServicesAsync(new ServicesListParameters { Filters = filters })).ToList();
+            logger.LogInformation($"Found {services.Count} managed game server services");
 
-            var services = (await servicesTask).ToList();
-            var allTasks = (await allTasksTask).ToList();
+            if (services.Count == 0)
+            {
+                return [];
+            }
 
-            logger.LogInformation($"Found {services.Count} total services and {allTasks.Count} tasks");
+            // Fetch tasks ONLY for these services in parallel - one call per service
+            logger.LogInformation("Fetching tasks for managed services in parallel...");
+            var taskFetchTasks = services.Select(async svc =>
+            {
+                var tasks = await GetTasksForSwarmServiceAsync(svc.ID);
+                return new { ServiceId = svc.ID, Tasks = tasks };
+            });
 
-            // Group tasks by service ID for O(1) lookup instead of N API calls
-            var tasksByService = allTasks
-                .GroupBy(t => t.ServiceID)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var taskResults = await Task.WhenAll(taskFetchTasks);
+
+            // Build the tasksByService dictionary from filtered results
+            var tasksByService = taskResults.ToDictionary(r => r.ServiceId, r => r.Tasks);
+            var totalTasks = tasksByService.Values.Sum(t => t.Count);
+
+            logger.LogInformation($"Fetched {totalTasks} tasks across {services.Count} services");
 
             logger.LogInformation("Converting services to GameServers in parallel...");
 
@@ -487,30 +499,10 @@ namespace GameServer.Docker.Services
             var serverTasks = services.Select(svc => TryCastGameServer(svc, tasksByService));
             var serversWithNulls = await Task.WhenAll(serverTasks);
 
-            // Filter out non-GameServer services (nulls)
+            // Filter out non-GameServer services (nulls) - should be none since we pre-filtered
             var servers = serversWithNulls.Where(s => s != null).Select(s => s!).ToList();
 
-            logger.LogInformation($"Found {servers.Count} GameServers out of {services.Count} services");
-
-            // DEBUG: Log service label details to diagnose filtering
-            if (servers.Count == 0 && services.Count > 0)
-            {
-                logger.LogWarning($"No GameServers found among {services.Count} services. Checking labels...");
-                foreach (var svc in services.Take(5)) // Log first 5 services
-                {
-                    var hasLabels = svc.Spec?.Labels != null;
-                    var hasManagedLabel = hasLabels && svc.Spec!.Labels.ContainsKey(ServiceLabels.Managed);
-                    var managedValue = hasManagedLabel ? svc.Spec!.Labels[ServiceLabels.Managed] : "N/A";
-
-                    // Use WARNING so it shows in default log level
-                    logger.LogWarning(
-                        "Service: {Name}, HasLabels: {HasLabels}, HasManagedLabel: {HasManaged}, ManagedValue: {Value}",
-                        svc.Spec?.Name ?? "unknown",
-                        hasLabels,
-                        hasManagedLabel,
-                        managedValue);
-                }
-            }
+            logger.LogInformation($"Converted {servers.Count} GameServers");
 
             return servers;
         }
