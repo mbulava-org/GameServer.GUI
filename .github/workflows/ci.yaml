@@ -2,6 +2,12 @@ name: 'Build and Publish Docker Image'
 
 on:
   workflow_dispatch:
+    inputs:
+      force_publish:
+        default: false
+        type: boolean
+        description: 'Force build and Pusblish of projects even if no changes have been detected.'
+
   push:
     branches:
       - main
@@ -29,7 +35,13 @@ jobs:
       semantic_version: ${{ steps.config.outputs.semantic_version }}
       primary_branch: ${{ steps.config.outputs.primary_branch }}
       push_client_output: ${{ steps.detect-api-changes.outputs.push_client_output }}
-      new_version: ${{ steps.config.outputs.new_version }} 
+      new_version: ${{ steps.config.outputs.new_version }}
+      # Project change detection outputs
+      backend_changed: ${{ steps.detect-project-changes.outputs.backend_changed }}
+      agent_changed: ${{ steps.detect-project-changes.outputs.agent_changed }}
+      web_changed: ${{ steps.detect-project-changes.outputs.web_changed }}
+      client_changed: ${{ steps.detect-project-changes.outputs.client_changed }}
+      tests_changed: ${{ steps.detect-project-changes.outputs.tests_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -99,6 +111,76 @@ jobs:
             echo "push_client_output=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Detect project folder changes
+        id: detect-project-changes
+        run: |
+          # Determine base and head refs for comparison
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            HEAD_REF="${{ github.event.pull_request.head.sha }}"
+          else
+            # For pushes, compare current commit with previous
+            BASE_REF="${{ github.event.before }}"
+            HEAD_REF="${{ github.sha }}"
+          fi
+
+          echo "Detecting project changes between $BASE_REF...$HEAD_REF"
+
+          # Get all changed files
+          CHANGED_FILES=$(git diff --name-only $BASE_REF $HEAD_REF || true)
+
+          # Detect changes in each project folder
+          BACKEND_CHANGED="false"
+          AGENT_CHANGED="false"
+          WEB_CHANGED="false"
+          CLIENT_CHANGED="false"
+          TESTS_CHANGED="false"
+
+          # Check GameServer.Docker (backend)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker/'; then
+            BACKEND_CHANGED="true"
+            echo "::notice::✅ GameServer.Docker project has changes"
+          fi
+
+          # Check GameServer.Docker.Agent (agent-backend)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker\.Agent/'; then
+            AGENT_CHANGED="true"
+            echo "::notice::✅ GameServer.Docker.Agent project has changes"
+          fi
+
+          # Check GameServer.Web (web-gui)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Web/'; then
+            WEB_CHANGED="true"
+            echo "::notice::✅ GameServer.Web project has changes"
+          fi
+
+          # Check GameServer.Docker.Client
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker\.Client/'; then
+            CLIENT_CHANGED="true"
+            echo "::notice::✅ GameServer.Docker.Client project has changes"
+          fi
+
+          # Check any test projects
+          if echo "$CHANGED_FILES" | grep -qE '^tests/'; then
+            TESTS_CHANGED="true"
+            echo "::notice::✅ Test projects have changes"
+          fi
+
+          # Output results
+          echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "agent_changed=$AGENT_CHANGED" >> $GITHUB_OUTPUT
+          echo "web_changed=$WEB_CHANGED" >> $GITHUB_OUTPUT
+          echo "client_changed=$CLIENT_CHANGED" >> $GITHUB_OUTPUT
+          echo "tests_changed=$TESTS_CHANGED" >> $GITHUB_OUTPUT
+
+          # Summary
+          echo "📊 Project Change Detection Summary:"
+          echo "  - Backend (GameServer.Docker): $BACKEND_CHANGED"
+          echo "  - Agent (GameServer.Docker.Agent): $AGENT_CHANGED"
+          echo "  - Web (GameServer.Web): $WEB_CHANGED"
+          echo "  - Client (GameServer.Docker.Client): $CLIENT_CHANGED"
+          echo "  - Tests: $TESTS_CHANGED"
+
   backend:
     needs: [setup]
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
@@ -108,7 +190,7 @@ jobs:
       semantic_version: ${{ needs.setup.outputs.semantic_version }}
       docker_context: './src/GameServer.Docker'
       primary_branch: ${{ needs.setup.outputs.primary_branch }}
-      push_output: true
+      push_output: ${{ needs.setup.outputs.backend_changed == 'true' || inputs.force_publish == 'true'}}
       push_branch: true
       version_tag: false
       semantic_version_rollup_tag: false 
@@ -123,7 +205,7 @@ jobs:
       semantic_version: ${{ needs.setup.outputs.semantic_version }}
       docker_context: './src/GameServer.Docker.Agent'
       primary_branch: ${{ needs.setup.outputs.primary_branch }}
-      push_output: true
+      push_output: ${{ needs.setup.outputs.agent_changed == 'true' || inputs.force_publish == 'true'}}
       push_branch: true
       version_tag: false
       semantic_version_rollup_tag: false 
@@ -151,7 +233,7 @@ jobs:
       docker_context: '.'
       docker_file: './src/GameServer.Web/Dockerfile'
       primary_branch : ${{ needs.setup.outputs.primary_branch }}
-      push_output: true
+      push_output: ${{ needs.setup.outputs.web_changed == 'true' || inputs.force_publish == 'true'}}
       push_branch: true
       version_tag: true
       semantic_version_rollup_tag: false 
