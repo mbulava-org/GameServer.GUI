@@ -6,7 +6,7 @@ on:
       force_publish:
         default: false
         type: boolean
-        description: 'Force build and Pusblish of projects even if no changes have been detected.'
+        description: 'Force build and Publish of projects even if no changes have been detected.'
 
   push:
     branches:
