@@ -64,7 +64,7 @@ jobs:
   build_and_publish_docker:
     runs-on: ubuntu-latest
     env:
-      # NEW_VERSION: ${{ inputs.semantic_version}}
+      NEW_VERSION: ${{ inputs.semantic_version}}
       # VERSION_BUILD: 0
       # VERSION_MAJOR: 0
       # VERSION_MINOR: 0
@@ -93,25 +93,20 @@ jobs:
           NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOTNET_INSTALL_DIR: './.dotnet'
 
-      # - name: 'Calculate NEW_VERSION value'
-      #   run: |
-      #     IFS='.'
-      #     read -ra arr <<< ${{ inputs.semantic_version }}
-      #     inc=${{ github.run_number }}
-      #     old=${arr[3]}
-      #     build="$(( inc + old ))"
-      #     newV=${arr[0]}.${arr[1]}.${arr[2]}.$build
-      #     IFS=" "
-      #     echo "NEW_VERSION=$newV" >> $GITHUB_ENV
-      #     echo "VERSION_BUILD=$build" >> $GITHUB_ENV
-      #     echo "VERSION_MAJOR=${arr[0]}" >> $GITHUB_ENV
-      #     echo "VERSION_MINOR=${arr[1]}" >> $GITHUB_ENV
-      #     echo "VERSION_PATCH=${arr[2]}" >> $GITHUB_ENV
-      #     echo "Successfully parsed ${{ inputs.semantic_version }} and calculated new value $newV"
-      #     echo "Successfully calculated VERSION_BUILD value $build"
-      #     echo "Successfully calculated VERSION_MAJOR value ${arr[0]}"
-      #     echo "Successfully calculated VERSION_MINOR value ${arr[1]}"
-      #     echo "Successfully calculated VERSION_PATCH value ${arr[2]}"
+      - name: 'Calculate Version Parts'
+        run: |
+          IFS='.'
+          read -ra arr <<< ${{ inputs.semantic_version }}
+          IFS=" "
+          echo "VERSION_BUILD=${arr[3]}" >> $GITHUB_ENV
+          echo "VERSION_MAJOR=${arr[0]}" >> $GITHUB_ENV
+          echo "VERSION_MINOR=${arr[1]}" >> $GITHUB_ENV
+          echo "VERSION_PATCH=${arr[2]}" >> $GITHUB_ENV
+          echo "Successfully parsed ${{ inputs.semantic_version }}
+          echo "Successfully calculated VERSION_BUILD value ${arr[3]}"
+          echo "Successfully calculated VERSION_MAJOR value ${arr[0]}"
+          echo "Successfully calculated VERSION_MINOR value ${arr[1]}"
+          echo "Successfully calculated VERSION_PATCH value ${arr[2]}"
 
       - name: 'Calculate DOCKER TAGS'
         run: |
