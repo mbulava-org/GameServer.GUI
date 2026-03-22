@@ -13,7 +13,7 @@ on:
         type: string
         default: '8.0.x'
       semantic_version:
-        description: "The 4 part Version, ie {Major}.{Minor}.{Patch}.{Build}, the {Build} value is the seed value of the action's run_number value."
+        description: "The 4 part Version, ie {Major}.{Minor}.{Patch}.{Build}, {Build} is expected to be unique i.e. {action.run_number}. But this is the actual value supplied to the builds and docker tags."
         type: string
         required: true
         default: '1.0.0.0'
@@ -65,10 +65,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEW_VERSION: ${{ inputs.semantic_version}}
-      # VERSION_BUILD: 0
-      # VERSION_MAJOR: 0
-      # VERSION_MINOR: 0
-      # VERSION_PATCH: 0
       DOCKER_REPO: '${{ secrets.DOCKERHUB_USERNAME}}/${{ inputs.target_repo }}'
       TAG_BUILD: ${{ github.run_number }}
       PUSH_DOCKER: false
@@ -155,7 +151,7 @@ jobs:
           fi
           echo "TAGS=$myTags" >> $GITHUB_ENV
           echo "Successfully calculated PUSH_DOCKER value: ${{ env.PUSH_DOCKER }}"
-          echo "Successfully parsed & calculated new TAG value(s): ${{ env.TAGS }}"
+          echo "Successfully parsed & calculated new TAG value(s): $myTags"
 
       - name: 'Setup Nuget Sources'
         run: |
