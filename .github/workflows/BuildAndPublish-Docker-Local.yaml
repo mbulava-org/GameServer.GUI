@@ -102,7 +102,7 @@ jobs:
           echo "VERSION_MAJOR=${arr[0]}" >> $GITHUB_ENV
           echo "VERSION_MINOR=${arr[1]}" >> $GITHUB_ENV
           echo "VERSION_PATCH=${arr[2]}" >> $GITHUB_ENV
-          echo "Successfully parsed ${{ inputs.semantic_version }}
+          echo "Successfully parsed ${{ inputs.semantic_version }}"
           echo "Successfully calculated VERSION_BUILD value ${arr[3]}"
           echo "Successfully calculated VERSION_MAJOR value ${arr[0]}"
           echo "Successfully calculated VERSION_MINOR value ${arr[1]}"
@@ -153,7 +153,6 @@ jobs:
               fi
             fi
           fi
-          
           echo "TAGS=$myTags" >> $GITHUB_ENV
           echo "Successfully calculated PUSH_DOCKER value: ${{ env.PUSH_DOCKER }}"
           echo "Successfully parsed & calculated new TAG value(s): ${{ env.TAGS }}"
