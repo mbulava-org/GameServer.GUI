@@ -2,6 +2,7 @@ using GameServer.Docker.Data;
 using GameServer.Docker.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations.Internal;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Security.AccessControl;
 using System.Text.Json;
@@ -9,23 +10,39 @@ using System.Text.Json;
 namespace GameServer.Docker.Repositories
 {
     /// <summary>
-    /// Repository implementation using Entity Framework Core and SQLite
+    /// Repository implementation using Entity Framework Core and SQLite with in-memory caching
     /// </summary>
     public class GameTypeRepository : IGameTypeRepository
     {
         private readonly GameServerDbContext _context;
         private readonly ILogger<GameTypeRepository> _logger;
+        private readonly IMemoryCache _cache;
 
-        public GameTypeRepository(GameServerDbContext context, ILogger<GameTypeRepository> logger)
+        private const string ALL_GAMETYPES_CACHE_KEY = "GameTypes_All";
+        private const string GAMETYPE_BY_KEY_CACHE_PREFIX = "GameType_Key_";
+        private const string GAMETYPE_BY_ID_CACHE_PREFIX = "GameType_Id_";
+        private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
+
+        public GameTypeRepository(GameServerDbContext context, ILogger<GameTypeRepository> logger, IMemoryCache cache)
         {
             _context = context;
             _logger = logger;
+            _cache = cache;
         }
 
         #region Query Methods
 
         public async Task<List<GameTypeDefinition>> GetAllAsync(bool includeInactive = false)
         {
+            // Use separate cache keys for active-only vs all
+            var cacheKey = includeInactive ? $"{ALL_GAMETYPES_CACHE_KEY}_IncludeInactive" : ALL_GAMETYPES_CACHE_KEY;
+
+            if (_cache.TryGetValue<List<GameTypeDefinition>>(cacheKey, out var cached))
+            {
+                _logger.LogDebug("Retrieved {Count} GameTypes from cache", cached!.Count);
+                return cached;
+            }
+
             var query = _context.GameTypes
                 .Include(gt => gt.Ports)
                 .Include(gt => gt.Volumes)
@@ -44,11 +61,25 @@ namespace GameServer.Docker.Repositories
             }
 
             var entities = await query.OrderBy(gt => gt.DisplayName).ToListAsync();
-            return entities.Select(MapToModel).ToList();
+            var result = entities.Select(MapToModel).ToList();
+
+            // Cache the result
+            _cache.Set(cacheKey, result, CacheDuration);
+            _logger.LogDebug("Cached {Count} GameTypes", result.Count);
+
+            return result;
         }
 
         public async Task<GameTypeDefinition?> GetByKeyAsync(string key)
         {
+            var cacheKey = $"{GAMETYPE_BY_KEY_CACHE_PREFIX}{key}";
+
+            if (_cache.TryGetValue<GameTypeDefinition>(cacheKey, out var cached))
+            {
+                _logger.LogDebug("Retrieved GameType '{Key}' from cache", key);
+                return cached;
+            }
+
             var entity = await _context.GameTypes
                 .Include(gt => gt.Ports)
                 .Include(gt => gt.Volumes)
@@ -61,11 +92,30 @@ namespace GameServer.Docker.Repositories
                 .Include(gt => gt.ExtendedMetadata)
                 .FirstOrDefaultAsync(gt => gt.Key == key);
 
-            return entity == null ? null : MapToModel(entity);
+            if (entity == null)
+            {
+                return null;
+            }
+
+            var result = MapToModel(entity);
+
+            // Cache the result
+            _cache.Set(cacheKey, result, CacheDuration);
+            _logger.LogDebug("Cached GameType '{Key}'", key);
+
+            return result;
         }
 
         public async Task<GameTypeDefinition?> GetByIdAsync(int id)
         {
+            var cacheKey = $"{GAMETYPE_BY_ID_CACHE_PREFIX}{id}";
+
+            if (_cache.TryGetValue<GameTypeDefinition>(cacheKey, out var cached))
+            {
+                _logger.LogDebug("Retrieved GameType ID {Id} from cache", id);
+                return cached;
+            }
+
             var entity = await _context.GameTypes
                 .Include(gt => gt.Ports)
                 .Include(gt => gt.Volumes)
@@ -73,7 +123,18 @@ namespace GameServer.Docker.Repositories
                 .Include(gt => gt.ExtendedMetadata)
                 .FirstOrDefaultAsync(gt => gt.Id == id);
 
-            return entity == null ? null : MapToModel(entity);
+            if (entity == null)
+            {
+                return null;
+            }
+
+            var result = MapToModel(entity);
+
+            // Cache the result
+            _cache.Set(cacheKey, result, CacheDuration);
+            _logger.LogDebug("Cached GameType ID {Id}", id);
+
+            return result;
         }
 
         public async Task<List<GameTypeDefinition>> SearchAsync(string searchTerm)
@@ -119,7 +180,10 @@ namespace GameServer.Docker.Repositories
             var entity = MapToEntity(gameType);
             _context.GameTypes.Add(entity);
             await _context.SaveChangesAsync();
-            
+
+            // Invalidate cache
+            InvalidateCache(gameType.Key, entity.Id);
+
             _logger.LogInformation("Created GameType: {Key}", gameType.Key);
             return MapToModel(entity);
         }
@@ -139,7 +203,10 @@ namespace GameServer.Docker.Repositories
 
             UpdateEntity(entity, gameType);
             await _context.SaveChangesAsync();
-            
+
+            // Invalidate cache
+            InvalidateCache(gameType.Key, entity.Id);
+
             _logger.LogInformation("Updated GameType: {Key}", gameType.Key);
             return MapToModel(entity);
         }
@@ -149,10 +216,35 @@ namespace GameServer.Docker.Repositories
             var entity = await _context.GameTypes.FirstOrDefaultAsync(gt => gt.Key == key);
             if (entity != null)
             {
+                var id = entity.Id;
                 _context.GameTypes.Remove(entity);
                 await _context.SaveChangesAsync();
+
+                // Invalidate cache
+                InvalidateCache(key, id);
+
                 _logger.LogInformation("Deleted GameType: {Key}", key);
             }
+        }
+
+        #endregion
+
+        #region Cache Management
+
+        /// <summary>
+        /// Invalidates all cache entries related to a specific GameType
+        /// </summary>
+        private void InvalidateCache(string key, int id)
+        {
+            // Remove individual item caches
+            _cache.Remove($"{GAMETYPE_BY_KEY_CACHE_PREFIX}{key}");
+            _cache.Remove($"{GAMETYPE_BY_ID_CACHE_PREFIX}{id}");
+
+            // Remove list caches (since they contain this item)
+            _cache.Remove(ALL_GAMETYPES_CACHE_KEY);
+            _cache.Remove($"{ALL_GAMETYPES_CACHE_KEY}_IncludeInactive");
+
+            _logger.LogDebug("Invalidated cache for GameType '{Key}' (ID: {Id})", key, id);
         }
 
         #endregion
@@ -215,6 +307,10 @@ namespace GameServer.Docker.Repositories
             }
 
             await _context.SaveChangesAsync();
+
+            // Invalidate cache after extended metadata changes
+            InvalidateCache(gameTypeKey, gameType.Id);
+
             _logger.LogInformation("Saved ExtendedMetadata for GameType: {Key}", gameTypeKey);
 
             return MapExtendedMetadataToModel(gameType);
@@ -230,6 +326,10 @@ namespace GameServer.Docker.Repositories
             {
                 _context.ExtendedMetadata.Remove(gameType.ExtendedMetadata);
                 await _context.SaveChangesAsync();
+
+                // Invalidate cache after metadata deletion
+                InvalidateCache(gameTypeKey, gameType.Id);
+
                 _logger.LogInformation("Deleted ExtendedMetadata for GameType: {Key}", gameTypeKey);
             }
         }

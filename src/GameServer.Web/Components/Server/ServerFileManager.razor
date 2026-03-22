@@ -42,12 +42,19 @@
   }
   else if (selectedVolume != null)
   {
-    <RadzenDataGrid Data="currentFiles" TItem="FileItem" class="file-grid" AllowSorting="true" AllowFiltering="true">
+    <RadzenDataGrid Data="GetFilesWithParentNav()" TItem="FileItem" class="file-grid" AllowSorting="true" AllowFiltering="true">
       <Columns>
         <RadzenDataGridColumn TItem="FileItem" Property="Name" Title="Name" Width="50%">
           <Template Context="file">
             <div class="file-name-cell" @onclick='@(() => OnFileClick(file))' style="cursor: pointer;">
-              <RadzenIcon Icon='@(file.IsDirectory ? "folder" : GetFileIcon(file.Name))' class="file-icon" />
+              @if (file.Name == "..")
+              {
+                <RadzenIcon Icon="arrow_upward" class="file-icon" Style="color: var(--rz-secondary);" />
+              }
+              else
+              {
+                <RadzenIcon Icon='@(file.IsDirectory ? "folder" : GetFileIcon(file.Name))' class="file-icon" />
+              }
               <span class="file-name">@file.Name</span>
             </div>
           </Template>
@@ -74,11 +81,14 @@
                               ButtonStyle="ButtonStyle.Light"
                               title="Edit" />
               }
-              <RadzenButton Icon="delete" 
-                            Size="ButtonSize.Small" 
-                            Click='@(() => DeleteFile(file))' 
-                            ButtonStyle="ButtonStyle.Danger"
-                            title="Delete" />
+              @if (file.Name != "..")
+              {
+                <RadzenButton Icon="delete" 
+                              Size="ButtonSize.Small" 
+                              Click='@(() => DeleteFile(file))' 
+                              ButtonStyle="ButtonStyle.Danger"
+                              title="Delete" />
+              }
             </div>
           </Template>
         </RadzenDataGridColumn>
@@ -104,8 +114,19 @@
   private List<FileItem> currentFiles = new();
   private bool loadingFiles = false;
   private List<BreadcrumbItem> breadcrumbs = new();
+  private List<UploadProgress> uploadProgress = new();
 
   public string NewFolderName { get; set; } = "";
+
+  private class UploadProgress
+  {
+    public string FileName { get; set; } = "";
+    public long TotalBytes { get; set; }
+    public long UploadedBytes { get; set; }
+    public int Percentage => TotalBytes > 0 ? (int)((UploadedBytes * 100) / TotalBytes) : 0;
+    public bool IsComplete { get; set; }
+    public string? Error { get; set; }
+  }
 
   private async Task OnVolumeChanged()
   {
@@ -177,13 +198,81 @@
   {
     if (file.IsDirectory)
     {
-      currentPath = file.Path;
-      await LoadFilesAsync();
+      if (file.Name == "..")
+      {
+        // Navigate to parent directory
+        await NavigateToParent();
+      }
+      else
+      {
+        // Navigate to subdirectory
+        currentPath = file.Path;
+        await LoadFilesAsync();
+      }
     }
+  }
+
+  private async Task NavigateToParent()
+  {
+    if (currentPath == "/")
+    {
+      return; // Already at root
+    }
+
+    // Remove the last path segment
+    var lastSlashIndex = currentPath.TrimEnd('/').LastIndexOf('/');
+    if (lastSlashIndex <= 0)
+    {
+      currentPath = "/";
+    }
+    else
+    {
+      currentPath = currentPath.Substring(0, lastSlashIndex);
+    }
+
+    await LoadFilesAsync();
+  }
+
+  private List<FileItem> GetFilesWithParentNav()
+  {
+    var files = new List<FileItem>();
+
+    // Add parent directory link if not at root
+    if (currentPath != "/")
+    {
+      files.Add(new FileItem
+      {
+        Name = "..",
+        Path = "", // Will be handled specially
+        IsDirectory = true,
+        Size = 0,
+        LastModified = DateTime.MinValue,
+        Permissions = ""
+      });
+    }
+
+    // Add all current files
+    files.AddRange(currentFiles);
+
+    return files;
   }
 
   private async Task RefreshFiles()
   {
+    if (selectedVolume == null)
+    {
+      return;
+    }
+
+    NotificationService.Notify(new NotificationMessage 
+    { 
+      Severity = NotificationSeverity.Info, 
+      Summary = "Refreshing", 
+      Detail = "Refreshing file list...", 
+      Duration = 2000,
+      CloseOnClick = true
+    });
+
     await LoadFilesAsync();
   }
 
@@ -242,20 +331,124 @@
       return;
     }
 
-    NotificationService.Notify(new NotificationMessage 
-    { 
-      Severity = NotificationSeverity.Info, 
-      Summary = "Upload", 
-      Detail = "File upload functionality requires additional implementation with InputFile component", 
-      Duration = 3000 ,
-            CloseOnClick = true
-    });
-    
-    // TODO: Implement file upload with InputFile component
-    // This would require a dialog with:
-    // - InputFile component to select files
-    // - Progress indicator
-    // - Call to ServerApi.UploadFileAsync
+    // Clear previous uploads
+    uploadProgress.Clear();
+
+    await DialogService.OpenAsync("Upload File", ds =>
+      @<div>
+        <RadzenStack Gap="1rem">
+          <RadzenText TextStyle="TextStyle.Body1">
+            Select a file to upload to <strong>@currentPath</strong>
+          </RadzenText>
+
+          <InputFile id="fileUpload" OnChange="@HandleFileUpload" multiple />
+
+          @if (uploadProgress.Any())
+          {
+            <div class="upload-progress-container">
+              @foreach (var progress in uploadProgress)
+              {
+                <div class="upload-item">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="upload-filename">@progress.FileName</span>
+                    <span class="upload-size">@FormatFileSize(progress.TotalBytes)</span>
+                  </div>
+
+                  @if (progress.IsComplete)
+                  {
+                    <div class="d-flex align-items-center gap-2">
+                      <RadzenIcon Icon="check_circle" Style="color: var(--rz-success);" />
+                      <span style="color: var(--rz-success);">Complete</span>
+                    </div>
+                  }
+                  else if (!string.IsNullOrEmpty(progress.Error))
+                  {
+                    <div class="d-flex align-items-center gap-2">
+                      <RadzenIcon Icon="error" Style="color: var(--rz-danger);" />
+                      <span style="color: var(--rz-danger);">@progress.Error</span>
+                    </div>
+                  }
+                  else
+                  {
+                    <RadzenProgressBar Value="@progress.Percentage" Max="100" ShowValue="true" Style="width: 100%;" />
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <RadzenButton Text="Close" Click="() => { uploadProgress.Clear(); ds.Close(); }" ButtonStyle="ButtonStyle.Light" />
+          </div>
+        </RadzenStack>
+      </div>
+    , new DialogOptions { Width = "600px", Height = "auto", Resizable = true, Draggable = true });
+
+    // Refresh file list after dialog closes
+    await LoadFilesAsync();
+  }
+
+  private async Task HandleFileUpload(InputFileChangeEventArgs e)
+  {
+    if (selectedVolume == null) return;
+
+    // Process each file
+    foreach (var file in e.GetMultipleFiles(10)) // Max 10 files
+    {
+      var progress = new UploadProgress
+      {
+        FileName = file.Name,
+        TotalBytes = file.Size,
+        UploadedBytes = 0,
+        IsComplete = false
+      };
+
+      uploadProgress.Add(progress);
+      StateHasChanged();
+
+      try
+      {
+        // Read file content
+        using var memoryStream = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024).CopyToAsync(memoryStream); // 100MB max
+
+        progress.UploadedBytes = file.Size;
+        StateHasChanged();
+
+        var fileContent = memoryStream.ToArray();
+
+        // Construct file path
+        var filePath = currentPath == "/" ? $"/{file.Name}" : $"{currentPath}/{file.Name}";
+
+        // Upload to server
+        await ServerApi.UploadFileAsync(ServerId, selectedVolume.Target, filePath, new FileParameter(new MemoryStream(fileContent), file.Name));
+
+        progress.IsComplete = true;
+        StateHasChanged();
+
+        NotificationService.Notify(new NotificationMessage
+        {
+          Severity = NotificationSeverity.Success,
+          Summary = "Upload Complete",
+          Detail = $"{file.Name} uploaded successfully",
+          Duration = 3000,
+          CloseOnClick = true
+        });
+      }
+      catch (Exception ex)
+      {
+        progress.Error = ex.Message;
+        StateHasChanged();
+
+        NotificationService.Notify(new NotificationMessage
+        {
+          Severity = NotificationSeverity.Error,
+          Summary = "Upload Failed",
+          Detail = $"Failed to upload {file.Name}: {ex.Message}",
+          Duration = 5000
+        });
+      }
+    }
   }
 
   private async Task DownloadFile(FileItem file)
@@ -317,12 +510,12 @@
     }
 
     // Check file size first
-    const long maxEditableSize = 5 * 1024; // 5KB
-    
+    const long maxEditableSize = 5 * 1024 * 1024; // 5MB
+
     if (file.Size > maxEditableSize)
     {
       var confirmed = await DialogService.Confirm(
-        $"This file is {FormatFileSize(file.Size)}. Files larger than 5KB cannot be edited in the browser.\n\nWould you like to download it instead?",
+        $"This file is {FormatFileSize(file.Size)}. Files larger than 5MB cannot be edited in the browser.\n\nWould you like to download it instead?",
         "File Too Large",
         new ConfirmOptions { OkButtonText = "Download", CancelButtonText = "Cancel" });
       
@@ -346,10 +539,11 @@
       },
       new DialogOptions
       {
-        Width = "900px",
-        Height = "700px",
+        Width = "90vw",
+        Height = "85vh",
         Resizable = true,
-        Draggable = true
+        Draggable = true,
+        CloseDialogOnOverlayClick = false
       });
 
     // Refresh file list if file was saved

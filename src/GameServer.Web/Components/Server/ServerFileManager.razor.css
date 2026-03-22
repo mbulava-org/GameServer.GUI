@@ -51,6 +51,12 @@
   border-radius: 4px;
 }
 
+/* Parent directory (..) styling */
+.file-name-cell:has(.file-name:first-child:contains("..")) {
+  background: var(--rz-base-50, #f8f9fa);
+  border-bottom: 1px solid var(--rz-border-color, #e0e0e0);
+}
+
 .file-icon {
   color: var(--rz-primary, #007bff);
 }
@@ -62,4 +68,31 @@
 .file-actions {
   display: flex;
   gap: 4px;
+}
+
+/* Upload dialog styles */
+.upload-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.upload-item {
+  padding: 1rem;
+  background: var(--rz-base-50);
+  border-radius: 8px;
+  border: 1px solid var(--rz-border-color);
+}
+
+.upload-filename {
+  font-weight: 600;
+  color: var(--rz-text-color);
+}
+
+.upload-size {
+  color: var(--rz-text-secondary-color);
+  font-size: 0.875rem;
 }

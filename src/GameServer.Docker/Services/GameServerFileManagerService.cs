@@ -1,6 +1,7 @@
 ﻿using Docker.DotNet;
 using GameServer.Docker.Interfaces;
 using Microsoft.Extensions.Options;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace GameServer.Docker.Services
@@ -8,6 +9,7 @@ namespace GameServer.Docker.Services
     /// <summary>
     /// Service for managing game server files through direct filesystem access
     /// Uses VolumeDriverConfigOptions to resolve volume paths on the host filesystem
+    /// Supports UID/GID impersonation on Linux for proper file ownership
     /// </summary>
     public class GameServerFileManagerService : IGameServerFileManager
     {
@@ -134,7 +136,7 @@ namespace GameServer.Docker.Services
         public async Task UploadFileAsync(string serverId, string targetVolume, string filePath, byte[] content)
         {
             _logger.LogInformation($"Uploading file {filePath} to server {serverId} ({content.Length} bytes)");
-            
+
             var gameTypeKey = await GetGameTypeKeyAsync(serverId);
             if (gameTypeKey == null)
                 throw new InvalidOperationException($"Unable to resolve game type for server {serverId}");
@@ -146,15 +148,23 @@ namespace GameServer.Docker.Services
 
             try
             {
-                // Ensure directory exists
-                var directory = Path.GetDirectoryName(fullPath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    _logger.LogDebug($"Creating directory: {directory}");
-                    Directory.CreateDirectory(directory);
-                }
+                // Get container UID/GID for impersonation
+                var userGroup = await GetContainerUserGroupAsync(serverId);
 
-                await File.WriteAllBytesAsync(fullPath, content);
+                // Execute with UID/GID impersonation
+                await ExecuteWithImpersonationAsync(userGroup, async () =>
+                {
+                    // Ensure directory exists
+                    var directory = Path.GetDirectoryName(fullPath);
+                    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                    {
+                        _logger.LogDebug($"Creating directory: {directory}");
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    await File.WriteAllBytesAsync(fullPath, content);
+                });
+
                 _logger.LogInformation($"Successfully uploaded file: {filePath}");
             }
             catch (UnauthorizedAccessException ex)
@@ -220,7 +230,7 @@ namespace GameServer.Docker.Services
         public async Task CreateDirectoryAsync(string serverId, string targetVolume, string directoryPath)
         {
             _logger.LogInformation($"Creating directory {directoryPath} in server {serverId}");
-            
+
             var gameTypeKey = await GetGameTypeKeyAsync(serverId);
             if (gameTypeKey == null)
                 throw new InvalidOperationException($"Unable to resolve game type for server {serverId}");
@@ -238,7 +248,16 @@ namespace GameServer.Docker.Services
                     return;
                 }
 
-                Directory.CreateDirectory(fullPath);
+                // Get container UID/GID for impersonation
+                var userGroup = await GetContainerUserGroupAsync(serverId);
+
+                // Execute with UID/GID impersonation
+                await ExecuteWithImpersonationAsync(userGroup, async () =>
+                {
+                    Directory.CreateDirectory(fullPath);
+                    await Task.CompletedTask;
+                });
+
                 _logger.LogInformation($"Successfully created directory: {directoryPath}");
             }
             catch (UnauthorizedAccessException ex)
@@ -319,6 +338,136 @@ namespace GameServer.Docker.Services
         {
             return (info.Attributes & attribute) == attribute;
         }
+
+        #region Linux UID/GID Impersonation
+
+        /// <summary>
+        /// Linux syscalls for UID/GID impersonation
+        /// </summary>
+        private static class NativeMethods
+        {
+            // setfsuid - set user identity used for filesystem checks
+            [DllImport("libc", SetLastError = true)]
+            public static extern int setfsuid(int uid);
+
+            // setfsgid - set group identity used for filesystem checks
+            [DllImport("libc", SetLastError = true)]
+            public static extern int setfsgid(int gid);
+        }
+
+        /// <summary>
+        /// Get the container's User ID and Group ID from the running container
+        /// </summary>
+        private async Task<(int uid, int gid)?> GetContainerUserGroupAsync(string serverId)
+        {
+            try
+            {
+                // Get the game server which includes service details
+                var server = await _dockerServiceHelper.GetGameServerById(serverId);
+                if (server == null)
+                {
+                    _logger.LogWarning($"Server {serverId} not found");
+                    return null;
+                }
+
+                // Get the service to inspect container spec
+                var swarmService = await _dockerServiceHelper.GetSwarmServiceByServiceId(serverId);
+                if (swarmService?.Spec?.TaskTemplate?.ContainerSpec?.User == null)
+                {
+                    _logger.LogDebug($"No user specified for service {serverId}, files will use default ownership");
+                    return null;
+                }
+
+                var userSpec = swarmService.Spec.TaskTemplate.ContainerSpec.User;
+                _logger.LogDebug($"Container user spec: {userSpec}");
+
+                // Parse user spec (format: "uid:gid" or "uid" or "username")
+                if (userSpec.Contains(':'))
+                {
+                    var parts = userSpec.Split(':');
+                    if (int.TryParse(parts[0], out var uid) && int.TryParse(parts[1], out var gid))
+                    {
+                        return (uid, gid);
+                    }
+                }
+                else if (int.TryParse(userSpec, out var uid))
+                {
+                    // If only UID is specified, use the same for GID (common pattern)
+                    return (uid, uid);
+                }
+
+                _logger.LogDebug($"Could not parse user spec '{userSpec}' as numeric UID:GID");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Failed to get container user/group for service {serverId}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Execute an action with temporary UID/GID impersonation (Linux only)
+        /// </summary>
+        private async Task ExecuteWithImpersonationAsync((int uid, int gid)? userGroup, Func<Task> action)
+        {
+            // Only attempt impersonation on Linux
+            if (!OperatingSystem.IsLinux())
+            {
+                _logger.LogDebug("UID/GID impersonation only supported on Linux, executing without impersonation");
+                await action();
+                return;
+            }
+
+            // If no user/group specified, execute normally
+            if (!userGroup.HasValue)
+            {
+                _logger.LogDebug("No UID/GID specified, executing without impersonation");
+                await action();
+                return;
+            }
+
+            var (targetUid, targetGid) = userGroup.Value;
+            int originalUid = -1;
+            int originalGid = -1;
+
+            try
+            {
+                // Save original UID/GID (setfsuid/setfsgid return the previous value)
+                _logger.LogDebug($"Impersonating UID {targetUid}, GID {targetGid} for filesystem operations");
+
+                originalUid = NativeMethods.setfsuid(targetUid);
+                originalGid = NativeMethods.setfsgid(targetGid);
+
+                if (originalUid < 0 || originalGid < 0)
+                {
+                    _logger.LogWarning($"Failed to set filesystem UID/GID, continuing without impersonation");
+                    await action();
+                    return;
+                }
+
+                _logger.LogDebug($"Successfully impersonated UID {targetUid}, GID {targetGid} (original: {originalUid}:{originalGid})");
+
+                // Execute the action with impersonated UID/GID
+                await action();
+            }
+            finally
+            {
+                // Restore original UID/GID
+                if (originalUid >= 0)
+                {
+                    NativeMethods.setfsuid(originalUid);
+                    _logger.LogDebug($"Restored original UID {originalUid}");
+                }
+                if (originalGid >= 0)
+                {
+                    NativeMethods.setfsgid(originalGid);
+                    _logger.LogDebug($"Restored original GID {originalGid}");
+                }
+            }
+        }
+
+        #endregion
 
         #endregion
     }

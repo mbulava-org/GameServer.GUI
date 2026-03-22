@@ -168,10 +168,18 @@ namespace GameServer.Docker.Services
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             // Build query string for label filter
+            // Note: ServiceFilter.Label property may throw KeyNotFoundException if not set
             var queryString = "";
-            if (parameters?.Filters?.Label?.Any() == true)
+            try
             {
-                queryString = $"?labelFilter={Uri.EscapeDataString(parameters.Filters.Label.First())}";
+                if (parameters?.Filters?.Label?.Any() == true)
+                {
+                    queryString = $"?labelFilter={Uri.EscapeDataString(parameters.Filters.Label.First())}";
+                }
+            }
+            catch (KeyNotFoundException)
+            {
+                // Label filter not set - continue without filter
             }
 
             var response = await httpClient.GetAsync($"/api/services{queryString}", cancellationToken);
