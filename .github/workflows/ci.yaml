@@ -2,6 +2,12 @@ name: 'Build and Publish Docker Image'
 
 on:
   workflow_dispatch:
+    inputs:
+      force_publish:
+        default: false
+        type: boolean
+        description: 'Force build and Publish of projects even if no changes have been detected.'
+
   push:
     branches:
       - main
@@ -13,6 +19,8 @@ permissions:
   packages: write
   contents: write
 
+# We want to make some updates so we only Determine the version once and Only rebuild containers IF there are changes in the source...
+# But we should always Build and Test
 jobs:
    # Configuration job - Single source of truth for all workflow variables
   setup:
@@ -27,7 +35,18 @@ jobs:
       semantic_version: ${{ steps.config.outputs.semantic_version }}
       primary_branch: ${{ steps.config.outputs.primary_branch }}
       push_client_output: ${{ steps.detect-api-changes.outputs.push_client_output }}
-      new_version: ${{ steps.config.outputs.new_version }} 
+      new_version: ${{ steps.config.outputs.new_version }}
+      # Project change detection outputs (actual changes)
+      backend_changed: ${{ steps.detect-project-changes.outputs.backend_changed }}
+      agent_changed: ${{ steps.detect-project-changes.outputs.agent_changed }}
+      web_changed: ${{ steps.detect-project-changes.outputs.web_changed }}
+      client_changed: ${{ steps.detect-project-changes.outputs.client_changed }}
+      tests_changed: ${{ steps.detect-project-changes.outputs.tests_changed }}
+      # Push decision outputs (changes OR force_publish)
+      push_backend: ${{ steps.calculate-push-decisions.outputs.push_backend }}
+      push_agent: ${{ steps.calculate-push-decisions.outputs.push_agent }}
+      push_web: ${{ steps.calculate-push-decisions.outputs.push_web }}
+      push_client: ${{ steps.calculate-push-decisions.outputs.push_client }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -97,31 +116,149 @@ jobs:
             echo "push_client_output=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Detect project folder changes
+        id: detect-project-changes
+        run: |
+          # Determine base and head refs for comparison
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            HEAD_REF="${{ github.event.pull_request.head.sha }}"
+          else
+            # For pushes, compare current commit with previous
+            BASE_REF="${{ github.event.before }}"
+            HEAD_REF="${{ github.sha }}"
+          fi
+
+          echo "Detecting project changes between $BASE_REF...$HEAD_REF"
+
+          # Get all changed files
+          CHANGED_FILES=$(git diff --name-only $BASE_REF $HEAD_REF || true)
+
+          # Detect changes in each project folder
+          BACKEND_CHANGED="false"
+          AGENT_CHANGED="false"
+          WEB_CHANGED="false"
+          CLIENT_CHANGED="false"
+          TESTS_CHANGED="false"
+
+          # Check GameServer.Docker (backend)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker/'; then
+            BACKEND_CHANGED="true"
+            echo "::notice::✅ GameServer.Docker project has changes"
+          fi
+
+          # Check GameServer.Docker.Agent (agent-backend)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker\.Agent/'; then
+            AGENT_CHANGED="true"
+            echo "::notice::✅ GameServer.Docker.Agent project has changes"
+          fi
+
+          # Check GameServer.Web (web-gui)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Web/'; then
+            WEB_CHANGED="true"
+            echo "::notice::✅ GameServer.Web project has changes"
+          fi
+
+          # Check GameServer.Docker.Client
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker\.Client/'; then
+            CLIENT_CHANGED="true"
+            echo "::notice::✅ GameServer.Docker.Client project has changes"
+          fi
+
+          # Check any test projects
+          if echo "$CHANGED_FILES" | grep -qE '^tests/'; then
+            TESTS_CHANGED="true"
+            echo "::notice::✅ Test projects have changes"
+          fi
+
+          # Output results
+          echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "agent_changed=$AGENT_CHANGED" >> $GITHUB_OUTPUT
+          echo "web_changed=$WEB_CHANGED" >> $GITHUB_OUTPUT
+          echo "client_changed=$CLIENT_CHANGED" >> $GITHUB_OUTPUT
+          echo "tests_changed=$TESTS_CHANGED" >> $GITHUB_OUTPUT
+
+          # Summary
+          echo "📊 Project Change Detection Summary:"
+          echo "  - Backend (GameServer.Docker): $BACKEND_CHANGED"
+          echo "  - Agent (GameServer.Docker.Agent): $AGENT_CHANGED"
+          echo "  - Web (GameServer.Web): $WEB_CHANGED"
+          echo "  - Client (GameServer.Docker.Client): $CLIENT_CHANGED"
+          echo "  - Tests: $TESTS_CHANGED"
+
+      - name: Calculate push decisions
+        id: calculate-push-decisions
+        run: |
+          # Get the force_publish input (defaults to false if not set)
+          FORCE_PUBLISH="${{ github.event.inputs.force_publish || 'false' }}"
+
+          # Get change detection results
+          BACKEND_CHANGED="${{ steps.detect-project-changes.outputs.backend_changed }}"
+          AGENT_CHANGED="${{ steps.detect-project-changes.outputs.agent_changed }}"
+          WEB_CHANGED="${{ steps.detect-project-changes.outputs.web_changed }}"
+          CLIENT_CHANGED="${{ steps.detect-project-changes.outputs.client_changed }}"
+
+          echo "🔍 Push Decision Calculation:"
+          echo "  - Force Publish: $FORCE_PUBLISH"
+
+          # Calculate push decisions: (change detected) OR (force publish)
+          if [ "$BACKEND_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_backend=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Backend will be pushed (changed=$BACKEND_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_backend=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Backend push skipped (no changes, not forced)"
+          fi
+
+          if [ "$AGENT_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_agent=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Agent will be pushed (changed=$AGENT_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_agent=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Agent push skipped (no changes, not forced)"
+          fi
+
+          if [ "$WEB_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_web=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Web will be pushed (changed=$WEB_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_web=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Web push skipped (no changes, not forced)"
+          fi
+
+          if [ "$CLIENT_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_client=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Client will be pushed (changed=$CLIENT_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_client=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Client push skipped (no changes, not forced)"
+          fi
+
   backend:
     needs: [setup]
-    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
       semantic_version: ${{ needs.setup.outputs.semantic_version }}
       docker_context: './src/GameServer.Docker'
       primary_branch: ${{ needs.setup.outputs.primary_branch }}
-      push_output: true
+      push_output: ${{ needs.setup.outputs.push_backend == 'true' }}
       push_branch: true
       version_tag: false
       semantic_version_rollup_tag: false 
-      target_repo: 'gameserver-docker' 
+      target_repo: 'gameserver-docker'
 
   agent-backend:
     needs: [setup]
-    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
       semantic_version: ${{ needs.setup.outputs.semantic_version }}
       docker_context: './src/GameServer.Docker.Agent'
       primary_branch: ${{ needs.setup.outputs.primary_branch }}
-      push_output: true
+      push_output: ${{ needs.setup.outputs.push_agent == 'true' }}
       push_branch: true
       version_tag: false
       semantic_version_rollup_tag: false 
@@ -141,7 +278,7 @@ jobs:
 
   web-gui:
     needs: [setup]
-    uses: mbulava-org/action-templates/.github/workflows/BuildAndPublish-Docker.yaml@main
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -149,8 +286,8 @@ jobs:
       docker_context: '.'
       docker_file: './src/GameServer.Web/Dockerfile'
       primary_branch : ${{ needs.setup.outputs.primary_branch }}
-      push_output: true
+      push_output: ${{ needs.setup.outputs.push_web == 'true' }}
       push_branch: true
       version_tag: true
       semantic_version_rollup_tag: false 
-      target_repo: 'gameserver-web'   
+      target_repo: 'gameserver-web'
