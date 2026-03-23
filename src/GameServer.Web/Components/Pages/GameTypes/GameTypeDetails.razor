@@ -93,51 +93,77 @@
                             {
                                 <div class="settings-master-detail">
                                     <div class="settings-list-panel">
-                                        @foreach (var setting in settingsList.ToList())
-                                        {
-                                            if (string.IsNullOrEmpty(setting.Key))
-                                            {
-                                                continue;
-                                            }
-                                            var metadata = GetSettingMetadata(setting.Key);
-                                            var isSelected = selectedSettingKey == setting.Key;
+                                        <div class="settings-search-box mb-3">
+                                            <RadzenTextBox @bind-Value="@settingsSearchQuery" 
+                                                           Placeholder="Search by key..." 
+                                                           class="w-100"
+                                                           @oninput="@((ChangeEventArgs e) => OnSettingsSearchChanged(e.Value?.ToString()))" />
+                                        </div>
 
-                                            <div class="setting-list-item @(isSelected ? "selected" : "")" 
-                                                 @onclick="@(() => SelectSetting(setting.Key))">
-                                                <div class="setting-list-item-content">
-                                                    <div class="setting-list-item-header">
-                                                        <code class="setting-key">@setting.Key</code>
-                                                        <div class="setting-badges">
-                                                            @if (metadata?.IsRequired == true)
-                                                            {
-                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Required" Size="BadgeSize.ExtraSmall" />
-                                                            }
-                                                            @if (!string.IsNullOrWhiteSpace(metadata?.DataType))
-                                                            {
-                                                                <RadzenBadge BadgeStyle="BadgeStyle.Info" 
-                                                                             Text="@metadata.DataType" 
-                                                                             Variant="Variant.Outlined"
-                                                                             Size="BadgeSize.ExtraSmall" />
-                                                            }
-                                                            @if (metadata?.MapsToContainerPort == true)
-                                                            {
-                                                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" 
-                                                                             Text="Port" 
-                                                                             Size="BadgeSize.ExtraSmall" />
-                                                            }
+                                        @{
+                                            var filteredSettings = GetFilteredAndGroupedSettings();
+
+                                            if (!filteredSettings.Any())
+                                            {
+                                                <p class="text-muted text-center py-3">No settings match your search.</p>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var group in filteredSettings)
+                                                {
+                                                    <div class="settings-group mb-3">
+                                                        <div class="settings-group-header">
+                                                            @group.Key
                                                         </div>
+                                                        @foreach (var setting in group)
+                                                        {
+                                                            if (string.IsNullOrEmpty(setting.Key))
+                                                            {
+                                                                continue;
+                                                            }
+                                                            var metadata = GetSettingMetadata(setting.Key);
+                                                            var isSelected = selectedSettingKey == setting.Key;
+
+                                                            <div class="setting-list-item @(isSelected ? "selected" : "")" 
+                                                                 @onclick="@(() => SelectSetting(setting.Key))">
+                                                                <div class="setting-list-item-content">
+                                                                    <div class="setting-list-item-header">
+                                                                        <code class="setting-key">@setting.Key</code>
+                                                                        <div class="setting-badges">
+                                                                            @if (metadata?.IsRequired == true)
+                                                                            {
+                                                                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Required" Size="BadgeSize.ExtraSmall" />
+                                                                            }
+                                                                            @if (!string.IsNullOrWhiteSpace(metadata?.DataType))
+                                                                            {
+                                                                                <RadzenBadge BadgeStyle="BadgeStyle.Info" 
+                                                                                             Text="@metadata.DataType" 
+                                                                                             Variant="Variant.Outlined"
+                                                                                             Size="BadgeSize.ExtraSmall" />
+                                                                            }
+                                                                            @if (metadata?.MapsToContainerPort == true)
+                                                                            {
+                                                                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" 
+                                                                                             Text="Port" 
+                                                                                             Size="BadgeSize.ExtraSmall" />
+                                                                            }
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="setting-list-item-value">
+                                                                        <code>@(string.IsNullOrEmpty(setting.Value) ? "(empty)" : setting.Value)</code>
+                                                                    </div>
+                                                                    @if (!string.IsNullOrWhiteSpace(metadata?.Description))
+                                                                    {
+                                                                        <div class="setting-list-item-description">
+                                                                            @metadata.Description
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        }
                                                     </div>
-                                                    <div class="setting-list-item-value">
-                                                        <code>@(string.IsNullOrEmpty(setting.Value) ? "(empty)" : setting.Value)</code>
-                                                    </div>
-                                                    @if (!string.IsNullOrWhiteSpace(metadata?.Description))
-                                                    {
-                                                        <div class="setting-list-item-description">
-                                                            @metadata.Description
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </div>
+                                                }
+                                            }
                                         }
                                     </div>
 
@@ -660,6 +686,31 @@
     padding-right: 1rem;
     overflow-y: auto;
     max-height: 70vh;
+}
+
+.settings-search-box {
+    position: sticky;
+    top: 0;
+    background: var(--rz-base-background-color);
+    z-index: 5;
+    padding: 0.5rem 0;
+}
+
+.settings-group {
+    margin-bottom: 1rem;
+}
+
+.settings-group-header {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--rz-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.5rem 0.75rem;
+    background: var(--rz-base-50);
+    border-left: 3px solid var(--rz-primary);
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
 }
 
 .setting-list-item {
@@ -1206,12 +1257,15 @@ private async Task LoadGameTypeAsync()
                 DisplayOrder = settingsMetadata.Count
             };
         }
-        // Ensure DataType is always set to string if null/empty
-        if (string.IsNullOrWhiteSpace(settingsMetadata[key].DataType))
+
+        // Ensure DataType is set - default to "string" if null/empty
+        var metadata = settingsMetadata[key];
+        if (string.IsNullOrWhiteSpace(metadata.DataType))
         {
-            settingsMetadata[key].DataType = "string";
+            metadata.DataType = "string";
         }
-        return settingsMetadata[key];
+
+        return metadata;
     }
 
     private string GetAllowedValuesString(SettingMetadata setting)
@@ -1318,9 +1372,21 @@ private async Task LoadGameTypeAsync()
                     .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
                 // Update the Key property to match dictionary key (in case it changed)
+                // Also normalize DataType values for consistency
                 foreach (var kvp in cleanedMetadata)
                 {
                     kvp.Value.Key = kvp.Key;
+
+                    // Normalize DataType to lowercase for consistency
+                    if (!string.IsNullOrWhiteSpace(kvp.Value.DataType))
+                    {
+                        kvp.Value.DataType = kvp.Value.DataType.ToLowerInvariant();
+                    }
+                    else
+                    {
+                        // Empty or whitespace - set to null
+                        kvp.Value.DataType = null;
+                    }
                 }
 
                 var extendedMetadata = new GameTypeExtendedMetadata
@@ -1339,13 +1405,24 @@ private async Task LoadGameTypeAsync()
                 catch (Exception metadataEx)
                 {
                     Console.WriteLine($"GameTypeDetails: Failed to save extended metadata: {metadataEx.Message}");
+                    Console.WriteLine($"GameTypeDetails: ExtendedMetadata being saved - EnableTTY: {extendedMetadata.EnableTTY}, Settings count: {extendedMetadata.SettingsMetadata?.Count ?? 0}");
+
+                    // Log each setting's metadata for debugging
+                    if (extendedMetadata.SettingsMetadata != null)
+                    {
+                        foreach (var setting in extendedMetadata.SettingsMetadata)
+                        {
+                            Console.WriteLine($"  - Setting '{setting.Key}': DataType='{setting.Value.DataType ?? "null"}', Description='{setting.Value.Description}'");
+                        }
+                    }
+
                     // Don't fail the whole save if metadata fails, just warn
                     NotificationService.Notify(new NotificationMessage
                     {
                         Severity = NotificationSeverity.Warning,
                         Summary = "Metadata Save Warning",
-                        Detail = "Game type saved, but extended metadata may not have been saved completely.",
-                        Duration = 4000,
+                        Detail = $"Game type saved, but extended metadata failed: {metadataEx.Message}",
+                        Duration = 5000,
                         CloseOnClick = true
                     });
                 }
@@ -1580,6 +1657,75 @@ private async Task LoadGameTypeAsync()
             return $"⚠ Target port {relationship.TargetContainerPort} ({relationship.TargetProtocol}) not found in port definitions!";
         }
         return "";
+    }
+
+    private string? settingsSearchQuery = null;
+
+    private void OnSettingsSearchChanged(string? searchQuery)
+    {
+        settingsSearchQuery = searchQuery;
+        StateHasChanged();
+    }
+
+    private List<IGrouping<string, SettingItem>> GetFilteredAndGroupedSettings()
+    {
+        // Start with all settings
+        IEnumerable<SettingItem> filtered = settingsList;
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(settingsSearchQuery))
+        {
+            var searchLower = settingsSearchQuery.ToLowerInvariant();
+            filtered = filtered.Where(s => 
+                !string.IsNullOrEmpty(s.Key) && 
+                s.Key.ToLowerInvariant().Contains(searchLower));
+        }
+
+        // Group by category, order by DisplayOrder then Key
+        var grouped = filtered
+            .Select(s => new
+            {
+                Setting = s,
+                Metadata = GetSettingMetadata(s.Key ?? ""),
+                Category = GetSettingMetadata(s.Key ?? "")?.Category ?? "General"
+            })
+            .OrderBy(x => x.Metadata?.DisplayOrder ?? int.MaxValue)
+            .ThenBy(x => x.Setting.Key)
+            .GroupBy(x => x.Category)
+            .OrderBy(g => g.Key) // Order groups alphabetically
+            .Select(g => new SettingGroup
+            {
+                Key = g.Key,
+                Settings = g.Select(x => x.Setting).ToList()
+            })
+            .ToList();
+
+        // Convert to IGrouping interface for compatibility
+        return grouped.Select(g => new SettingGrouping(g.Key, g.Settings)).Cast<IGrouping<string, SettingItem>>().ToList();
+    }
+
+    private class SettingGroup
+    {
+        public string Key { get; set; } = "";
+        public List<SettingItem> Settings { get; set; } = new();
+    }
+
+    private class SettingGrouping : IGrouping<string, SettingItem>
+    {
+        private readonly string _key;
+        private readonly IEnumerable<SettingItem> _settings;
+
+        public SettingGrouping(string key, IEnumerable<SettingItem> settings)
+        {
+            _key = key;
+            _settings = settings;
+        }
+
+        public string Key => _key;
+
+        public IEnumerator<SettingItem> GetEnumerator() => _settings.GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private class SettingItem

@@ -194,13 +194,16 @@ namespace GameServer.Docker
                 });
 
                 // Add GameType Repository (database-backed) - This replaces file-based registries
+                // Register IMemoryCache for GameType caching
+                builder.Services.AddMemoryCache();
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
 
                 // Keep file-based registries as fallback/migration helpers (optional)
                 // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
                 // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
 
-                builder.Services.AddSingleton<GameTypeMetadataApplier>();
+                // GameTypeMetadataApplier needs to be Scoped since it depends on scoped IGameTypeRepository
+                builder.Services.AddScoped<GameTypeMetadataApplier>();
 
                 // Database Initialization - Runs in background after webhost starts
                 // This allows the webhost and SignalR hubs to be available immediately
