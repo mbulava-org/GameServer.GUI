@@ -196,6 +196,8 @@ namespace GameServer.Docker
                 });
 
                 // Add GameType Repository (database-backed) - This replaces file-based registries
+                // Register IMemoryCache for GameType caching
+                builder.Services.AddMemoryCache();
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
 
                 // Keep file-based registries as fallback/migration helpers (optional)

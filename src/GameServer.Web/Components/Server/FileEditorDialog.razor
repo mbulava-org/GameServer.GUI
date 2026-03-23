@@ -47,6 +47,7 @@
   {
     <div class="editor-content">
       <RadzenTextArea @bind-Value="fileContent" 
+                      Change="OnContentChanged"
                       Style="@GetTextAreaStyle()" 
                       class="file-editor-textarea" 
                       Rows="20" />
@@ -67,7 +68,7 @@
         <RadzenButton Text="Save" 
                       Click="SaveFile" 
                       ButtonStyle="ButtonStyle.Primary" 
-                      Disabled="@(!hasChanges || saving)"
+                      Disabled="@saving"
                       Icon="@(saving ? "hourglass_empty" : "save")" />
       </div>
     </div>
@@ -104,17 +105,10 @@
     await LoadFileContent();
   }
 
-  protected override void OnParametersSet()
+  private void OnContentChanged()
   {
-    // Track changes
-    if (!loading && fileContent != originalContent)
-    {
-      hasChanges = true;
-    }
-    else
-    {
-      hasChanges = false;
-    }
+    hasChanges = fileContent != originalContent;
+    StateHasChanged();
   }
 
   private async Task LoadFileContent()

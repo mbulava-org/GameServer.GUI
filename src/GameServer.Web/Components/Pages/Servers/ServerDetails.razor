@@ -108,6 +108,16 @@ else
                       <span class="label">Service Name:</span>
                       <span class="value">@server.ServiceName</span>
                     </div>
+                    @if (!string.IsNullOrWhiteSpace(containerUserGroup))
+                    {
+                      <div class="info-row">
+                        <span class="label">Container User/Group:</span>
+                        <span class="value">
+                          <code>@containerUserGroup</code>
+                          <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="File Ownership" Size="BadgeSize.Small" class="ms-2" title="Files created by this server will be owned by this UID:GID" />
+                        </span>
+                      </div>
+                    }
                     @if (!string.IsNullOrWhiteSpace(server.Description))
                     {
                       <div class="info-row-full">
@@ -197,6 +207,101 @@ else
                 </div>
               </div>
             </div>
+          </div>
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="Settings">
+          <div class="tab-content">
+            <RadzenCard>
+              <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                  <h4><RadzenIcon Icon="tune" /> Server Settings</h4>
+                  <div class="d-flex gap-2">
+                    <RadzenButton Text="Add Setting" 
+                                  Icon="add" 
+                                  Click="AddSetting" 
+                                  ButtonStyle="ButtonStyle.Primary" 
+                                  Size="ButtonSize.Small" 
+                                  Disabled="@settingsModified" />
+                    @if (settingsModified)
+                    {
+                      <RadzenButton Text="Cancel" 
+                                    Icon="close" 
+                                    Click="CancelSettingsChanges" 
+                                    ButtonStyle="ButtonStyle.Light" 
+                                    Size="ButtonSize.Small" />
+                      <RadzenButton Text="Save Changes" 
+                                    Icon="save" 
+                                    Click="SaveSettings" 
+                                    ButtonStyle="ButtonStyle.Success" 
+                                    Size="ButtonSize.Small" 
+                                    Disabled="@savingSettings" />
+                    }
+                  </div>
+                </div>
+              </div>
+
+              @if (server.Settings?.Any() == true || settingsModified)
+              {
+                <div class="settings-grid">
+                  @foreach (var setting in editableSettings.OrderBy(s => s.Key))
+                  {
+                    <div class="setting-row">
+                      <div class="setting-key">
+                        <RadzenTextBox @bind-Value="setting.Key" 
+                                       Placeholder="Setting Key" 
+                                       Style="width: 100%;" 
+                                       ReadOnly="@(!settingsModified)" />
+                      </div>
+                      <div class="setting-value">
+                        <RadzenTextArea @bind-Value="setting.Value" 
+                                        Placeholder="Setting Value" 
+                                        Style="width: 100%;" 
+                                        Rows="3"
+                                        ReadOnly="@(!settingsModified)" />
+                      </div>
+                      <div class="setting-actions">
+                        @if (settingsModified)
+                        {
+                          <RadzenButton Icon="delete" 
+                                        ButtonStyle="ButtonStyle.Danger" 
+                                        Size="ButtonSize.Small" 
+                                        Click="@(() => RemoveSetting(setting))" 
+                                        title="Remove this setting" />
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+              else
+              {
+                <div class="text-center py-5">
+                  <RadzenIcon Icon="settings" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                  <h5 class="mt-3">No Settings Configured</h5>
+                  <p class="text-muted">This server has no custom settings. Click "Add Setting" to add configuration values.</p>
+                </div>
+              }
+
+              @if (server.Settings?.Any() == true && !settingsModified)
+              {
+                <div class="settings-info mt-3">
+                  <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter">
+                    <div class="d-flex align-items-start gap-2">
+                      <RadzenIcon Icon="info" Style="font-size: 1.2rem; margin-top: 2px;" />
+                      <div>
+                        <strong>About Settings</strong>
+                        <p class="mb-0 mt-1">
+                          Settings are key-value pairs that configure the game server. 
+                          Common examples include world seeds, passwords, player limits, and game-specific options.
+                          Multi-line values (like player lists) are stored with newline separators.
+                        </p>
+                      </div>
+                    </div>
+                  </RadzenAlert>
+                </div>
+              }
+            </RadzenCard>
           </div>
         </RadzenTabsItem>
 
@@ -485,6 +590,57 @@ else
       align-items: stretch;
     }
   }
+
+  /* Settings Tab Styles */
+  .settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .setting-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    gap: 1rem;
+    align-items: start;
+    padding: 1rem;
+    background: var(--rz-base-50);
+    border-radius: 8px;
+    border: 1px solid var(--rz-border-color);
+  }
+
+  .setting-key input {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+  }
+
+  .setting-value textarea {
+    font-family: 'Courier New', monospace;
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .setting-actions {
+    display: flex;
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  .settings-info {
+    border-top: 1px solid var(--rz-border-color);
+    padding-top: 1rem;
+  }
+
+  @@media (max-width: 768px) {
+    .setting-row {
+      grid-template-columns: 1fr;
+    }
+
+    .setting-actions {
+      justify-content: flex-end;
+    }
+  }
 </style>
 
 @code {
@@ -501,12 +657,25 @@ private bool actionInProgress = false;
 private int selectedTab = 0;
 private string? publicIp;
 private string? containerId;
+private string? containerUserGroup;
+
+// Settings management
+private List<SettingItem> editableSettings = new();
+private bool settingsModified = false;
+private bool savingSettings = false;
+
+private class SettingItem
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+}
 
 protected override async Task OnInitializedAsync()
 {
     await LoadServerAsync();
     await LoadPublicIpAsync();
     await LoadResourceUsageAsync();
+    await LoadContainerUserGroupAsync();
 }
 
 protected override async Task OnParametersSetAsync()
@@ -542,6 +711,9 @@ private async Task LoadServerAsync()
                 extendedMetadata = null;
             }
         }
+
+        // Initialize editable settings
+        InitializeEditableSettings();
     }
     catch (Exception ex)
     {
@@ -599,6 +771,30 @@ private async Task LoadServerAsync()
         {
             // If resource usage fails, try to get containerId from server model
             containerId = server?.ContainerId;
+        }
+    }
+
+    private async Task LoadContainerUserGroupAsync()
+    {
+        try
+        {
+            if (server == null) return;
+
+            // Get the container user/group from the API
+            using var http = new HttpClient { BaseAddress = new Uri(NavigationManager.BaseUri) };
+            var response = await http.GetAsync($"api/servers/{server.ServerId}/usergroup");
+
+            if (response.IsSuccessStatusCode)
+            {
+                containerUserGroup = await response.Content.ReadAsStringAsync();
+                // Remove quotes if JSON string
+                containerUserGroup = containerUserGroup?.Trim('"');
+            }
+        }
+        catch
+        {
+            // If we can't get it, just don't display it
+            containerUserGroup = null;
         }
     }
 
@@ -772,6 +968,108 @@ private async Task LoadServerAsync()
             StateHasChanged();
         }
     }
+
+    #region Settings Management
+
+    private void InitializeEditableSettings()
+    {
+        editableSettings = server?.Settings?
+            .Select(kvp => new SettingItem { Key = kvp.Key, Value = kvp.Value })
+            .ToList() ?? new List<SettingItem>();
+        settingsModified = false;
+    }
+
+    private void AddSetting()
+    {
+        if (!settingsModified)
+        {
+            // Enable edit mode
+            settingsModified = true;
+        }
+
+        editableSettings.Add(new SettingItem { Key = "", Value = "" });
+        StateHasChanged();
+    }
+
+    private void RemoveSetting(SettingItem setting)
+    {
+        editableSettings.Remove(setting);
+        StateHasChanged();
+    }
+
+    private void CancelSettingsChanges()
+    {
+        InitializeEditableSettings();
+        StateHasChanged();
+    }
+
+    private async Task SaveSettings()
+    {
+        savingSettings = true;
+        try
+        {
+            // Validate settings
+            var duplicateKeys = editableSettings
+                .Where(s => !string.IsNullOrWhiteSpace(s.Key))
+                .GroupBy(s => s.Key)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateKeys.Any())
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Duplicate Keys",
+                    Detail = $"The following keys appear multiple times: {string.Join(", ", duplicateKeys)}",
+                    Duration = 5000
+                });
+                return;
+            }
+
+            // Remove empty keys
+            var validSettings = editableSettings
+                .Where(s => !string.IsNullOrWhiteSpace(s.Key))
+                .ToDictionary(s => s.Key, s => s.Value ?? "");
+
+            // Update server settings
+            if (server != null)
+            {
+                server.Settings = validSettings;
+
+                // Update via API (Deploy works for both create and update)
+                await ServerApi.DeployAsync(server);
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Settings Saved",
+                    Detail = $"Server settings updated successfully. Restart the server for changes to take effect.",
+                    Duration = 5000
+                });
+
+                // Reload server to get fresh data
+                await LoadServerAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Save Failed",
+                Detail = $"Failed to save settings: {ex.Message}",
+                Duration = 5000
+            });
+        }
+        finally
+        {
+            savingSettings = false;
+        }
+    }
+
+    #endregion
 
     private async Task CopyConnectionString()
     {
