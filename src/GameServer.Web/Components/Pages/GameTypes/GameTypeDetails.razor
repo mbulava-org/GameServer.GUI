@@ -71,7 +71,7 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Default Settings">
+                <RadzenTabsItem Text="Environment Variables">
                     <div class="p-4">
                         <RadzenCard>
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -586,26 +586,152 @@
 
                 <RadzenTabsItem Text="Advanced Settings">
                     <div class="p-4">
-                        <RadzenCard>
-                            <h5 class="mb-4">Advanced Configuration</h5>
-                            
-                            <div class="section-title mb-3">Console & Terminal</div>
-                            <div class="mb-4">
+                        <RadzenCard class="mb-4">
+                            <div class="section-title mb-3">
+                                <RadzenIcon Icon="terminal" /> Console & Terminal
+                            </div>
+                            <div class="mb-3">
                                 <div class="checkbox-group">
                                     <RadzenCheckBox @bind-Value="@enableTTY" Name="enableTty" />
                                     <RadzenLabel Text="Enable TTY (Interactive Terminal)" for="enableTty" class="ms-2" />
                                 </div>
                                 <small class="text-muted d-block mt-2">
+                                    <RadzenIcon Icon="info" Style="font-size: 0.875rem;" />
                                     Enable for game servers that need interactive console input (e.g., Minecraft, ARK).
                                     Required for proper terminal emulation and ANSI color support.
                                 </small>
                             </div>
-
-                            <div class="alert alert-info">
-                                <strong>Note:</strong> Detailed extended metadata editing is available in the Settings tab for each individual setting.
-                                Use the expandable cards to configure validation rules, port mappings, and more.
-                            </div>
                         </RadzenCard>
+
+                        <RadzenCard>
+                            <div class="section-title mb-3">
+                                <RadzenIcon Icon="public" /> Web Hosts & Reverse Proxy
+                            </div>
+                            <p class="text-muted mb-3">
+                                Configure web interfaces exposed by this game server for automatic reverse proxy routing.
+                                Each host will get a unique URL through your load balancer.
+                            </p>
+
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <small class="text-muted">
+                                        Examples: Admin panel, Dynmap, Statistics dashboard, RCON web interface
+                                    </small>
+                                </div>
+                                <RadzenButton Text="Add Web Host"
+                                              Icon="add"
+                                              Size="ButtonSize.Small"
+                                              ButtonStyle="ButtonStyle.Success"
+                                              Click="@AddWebHost" />
+                            </div>
+
+                            @if (webHosts == null || !webHosts.Any())
+                            {
+                                <div class="text-center py-4">
+                                    <RadzenIcon Icon="public_off" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                                    <p class="text-muted mt-2">No web hosts configured.</p>
+                                    <small class="text-muted">This game type won't expose any web interfaces through the load balancer.</small>
+                                </div>
+                            }
+                            else
+                            {
+                                <RadzenStack Gap="1rem">
+                                    @foreach (var webHost in webHosts.ToList())
+                                    {
+                                        var webHostIndex = webHosts.IndexOf(webHost);
+
+                                        <RadzenCard class="mb-2" Style="background: var(--rz-base-50);">
+                                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                                <h6 class="mb-0">
+                                                    <RadzenIcon Icon="language" />
+                                                    Web Host #@(webHostIndex + 1)
+                                                </h6>
+                                                <RadzenButton Icon="delete"
+                                                              Size="ButtonSize.Small"
+                                                              ButtonStyle="ButtonStyle.Danger"
+                                                              Click="@(() => RemoveWebHost(webHostIndex))"
+                                                              title="Remove Web Host" />
+                                            </div>
+
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <RadzenFormField Text="Name *" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@webHost.Name"
+                                                                       Placeholder="e.g., Admin Panel, Dynmap"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                    <small class="text-muted">Display name for this web interface</small>
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <RadzenFormField Text="Container Port *" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenNumeric @bind-Value="@webHost.ContainerPort"
+                                                                       Min="1"
+                                                                       Max="65535"
+                                                                       ShowUpDown="false"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                    <small class="text-muted">Port inside the container</small>
+                                                </div>
+
+                                                <div class="col-12">
+                                                    <RadzenFormField Text="Description" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextArea @bind-Value="@webHost.Description"
+                                                                        Rows="2"
+                                                                        Placeholder="Brief description of this interface"
+                                                                        class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <RadzenFormField Text="Path Segment (optional)" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@webHost.PathSegment"
+                                                                       Placeholder="Defaults to lowercase name"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                    <small class="text-muted">URL path: /game-{serverId}/<strong>@(webHost.PathSegment ?? webHost.Name?.ToLowerInvariant() ?? "path")</strong>/</small>
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <RadzenFormField Text="Container Port Variable (optional)" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@webHost.ContainerPortVariable"
+                                                                       Placeholder="e.g., WEBUI_PORT"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                    <small class="text-muted">Read port from setting instead of fixed value</small>
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <RadzenFormField Text="Enabled When (optional)" Variant="@Variant.Outlined" class="w-100">
+                                                        <RadzenTextBox @bind-Value="@webHost.EnabledWhen"
+                                                                       Placeholder="e.g., DYNMAP_ENABLED=true"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                    <small class="text-muted">Condition: VARIABLE=value or VARIABLE!=value</small>
+                                                </div>
+
+                                                <div class="col-md-6 d-flex align-items-end">
+                                                    <div class="checkbox-group mb-2">
+                                                        <RadzenCheckBox @bind-Value="@webHost.RequiresAuth" />
+                                                        <RadzenLabel Text="Requires Authentication (future)" class="ms-2" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </RadzenCard>
+                                    }
+                                </RadzenStack>
+                            }
+                        </RadzenCard>
+
+                        <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" class="mt-4">
+                            <div class="d-flex align-items-start gap-2">
+                                <RadzenIcon Icon="lightbulb" Style="font-size: 1.2rem;" />
+                                <div>
+                                    <strong>Tip:</strong> Per-setting metadata (validation, port mappings, etc.) is configured directly in the
+                                    <strong>Environment Variables</strong> tab. Each setting can be expanded to reveal its full metadata editor.
+                                </div>
+                            </div>
+                        </RadzenAlert>
                     </div>
                 </RadzenTabsItem>
             </Tabs>
@@ -957,6 +1083,7 @@ private Dictionary<string, SettingMetadata> settingsMetadata = new();
 private HashSet<string> expandedSettingsKeys = new();
 private string? selectedSettingKey = null;
 private bool enableTTY = false;
+private List<global::GameServer.Docker.Client.WebHostDefinition> webHosts = new();
 private List<string> dataTypes = new() { "string", "number", "boolean", "enum", "list", "port", "timezone" };
 private List<string> availableTimeZones = new();
 private PortRelationshipType[] portRelationshipTypes = Enum.GetValues<PortRelationshipType>();
@@ -1040,7 +1167,10 @@ private async Task LoadGameTypeAsync()
                 {
                     // Load TTY setting
                     enableTTY = extendedMetadata.EnableTTY;
-                    
+
+                    // Load WebHosts
+                    webHosts = extendedMetadata.WebHosts?.ToList() ?? new List<global::GameServer.Docker.Client.WebHostDefinition>();
+
                     // Load existing metadata and ensure DataType defaults to "string" if not set
                     if (extendedMetadata.SettingsMetadata != null)
                     {
@@ -1066,6 +1196,7 @@ private async Task LoadGameTypeAsync()
                 {
                     // No metadata exists yet, initialize empty
                     enableTTY = false;
+                    webHosts = new List<global::GameServer.Docker.Client.WebHostDefinition>();
                     settingsMetadata = new Dictionary<string, SettingMetadata>();
                     Console.WriteLine("GameTypeDetails: No extended metadata found, starting fresh");
                 }
@@ -1075,6 +1206,7 @@ private async Task LoadGameTypeAsync()
                 // Extended metadata is optional, don't fail if it doesn't exist
                 Console.WriteLine($"GameTypeDetails: Could not load extended metadata: {metadataEx.Message}");
                 enableTTY = false;
+                webHosts = new List<global::GameServer.Docker.Client.WebHostDefinition>();
                 settingsMetadata = new Dictionary<string, SettingMetadata>();
             }
         }
@@ -1334,8 +1466,32 @@ private async Task LoadGameTypeAsync()
         if (string.IsNullOrWhiteSpace(gameType.Key)) return false;
         if (string.IsNullOrWhiteSpace(gameType.DisplayName)) return false;
         if (string.IsNullOrWhiteSpace(gameType.Image)) return false;
-        
+
         return true;
+    }
+
+    private void AddWebHost()
+    {
+        webHosts.Add(new global::GameServer.Docker.Client.WebHostDefinition
+        {
+            Name = "",
+            ContainerPort = 8080,
+            Description = "",
+            PathSegment = null,
+            RequiresAuth = false,
+            EnabledWhen = null,
+            ContainerPortVariable = null
+        });
+        StateHasChanged();
+    }
+
+    private void RemoveWebHost(int index)
+    {
+        if (index >= 0 && index < webHosts.Count)
+        {
+            webHosts.RemoveAt(index);
+            StateHasChanged();
+        }
     }
 
     private async Task SaveGameType()
@@ -1393,6 +1549,7 @@ private async Task LoadGameTypeAsync()
                 {
                     GameTypeKey = gameType.Key,
                     EnableTTY = enableTTY,
+                    WebHosts = webHosts,
                     SettingsMetadata = cleanedMetadata,
                     CustomProperties = new Dictionary<string, string>()
                 };

@@ -1,5 +1,5 @@
 <Solution>
-  <Folder Name="/Solution Items/">
+  <Folder Name="/Others/">
     <File Path=".github/workflows/BuildAndPublish-Docker-Local.yaml" />
     <File Path=".github/workflows/ci.yaml" />
   </Folder>

@@ -1,5 +1,4 @@
 using Docker.DotNet;
-using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +19,7 @@ namespace GameServer.Docker
                 .MinimumLevel.Information()
                 .Enrich.FromLogContext()
                 .CreateBootstrapLogger();
-                
+
             try
             {
                 //Log startup information
@@ -29,15 +28,17 @@ namespace GameServer.Docker
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //Serilog configuration - This replaces the bootstrap logger
+                // Clear default logging providers to prevent duplicates
+                builder.Logging.ClearProviders();
+
+                //Serilog configuration - Reads from appsettings.json
                 builder.Services.AddSerilog((services, loggerConfig) =>
                     loggerConfig
                         .ReadFrom.Configuration(builder.Configuration)
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
-                        .Enrich.WithProperty("ApplicationName", "GameServer.Docker")
-                        .WriteTo.Console(
-                            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
+                        .Enrich.WithProperty("ApplicationName", "GameServer.Docker"));
+                        // Console sink is configured in appsettings.json - don't add it here!
 
                 //Add configuration sources
                 builder.Services.Configure<Configurations.DockerConnection>(builder.Configuration.GetSection("DockerConnection"));
@@ -123,7 +124,7 @@ namespace GameServer.Docker
                 {
                     var logger = sp.GetRequiredService<ILogger<NodeAgentDiscoveryService>>();
                     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-                    var agentOptions = sp.GetRequiredService<IOptions<NodeAgentOptions>>();
+                    var agentOptions = sp.GetRequiredService<IOptions<Configurations.NodeAgentOptions>>();
                     var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
 
                     // Try to get IDockerClient, but don't fail if unavailable (Agent mode)

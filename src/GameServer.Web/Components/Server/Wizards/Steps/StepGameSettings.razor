@@ -15,6 +15,7 @@
                                 Server="@Server" 
                                 ServerChanged="@OnServerChanged"
                                 OnValidationChanged="@OnValidationChanged"
+                                OnPortsChanged="@OnPortsChanged"
                                 @ref="environmentEditor" />
     </EditForm>
     
@@ -44,6 +45,7 @@
     [Parameter] public GameServer Server { get; set; } = new();
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnPortsChanged { get; set; }
 
     private ServerEnvironmentEditor? environmentEditor;
     private bool isValid = true;

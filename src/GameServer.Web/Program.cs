@@ -25,7 +25,10 @@ namespace GameServer.Web
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //Serilog configuration
+                // Clear default logging providers to prevent duplicates
+                builder.Logging.ClearProviders();
+
+                //Serilog configuration - Console sink from code only (no appsettings.json config)
                 builder.Services.AddSerilog((services, loggerConfig) =>
                     loggerConfig
                         .ReadFrom.Configuration(builder.Configuration)
