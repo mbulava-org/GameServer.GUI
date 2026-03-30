@@ -1,4 +1,5 @@
 using GameServer.Docker.Repositories;
+using V2Repositories = GameServer.Docker.Repositories.V2;
 
 namespace GameServer.Docker.Services
 {
@@ -32,10 +33,12 @@ namespace GameServer.Docker.Services
                 // Create a scope to resolve scoped services (DbContext is scoped)
                 using var scope = _serviceProvider.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IGameTypeRepository>();
+                var v2Repository = scope.ServiceProvider.GetRequiredService<V2Repositories.IGameTypeRepository>();
 
                 await repository.InitializeDatabaseAsync();
+                await v2Repository.InitializeDatabaseAsync();
 
-                _logger.LogInformation("✅ Background database initialization complete");
+                _logger.LogInformation("✅ Background database initialization complete for legacy and V2 persistence stores");
             }
             catch (Exception ex)
             {

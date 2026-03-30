@@ -71,6 +71,7 @@ builder.Services.Configure<ContainerStatsStreamOptions>(builder.Configuration.Ge
 
 // Configure Agent Registration options
 builder.Services.Configure<AgentRegistrationOptions>(builder.Configuration.GetSection("AgentRegistration"));
+builder.Services.Configure<UdpAgentAnnouncementOptions>(builder.Configuration.GetSection(UdpAgentAnnouncementOptions.SectionName));
 
 // Register services
 builder.Services.AddSingleton<IContainerService, ContainerService>();
@@ -78,6 +79,7 @@ builder.Services.AddSingleton<IContainerService, ContainerService>();
 // Register Agent Registration background service (new architecture)
 // This service connects to the Primary Service and pushes agent state
 builder.Services.AddHostedService<AgentRegistrationService>();
+builder.Services.AddHostedService<UdpAgentAnnouncementService>();
 
 // Add SignalR for real-time communication with Primary Service
 builder.Services.AddSignalR();

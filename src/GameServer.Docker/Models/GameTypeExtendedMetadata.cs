@@ -4,6 +4,7 @@ namespace GameServer.Docker.Models
     /// Extended metadata for a GameType that provides additional configuration options
     /// beyond the basic GameTypeDefinition
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeRevision and related V2 metadata models for new persistence work.")]
     public class GameTypeExtendedMetadata
     {
         /// <summary>

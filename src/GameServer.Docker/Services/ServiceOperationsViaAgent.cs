@@ -12,15 +12,18 @@ namespace GameServer.Docker.Services
     public class ServiceOperationsViaAgent : IServiceOperations
     {
         private readonly IAgentRegistry _agentRegistry;
+        private readonly IUdpAgentRegistry _udpAgentRegistry;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<ServiceOperationsViaAgent> _logger;
 
         public ServiceOperationsViaAgent(
             IAgentRegistry agentRegistry,
+            IUdpAgentRegistry udpAgentRegistry,
             IHttpClientFactory httpClientFactory,
             ILogger<ServiceOperationsViaAgent> logger)
         {
             _agentRegistry = agentRegistry;
+            _udpAgentRegistry = udpAgentRegistry;
             _httpClientFactory = httpClientFactory;
             _logger = logger;
         }
@@ -414,15 +417,27 @@ namespace GameServer.Docker.Services
         {
             var managerAgent = _agentRegistry.GetHealthyManagerAgent();
 
+             if (managerAgent != null)
+             {
+                 return managerAgent;
+             }
+
+             managerAgent = _udpAgentRegistry
+                 .GetAllAgents()
+                 .FirstOrDefault(agent => agent.IsManagerNode && agent.IsHealthy);
+
             if (managerAgent == null)
             {
                 var allAgents = _agentRegistry.GetAllAgents();
                 var managerAgents = _agentRegistry.GetManagerAgents();
+                 var udpAgents = _udpAgentRegistry.GetAllAgents();
+                 var udpManagerAgents = udpAgents.Where(agent => agent.IsManagerNode).ToList();
 
                 throw new InvalidOperationException(
                     $"No healthy manager agent available for service operations. " +
-                    $"Total agents: {allAgents.Count}, Manager agents: {managerAgents.Count}, " +
-                    $"Healthy managers: {managerAgents.Count(a => a.IsHealthy)}");
+                     $"Registry agents: {allAgents.Count}, Registry manager agents: {managerAgents.Count}, " +
+                     $"Healthy registry managers: {managerAgents.Count(a => a.IsHealthy)}, UDP agents: {udpAgents.Count}, " +
+                     $"UDP manager agents: {udpManagerAgents.Count}, Healthy UDP managers: {udpManagerAgents.Count(a => a.IsHealthy)}");
             }
 
             return managerAgent;

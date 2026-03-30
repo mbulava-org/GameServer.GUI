@@ -23,6 +23,7 @@ namespace GameServer.Docker.Services
         private readonly IServiceProvider _serviceProvider; // Use IServiceProvider to avoid circular dependency
         private readonly NodeAgentOptions _agentOptions;
         private readonly IAgentRegistry _agentRegistry;
+        private readonly IUdpAgentRegistry _udpAgentRegistry;
 
         // Thread-safe agent storage - key is NodeId
         private readonly ConcurrentDictionary<string, NodeAgentEndpoint> _agents = new();
@@ -42,6 +43,7 @@ namespace GameServer.Docker.Services
             IServiceProvider serviceProvider, // Inject IServiceProvider to avoid circular dependency
             IOptions<NodeAgentOptions> agentOptions,
             IAgentRegistry agentRegistry,
+            IUdpAgentRegistry udpAgentRegistry,
             IDockerClient? client = null)
         {
             _client = client;
@@ -50,6 +52,7 @@ namespace GameServer.Docker.Services
             _serviceProvider = serviceProvider;
             _agentOptions = agentOptions.Value;
             _agentRegistry = agentRegistry;
+            _udpAgentRegistry = udpAgentRegistry;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -184,6 +187,7 @@ namespace GameServer.Docker.Services
             // PHASE 2: Merge agents from both systems
             // Priority: Registry agents (connected via registration) take precedence
             var registryAgents = _agentRegistry.GetAllAgents();
+            var udpAgents = _udpAgentRegistry.GetAllAgents();
             var discoveryAgents = _agents.Values.ToList();
 
             // Build combined list, preferring registry agents
@@ -191,6 +195,12 @@ namespace GameServer.Docker.Services
 
             // Add discovery agents first
             foreach (var agent in discoveryAgents)
+            {
+                agentsByNode[agent.NodeId] = agent;
+            }
+
+            // Overlay UDP agents next
+            foreach (var agent in udpAgents)
             {
                 agentsByNode[agent.NodeId] = agent;
             }
@@ -205,9 +215,10 @@ namespace GameServer.Docker.Services
 
             var timeSinceLastDiscovery = DateTime.UtcNow - _lastDiscoveryTime;
             _logger.LogDebug(
-                "Returning {Total} agents ({Registry} from registry, {Discovery} from discovery, last discovery: {Seconds:F1}s ago)", 
+                "Returning {Total} agents ({Registry} from registry, {Udp} from UDP, {Discovery} from discovery, last discovery: {Seconds:F1}s ago)", 
                 allAgents.Count,
                 registryAgents.Count,
+                udpAgents.Count,
                 discoveryAgents.Count,
                 timeSinceLastDiscovery.TotalSeconds);
 
@@ -353,16 +364,27 @@ namespace GameServer.Docker.Services
                         return registryAgent;
                     }
 
+                    var udpAgent = _udpAgentRegistry.GetAgentForContainer(containerId);
+                    if (udpAgent != null)
+                    {
+                        _logger.LogDebug(
+                            "✅ Found agent via UDP for container {ContainerId}: {AgentUrl} on node {NodeName}",
+                            containerId.Substring(0, Math.Min(12, containerId.Length)),
+                            udpAgent.InternalUrl,
+                            udpAgent.NodeName);
+                        return udpAgent;
+                    }
+
                     if (_client == null)
                     {
                         _logger.LogWarning(
-                            "⚠️ Agent not found in registry for container {ContainerId} and IDockerClient is not available for fallback discovery",
+                            "⚠️ Agent not found in registry or UDP discovery for container {ContainerId} and IDockerClient is not available for fallback discovery",
                             containerId.Substring(0, Math.Min(12, containerId.Length)));
                         return null;
                     }
 
                     _logger.LogDebug(
-                        "⚠️ Agent not found in registry for container {ContainerId}, falling back to Docker Swarm query (pull-based discovery)",
+                        "⚠️ Agent not found in registry or UDP discovery for container {ContainerId}, falling back to Docker Swarm query (pull-based discovery)",
                         containerId.Substring(0, Math.Min(12, containerId.Length)));
 
                     // FALLBACK: Use legacy Docker Swarm query method

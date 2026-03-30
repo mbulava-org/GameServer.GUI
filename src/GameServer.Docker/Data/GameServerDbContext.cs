@@ -185,7 +185,6 @@ namespace GameServer.Docker.Data
                 entity.Property(e => e.IsRequired).HasDefaultValue(true);
             });
 
-            
         }
 
         /// <summary>

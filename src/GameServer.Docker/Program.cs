@@ -6,6 +6,8 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using System.Reflection;
 using Scalar.AspNetCore;
+using RepositoriesV2 = GameServer.Docker.Repositories.V2;
+using DataV2 = GameServer.Docker.Data.V2;
 
 namespace GameServer.Docker
 {
@@ -48,7 +50,9 @@ namespace GameServer.Docker
                 builder.Services.Configure<Configurations.VolumeDriverConfigOptions>(builder.Configuration.GetSection("VolumeDriverConfigOptions"));
                 builder.Services.Configure<Configurations.NetworkOptions>(builder.Configuration.GetSection("NetworkOptions"));
                 builder.Services.Configure<Configurations.NodeAgentOptions>(builder.Configuration.GetSection("NodeAgentOptions"));
+                builder.Services.Configure<Configurations.UdpAgentDiscoveryOptions>(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName));
                 builder.Services.Configure<Configurations.ServiceOperationsOptions>(builder.Configuration.GetSection("ServiceOperations"));
+                builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
 
                 // Docker Client - Only needed for Direct mode
                 // In Agent mode, all Docker operations are delegated to manager agents
@@ -79,6 +83,8 @@ namespace GameServer.Docker
                 // Agents connect to the Primary Service and push their state
                 // This will eventually replace NodeAgentDiscoveryService
                 builder.Services.AddSingleton<IAgentRegistry, AgentRegistryService>();
+                builder.Services.AddSingleton<IUdpAgentRegistry, UdpAgentRegistryService>();
+                builder.Services.AddHostedService<UdpAgentAnnouncementListenerService>();
 
                 // Service Operations - Choose implementation based on configuration
                 builder.Services.AddSingleton<IServiceOperations>(sp =>
@@ -126,6 +132,7 @@ namespace GameServer.Docker
                     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
                     var agentOptions = sp.GetRequiredService<IOptions<Configurations.NodeAgentOptions>>();
                     var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
+                    var udpAgentRegistry = sp.GetRequiredService<IUdpAgentRegistry>();
 
                     // Try to get IDockerClient, but don't fail if unavailable (Agent mode)
                     IDockerClient? dockerClient = null;
@@ -140,6 +147,7 @@ namespace GameServer.Docker
                         sp, // Pass IServiceProvider to avoid circular dependency
                         agentOptions,
                         agentRegistry,
+                        udpAgentRegistry,
                         dockerClient);
                 });
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
@@ -163,7 +171,7 @@ namespace GameServer.Docker
                     return new PortAllocator(dockerClient, portOptions);
                 });*/
 
-                // Add SQLite Database for GameType management
+                // Add legacy SQLite database for the current GameType management implementation
                 var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
                     ?? "Data Source=./data/gameserver.db";//let this default to a sub path to avoid NSwag build errors.
                 
@@ -196,10 +204,39 @@ namespace GameServer.Docker
                     options.EnableServiceProviderCaching(false);
                 });
 
+                // Add separate V2 database context for the new persistence implementation.
+                // Provider selection is isolated from the legacy DbContext so both paths can coexist.
+                builder.Services.AddDbContext<DataV2.GameServerV2DbContext>((serviceProvider, options) =>
+                {
+                    var v2Options = serviceProvider.GetRequiredService<IOptions<Configurations.V2DatabaseOptions>>().Value;
+                    var provider = v2Options.Provider;
+                    var connectionName = string.IsNullOrWhiteSpace(v2Options.ConnectionStringName)
+                        ? "GameServerV2Db"
+                        : v2Options.ConnectionStringName;
+
+                    var v2ConnectionString = builder.Configuration.GetConnectionString(connectionName)
+                        ?? builder.Configuration.GetConnectionString("GameServerDb")
+                        ?? "Data Source=./data/gameserver-v2.db";
+
+                    DataV2.GameServerV2DbContextFactory.ConfigureProvider(
+                        (DbContextOptionsBuilder)options,
+                        provider,
+                        v2ConnectionString);
+
+                    if (builder.Environment.IsDevelopment())
+                    {
+                        options.EnableSensitiveDataLogging();
+                    }
+
+                    options.EnableServiceProviderCaching(false);
+                });
+
                 // Add GameType Repository (database-backed) - This replaces file-based registries
                 // Register IMemoryCache for GameType caching
                 builder.Services.AddMemoryCache();
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
 
                 // Keep file-based registries as fallback/migration helpers (optional)
                 // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();

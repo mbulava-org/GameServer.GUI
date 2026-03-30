@@ -38,6 +38,10 @@
 
 ## Project-Specific Rules
 
+### Database Schema
+- You may directly adjust the proposed database schema in documentation, including field renames, removals, and repurposings; follow the latest edited schema rather than earlier drafts.
+- For this project, new V2 DbContext work should follow the same pattern as the existing DbContext so automatic client generation is not disrupted.
+
 ### Docker & Swarm
 - **NEVER** connect directly to `IDockerClient` from SignalR Hubs for container operations
 - **ALWAYS** use `INodeAgentDiscovery` to find the correct node agent for container operations
@@ -54,6 +58,18 @@
 - Use `Server.Settings` to store list-like data as newline-separated strings under specific keys such as "OPS" or "WHITELIST"
 - `GameServer.Lists` and `GameTypeDefinition.DefaultLists` have been removed
 - `StepGameSettings` must not reference these lists and should use `Server.Settings` only
+
+### GameServers in V2
+- For this project, `GameServers` in V2 should avoid duplicating data owned by `GameType` and `GameTypeRevision` and should likely reference only `GameTypeRevisionId` rather than also storing game type or image fields.
+
+### Docker Image Management
+- For this project, Docker image info should be scanned when editing a GameType if a tag's SHA changes or a new tag is added
+- GameServer should remain focused on deployment/update intent for the Docker service and should not store all image inspection data per server
+
+### GameServer Ports and Volumes
+- For this project, `GameServerPorts` and `GameServerVolumes` should not be stored in the database because they should be computable from `GameTypeRevision` directly.
+- Port validation is a backend service responsibility and should not be stored in V2 database metadata. The backend should validate requested port/protocol combinations for availability across multiple GameServer instances before assigning or changing exposed game ports.
+- Each port mapping should have a single calculation value column interpreted by `RelationType` and `MappingRole`, instead of separate `OffsetValue`, `FixedValue`, and `MultiplierValue` columns.
 
 ### UI Components
 - Move component logic from code-behind into the `.razor` file when possible
@@ -80,3 +96,9 @@
 - Extended metadata is JSON-serialized in `ExtendedMetadataJson` column
 - Use `IGameTypeRepository` for database operations
 - `GameTypeRegistry` is marked `[Obsolete]` - use database instead
+- For this project, the new persistence layer should use a `V2` namespace under `Models` and `Repositories` rather than prefixing every type and repository with `Versioned`. The V2 persistence layer is a separate new implementation that must coexist with the old models and repositories as distinct old and new data models/repositories.
+
+### Web Hosts
+- Web Hosts belong to `GameTypeRevision` but are enabled/disabled per `GameServer` instance, usually based on environment variables.
+- Redirects and web hosts refer to the same domain concept.
+- Load balancer configuration belongs in the Primary Service, and the current provider is Traefik running on a Swarm manager with label-driven updates.
