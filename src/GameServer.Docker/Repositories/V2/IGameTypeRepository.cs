@@ -20,5 +20,7 @@ public interface IGameTypeRepository
 
     Task<GameTypeRevision> AddRevisionAsync(string gameTypeKey, GameTypeRevision revision);
 
+    Task<GameTypeRevision> UpdateRevisionAsync(string gameTypeKey, GameTypeRevision revision);
+
     Task SetCurrentRevisionAsync(string gameTypeKey, int revisionId);
 }

@@ -12,7 +12,7 @@ namespace GameServer.Docker.Configurations
         /// Default: true (for backward compatibility)
         /// </summary>
         [Obsolete("Background discovery via Docker Swarm polling is deprecated. Use agent registration instead. This will be removed in a future version.")]
-        public bool EnableBackgroundDiscovery { get; set; } = true;
+        public bool EnableBackgroundDiscovery { get; set; } = false;
 
         /// <summary>
         /// The name of the Node Agent service in Docker Swarm

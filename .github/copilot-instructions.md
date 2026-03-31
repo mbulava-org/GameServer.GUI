@@ -29,6 +29,7 @@
 - Keep UI and logic together for better maintainability
 - Follow the architectural patterns defined in ARCHITECTURE.md
 - Use constants instead of magic strings
+- Add test coverage for services during implementation, but defer GUI component tests until the very end because the pages will continue to iterate on look and feel.
 
 ## Code Style
 - Use specific formatting rules

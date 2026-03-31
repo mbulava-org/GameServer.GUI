@@ -93,23 +93,19 @@ Labels should **not** be used as the primary store for full server configuration
 ### `GameTypes`
 One row per logical game type.
 
-Suggested fields:
-- `Id`
-- `Key`
-- `DisplayName`
-- `Description`
-- `ImageReference`
-- `ThumbnailUrl`
-- `DocumentationUrl`
-- `IsActive`
-- `CurrentRevisionId` nullable
-- `CreatedAt`
-- `UpdatedAt`
-
-Notes:
-- `Key` is the stable logical identifier
-- `ImageReference` is the fixed Docker image for this game type
-- if a different Docker image is needed, a new `GameType` should be created rather than changing the image on an existing one
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the catalog entry. |
+| `Key` | `string` | Not Null | Unique | Stable logical identifier such as `minecraft` or `valheim`. |
+| `DisplayName` | `string` | Not Null |  | User-facing name shown in editors and selection UIs. |
+| `Description` | `string` | Nullable |  | Human-readable summary of the game type. |
+| `ImageReference` | `string` | Not Null |  | Fixed Docker image reference for this game type; changing this should create a new `GameType` instead of mutating an existing one. |
+| `ThumbnailUrl` | `string` | Nullable |  | Optional image used for catalog display in the UI. |
+| `DocumentationUrl` | `string` | Nullable |  | Optional reference to image or game setup documentation. |
+| `IsActive` | `bool` | Not Null |  | Indicates whether the game type should be available for new server creation. |
+| `CurrentRevisionId` | `int` | Nullable | Foreign Key -> `GameTypeRevisions.Id` | Points to the currently recommended published revision for this game type. |
+| `CreatedAt` | `datetime` | Not Null |  | Audit timestamp for when the catalog entry was created. |
+| `UpdatedAt` | `datetime` | Not Null |  | Audit timestamp for the last metadata change to the catalog entry. |
 
 ---
 
@@ -120,139 +116,103 @@ All deployable definition tables should attach to `GameTypeRevisionId`, not dire
 ### `GameTypeRevisions`
 One row per published version of a game type definition.
 
-Suggested fields:
-- `Id`
-- `GameTypeId`
-- `VersionTag`
-- `ImageDigest` nullable
-- `EnableTTY`
-- `Notes` nullable
-- `IsPublished`
-- `CreatedAt`
-
-Purpose:
-- freeze a deployable template at a point in time
-- represent an updated version tag for the fixed image owned by the parent `GameType`
-
-Notes:
-- for Docker-container game types, a new revision corresponds to a new or updated image tag
-- changing the Docker image itself should create a new `GameType`, not a new revision
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the frozen deployable revision. |
+| `GameTypeId` | `int` | Not Null | Foreign Key -> `GameTypes.Id` | Associates the revision to the fixed-image game type it belongs to. |
+| `VersionTag` | `string` | Not Null | Unique with `GameTypeId` | Docker image tag represented by this revision for the parent `GameType.ImageReference`. |
+| `ImageDigest` | `string` | Nullable |  | Optional digest captured for the tagged image when the revision was created or published. |
+| `EnableTTY` | `bool` | Not Null |  | Indicates whether the deployed service should enable TTY for this revision. |
+| `Notes` | `string` | Nullable |  | Optional release or authoring notes describing what changed in this revision. |
+| `IsPublished` | `bool` | Not Null |  | Indicates whether this revision is available for use by server instances. |
+| `CreatedAt` | `datetime` | Not Null |  | Audit timestamp for when the revision was created. |
 
 ### `GameTypePorts`
 Curated container port definitions for a revision.
 
-Suggested fields:
-- `Id`
-- `GameTypeRevisionId`
-- `ContainerPort`
-- `Protocol`
-- `AdvertisedPort`
-- `Description`
-- `DisplayOrder`
-
-Notes:
-- `AdvertisedPort` is a boolean flag
-- each `GameTypeRevision` should have exactly one advertised port
-- this marks the primary connection port users should connect to
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the revisioned port definition. |
+| `GameTypeRevisionId` | `int` | Not Null | Foreign Key -> `GameTypeRevisions.Id` | Associates the port definition with the frozen revision that owns it. |
+| `ContainerPort` | `int` | Not Null |  | Container port exposed by the image or expected by the deployable template. |
+| `Protocol` | `string` | Not Null |  | Transport protocol for this port, typically `tcp` or `udp`. |
+| `AdvertisedPort` | `bool` | Not Null |  | Marks the single user-facing primary connection port for the revision. |
+| `Description` | `string` | Nullable |  | Human-readable purpose of the port such as game, query, or admin access. |
+| `DisplayOrder` | `int` | Not Null |  | UI ordering for port presentation and generated summaries. |
 
 ### `GameTypeVolumes`
 Curated volume definitions for a revision.
 
-Suggested fields:
-- `Id`
-- `GameTypeRevisionId`
-- `Source`
-- `Description`
-- `DisplayOrder`
-- `Usage`
-
-`Usage` examples:
-- `config`
-- `world`
-- `mods`
-- `gamefiles`
-
-Notes:
-- 'Usage' value will be handled within the Primary Service to determine how each volume binding is resolved and deployed
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the revisioned volume definition. |
+| `GameTypeRevisionId` | `int` | Not Null | Foreign Key -> `GameTypeRevisions.Id` | Associates the volume with the revision that defines it. |
+| `Source` | `string` | Not Null |  | Logical or authored source key used by the Primary Service to resolve storage bindings. |
+| `Description` | `string` | Nullable |  | Human-readable purpose of the volume such as config, world, or mods. |
+| `DisplayOrder` | `int` | Not Null |  | UI ordering for volume presentation. |
+| `Usage` | `string` | Not Null |  | Semantic classification used by deployment logic to determine how the binding should be generated. |
 
 ### `GameTypeSettingDefinitions`
 Curated setting definitions for a revision.
 
-Suggested fields:
-- `Id`
-- `GameTypeRevisionId`
-- `SettingKey`
-- `DefaultValue`
-- `Description`
-- `DisplayOrder`
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the setting definition. |
+| `GameTypeRevisionId` | `int` | Not Null | Foreign Key -> `GameTypeRevisions.Id` | Associates the setting definition with the revision that owns it. |
+| `SettingKey` | `string` | Not Null | Unique with `GameTypeRevisionId` | Environment variable or authored setting key consumed during deployment. |
+| `DefaultValue` | `string` | Nullable |  | Default value used when a server does not provide an override. |
+| `Description` | `string` | Nullable |  | Human-readable explanation of what the setting controls. |
+| `DisplayOrder` | `int` | Not Null |  | UI ordering for editors and review screens. |
 
 ### `GameTypeSettingMetadata`
 UI and validation metadata for one setting definition.
 
-Suggested fields:
-- `Id`
-- `GameTypeSettingDefinitionId`
-- `DataType`
-- `Category`
-- `IsRequired`
-- `CannotBeEmpty`
-- `Placeholder`
-- `ValidationPattern`
-- `ValidationMessage`
-- `AutoAllocatePort`
-- `ValidateRelatedPortsAvailability`
-- `AllowedValuesJson`
-- `ValueMappingsJson`
-
-Notes:
-- port relationship/link data should not be split between metadata and a separate relationship model
-- metadata should describe the setting itself, while port mapping rules should live in their own child table
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the setting metadata row. |
+| `GameTypeSettingDefinitionId` | `int` | Not Null | Foreign Key -> `GameTypeSettingDefinitions.Id`; Unique | One-to-one metadata row describing how a setting should be rendered and interpreted. |
+| `DataType` | `string` | Not Null |  | Semantic type used by the UI and backend interpretation, such as `string`, `number`, `boolean`, `enum`, `port`, `list`, or `timezone`. |
+| `Category` | `string` | Nullable |  | Optional UI grouping label used to organize settings in editors. |
+| `IsRequired` | `bool` | Not Null |  | Indicates whether the setting must be provided before deployment. |
+| `CannotBeEmpty` | `bool` | Not Null |  | Indicates whether the setting may be present but blank. |
+| `Placeholder` | `string` | Nullable |  | UI hint shown when the setting value is empty. |
+| `ValidationPattern` | `string` | Nullable |  | Optional regex or pattern used to validate the setting value. |
+| `ValidationMessage` | `string` | Nullable |  | Error text presented when the validation pattern fails. |
+| `AutoAllocatePort` | `bool` | Not Null |  | Indicates whether backend services may automatically assign published ports for this setting. |
+| `ValidateRelatedPortsAvailability` | `bool` | Not Null |  | Indicates whether related port mappings should be checked together for availability before deployment or update. |
+| `AllowedValuesJson` | `string` | Nullable |  | Serialized list of allowed values used to render enum-like pickers. |
+| `ValueMappingsJson` | `string` | Nullable |  | Serialized key-to-label mappings used to display friendly values in the UI. |
 
 ### `GameTypeSettingPortMappings`
 Port mapping rules attached to setting metadata.
 
-Suggested fields:
-- `Id`
-- `GameTypeSettingMetadataId`
-- `MappingRole`
-- `RelationType`
-- `TargetContainerPort`
-- `TargetProtocol`
-- `CalculationValue`
-- `Description`
-- `IsRequired`
-- `DisplayOrder`
-
-Notes:
-- `MappingRole` identifies whether the row is the primary mapping or a related mapping
-- `RelationType` determines how `CalculationValue` is interpreted
-- `CalculationValue` replaces separate `OffsetValue`, `FixedValue`, and future multiplier-specific columns
-- a direct primary mapping can use a null or zero `CalculationValue`
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the port mapping rule. |
+| `GameTypeSettingMetadataId` | `int` | Not Null | Foreign Key -> `GameTypeSettingMetadata.Id` | Associates the mapping rule with the port-type setting metadata that owns it. |
+| `MappingRole` | `string` or `int` | Not Null |  | Distinguishes the primary mapping from related mappings generated from the same setting. |
+| `RelationType` | `string` or `int` | Not Null |  | Defines how the target port is derived, such as direct, offset, fixed, or multiplier. |
+| `TargetContainerPort` | `int` | Not Null |  | Container port definition that this mapping rule controls or derives. |
+| `TargetProtocol` | `string` | Not Null |  | Protocol associated with the target container port. |
+| `CalculationValue` | `int` | Nullable |  | Single calculation operand interpreted according to `RelationType` and `MappingRole`. |
+| `Description` | `string` | Nullable |  | Human-readable summary of what the derived or primary mapping is intended to represent. |
+| `IsRequired` | `bool` | Not Null |  | Indicates whether this derived mapping must exist for the setting to be considered valid. |
+| `DisplayOrder` | `int` | Not Null |  | UI ordering for displaying related mappings. |
 
 ### `GameTypeWebHosts`
 Revisioned Web Host definitions used to generate load balancer labels.
 
-Suggested fields:
-- `Id`
-- `GameTypeRevisionId`
-- `Name`
-- `Description`
-- `PathSegment`
-- `ContainerPort` nullable
-- `ContainerPortVariable` nullable
-- `EnabledWhen` nullable
-- `DisplayOrder`
-
-Purpose:
-- define revisioned reverse proxy exposure rules for the game type
-- support path-based routing such as `/game-{serverId}` and subpaths
-- support conditional enablement through server settings or environment variables
-
-Notes:
-- `ContainerPortVariable` supports dynamic port resolution from settings
-- `EnabledWhen` captures the condition expression currently used by the resolver
-- `PathSegment` can be used for static path segments or as a template with variables for dynamic paths
-- `ContainerPort` is used when the exposed port is static and does not depend on server-specific settings
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the authored Web Host definition. |
+| `GameTypeRevisionId` | `int` | Not Null | Foreign Key -> `GameTypeRevisions.Id` | Associates the Web Host definition with the revision that owns it. |
+| `Name` | `string` | Not Null |  | Human-readable name of the web-accessible endpoint such as admin UI or map view. |
+| `Description` | `string` | Nullable |  | Summary of the endpoint and what it exposes. |
+| `PathSegment` | `string` | Nullable |  | Static or templated path segment used when generating route paths. |
+| `ContainerPort` | `int` | Nullable |  | Static container port used when the endpoint does not resolve its port from a setting. |
+| `ContainerPortVariable` | `string` | Nullable |  | Setting key used to resolve the effective container port dynamically from `GameServerSettings`. |
+| `EnabledWhen` | `string` | Nullable |  | Conditional expression used to determine whether the endpoint should be generated for a server. |
+| `DisplayOrder` | `int` | Not Null |  | UI and generation ordering for Web Host processing. |
 
 ---
 
@@ -261,41 +221,30 @@ Notes:
 ### `GameServers`
 The main persisted server instance.
 
-Suggested fields:
-- `Id`
-- `ServerId`
-- `Name`
-- `Description`
-- `GameTypeRevisionId`
-- `ServiceName`
-- `Status`
-- `CreatedAt`
-- `UpdatedAt`
-- `LastDeployedAt` nullable
-- `LastSeenAt` nullable
-- `IsDeleted` optional
-
-Purpose:
-- define how the Docker service should be deployed or updated
-- store only server-specific deployment state that cannot be derived from `GameTypeRevision`
-
-Notes:
-- `GameTypeRevisionId` is the single schema reference for deployment shape
-- `GameType`, image reference, version tag, and image digest should be derived through the selected revision
-- `GameServers` should not duplicate data already owned by `GameType` and `GameTypeRevision`
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the persisted server instance. |
+| `ServerId` | `string` | Not Null | Unique | Stable external identifier used for API access, service labels, and runtime correlation. |
+| `Name` | `string` | Not Null |  | User-facing server name. |
+| `Description` | `string` | Nullable |  | Optional description of the server instance. |
+| `GameTypeRevisionId` | `int` | Not Null | Foreign Key -> `GameTypeRevisions.Id` | Single schema reference describing the frozen deployable template for the server. |
+| `ServiceName` | `string` | Not Null |  | Docker Swarm service name or generated identity used during deployment and updates. |
+| `Status` | `string` | Not Null |  | Desired or observed deployment status for the server instance. |
+| `CreatedAt` | `datetime` | Not Null |  | Audit timestamp for when the server record was created. |
+| `UpdatedAt` | `datetime` | Not Null |  | Audit timestamp for the last server metadata or settings update. |
+| `LastDeployedAt` | `datetime` | Nullable |  | Timestamp for the last deploy or update operation. |
+| `LastSeenAt` | `datetime` | Nullable |  | Timestamp for the last observed runtime correlation or heartbeat-derived state. |
+| `IsDeleted` | `bool` | Not Null |  | Soft-delete marker used to hide or retire servers without immediately removing audit history. |
 
 ### `GameServerSettings`
 Desired per-server setting values.
 
-Suggested fields:
-- `Id`
-- `GameServerId`
-- `SettingKey`
-- `Value`
-
-Notes:
-- this aligns with `Server.Settings`
-- list-like settings can continue to be stored as newline-separated strings where required
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the server-specific setting row. |
+| `GameServerId` | `int` | Not Null | Foreign Key -> `GameServers.Id` | Associates the setting override with the server instance that owns it. |
+| `SettingKey` | `string` | Not Null | Unique with `GameServerId` | Setting or environment variable key being overridden for this server. |
+| `Value` | `string` | Nullable |  | Desired value supplied for deployment; list-like values may remain newline-separated when required by existing behavior. |
 
 ### Derived Web Host State
 Resolved Web Host state should be derived from:
@@ -402,131 +351,13 @@ That data belongs either:
 
 ## Full Proposed Physical Schema
 
-## 1. `GameTypes`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Internal key |
-| `Key` | string unique | Stable logical key |
-| `DisplayName` | string | User-facing name |
-| `Description` | string nullable | Summary |
-| `ImageReference` | string | Fixed Docker image for this game type |
-| `ThumbnailUrl` | string nullable | Optional |
-| `DocumentationUrl` | string nullable | Optional |
-| `IsActive` | bool | Active or inactive |
-| `CurrentRevisionId` | int nullable FK | Latest published revision |
-| `CreatedAt` | datetime | Audit |
-| `UpdatedAt` | datetime | Audit |
+The table definitions above are the proposed physical schema. Each table is shown with:
 
-## 2. `GameTypeRevisions`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Revision key |
-| `GameTypeId` | int FK | Parent game type |
-| `VersionTag` | string | Docker tag for this revision |
-| `ImageDigest` | string nullable | Known digest for the tagged image |
-| `EnableTTY` | bool | Runtime behavior |
-| `Notes` | string nullable | Release notes |
-| `IsPublished` | bool | Publish state |
-| `CreatedAt` | datetime | Audit |
-
-## 3. `GameTypePorts`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameTypeRevisionId` | int FK | Parent revision |
-| `ContainerPort` | int | Container port |
-| `Protocol` | string | `tcp` or `udp` |
-| `AdvertisedPort` | bool | True for the single user-facing connection port |
-| `Description` | string nullable | Meaning |
-| `DisplayOrder` | int | UI ordering |
-
-## 4. `GameTypeVolumes`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameTypeRevisionId` | int FK | Parent revision |
-| `Source` | string | Logical or default source |
-| `Description` | string nullable | Meaning |
-| `DisplayOrder` | int | UI ordering |
-| `Usage` | string | `config`, `world`, `mods`, `gamefiles` |
-
-## 5. `GameTypeSettingDefinitions`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameTypeRevisionId` | int FK | Parent revision |
-| `SettingKey` | string | Env or setting key |
-| `DefaultValue` | string nullable | Default value |
-| `Description` | string nullable | Summary |
-| `DisplayOrder` | int | UI ordering |
-
-## 6. `GameTypeSettingMetadata`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameTypeSettingDefinitionId` | int FK | Parent setting |
-| `DataType` | string | `string`, `number`, `boolean`, `enum`, `port` |
-| `Category` | string nullable | UI grouping |
-| `IsRequired` | bool | Required flag |
-| `CannotBeEmpty` | bool | Validation flag |
-| `Placeholder` | string nullable | UI hint |
-| `ValidationPattern` | string nullable | Regex or pattern |
-| `ValidationMessage` | string nullable | UI message |
-| `AutoAllocatePort` | bool | Allocation flag |
-| `ValidateRelatedPortsAvailability` | bool | Validation flag |
-| `AllowedValuesJson` | string nullable | Enum options |
-| `ValueMappingsJson` | string nullable | Enum labels |
-
-## 7. `GameTypeSettingPortMappings`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameTypeSettingMetadataId` | int FK | Parent metadata |
-| `MappingRole` | int or string | Primary or related mapping |
-| `RelationType` | int or string | Direct, offset, fixed, multiplier |
-| `TargetContainerPort` | int | Target port |
-| `TargetProtocol` | string | `tcp` or `udp` |
-| `CalculationValue` | int nullable | Value interpreted by relation type |
-| `Description` | string nullable | Summary |
-| `IsRequired` | bool | Requirement flag |
-| `DisplayOrder` | int | UI ordering |
-
-## 8. `GameTypeWebHosts`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameTypeRevisionId` | int FK | Parent revision |
-| `Name` | string | Host name |
-| `Description` | string nullable | Summary |
-| `PathSegment` | string nullable | URL segment |
-| `ContainerPort` | int nullable | Static port when not dynamically resolved |
-| `ContainerPortVariable` | string nullable | Dynamic port source |
-| `EnabledWhen` | string nullable | Condition expression |
-| `DisplayOrder` | int | UI and routing priority |
-
-## 9. `GameServers`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Internal key |
-| `ServerId` | string unique | External stable ID |
-| `Name` | string | Display name |
-| `Description` | string nullable | Summary |
-| `GameTypeRevisionId` | int FK | Frozen deployable revision |
-| `ServiceName` | string | Docker service name |
-| `Status` | string | Desired or current status |
-| `CreatedAt` | datetime | Audit |
-| `UpdatedAt` | datetime | Audit |
-| `LastDeployedAt` | datetime nullable | Last deploy |
-| `LastSeenAt` | datetime nullable | Last observed |
-| `IsDeleted` | bool optional | Soft delete |
-
-## 10. `GameServerSettings`
-| Column | Type | Notes |
-|---|---|---|
-| `Id` | int PK | Row key |
-| `GameServerId` | int FK | Parent server |
-| `SettingKey` | string | Server setting |
-| `Value` | string nullable | Desired value |
+- column name
+- data type
+- nullability
+- primary, unique, and foreign key intent
+- a description of what the data defines or is intended to generate
 
 ## Relationship Summary
 

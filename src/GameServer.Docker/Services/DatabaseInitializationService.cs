@@ -11,13 +11,16 @@ namespace GameServer.Docker.Services
     public class DatabaseInitializationService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;
+        private readonly IHostApplicationLifetime _applicationLifetime;
         private readonly ILogger<DatabaseInitializationService> _logger;
 
         public DatabaseInitializationService(
             IServiceProvider serviceProvider,
+            IHostApplicationLifetime applicationLifetime,
             ILogger<DatabaseInitializationService> logger)
         {
             _serviceProvider = serviceProvider;
+            _applicationLifetime = applicationLifetime;
             _logger = logger;
         }
 
@@ -40,14 +43,15 @@ namespace GameServer.Docker.Services
 
                 _logger.LogInformation("✅ Background database initialization complete for legacy and V2 persistence stores");
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Database initialization was cancelled during host shutdown.");
+            }
             catch (Exception ex)
             {
-                // Log the error but don't crash the application
-                // The application can still serve API requests, just without database data
-                _logger.LogError(ex, "❌ Failed to initialize database in background. Some features may not work correctly.");
-                
-                // Optionally, you could set a flag here to indicate database is not ready
-                // and return appropriate errors from API endpoints that need the database
+                Environment.ExitCode = 1;
+                _logger.LogCritical(ex, "❌ Failed to initialize database in background. Shutting down the application.");
+                _applicationLifetime.StopApplication();
             }
         }
     }

@@ -165,6 +165,32 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 - Delete game types
 - Import/export definitions
 
+### Database Persistence Status
+
+The application currently has **two persistence layers** for game type and server configuration:
+
+#### Legacy persistence (active for current API flows)
+- SQLite-backed EF Core persistence
+- `Data/GameServerDbContext`
+- `Repositories/IGameTypeRepository`
+- still used by the current controllers, extended metadata flows, and most existing UI behavior
+
+#### V2 persistence (implemented, separate, not the default application path yet)
+- `Data/V2/GameServerV2DbContext`
+- `Repositories/V2/IGameTypeRepository`
+- `Repositories/V2/IGameServerRepository`
+- provider-aware configuration supporting either SQLite or MySQL
+- normalized schema with:
+  - `GameType` owning a fixed `ImageReference`
+  - `GameTypeRevision` owning tag-based deployable templates
+  - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
+  - derived Web Host state resolved from revision Web Host definitions + server settings instead of being stored
+
+#### Current V2 schema direction
+- `GameServerPorts` and `GameServerVolumes` are not stored in V2 and are expected to be derived from the selected revision.
+- Port availability validation is handled by backend services at deployment/update time, not persisted in V2 metadata.
+- Setting-to-port relationships are modeled through unified port mapping rules rather than duplicated link fields.
+
 ### ? GameType Editor
 
 **Location:** `/gametypes/{key}` or `/gametypes/new`
@@ -346,13 +372,29 @@ Example (Valheim SERVER_PORT):
 **Backend:**
 - ASP.NET Core Web API
 - Docker.DotNet (Docker API client)
-- Entity Framework Core (SQLite)
+- Entity Framework Core
+  - legacy persistence: SQLite
+  - V2 persistence: SQLite or MySQL based on configuration
 - SignalR Hubs
 
 **Infrastructure:**
 - Docker Swarm
-- SQLite Database
+- SQLite database for the current legacy persistence path
+- optional MySQL support for the V2 persistence path
 - Volume Drivers (local, NFS)
+
+### Persistence Architecture
+
+#### Current state
+- The legacy repository and model set remains the active path for most existing controllers and UI flows.
+- The V2 database implementation exists in parallel and follows the latest normalized schema from `docs/DATABASE-REORGANIZATION-PROPOSAL.md`.
+- The application host initializes both persistence paths so migration can happen incrementally.
+
+#### V2 schema highlights
+- `GameType` is the catalog root and owns the fixed Docker image reference.
+- `GameTypeRevision` owns ports, volumes, setting definitions, setting metadata, setting port mappings, and Web Host definitions.
+- `GameServer` stores only server-specific data such as selected revision, desired settings, service identity, and deployment status.
+- Web Host output is deterministic from `GameTypeWebHosts` + `GameServerSettings` and is not persisted as a separate V2 table.
 
 ### SignalR Hubs
 

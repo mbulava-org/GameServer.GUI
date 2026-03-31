@@ -8,6 +8,8 @@ using System.Reflection;
 using Scalar.AspNetCore;
 using RepositoriesV2 = GameServer.Docker.Repositories.V2;
 using DataV2 = GameServer.Docker.Data.V2;
+using ServicesV2 = GameServer.Docker.Services.V2;
+using ServicesV2Detection = GameServer.Docker.Services.V2.Detection;
 
 namespace GameServer.Docker
 {
@@ -237,6 +239,21 @@ namespace GameServer.Docker
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
+                builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
+                builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
+                builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
+                {
+                    IDockerClient? dockerClient = null;
+                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dockerClient = sp.GetRequiredService<IDockerClient>();
+                    }
+
+                    return new ServicesV2Detection.GameTypeSetupDetectionService(
+                        sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),
+                        dockerClient,
+                        sp.GetRequiredService<ILogger<ServicesV2Detection.GameTypeSetupDetectionService>>());
+                });
 
                 // Keep file-based registries as fallback/migration helpers (optional)
                 // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();

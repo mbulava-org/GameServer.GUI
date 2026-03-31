@@ -1,0 +1,2109 @@
+@page "/gametypes-v2/{Key}"
+@page "/gametypes-v2/new"
+@rendermode InteractiveServer
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+@inject Services.V2.GameTypeV2ApiService GameTypeApiV2
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+
+<PageTitle>@(isNew ? "Create Game Type V2" : gameType?.DisplayName ?? "Game Type V2")</PageTitle>
+
+<div class="container-fluid game-type-details-page">
+    <div class="game-type-details-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <RadzenButton Icon="arrow_back"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@GoBack"
+                              class="me-3" />
+                <h2 class="d-inline">@(isNew ? "Create New Game Type V2" : $"Edit V2: {gameType?.DisplayName}")</h2>
+            </div>
+            <div class="d-flex gap-2">
+                <RadzenButton Text="Cancel"
+                              Icon="close"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@GoBack" />
+                <RadzenButton Text="Save"
+                              Icon="save"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Click="@SaveAsync"
+                              Disabled="@isSaving" />
+            </div>
+        </div>
+    </div>
+
+    <div class="game-type-details-content">
+        @if (isLoading)
+        {
+            <div class="text-center py-5">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+                <p class="mt-3">Loading V2 game type...</p>
+            </div>
+        }
+        else if (!isNew && gameType is null)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light">
+                The requested V2 game type could not be found.
+            </RadzenAlert>
+        }
+        else if (gameType is not null)
+        {
+            <div class="row mb-3">
+                <div class="col-lg-8">
+                    <RadzenCard>
+                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <h4 class="mb-0">@gameType.DisplayName</h4>
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@gameType.Key" Variant="Variant.Outlined" />
+                                    <RadzenBadge BadgeStyle="@(gameType.IsActive ? BadgeStyle.Success : BadgeStyle.Secondary)" Text="@(gameType.IsActive ? "Active" : "Inactive")" />
+                                </div>
+                                <p class="text-muted mb-2">@(string.IsNullOrWhiteSpace(gameType.Description) ? "No description provided." : gameType.Description)</p>
+                                <div><strong>Image:</strong> <code>@gameType.ImageReference</code></div>
+                                @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
+                                {
+                                    <div><strong>Docs:</strong> <a href="@gameType.DocumentationUrl" target="_blank">@gameType.DocumentationUrl</a></div>
+                                }
+                            </div>
+                            <div class="text-end">
+                                <div><strong>Revisions:</strong> @gameType.Revisions.Count</div>
+                                <div><strong>Current:</strong> @(CurrentRevision?.VersionTag ?? "None")</div>
+                                <div><strong>Updated:</strong> @gameType.UpdatedAt.ToLocalTime().ToString("g")</div>
+                            </div>
+                        </div>
+                    </RadzenCard>
+                </div>
+                <div class="col-lg-4">
+                    <RadzenCard>
+                        <RadzenFormField Text="Active Revision" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="int?"
+                                            Data="@gameType.Revisions"
+                                            TextProperty="VersionTag"
+                                            ValueProperty="Id"
+                                            @bind-Value="selectedRevisionId"
+                                            Change="@(_ => OnSelectedRevisionChanged())"
+                                            Placeholder="Select revision"
+                                            class="w-100" />
+                        </RadzenFormField>
+                    </RadzenCard>
+                </div>
+            </div>
+
+            <RadzenTabs>
+                <Tabs>
+                    <RadzenTabsItem Text="Basic">
+                        <div class="p-4">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Key" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="keyValue" Disabled="@(!isNew)" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Display Name" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="displayName" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-12">
+                                    <RadzenFormField Text="Image Reference" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="imageReference" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Thumbnail URL" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="thumbnailUrl" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Documentation URL" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="documentationUrl" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center gap-2 pt-2">
+                                        <RadzenCheckBox @bind-Value="isActive" TValue="bool" />
+                                        <span>Active</span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextArea @bind-Value="description" Rows="4" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                            </div>
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Revisions">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h5 class="mb-1">Revision Draft</h5>
+                                    <small class="text-muted">Edit an existing revision or create a new draft before publishing it.</small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <RadzenButton Text="New Draft" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@CreateNewRevisionDraft" />
+                                    <RadzenButton Text="Save Revision" Icon="save" ButtonStyle="ButtonStyle.Primary" Click="@SaveRevisionAsync" Disabled="@(isSavingRevision || !CanSaveRevision())" />
+                                    <RadzenButton Text="Set Current" Icon="check_circle" ButtonStyle="ButtonStyle.Secondary" Click="@SetCurrentRevisionAsync" Disabled="@(editingRevisionId is null || isSavingRevision || GetRevisionValidationIssues().Count > 0)" />
+                                    <RadzenButton Text="Publish + Current" Icon="publish" ButtonStyle="ButtonStyle.Success" Click="@PublishAndSetCurrentAsync" Disabled="@(editingRevisionId is null || isSavingRevision || GetRevisionValidationIssues().Count > 0)" />
+                                </div>
+                            </div>
+
+                            @if (GetRevisionValidationIssues().Count > 0)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mb-3">
+                                    <div class="fw-semibold mb-2">Revision draft validation</div>
+                                    <ul class="mb-0 ps-3">
+                                        @foreach (var issue in GetRevisionValidationIssues())
+                                        {
+                                            <li>@issue</li>
+                                        }
+                                    </ul>
+                                </RadzenAlert>
+                            }
+
+                            @if (GetRevisionWarnings().Count > 0)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+                                    <div class="fw-semibold mb-2">Revision draft guidance</div>
+                                    <ul class="mb-0 ps-3">
+                                        @foreach (var warning in GetRevisionWarnings())
+                                        {
+                                            <li>@warning</li>
+                                        }
+                                    </ul>
+                                </RadzenAlert>
+                            }
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-4">
+                                    <RadzenFormField Text="Version Tag" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="revisionVersionTag" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-md-4">
+                                    <RadzenFormField Text="Image Digest" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="revisionImageDigest" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-center">
+                                    <div class="d-flex gap-4 flex-wrap pt-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <RadzenCheckBox @bind-Value="revisionEnableTTY" TValue="bool" />
+                                            <span>Enable TTY</span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <RadzenCheckBox @bind-Value="revisionIsPublished" TValue="bool" />
+                                            <span>Published</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <RadzenFormField Text="Revision Notes" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextArea @bind-Value="revisionNotes" Rows="4" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                            </div>
+
+                            <RadzenDataGrid Data="@gameType.Revisions" TItem="GameTypeRevision" AllowSorting="true">
+                                <Columns>
+                                    <RadzenDataGridColumn TItem="GameTypeRevision" Property="VersionTag" Title="Tag" />
+                                    <RadzenDataGridColumn TItem="GameTypeRevision" Property="ImageDigest" Title="Digest" />
+                                    <RadzenDataGridColumn TItem="GameTypeRevision" Property="IsPublished" Title="Published" />
+                                    <RadzenDataGridColumn TItem="GameTypeRevision" Property="EnableTTY" Title="TTY" />
+                                    <RadzenDataGridColumn TItem="GameTypeRevision" Property="CreatedAt" Title="Created" />
+                                    <RadzenDataGridColumn TItem="GameTypeRevision" Title="Actions" Sortable="false" Filterable="false" Width="150px">
+                                        <Template Context="revision">
+                                            <div class="d-flex gap-2 justify-content-end">
+                                                <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => EditRevisionDraft(revision))" title="Edit draft" />
+                                                <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => CloneRevisionDraft(revision))" title="Clone to new draft" />
+                                            </div>
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                </Columns>
+                            </RadzenDataGrid>
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Ports">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h5 class="mb-1">Port Definitions</h5>
+                                    <small class="text-muted">Define the revision's exposed ports and choose a single advertised connection port.</small>
+                                </div>
+                                <RadzenButton Text="Add Port" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddPortDraft" />
+                            </div>
+
+                            @if (!revisionPorts.Any())
+                            {
+                                <p class="text-muted mb-0">No ports in this draft. Add a port to continue.</p>
+                            }
+                            else
+                            {
+                                @foreach (var port in revisionPorts)
+                                {
+                                    <RadzenCard class="mb-3">
+                                        <div class="row g-3 align-items-end">
+                                            <div class="col-md-3">
+                                                <RadzenFormField Text="Container Port" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenNumeric @bind-Value="port.ContainerPort" TValue="int" Min="1" Max="65535" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <RadzenFormField Text="Protocol" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown @bind-Value="port.Protocol" Data="protocolOptions" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <div class="d-flex align-items-center gap-2 pt-4">
+                                                    <RadzenCheckBox Value="@port.AdvertisedPort" TValue="bool" Change="@(value => SetAdvertisedPort(port, value))" />
+                                                    <span>Advertised</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="port.Description" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-1 text-end">
+                                                <div class="d-flex justify-content-end gap-1">
+                                                    <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MovePortDraftUp(port))" Disabled="@(revisionPorts.IndexOf(port) <= 0)" />
+                                                    <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MovePortDraftDown(port))" Disabled="@(revisionPorts.IndexOf(port) >= revisionPorts.Count - 1)" />
+                                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemovePortDraft(port))" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </RadzenCard>
+                                }
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Volumes">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h5 class="mb-1">Volume Definitions</h5>
+                                    <small class="text-muted">Describe the persisted container paths and how deployment logic should treat them.</small>
+                                </div>
+                                <RadzenButton Text="Add Volume" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddVolumeDraft" />
+                            </div>
+
+                            @if (!revisionVolumes.Any())
+                            {
+                                <p class="text-muted mb-0">No volumes in this draft.</p>
+                            }
+                            else
+                            {
+                                @foreach (var volume in revisionVolumes)
+                                {
+                                    <RadzenCard class="mb-3">
+                                        <div class="row g-3 align-items-end">
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Source" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="volume.Source" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <RadzenFormField Text="Usage" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown @bind-Value="volume.Usage" Data="volumeUsageOptions" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="volume.Description" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-1 text-end">
+                                                <div class="d-flex justify-content-end gap-1">
+                                                    <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftUp(volume))" Disabled="@(revisionVolumes.IndexOf(volume) <= 0)" />
+                                                    <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftDown(volume))" Disabled="@(revisionVolumes.IndexOf(volume) >= revisionVolumes.Count - 1)" />
+                                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveVolumeDraft(volume))" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </RadzenCard>
+                                }
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Settings">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h5 class="mb-1">Setting Definitions</h5>
+                                    <small class="text-muted">Edit revision-owned settings, metadata, and preserve port mapping rules until a dedicated editor is added.</small>
+                                </div>
+                                <RadzenButton Text="Add Setting" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddSettingDraft" />
+                            </div>
+
+                            @if (!revisionSettingDefinitions.Any())
+                            {
+                                <p class="text-muted mb-0">No settings in this draft.</p>
+                            }
+                            else
+                            {
+                                @foreach (var setting in revisionSettingDefinitions)
+                                {
+                                    <RadzenCard class="mb-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-3">
+                                            <div>
+                                                <strong>@(string.IsNullOrWhiteSpace(setting.SettingKey) ? "New Setting" : setting.SettingKey)</strong>
+                                                <div class="text-muted small">Port mappings preserved: @setting.Metadata.PortMappings.Count</div>
+                                            </div>
+                                            <div class="d-flex gap-1">
+                                                <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveSettingDraftUp(setting))" Disabled="@(revisionSettingDefinitions.IndexOf(setting) <= 0)" />
+                                                <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveSettingDraftDown(setting))" Disabled="@(revisionSettingDefinitions.IndexOf(setting) >= revisionSettingDefinitions.Count - 1)" />
+                                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveSettingDraft(setting))" />
+                                            </div>
+                                        </div>
+
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Setting Key" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.SettingKey" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Default Value" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.DefaultValue" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Data Type" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown @bind-Value="setting.Metadata.DataType" Data="dataTypeOptions" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Category" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.Metadata.Category" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Placeholder" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.Metadata.Placeholder" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.Description" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <RadzenFormField Text="Allowed Values JSON" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.Metadata.AllowedValuesJson" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <RadzenFormField Text="Value Mappings JSON" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="setting.Metadata.ValueMappingsJson" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-12 d-flex gap-4 flex-wrap">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <RadzenCheckBox @bind-Value="setting.Metadata.IsRequired" TValue="bool" />
+                                                    <span>Required</span>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <RadzenCheckBox @bind-Value="setting.Metadata.CannotBeEmpty" TValue="bool" />
+                                                    <span>Cannot Be Empty</span>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <RadzenCheckBox @bind-Value="setting.Metadata.AutoAllocatePort" TValue="bool" />
+                                                    <span>Auto Allocate Port</span>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <RadzenCheckBox @bind-Value="setting.Metadata.ValidateRelatedPortsAvailability" TValue="bool" />
+                                                    <span>Validate Related Ports</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="col-12">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <div>
+                                                        <strong>Port Mappings</strong>
+                                                        <div class="text-muted small">Configure how this setting maps to one or more revision ports.</div>
+                                                    </div>
+                                                    <RadzenButton Text="Add Port Mapping" Icon="add" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => AddPortMappingDraft(setting))" />
+                                                </div>
+
+                                                @if (!setting.Metadata.PortMappings.Any())
+                                                {
+                                                    <div class="text-muted small">No port mappings defined for this setting.</div>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var mapping in setting.Metadata.PortMappings)
+                                                    {
+                                                        <RadzenCard class="mb-2">
+                                                            <div class="row g-3 align-items-end">
+                                                                <div class="col-md-2">
+                                                                    <RadzenFormField Text="Role" Variant="Variant.Outlined" class="w-100">
+                                                                        <RadzenDropDown @bind-Value="mapping.MappingRole" Data="portMappingRoleOptions" class="w-100" />
+                                                                    </RadzenFormField>
+                                                                </div>
+                                                                <div class="col-md-2">
+                                                                    <RadzenFormField Text="Relation" Variant="Variant.Outlined" class="w-100">
+                                                                        <RadzenDropDown @bind-Value="mapping.RelationType" Data="portRelationTypeOptions" class="w-100" />
+                                                                    </RadzenFormField>
+                                                                </div>
+                                                                <div class="col-md-2">
+                                                                    <RadzenFormField Text="Target Port" Variant="Variant.Outlined" class="w-100">
+                                                                        <RadzenNumeric @bind-Value="mapping.TargetContainerPort" TValue="int" Min="1" Max="65535" class="w-100" />
+                                                                    </RadzenFormField>
+                                                                </div>
+                                                                <div class="col-md-2">
+                                                                    <RadzenFormField Text="Protocol" Variant="Variant.Outlined" class="w-100">
+                                                                        <RadzenDropDown @bind-Value="mapping.TargetProtocol" Data="protocolOptions" class="w-100" />
+                                                                    </RadzenFormField>
+                                                                </div>
+                                                                <div class="col-md-2">
+                                                                    <RadzenFormField Text="Calculation" Variant="Variant.Outlined" class="w-100">
+                                                                        <RadzenNumeric @bind-Value="mapping.CalculationValue" TValue="int?" class="w-100" />
+                                                                    </RadzenFormField>
+                                                                </div>
+                                                                <div class="col-md-2 text-end">
+                                                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemovePortMappingDraft(setting, mapping))" />
+                                                                </div>
+                                                                <div class="col-md-8">
+                                                                    <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                                                        <RadzenTextBox @bind-Value="mapping.Description" class="w-100" />
+                                                                    </RadzenFormField>
+                                                                </div>
+                                                                <div class="col-md-4 d-flex align-items-center gap-2 pt-4">
+                                                                    <RadzenCheckBox @bind-Value="mapping.IsRequired" TValue="bool" />
+                                                                    <span>Required mapping</span>
+                                                                </div>
+                                                            </div>
+                                                        </RadzenCard>
+                                                    }
+                                                }
+                                            </div>
+                                        </div>
+                                    </RadzenCard>
+                                }
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Web Hosts">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h5 class="mb-1">Web Host Rules</h5>
+                                    <small class="text-muted">Define the reverse-proxy endpoints that the Primary Service will derive from this revision.</small>
+                                </div>
+                                <RadzenButton Text="Add Web Host" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddWebHostDraft" />
+                            </div>
+
+                            @if (!revisionWebHosts.Any())
+                            {
+                                <p class="text-muted mb-0">No Web Host rules in this draft.</p>
+                            }
+                            else
+                            {
+                                @foreach (var host in revisionWebHosts)
+                                {
+                                    <RadzenCard class="mb-3">
+                                        <div class="row g-3 align-items-end">
+                                            <div class="col-md-3">
+                                                <RadzenFormField Text="Name" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="host.Name" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <RadzenFormField Text="Path Segment" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="host.PathSegment" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <RadzenFormField Text="Static Port" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenNumeric @bind-Value="host.ContainerPort" TValue="int?" Min="1" Max="65535" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <RadzenFormField Text="Port Variable" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="host.ContainerPortVariable" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-1 text-end">
+                                                <div class="d-flex justify-content-end gap-1">
+                                                    <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraftUp(host))" Disabled="@(revisionWebHosts.IndexOf(host) <= 0)" />
+                                                    <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraftDown(host))" Disabled="@(revisionWebHosts.IndexOf(host) >= revisionWebHosts.Count - 1)" />
+                                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveWebHostDraft(host))" />
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="host.Description" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <RadzenFormField Text="Enabled When" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="host.EnabledWhen" class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                        </div>
+                                    </RadzenCard>
+                                }
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Detection">
+                        <div class="p-4">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Version Tag to Scan" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="detectionVersionTag" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                                <div class="col-md-6 d-flex align-items-end justify-content-end gap-2">
+                                    <RadzenButton Text="Scan Tag" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@RunDetectionAsync" Disabled="@(isDetecting || isNew)" />
+                                    <RadzenButton Text="Apply All to Draft" Icon="content_paste" ButtonStyle="ButtonStyle.Light" Click="@ApplyDetectionToDraft" Disabled="@(detectionResult is null)" />
+                                </div>
+                            </div>
+
+                            <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light">
+                                V2 image setup detection scans the fixed `ImageReference` with a selected tag and captures digest, ports, environment variables, and declared volumes for review before creating or updating a revision.
+                            </RadzenAlert>
+
+                            @if (detectionResult is not null)
+                            {
+                                <div class="mt-4">
+                                    <RadzenCard>
+                                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                                            <div>
+                                                <h5 class="mb-1">Detection Result</h5>
+                                                <div><strong>Image:</strong> <code>@detectionResult.ImageReference:@detectionResult.VersionTag</code></div>
+                                                <div><strong>Digest:</strong> @(detectionResult.ImageDigest ?? "Unavailable")</div>
+                                            </div>
+                                            <div class="text-end">
+                                                <div>@detectionResult.Ports.Count port(s)</div>
+                                                <div>@detectionResult.Settings.Count setting(s)</div>
+                                                <div>@detectionResult.Volumes.Count volume(s)</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex flex-wrap gap-2 mb-3">
+                                            <RadzenButton Text="Apply Tag + Digest" Icon="sell" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => ApplyDetectionIdentityToDraft())" />
+                                            <RadzenButton Text="Apply Ports" Icon="settings_ethernet" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => ApplyDetectedPortsToDraft())" />
+                                            <RadzenButton Text="Apply Settings" Icon="settings" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => ApplyDetectedSettingsToDraft())" />
+                                            <RadzenButton Text="Apply Volumes" Icon="folder" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => ApplyDetectedVolumesToDraft())" />
+                                        </div>
+
+                                        <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+                                            <div class="fw-semibold mb-1">Suggested workflow</div>
+                                            <div class="small">
+                                                Apply only the sections you trust from Docker detection. Existing draft metadata such as setting categories, validation rules, and Web Host rules are preserved unless you explicitly overwrite those sections.
+                                            </div>
+                                        </RadzenAlert>
+
+                                        <div class="row g-3">
+                                            <div class="col-lg-4">
+                                                <h6>Detected Ports</h6>
+                                                <RadzenDataGrid Data="@detectionResult.Ports" TItem="DetectedPort">
+                                                    <Columns>
+                                                        <RadzenDataGridColumn TItem="DetectedPort" Property="ContainerPort" Title="Port" />
+                                                        <RadzenDataGridColumn TItem="DetectedPort" Property="Protocol" Title="Protocol" />
+                                                    </Columns>
+                                                </RadzenDataGrid>
+                                            </div>
+                                            <div class="col-lg-4">
+                                                <h6>Detected Settings</h6>
+                                                <RadzenDataGrid Data="@detectionResult.Settings" TItem="DetectedSetting">
+                                                    <Columns>
+                                                        <RadzenDataGridColumn TItem="DetectedSetting" Property="Key" Title="Key" />
+                                                        <RadzenDataGridColumn TItem="DetectedSetting" Property="DefaultValue" Title="Default" />
+                                                    </Columns>
+                                                </RadzenDataGrid>
+                                            </div>
+                                            <div class="col-lg-4">
+                                                <h6>Detected Volumes</h6>
+                                                <RadzenDataGrid Data="@detectionResult.Volumes" TItem="DetectedVolume">
+                                                    <Columns>
+                                                        <RadzenDataGridColumn TItem="DetectedVolume" Property="ContainerPath" Title="Container Path" />
+                                                    </Columns>
+                                                </RadzenDataGrid>
+                                            </div>
+                                        </div>
+                                    </RadzenCard>
+                                </div>
+
+                                @if (detectionComparison is not null)
+                                {
+                                    <div class="mt-4">
+                                        <RadzenCard>
+                                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                                                <div>
+                                                    <h5 class="mb-1">Comparison vs Revision `@detectionComparison.RevisionVersionTag`</h5>
+                                                    <div class="text-muted small">Compares the scanned Docker setup to the currently selected revision.</div>
+                                                </div>
+                                                <RadzenBadge BadgeStyle="@(detectionComparison.HasChanges ? BadgeStyle.Warning : BadgeStyle.Success)"
+                                                             Text="@(detectionComparison.HasChanges ? "Changes detected" : "No changes detected")" />
+                                            </div>
+
+                                            <div class="row g-3">
+                                                <div class="col-lg-3">
+                                                    <div class="border rounded p-3 h-100">
+                                                        <strong>Digest</strong>
+                                                        <div class="mt-2">@(detectionComparison.DigestChanged ? "Digest changed" : "No digest change")</div>
+                                                        <div class="small text-muted mt-1">@GetDetectionSectionRecommendation("identity")</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-3">
+                                                    <div class="border rounded p-3 h-100">
+                                                        <strong>Ports</strong>
+                                                        <div class="mt-2">Added: @detectionComparison.AddedPorts.Count</div>
+                                                        <div>Removed: @detectionComparison.RemovedPorts.Count</div>
+                                                        <div class="small text-muted mt-1">@GetDetectionSectionRecommendation("ports")</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-3">
+                                                    <div class="border rounded p-3 h-100">
+                                                        <strong>Settings</strong>
+                                                        <div class="mt-2">Added: @detectionComparison.AddedSettings.Count</div>
+                                                        <div>Removed: @detectionComparison.RemovedSettings.Count</div>
+                                                        <div>Changed: @detectionComparison.ChangedSettings.Count</div>
+                                                        <div class="small text-muted mt-1">@GetDetectionSectionRecommendation("settings")</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-3">
+                                                    <div class="border rounded p-3 h-100">
+                                                        <strong>Volumes</strong>
+                                                        <div class="mt-2">Added: @detectionComparison.AddedVolumes.Count</div>
+                                                        <div>Removed: @detectionComparison.RemovedVolumes.Count</div>
+                                                        <div class="small text-muted mt-1">@GetDetectionSectionRecommendation("volumes")</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row g-3 mt-1">
+                                                <div class="col-lg-6">
+                                                    <h6>Added / Removed Ports</h6>
+                                                    @if (!detectionComparison.AddedPorts.Any() && !detectionComparison.RemovedPorts.Any())
+                                                    {
+                                                        <div class="text-muted small">No port differences detected.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <ul class="mb-0">
+                                                            @foreach (var port in detectionComparison.AddedPorts)
+                                                            {
+                                                                <li>Added port: <code>@port</code></li>
+                                                            }
+                                                            @foreach (var port in detectionComparison.RemovedPorts)
+                                                            {
+                                                                <li>Removed port: <code>@port</code></li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                                <div class="col-lg-6">
+                                                    <h6>Added / Removed Volumes</h6>
+                                                    @if (!detectionComparison.AddedVolumes.Any() && !detectionComparison.RemovedVolumes.Any())
+                                                    {
+                                                        <div class="text-muted small">No volume differences detected.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <ul class="mb-0">
+                                                            @foreach (var volume in detectionComparison.AddedVolumes)
+                                                            {
+                                                                <li>Added volume: <code>@volume</code></li>
+                                                            }
+                                                            @foreach (var volume in detectionComparison.RemovedVolumes)
+                                                            {
+                                                                <li>Removed volume: <code>@volume</code></li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                                <div class="col-lg-6">
+                                                    <h6>Added / Removed Settings</h6>
+                                                    @if (!detectionComparison.AddedSettings.Any() && !detectionComparison.RemovedSettings.Any())
+                                                    {
+                                                        <div class="text-muted small">No setting additions or removals detected.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <ul class="mb-0">
+                                                            @foreach (var setting in detectionComparison.AddedSettings)
+                                                            {
+                                                                <li>Added setting: <code>@setting</code></li>
+                                                            }
+                                                            @foreach (var setting in detectionComparison.RemovedSettings)
+                                                            {
+                                                                <li>Removed setting: <code>@setting</code></li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                                <div class="col-lg-6">
+                                                    <h6>Changed Setting Defaults</h6>
+                                                    @if (!detectionComparison.ChangedSettings.Any())
+                                                    {
+                                                        <div class="text-muted small">No setting default changes detected.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <ul class="mb-0">
+                                                            @foreach (var setting in detectionComparison.ChangedSettings)
+                                                            {
+                                                                <li><code>@setting.Key</code>: <code>@(setting.RevisionValue ?? "(null)")</code> -> <code>@(setting.DetectedValue ?? "(null)")</code></li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </RadzenCard>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Review">
+                        <div class="p-4">
+                            <div class="row g-3">
+                                <div class="col-lg-4">
+                                    <RadzenCard>
+                                        <h5 class="mb-3">Revision Draft Summary</h5>
+                                        <div><strong>Version Tag:</strong> @(string.IsNullOrWhiteSpace(revisionVersionTag) ? "Not set" : revisionVersionTag)</div>
+                                        <div><strong>Digest:</strong> @(string.IsNullOrWhiteSpace(revisionImageDigest) ? "Not set" : revisionImageDigest)</div>
+                                        <div><strong>TTY:</strong> @(revisionEnableTTY ? "Enabled" : "Disabled")</div>
+                                        <div><strong>Published:</strong> @(revisionIsPublished ? "Yes" : "No")</div>
+                                    </RadzenCard>
+                                </div>
+                                <div class="col-lg-4">
+                                    <RadzenCard>
+                                        <h5 class="mb-3">Draft Contents</h5>
+                                        <div>@revisionPorts.Count port(s)</div>
+                                        <div>@revisionVolumes.Count volume(s)</div>
+                                        <div>@revisionSettingDefinitions.Count setting(s)</div>
+                                        <div>@revisionWebHosts.Count web host(s)</div>
+                                        <div>@revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count) port mapping rule(s)</div>
+                                    </RadzenCard>
+                                </div>
+                                <div class="col-lg-4">
+                                    <RadzenCard>
+                                        <h5 class="mb-3">Detection Status</h5>
+                                        @if (detectionResult is null)
+                                        {
+                                            <div class="text-muted">No detection results have been applied.</div>
+                                        }
+                                        else
+                                        {
+                                            <div><strong>Tag:</strong> @detectionResult.VersionTag</div>
+                                            <div><strong>Ports:</strong> @detectionResult.Ports.Count</div>
+                                            <div><strong>Settings:</strong> @detectionResult.Settings.Count</div>
+                                            <div><strong>Volumes:</strong> @detectionResult.Volumes.Count</div>
+                                            @if (detectionComparison is not null)
+                                            {
+                                                <div><strong>Compared to:</strong> @detectionComparison.RevisionVersionTag</div>
+                                                <div><strong>Changes:</strong> @(detectionComparison.HasChanges ? "Yes" : "No")</div>
+                                            }
+                                        }
+                                    </RadzenCard>
+                                </div>
+                                <div class="col-12">
+                                    <RadzenCard>
+                                        <h5 class="mb-3">Draft Diff vs Selected Revision</h5>
+                                        @if (GetRevisionValidationIssues().Count > 0)
+                                        {
+                                            <div class="mb-3">
+                                                <strong>Validation issues</strong>
+                                                <ul class="mb-0 ps-3">
+                                                    @foreach (var issue in GetRevisionValidationIssues())
+                                                    {
+                                                        <li>@issue</li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                        @if (GetRevisionWarnings().Count > 0)
+                                        {
+                                            <div class="mb-3">
+                                                <strong>Warnings</strong>
+                                                <ul class="mb-0 ps-3">
+                                                    @foreach (var warning in GetRevisionWarnings())
+                                                    {
+                                                        <li>@warning</li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                        @if (!GetDraftDifferences().Any())
+                                        {
+                                            <div class="text-muted">No draft differences detected from the selected revision.</div>
+                                        }
+                                        else
+                                        {
+                                            <ul class="mb-0">
+                                                @foreach (var difference in GetDraftDifferences())
+                                                {
+                                                    <li>@difference</li>
+                                                }
+                                            </ul>
+                                        }
+
+                                        @if (GetDetailedDraftDifferences().Any())
+                                        {
+                                            <div class="mt-3">
+                                                <strong>Detailed differences</strong>
+                                                <ul class="mb-0 ps-3 mt-2">
+                                                    @foreach (var difference in GetDetailedDraftDifferences())
+                                                    {
+                                                        <li>@difference</li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                    </RadzenCard>
+                                </div>
+                            </div>
+                        </div>
+                    </RadzenTabsItem>
+                </Tabs>
+            </RadzenTabs>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? Key { get; set; }
+
+    private GameTypeDetail? gameType;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool isSavingRevision;
+    private bool isDetecting;
+    private bool isNew => string.IsNullOrWhiteSpace(Key);
+    private int? selectedRevisionId;
+    private string keyValue = string.Empty;
+    private string displayName = string.Empty;
+    private string? description;
+    private string imageReference = string.Empty;
+    private string? thumbnailUrl;
+    private string? documentationUrl;
+    private bool isActive = true;
+    private int? editingRevisionId;
+    private string revisionVersionTag = string.Empty;
+    private string? revisionImageDigest;
+    private bool revisionEnableTTY;
+    private string? revisionNotes;
+    private bool revisionIsPublished;
+    private List<RevisionPortDraft> revisionPorts = [];
+    private List<RevisionVolumeDraft> revisionVolumes = [];
+    private List<RevisionSettingDraft> revisionSettingDefinitions = [];
+    private List<RevisionWebHostDraft> revisionWebHosts = [];
+    private string detectionVersionTag = string.Empty;
+    private GameTypeSetupDetectionResult? detectionResult;
+    private GameTypeSetupComparisonResult? detectionComparison;
+    private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
+    private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "world", "mods", "gamefiles"];
+    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "enum", "port"];
+    private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
+    private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
+
+    private GameTypeRevision? CurrentRevision => gameType?.Revisions.FirstOrDefault(x => x.Id == selectedRevisionId)
+        ?? gameType?.Revisions.FirstOrDefault(x => x.Id == gameType.CurrentRevisionId)
+        ?? gameType?.Revisions.FirstOrDefault();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            isLoading = true;
+
+            if (isNew)
+            {
+                gameType = new GameTypeDetail
+                {
+                    Key = string.Empty,
+                    DisplayName = string.Empty,
+                    ImageReference = string.Empty,
+                    Revisions = []
+                };
+                selectedRevisionId = null;
+                PopulateForm(gameType);
+                LoadRevisionDraft(null);
+                return;
+            }
+
+            gameType = await GameTypeApiV2.GetByKeyAsync(Key!);
+            selectedRevisionId = gameType?.CurrentRevisionId ?? gameType?.Revisions.FirstOrDefault()?.Id;
+            if (gameType is not null)
+            {
+                PopulateForm(gameType);
+                LoadRevisionDraft(CurrentRevision);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/gametypes-v2");
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(imageReference))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Image Reference are required.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+
+            var request = new SaveGameTypeRequest
+            {
+                Key = keyValue,
+                DisplayName = displayName,
+                Description = description,
+                ImageReference = imageReference,
+                ThumbnailUrl = thumbnailUrl,
+                DocumentationUrl = documentationUrl,
+                IsActive = isActive
+            };
+
+            gameType = isNew
+                ? await GameTypeApiV2.CreateAsync(request)
+                : await GameTypeApiV2.UpdateAsync(keyValue, request);
+
+            selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
+            PopulateForm(gameType);
+            LoadRevisionDraft(CurrentRevision);
+
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
+
+            if (isNew)
+            {
+                Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Save failed", ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void OnSelectedRevisionChanged()
+    {
+        LoadRevisionDraft(CurrentRevision);
+    }
+
+    private void CreateNewRevisionDraft()
+    {
+        LoadRevisionDraft(CurrentRevision, asNewDraft: true);
+    }
+
+    private void EditRevisionDraft(GameTypeRevision revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+        selectedRevisionId = revision.Id;
+        LoadRevisionDraft(revision);
+    }
+
+    private void CloneRevisionDraft(GameTypeRevision revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+        selectedRevisionId = revision.Id;
+        LoadRevisionDraft(revision, asNewDraft: true);
+        if (!string.IsNullOrWhiteSpace(revisionVersionTag))
+        {
+            revisionVersionTag = $"{revisionVersionTag}-copy";
+        }
+    }
+
+    private async Task SaveRevisionAsync()
+    {
+        if (gameType is null || isNew)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(revisionVersionTag))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Revision version tag is required.");
+            return;
+        }
+
+        try
+        {
+            isSavingRevision = true;
+
+            var request = new SaveGameTypeRevisionRequest
+            {
+                VersionTag = revisionVersionTag,
+                ImageDigest = revisionImageDigest,
+                EnableTTY = revisionEnableTTY,
+                Notes = revisionNotes,
+                IsPublished = revisionIsPublished,
+                Ports = revisionPorts.Select((port, index) => new GameTypePort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    AdvertisedPort = port.AdvertisedPort,
+                    Description = port.Description,
+                    DisplayOrder = index
+                }).ToList(),
+                Volumes = revisionVolumes.Select((volume, index) => new GameTypeVolume
+                {
+                    Source = volume.Source,
+                    Description = volume.Description,
+                    DisplayOrder = index,
+                    Usage = volume.Usage
+                }).ToList(),
+                SettingDefinitions = revisionSettingDefinitions.Select((setting, index) => new GameTypeSettingDefinition
+                {
+                    SettingKey = setting.SettingKey,
+                    DefaultValue = setting.DefaultValue,
+                    Description = setting.Description,
+                    DisplayOrder = index,
+                    Metadata = new GameTypeSettingMetadata
+                    {
+                        DataType = setting.Metadata.DataType,
+                        Category = setting.Metadata.Category,
+                        IsRequired = setting.Metadata.IsRequired,
+                        CannotBeEmpty = setting.Metadata.CannotBeEmpty,
+                        Placeholder = setting.Metadata.Placeholder,
+                        ValidationPattern = setting.Metadata.ValidationPattern,
+                        ValidationMessage = setting.Metadata.ValidationMessage,
+                        AutoAllocatePort = setting.Metadata.AutoAllocatePort,
+                        ValidateRelatedPortsAvailability = setting.Metadata.ValidateRelatedPortsAvailability,
+                        AllowedValuesJson = setting.Metadata.AllowedValuesJson,
+                        ValueMappingsJson = setting.Metadata.ValueMappingsJson,
+                        PortMappings = setting.Metadata.PortMappings.Select((mapping, mappingIndex) => new GameTypeSettingPortMapping
+                        {
+                            MappingRole = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortMappingRole>(mapping.MappingRole, true, out var role)
+                                ? role.ToString()
+                                : GameServer.Web.Models.V2.GameTypeSettingPortMappingRole.Primary.ToString(),
+                            RelationType = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortRelationType>(mapping.RelationType, true, out var relationType)
+                                ? relationType.ToString()
+                                : GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
+                            TargetContainerPort = mapping.TargetContainerPort,
+                            TargetProtocol = mapping.TargetProtocol,
+                            CalculationValue = mapping.CalculationValue,
+                            Description = mapping.Description,
+                            IsRequired = mapping.IsRequired,
+                            DisplayOrder = mappingIndex
+                        }).ToList()
+                    }
+                }).ToList(),
+                WebHosts = revisionWebHosts.Select((host, index) => new GameTypeWebHost
+                {
+                    Name = host.Name,
+                    Description = host.Description,
+                    PathSegment = host.PathSegment,
+                    ContainerPort = host.ContainerPort,
+                    ContainerPortVariable = host.ContainerPortVariable,
+                    EnabledWhen = host.EnabledWhen,
+                    DisplayOrder = index
+                }).ToList()
+            };
+
+            var revision = editingRevisionId is null
+                ? await GameTypeApiV2.AddRevisionAsync(gameType.Key, request)
+                : await GameTypeApiV2.UpdateRevisionAsync(gameType.Key, editingRevisionId.Value, request);
+
+            await ReloadGameTypeAsync(gameType.Key, revision.Id);
+            NotificationService.Notify(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Save revision failed", ex.Message);
+        }
+        finally
+        {
+            isSavingRevision = false;
+        }
+    }
+
+    private void AddPortDraft()
+    {
+        revisionPorts.Add(new RevisionPortDraft
+        {
+            ContainerPort = 25565,
+            Protocol = revisionPorts.Any(x => x.Protocol.Equals("udp", StringComparison.OrdinalIgnoreCase)) ? "udp" : "tcp",
+            AdvertisedPort = !revisionPorts.Any(x => x.AdvertisedPort),
+            Description = revisionPorts.Any() ? "Additional port" : "Primary connection port"
+        });
+    }
+
+    private void RemovePortDraft(RevisionPortDraft port)
+    {
+        revisionPorts.Remove(port);
+        if (revisionPorts.Count > 0 && !revisionPorts.Any(x => x.AdvertisedPort))
+        {
+            revisionPorts[0].AdvertisedPort = true;
+        }
+    }
+
+    private void MovePortDraftUp(RevisionPortDraft port)
+    {
+        MoveItem(revisionPorts, port, -1);
+    }
+
+    private void MovePortDraftDown(RevisionPortDraft port)
+    {
+        MoveItem(revisionPorts, port, 1);
+    }
+
+    private void SetAdvertisedPort(RevisionPortDraft selectedPort, bool advertised)
+    {
+        if (!advertised)
+        {
+            if (!revisionPorts.Any(x => x != selectedPort && x.AdvertisedPort))
+            {
+                selectedPort.AdvertisedPort = true;
+            }
+
+            return;
+        }
+
+        foreach (var port in revisionPorts)
+        {
+            port.AdvertisedPort = ReferenceEquals(port, selectedPort);
+        }
+    }
+
+    private void AddVolumeDraft()
+    {
+        revisionVolumes.Add(new RevisionVolumeDraft
+        {
+            Usage = "config"
+        });
+    }
+
+    private void RemoveVolumeDraft(RevisionVolumeDraft volume)
+    {
+        revisionVolumes.Remove(volume);
+    }
+
+    private void MoveVolumeDraftUp(RevisionVolumeDraft volume)
+    {
+        MoveItem(revisionVolumes, volume, -1);
+    }
+
+    private void MoveVolumeDraftDown(RevisionVolumeDraft volume)
+    {
+        MoveItem(revisionVolumes, volume, 1);
+    }
+
+    private void AddSettingDraft()
+    {
+        revisionSettingDefinitions.Add(new RevisionSettingDraft());
+    }
+
+    private void RemoveSettingDraft(RevisionSettingDraft setting)
+    {
+        revisionSettingDefinitions.Remove(setting);
+    }
+
+    private void MoveSettingDraftUp(RevisionSettingDraft setting)
+    {
+        MoveItem(revisionSettingDefinitions, setting, -1);
+    }
+
+    private void MoveSettingDraftDown(RevisionSettingDraft setting)
+    {
+        MoveItem(revisionSettingDefinitions, setting, 1);
+    }
+
+    private void AddPortMappingDraft(RevisionSettingDraft setting)
+    {
+        setting.Metadata.PortMappings.Add(new RevisionPortMappingDraft());
+    }
+
+    private void RemovePortMappingDraft(RevisionSettingDraft setting, RevisionPortMappingDraft mapping)
+    {
+        setting.Metadata.PortMappings.Remove(mapping);
+    }
+
+    private void AddWebHostDraft()
+    {
+        revisionWebHosts.Add(new RevisionWebHostDraft());
+    }
+
+    private void RemoveWebHostDraft(RevisionWebHostDraft host)
+    {
+        revisionWebHosts.Remove(host);
+    }
+
+    private void MoveWebHostDraftUp(RevisionWebHostDraft host)
+    {
+        MoveItem(revisionWebHosts, host, -1);
+    }
+
+    private void MoveWebHostDraftDown(RevisionWebHostDraft host)
+    {
+        MoveItem(revisionWebHosts, host, 1);
+    }
+
+    private async Task PublishAndSetCurrentAsync()
+    {
+        await PublishRevisionAsync(setAsCurrentRevision: true);
+    }
+
+    private async Task SetCurrentRevisionAsync()
+    {
+        if (gameType is null || editingRevisionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, editingRevisionId.Value);
+            await ReloadGameTypeAsync(gameType.Key, editingRevisionId.Value);
+            NotificationService.Notify(NotificationSeverity.Success, "Current revision updated", "The selected revision is now the active revision.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Set current failed", ex.Message);
+        }
+    }
+
+    private async Task PublishRevisionAsync(bool setAsCurrentRevision)
+    {
+        if (gameType is null || editingRevisionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            isSavingRevision = true;
+            var revision = await GameTypeApiV2.PublishRevisionAsync(gameType.Key, editingRevisionId.Value, setAsCurrentRevision);
+            await ReloadGameTypeAsync(gameType.Key, revision.Id);
+            NotificationService.Notify(NotificationSeverity.Success, "Revision published", $"Revision '{revision.VersionTag}' published successfully.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Publish failed", ex.Message);
+        }
+        finally
+        {
+            isSavingRevision = false;
+        }
+    }
+
+    private async Task RunDetectionAsync()
+    {
+        if (gameType is null || isNew)
+        {
+            return;
+        }
+
+        var versionTag = string.IsNullOrWhiteSpace(detectionVersionTag) ? revisionVersionTag : detectionVersionTag;
+        if (string.IsNullOrWhiteSpace(versionTag))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Enter a version tag to scan.");
+            return;
+        }
+
+        try
+        {
+            isDetecting = true;
+            detectionResult = await GameTypeApiV2.DetectSetupAsync(gameType.Key, versionTag);
+            detectionVersionTag = detectionResult.VersionTag;
+            NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Scanned tag '{detectionResult.VersionTag}'.");
+
+            if (CurrentRevision is not null)
+            {
+                detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, versionTag, CurrentRevision.Id);
+                detectionResult = detectionComparison.Detection;
+            }
+            else
+            {
+                detectionComparison = null;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Detection failed", ex.Message);
+        }
+        finally
+        {
+            isDetecting = false;
+        }
+    }
+
+    private void ApplyDetectionToDraft()
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        editingRevisionId = null;
+        revisionIsPublished = false;
+        ApplyDetectionIdentityToDraft(notify: false);
+        ApplyDetectedPortsToDraft(notify: false);
+        ApplyDetectedVolumesToDraft(notify: false);
+        ApplyDetectedSettingsToDraft(notify: false);
+
+        NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detection results have been applied to a new revision draft.");
+    }
+
+    private void ApplyDetectionIdentityToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        revisionVersionTag = detectionResult.VersionTag;
+        revisionImageDigest = detectionResult.ImageDigest;
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected tag and digest have been applied to the draft.");
+        }
+    }
+
+    private void ApplyDetectedPortsToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        revisionPorts = detectionResult.Ports
+            .Select((port, index) =>
+            {
+                var existing = revisionPorts.FirstOrDefault(x => x.ContainerPort == port.ContainerPort && string.Equals(x.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase));
+                return new RevisionPortDraft
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    AdvertisedPort = index == 0,
+                    Description = existing?.Description ?? (index == 0 ? "Detected primary port" : "Detected exposed port")
+                };
+            })
+            .ToList();
+
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected ports have been applied to the draft.");
+        }
+    }
+
+    private void ApplyDetectedVolumesToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        revisionVolumes = detectionResult.Volumes
+            .Select(volume =>
+            {
+                var existing = revisionVolumes.FirstOrDefault(x => string.Equals(x.Description, volume.ContainerPath, StringComparison.OrdinalIgnoreCase));
+                return new RevisionVolumeDraft
+                {
+                    Source = existing?.Source ?? string.Empty,
+                    Description = volume.ContainerPath,
+                    Usage = existing?.Usage ?? InferVolumeUsage(volume.ContainerPath)
+                };
+            })
+            .ToList();
+
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected volumes have been applied to the draft.");
+        }
+    }
+
+    private void ApplyDetectedSettingsToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        var existingSettings = revisionSettingDefinitions.ToDictionary(x => x.SettingKey, StringComparer.OrdinalIgnoreCase);
+
+        revisionSettingDefinitions = detectionResult.Settings
+            .Select(setting =>
+            {
+                if (existingSettings.TryGetValue(setting.Key, out var existing))
+                {
+                    return new RevisionSettingDraft
+                    {
+                        SettingKey = existing.SettingKey,
+                        DefaultValue = setting.DefaultValue,
+                        Description = existing.Description,
+                        Metadata = new RevisionSettingMetadataDraft
+                        {
+                            DataType = existing.Metadata.DataType ?? InferDataType(setting.Key, setting.DefaultValue),
+                            Category = existing.Metadata.Category,
+                            IsRequired = existing.Metadata.IsRequired,
+                            CannotBeEmpty = existing.Metadata.CannotBeEmpty,
+                            Placeholder = existing.Metadata.Placeholder,
+                            ValidationPattern = existing.Metadata.ValidationPattern,
+                            ValidationMessage = existing.Metadata.ValidationMessage,
+                            AutoAllocatePort = existing.Metadata.AutoAllocatePort,
+                            ValidateRelatedPortsAvailability = existing.Metadata.ValidateRelatedPortsAvailability,
+                            AllowedValuesJson = existing.Metadata.AllowedValuesJson,
+                            ValueMappingsJson = existing.Metadata.ValueMappingsJson,
+                            PortMappings = existing.Metadata.PortMappings.Select(ClonePortMappingDraft).ToList()
+                        }
+                    };
+                }
+
+                return new RevisionSettingDraft
+                {
+                    SettingKey = setting.Key,
+                    DefaultValue = setting.DefaultValue,
+                    Metadata = new RevisionSettingMetadataDraft
+                    {
+                        DataType = InferDataType(setting.Key, setting.DefaultValue),
+                        IsRequired = false,
+                        CannotBeEmpty = false
+                    }
+                };
+            })
+            .ToList();
+
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected settings have been merged into the draft while preserving existing metadata where possible.");
+        }
+    }
+
+    private async Task ReloadGameTypeAsync(string key, int? preferredRevisionId = null)
+    {
+        gameType = await GameTypeApiV2.GetByKeyAsync(key);
+        if (gameType is null)
+        {
+            return;
+        }
+
+        selectedRevisionId = preferredRevisionId ?? gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
+        PopulateForm(gameType);
+        LoadRevisionDraft(CurrentRevision);
+    }
+
+    private void PopulateForm(GameTypeDetail detail)
+    {
+        keyValue = detail.Key;
+        displayName = detail.DisplayName;
+        description = detail.Description;
+        imageReference = detail.ImageReference;
+        thumbnailUrl = detail.ThumbnailUrl;
+        documentationUrl = detail.DocumentationUrl;
+        isActive = detail.IsActive;
+    }
+
+    private void LoadRevisionDraft(GameTypeRevision? revision, bool asNewDraft = false)
+    {
+        editingRevisionId = asNewDraft ? null : revision?.Id;
+        revisionVersionTag = asNewDraft ? string.Empty : revision?.VersionTag ?? string.Empty;
+        revisionImageDigest = revision?.ImageDigest;
+        revisionEnableTTY = revision?.EnableTTY ?? false;
+        revisionNotes = revision?.Notes;
+        revisionIsPublished = asNewDraft ? false : revision?.IsPublished ?? false;
+        revisionPorts = revision?.Ports.Select(x => new RevisionPortDraft
+        {
+            ContainerPort = x.ContainerPort,
+            Protocol = x.Protocol,
+            AdvertisedPort = x.AdvertisedPort,
+            Description = x.Description
+        }).ToList() ?? [];
+        revisionVolumes = revision?.Volumes.Select(x => new RevisionVolumeDraft
+        {
+            Source = x.Source,
+            Description = x.Description,
+            Usage = x.Usage
+        }).ToList() ?? [];
+        revisionSettingDefinitions = revision?.SettingDefinitions.Select(x => new RevisionSettingDraft
+        {
+            SettingKey = x.SettingKey,
+            DefaultValue = x.DefaultValue,
+            Description = x.Description,
+            Metadata = new RevisionSettingMetadataDraft
+            {
+                DataType = x.Metadata?.DataType,
+                Category = x.Metadata?.Category,
+                IsRequired = x.Metadata?.IsRequired ?? false,
+                CannotBeEmpty = x.Metadata?.CannotBeEmpty ?? false,
+                Placeholder = x.Metadata?.Placeholder,
+                ValidationPattern = x.Metadata?.ValidationPattern,
+                ValidationMessage = x.Metadata?.ValidationMessage,
+                AutoAllocatePort = x.Metadata?.AutoAllocatePort ?? false,
+                ValidateRelatedPortsAvailability = x.Metadata?.ValidateRelatedPortsAvailability ?? false,
+                AllowedValuesJson = x.Metadata?.AllowedValuesJson,
+                ValueMappingsJson = x.Metadata?.ValueMappingsJson,
+                PortMappings = x.Metadata?.PortMappings.Select(pm => new RevisionPortMappingDraft
+                {
+                    MappingRole = pm.MappingRole,
+                    RelationType = pm.RelationType,
+                    TargetContainerPort = pm.TargetContainerPort,
+                    TargetProtocol = pm.TargetProtocol,
+                    CalculationValue = pm.CalculationValue,
+                    Description = pm.Description,
+                    IsRequired = pm.IsRequired
+                }).ToList() ?? []
+            }
+        }).ToList() ?? [];
+        revisionWebHosts = revision?.WebHosts.Select(x => new RevisionWebHostDraft
+        {
+            Name = x.Name,
+            Description = x.Description,
+            PathSegment = x.PathSegment,
+            ContainerPort = x.ContainerPort,
+            ContainerPortVariable = x.ContainerPortVariable,
+            EnabledWhen = x.EnabledWhen
+        }).ToList() ?? [];
+        detectionVersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? detectionVersionTag : revisionVersionTag;
+        detectionComparison = null;
+    }
+
+    private static string InferDataType(string key, string? value)
+    {
+        if (key.Contains("PORT", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out _))
+        {
+            return "port";
+        }
+
+        if (bool.TryParse(value, out _))
+        {
+            return "boolean";
+        }
+
+        if (int.TryParse(value, out _) || double.TryParse(value, out _))
+        {
+            return "number";
+        }
+
+        return "string";
+    }
+
+    private static string InferVolumeUsage(string containerPath)
+    {
+        if (containerPath.Contains("config", StringComparison.OrdinalIgnoreCase))
+        {
+            return "config";
+        }
+
+        if (containerPath.Contains("world", StringComparison.OrdinalIgnoreCase) || containerPath.Contains("save", StringComparison.OrdinalIgnoreCase))
+        {
+            return "world";
+        }
+
+        if (containerPath.Contains("mod", StringComparison.OrdinalIgnoreCase))
+        {
+            return "mods";
+        }
+
+        return "gamefiles";
+    }
+
+    private string GetDetectionSectionRecommendation(string section)
+    {
+        if (detectionComparison is null)
+        {
+            return "Run a comparison against a selected revision to get guidance.";
+        }
+
+        return section switch
+        {
+            "identity" => detectionComparison.DigestChanged
+                ? "Apply the detected digest if this tag now resolves to a new image build."
+                : "No identity change detected.",
+            "ports" => detectionComparison.AddedPorts.Count > 0 || detectionComparison.RemovedPorts.Count > 0
+                ? "Review and apply ports if the container now exposes a different network shape."
+                : "No port changes detected.",
+            "settings" => detectionComparison.AddedSettings.Count > 0 || detectionComparison.RemovedSettings.Count > 0 || detectionComparison.ChangedSettings.Count > 0
+                ? "Merge settings carefully so existing validation metadata is preserved."
+                : "No setting changes detected.",
+            "volumes" => detectionComparison.AddedVolumes.Count > 0 || detectionComparison.RemovedVolumes.Count > 0
+                ? "Apply volumes if the image now declares different persisted paths."
+                : "No volume changes detected.",
+            _ => string.Empty
+        };
+    }
+
+    private static RevisionPortMappingDraft ClonePortMappingDraft(RevisionPortMappingDraft mapping)
+    {
+        return new RevisionPortMappingDraft
+        {
+            MappingRole = mapping.MappingRole,
+            RelationType = mapping.RelationType,
+            TargetContainerPort = mapping.TargetContainerPort,
+            TargetProtocol = mapping.TargetProtocol,
+            CalculationValue = mapping.CalculationValue,
+            Description = mapping.Description,
+            IsRequired = mapping.IsRequired
+        };
+    }
+
+    private IReadOnlyList<string> GetDraftDifferences()
+    {
+        var baseline = CurrentRevision;
+        if (baseline is null)
+        {
+            return
+            [
+                "This is a new revision draft.",
+                $"Ports: {revisionPorts.Count}",
+                $"Volumes: {revisionVolumes.Count}",
+                $"Settings: {revisionSettingDefinitions.Count}",
+                $"Web Hosts: {revisionWebHosts.Count}"
+            ];
+        }
+
+        var differences = new List<string>();
+
+        if (!string.Equals(revisionVersionTag, baseline.VersionTag, StringComparison.Ordinal))
+        {
+            differences.Add($"Version tag changed from '{baseline.VersionTag}' to '{revisionVersionTag}'.");
+        }
+
+        if (!string.Equals(revisionImageDigest, baseline.ImageDigest, StringComparison.Ordinal))
+        {
+            differences.Add("Image digest changed.");
+        }
+
+        if (revisionEnableTTY != baseline.EnableTTY)
+        {
+            differences.Add($"TTY changed from {(baseline.EnableTTY ? "enabled" : "disabled")} to {(revisionEnableTTY ? "enabled" : "disabled")}.");
+        }
+
+        if (revisionIsPublished != baseline.IsPublished)
+        {
+            differences.Add($"Published flag changed from {(baseline.IsPublished ? "published" : "draft")} to {(revisionIsPublished ? "published" : "draft")}.");
+        }
+
+        if (revisionPorts.Count != baseline.Ports.Count)
+        {
+            differences.Add($"Port count changed from {baseline.Ports.Count} to {revisionPorts.Count}.");
+        }
+
+        if (revisionVolumes.Count != baseline.Volumes.Count)
+        {
+            differences.Add($"Volume count changed from {baseline.Volumes.Count} to {revisionVolumes.Count}.");
+        }
+
+        if (revisionSettingDefinitions.Count != baseline.SettingDefinitions.Count)
+        {
+            differences.Add($"Setting count changed from {baseline.SettingDefinitions.Count} to {revisionSettingDefinitions.Count}.");
+        }
+
+        if (revisionWebHosts.Count != baseline.WebHosts.Count)
+        {
+            differences.Add($"Web Host count changed from {baseline.WebHosts.Count} to {revisionWebHosts.Count}.");
+        }
+
+        var baselinePortMappings = baseline.SettingDefinitions.Sum(x => x.Metadata?.PortMappings.Count ?? 0);
+        var draftPortMappings = revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count);
+        if (draftPortMappings != baselinePortMappings)
+        {
+            differences.Add($"Port mapping rule count changed from {baselinePortMappings} to {draftPortMappings}.");
+        }
+
+        if (!string.Equals(revisionNotes, baseline.Notes, StringComparison.Ordinal))
+        {
+            differences.Add("Revision notes changed.");
+        }
+
+        return differences;
+    }
+
+    private IReadOnlyList<string> GetDetailedDraftDifferences()
+    {
+        var baseline = CurrentRevision;
+        var differences = new List<string>();
+
+        if (baseline is null)
+        {
+            differences.AddRange(revisionPorts.Select((port, index) => $"Draft port #{index + 1}: {port.ContainerPort}/{port.Protocol} {(port.AdvertisedPort ? "(advertised)" : string.Empty)}".Trim()));
+            differences.AddRange(revisionVolumes.Select((volume, index) => $"Draft volume #{index + 1}: '{volume.Description ?? volume.Source}' ({volume.Usage})"));
+            differences.AddRange(revisionSettingDefinitions.Select(setting => $"Draft setting '{setting.SettingKey}' with {setting.Metadata.PortMappings.Count} port mapping rule(s)."));
+            differences.AddRange(revisionWebHosts.Select(host => $"Draft Web Host '{host.Name}' targeting {(host.ContainerPort.HasValue ? host.ContainerPort.Value.ToString() : host.ContainerPortVariable ?? "(unset)")}."));
+            return differences;
+        }
+
+        var baselinePorts = baseline.Ports.Select((port, index) => new { Key = $"{port.ContainerPort}/{port.Protocol}", Index = index, Port = port }).ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+        var draftPorts = revisionPorts.Select((port, index) => new { Key = $"{port.ContainerPort}/{port.Protocol}", Index = index, Port = port }).ToList();
+
+        foreach (var draftPort in draftPorts)
+        {
+            if (!baselinePorts.TryGetValue(draftPort.Key, out var baselinePort))
+            {
+                differences.Add($"Added port '{draftPort.Key}' at draft position {draftPort.Index + 1}.");
+                continue;
+            }
+
+            if (draftPort.Index != baselinePort.Index)
+            {
+                differences.Add($"Port '{draftPort.Key}' moved from position {baselinePort.Index + 1} to {draftPort.Index + 1}.");
+            }
+
+            if (draftPort.Port.AdvertisedPort != baselinePort.Port.AdvertisedPort)
+            {
+                differences.Add($"Port '{draftPort.Key}' advertised flag changed.");
+            }
+
+            if (!string.Equals(draftPort.Port.Description, baselinePort.Port.Description, StringComparison.Ordinal))
+            {
+                differences.Add($"Port '{draftPort.Key}' description changed.");
+            }
+        }
+
+        var removedPorts = baseline.Ports.Select(port => $"{port.ContainerPort}/{port.Protocol}").Except(draftPorts.Select(x => x.Key), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedPorts.Select(port => $"Removed port '{port}'."));
+
+        var baselineVolumes = baseline.Volumes.Select((volume, index) => new { Key = volume.Description ?? volume.Source, Index = index, Volume = volume }).ToDictionary(x => x.Key ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+        var draftVolumes = revisionVolumes.Select((volume, index) => new { Key = volume.Description ?? volume.Source, Index = index, Volume = volume }).ToList();
+
+        foreach (var draftVolume in draftVolumes)
+        {
+            var key = draftVolume.Key ?? string.Empty;
+            if (!baselineVolumes.TryGetValue(key, out var baselineVolume))
+            {
+                differences.Add($"Added volume '{key}'.");
+                continue;
+            }
+
+            if (draftVolume.Index != baselineVolume.Index)
+            {
+                differences.Add($"Volume '{key}' moved from position {baselineVolume.Index + 1} to {draftVolume.Index + 1}.");
+            }
+
+            if (!string.Equals(draftVolume.Volume.Usage, baselineVolume.Volume.Usage, StringComparison.OrdinalIgnoreCase))
+            {
+                differences.Add($"Volume '{key}' usage changed from '{baselineVolume.Volume.Usage}' to '{draftVolume.Volume.Usage}'.");
+            }
+
+            if (!string.Equals(draftVolume.Volume.Source, baselineVolume.Volume.Source, StringComparison.Ordinal))
+            {
+                differences.Add($"Volume '{key}' source changed.");
+            }
+        }
+
+        var removedVolumes = baseline.Volumes.Select(volume => volume.Description ?? volume.Source ?? string.Empty).Except(draftVolumes.Select(x => x.Key ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedVolumes.Select(volume => $"Removed volume '{volume}'."));
+
+        var baselineSettings = baseline.SettingDefinitions.ToDictionary(x => x.SettingKey, StringComparer.OrdinalIgnoreCase);
+        foreach (var draftSetting in revisionSettingDefinitions)
+        {
+            if (!baselineSettings.TryGetValue(draftSetting.SettingKey, out var baselineSetting))
+            {
+                differences.Add($"Added setting '{draftSetting.SettingKey}'.");
+                continue;
+            }
+
+            if (!string.Equals(draftSetting.DefaultValue, baselineSetting.DefaultValue, StringComparison.Ordinal))
+            {
+                differences.Add($"Setting '{draftSetting.SettingKey}' default value changed.");
+            }
+
+            if (!string.Equals(draftSetting.Metadata.DataType, baselineSetting.Metadata?.DataType, StringComparison.OrdinalIgnoreCase))
+            {
+                differences.Add($"Setting '{draftSetting.SettingKey}' data type changed.");
+            }
+
+            if (draftSetting.Metadata.PortMappings.Count != (baselineSetting.Metadata?.PortMappings.Count ?? 0))
+            {
+                differences.Add($"Setting '{draftSetting.SettingKey}' port mapping count changed from {baselineSetting.Metadata?.PortMappings.Count ?? 0} to {draftSetting.Metadata.PortMappings.Count}.");
+            }
+        }
+
+        var removedSettings = baseline.SettingDefinitions.Select(setting => setting.SettingKey).Except(revisionSettingDefinitions.Select(x => x.SettingKey), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedSettings.Select(setting => $"Removed setting '{setting}'."));
+
+        var baselineHosts = baseline.WebHosts.Select((host, index) => new { Key = host.Name, Index = index, Host = host }).ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+        var draftHosts = revisionWebHosts.Select((host, index) => new { Key = host.Name, Index = index, Host = host }).ToList();
+
+        foreach (var draftHost in draftHosts)
+        {
+            if (!baselineHosts.TryGetValue(draftHost.Key, out var baselineHost))
+            {
+                differences.Add($"Added Web Host '{draftHost.Key}'.");
+                continue;
+            }
+
+            if (draftHost.Index != baselineHost.Index)
+            {
+                differences.Add($"Web Host '{draftHost.Key}' moved from position {baselineHost.Index + 1} to {draftHost.Index + 1}.");
+            }
+
+            if (!string.Equals(draftHost.Host.PathSegment, baselineHost.Host.PathSegment, StringComparison.Ordinal))
+            {
+                differences.Add($"Web Host '{draftHost.Key}' path segment changed.");
+            }
+
+            if (draftHost.Host.ContainerPort != baselineHost.Host.ContainerPort || !string.Equals(draftHost.Host.ContainerPortVariable, baselineHost.Host.ContainerPortVariable, StringComparison.Ordinal))
+            {
+                differences.Add($"Web Host '{draftHost.Key}' port binding changed.");
+            }
+        }
+
+        var removedHosts = baseline.WebHosts.Select(host => host.Name).Except(revisionWebHosts.Select(x => x.Name), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedHosts.Select(host => $"Removed Web Host '{host}'."));
+
+        return differences;
+    }
+
+    private static void MoveItem<T>(List<T> items, T item, int delta)
+    {
+        var currentIndex = items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = currentIndex + delta;
+        if (newIndex < 0 || newIndex >= items.Count)
+        {
+            return;
+        }
+
+        items.RemoveAt(currentIndex);
+        items.Insert(newIndex, item);
+    }
+
+    private bool CanSaveRevision()
+    {
+        return gameType is not null && !isNew && GetRevisionValidationIssues().Count == 0;
+    }
+
+    private List<string> GetRevisionValidationIssues()
+    {
+        var issues = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(revisionVersionTag))
+        {
+            issues.Add("Revision version tag is required.");
+        }
+
+        if (revisionPorts.Count == 0)
+        {
+            issues.Add("At least one port is required for a revision.");
+        }
+
+        if (revisionPorts.Count > 0 && revisionPorts.Count(x => x.AdvertisedPort) != 1)
+        {
+            issues.Add("Exactly one advertised port is required.");
+        }
+
+        var duplicatePorts = revisionPorts
+            .GroupBy(x => $"{x.ContainerPort}/{x.Protocol}", StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+
+        foreach (var duplicatePort in duplicatePorts)
+        {
+            issues.Add($"Duplicate port mapping detected for '{duplicatePort}'.");
+        }
+
+        var duplicateSettingKeys = revisionSettingDefinitions
+            .Where(x => !string.IsNullOrWhiteSpace(x.SettingKey))
+            .GroupBy(x => x.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+
+        foreach (var duplicateSettingKey in duplicateSettingKeys)
+        {
+            issues.Add($"Duplicate setting key '{duplicateSettingKey}' detected.");
+        }
+
+        foreach (var setting in revisionSettingDefinitions)
+        {
+            if (string.IsNullOrWhiteSpace(setting.SettingKey))
+            {
+                issues.Add("Each setting must have a key.");
+                continue;
+            }
+
+            if (setting.Metadata.IsRequired && setting.Metadata.CannotBeEmpty && string.IsNullOrWhiteSpace(setting.DefaultValue))
+            {
+                issues.Add($"Required setting '{setting.SettingKey}' cannot have an empty default value.");
+            }
+
+            foreach (var mapping in setting.Metadata.PortMappings)
+            {
+                var targetExists = revisionPorts.Any(x => x.ContainerPort == mapping.TargetContainerPort && string.Equals(x.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+                if (!targetExists)
+                {
+                    issues.Add($"Setting '{setting.SettingKey}' references missing target port '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
+                }
+            }
+        }
+
+        foreach (var host in revisionWebHosts)
+        {
+            var hasStaticPort = host.ContainerPort.HasValue;
+            var hasVariablePort = !string.IsNullOrWhiteSpace(host.ContainerPortVariable);
+
+            if (!hasStaticPort && !hasVariablePort)
+            {
+                issues.Add($"Web Host '{(string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name)}' must define either a static port or a port variable.");
+            }
+
+            if (hasStaticPort && hasVariablePort)
+            {
+                issues.Add($"Web Host '{(string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name)}' cannot define both a static port and a port variable.");
+            }
+        }
+
+        return issues.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private List<string> GetRevisionWarnings()
+    {
+        var warnings = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(revisionNotes))
+        {
+            warnings.Add("Revision notes are empty; consider recording what changed in this draft.");
+        }
+
+        if (revisionVolumes.Count == 0)
+        {
+            warnings.Add("No volumes are defined in this draft. That can be valid, but most dedicated servers persist at least one path.");
+        }
+
+        if (revisionSettingDefinitions.Count == 0)
+        {
+            warnings.Add("No settings are defined in this draft. Confirm the image truly does not require configurable environment variables.");
+        }
+
+        if (revisionWebHosts.Count == 0)
+        {
+            warnings.Add("No Web Host rules are defined. That is fine for headless servers, but web interfaces will not be derived until rules are added.");
+        }
+
+        if (detectionComparison is not null && detectionComparison.HasChanges)
+        {
+            warnings.Add("Detection comparison still reports changes against the selected revision. Review whether the draft should accept those changes before publishing.");
+        }
+
+        if (CurrentRevision is not null && !GetDraftDifferences().Any())
+        {
+            warnings.Add("This draft currently matches the selected revision summary. Consider whether a new revision is necessary before saving.");
+        }
+
+        return warnings.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private sealed class RevisionPortDraft
+    {
+        public int ContainerPort { get; set; }
+
+        public string Protocol { get; set; } = "tcp";
+
+        public bool AdvertisedPort { get; set; }
+
+        public string? Description { get; set; }
+    }
+
+    private sealed class RevisionVolumeDraft
+    {
+        public string Source { get; set; } = string.Empty;
+
+        public string? Description { get; set; }
+
+        public string Usage { get; set; } = "config";
+    }
+
+    private sealed class RevisionSettingDraft
+    {
+        public string SettingKey { get; set; } = string.Empty;
+
+        public string? DefaultValue { get; set; }
+
+        public string? Description { get; set; }
+
+        public RevisionSettingMetadataDraft Metadata { get; set; } = new();
+    }
+
+    private sealed class RevisionSettingMetadataDraft
+    {
+        public string? DataType { get; set; }
+
+        public string? Category { get; set; }
+
+        public bool IsRequired { get; set; }
+
+        public bool CannotBeEmpty { get; set; }
+
+        public string? Placeholder { get; set; }
+
+        public string? ValidationPattern { get; set; }
+
+        public string? ValidationMessage { get; set; }
+
+        public bool AutoAllocatePort { get; set; }
+
+        public bool ValidateRelatedPortsAvailability { get; set; }
+
+        public string? AllowedValuesJson { get; set; }
+
+        public string? ValueMappingsJson { get; set; }
+
+        public List<RevisionPortMappingDraft> PortMappings { get; set; } = [];
+    }
+
+    private sealed class RevisionPortMappingDraft
+    {
+        public string MappingRole { get; set; } = nameof(GameServer.Web.Models.V2.GameTypeSettingPortMappingRole.Primary);
+
+        public string RelationType { get; set; } = nameof(GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct);
+
+        public int TargetContainerPort { get; set; }
+
+        public string TargetProtocol { get; set; } = "tcp";
+
+        public int? CalculationValue { get; set; }
+
+        public string? Description { get; set; }
+
+        public bool IsRequired { get; set; }
+    }
+
+    private sealed class RevisionWebHostDraft
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string? Description { get; set; }
+
+        public string? PathSegment { get; set; }
+
+        public int? ContainerPort { get; set; }
+
+        public string? ContainerPortVariable { get; set; }
+
+        public string? EnabledWhen { get; set; }
+    }
+}

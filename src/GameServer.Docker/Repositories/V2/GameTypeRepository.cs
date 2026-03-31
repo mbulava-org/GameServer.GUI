@@ -125,6 +125,111 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         return await GetRevisionAsync(entity.Id) ?? throw new InvalidOperationException("Failed to reload created V2 GameTypeRevision");
     }
 
+    public async Task<GameTypeRevision> UpdateRevisionAsync(string gameTypeKey, GameTypeRevision revision)
+    {
+        ValidateRevision(revision);
+
+        var entity = await context.GameTypeRevisions
+            .Include(x => x.GameType)
+            .Include(x => x.Ports)
+            .Include(x => x.Volumes)
+            .Include(x => x.SettingDefinitions)
+                .ThenInclude(x => x.Metadata)
+                    .ThenInclude(x => x!.PortMappings)
+            .Include(x => x.WebHosts)
+            .FirstOrDefaultAsync(x => x.Id == revision.Id && x.GameType.Key == gameTypeKey);
+
+        if (entity is null)
+        {
+            throw new KeyNotFoundException($"V2 GameType revision '{revision.Id}' was not found for '{gameTypeKey}'");
+        }
+
+        var duplicateVersionTagExists = await context.GameTypeRevisions
+            .AnyAsync(x => x.GameTypeId == entity.GameTypeId && x.Id != revision.Id && x.VersionTag == revision.VersionTag);
+
+        if (duplicateVersionTagExists)
+        {
+            throw new InvalidOperationException($"Version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
+        }
+
+        entity.VersionTag = revision.VersionTag;
+        entity.ImageDigest = revision.ImageDigest;
+        entity.EnableTTY = revision.EnableTTY;
+        entity.Notes = revision.Notes;
+        entity.IsPublished = revision.IsPublished;
+
+        context.GameTypePorts.RemoveRange(entity.Ports);
+        context.GameTypeVolumes.RemoveRange(entity.Volumes);
+        context.GameTypeSettingDefinitions.RemoveRange(entity.SettingDefinitions);
+        context.GameTypeWebHosts.RemoveRange(entity.WebHosts);
+
+        entity.Ports = revision.Ports.Select(x => new DataV2.GameTypePortEntity
+        {
+            ContainerPort = x.ContainerPort,
+            Protocol = x.Protocol,
+            AdvertisedPort = x.AdvertisedPort,
+            Description = x.Description,
+            DisplayOrder = x.DisplayOrder
+        }).ToList();
+
+        entity.Volumes = revision.Volumes.Select(x => new DataV2.GameTypeVolumeEntity
+        {
+            Source = x.Source,
+            Description = x.Description,
+            DisplayOrder = x.DisplayOrder,
+            Usage = x.Usage
+        }).ToList();
+
+        entity.SettingDefinitions = revision.SettingDefinitions.Select(x => new DataV2.GameTypeSettingDefinitionEntity
+        {
+            SettingKey = x.SettingKey,
+            DefaultValue = x.DefaultValue,
+            Description = x.Description,
+            DisplayOrder = x.DisplayOrder,
+            Metadata = x.Metadata is null ? null : new DataV2.GameTypeSettingMetadataEntity
+            {
+                DataType = NormalizeDataType(x.Metadata.DataType),
+                Category = x.Metadata.Category,
+                IsRequired = x.Metadata.IsRequired,
+                CannotBeEmpty = x.Metadata.CannotBeEmpty,
+                Placeholder = x.Metadata.Placeholder,
+                ValidationPattern = x.Metadata.ValidationPattern,
+                ValidationMessage = x.Metadata.ValidationMessage,
+                AutoAllocatePort = x.Metadata.AutoAllocatePort,
+                ValidateRelatedPortsAvailability = x.Metadata.ValidateRelatedPortsAvailability,
+                AllowedValuesJson = NormalizeJson(x.Metadata.AllowedValuesJson),
+                ValueMappingsJson = NormalizeJson(x.Metadata.ValueMappingsJson),
+                PortMappings = x.Metadata.PortMappings.Select(pm => new DataV2.GameTypeSettingPortMappingEntity
+                {
+                    MappingRole = pm.MappingRole,
+                    RelationType = pm.RelationType,
+                    TargetContainerPort = pm.TargetContainerPort,
+                    TargetProtocol = pm.TargetProtocol,
+                    CalculationValue = pm.CalculationValue,
+                    Description = pm.Description,
+                    IsRequired = pm.IsRequired,
+                    DisplayOrder = pm.DisplayOrder
+                }).ToList()
+            }
+        }).ToList();
+
+        entity.WebHosts = revision.WebHosts.Select(x => new DataV2.GameTypeWebHostEntity
+        {
+            Name = x.Name,
+            Description = x.Description,
+            PathSegment = x.PathSegment,
+            ContainerPort = x.ContainerPort,
+            ContainerPortVariable = x.ContainerPortVariable,
+            EnabledWhen = x.EnabledWhen,
+            DisplayOrder = x.DisplayOrder
+        }).ToList();
+
+        await context.SaveChangesAsync();
+
+        logger.LogInformation("Updated V2 GameType revision {GameTypeKey}:{VersionTag}", gameTypeKey, revision.VersionTag);
+        return await GetRevisionAsync(entity.Id) ?? throw new InvalidOperationException("Failed to reload updated V2 GameTypeRevision");
+    }
+
     public async Task SetCurrentRevisionAsync(string gameTypeKey, int revisionId)
     {
         var gameType = await context.GameTypes

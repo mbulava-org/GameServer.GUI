@@ -52,6 +52,7 @@ namespace GameServer.Web
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
                 builder.Services.AddHttpClient();
+                builder.Services.AddScoped<Services.V2.GameTypeV2ApiService>();
 
                 //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
