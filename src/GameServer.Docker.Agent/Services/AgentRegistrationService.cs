@@ -19,6 +19,7 @@ namespace GameServer.Docker.Agent.Services
         private string? _nodeName;
         private string? _agentUrl;
         private bool _isManagerNode;
+        private bool _primaryServiceShutdownInProgress;
 
         public AgentRegistrationService(
             IDockerClient dockerClient,
@@ -87,6 +88,8 @@ namespace GameServer.Docker.Agent.Services
                 .WithUrl(hubUrl)
                 .WithAutomaticReconnect(_options.ReconnectDelaySeconds.Select(s => TimeSpan.FromSeconds(s)).ToArray())
                 .Build();
+
+            _hubConnection.On<string>("PrimaryServiceShuttingDown", message => HandlePrimaryServiceShutdownAsync(message, stoppingToken));
 
             // Setup event handlers
             _hubConnection.Reconnecting += OnReconnecting;
@@ -310,7 +313,15 @@ namespace GameServer.Docker.Agent.Services
             {
                 if (_hubConnection?.State != HubConnectionState.Connected)
                 {
-                    _logger.LogWarning("Cannot send heartbeat: SignalR connection is {State}", _hubConnection?.State);
+                    if (_primaryServiceShutdownInProgress)
+                    {
+                        _logger.LogDebug("Skipping heartbeat while waiting for Primary Service shutdown/restart.");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Cannot send heartbeat: SignalR connection is {State}", _hubConnection?.State);
+                    }
+
                     return;
                 }
 
@@ -347,12 +358,19 @@ namespace GameServer.Docker.Agent.Services
 
         private Task OnReconnecting(Exception? exception)
         {
+            if (_primaryServiceShutdownInProgress)
+            {
+                _logger.LogInformation("Primary Service shutdown in progress. Pausing until reconnect loop resumes.");
+                return Task.CompletedTask;
+            }
+
             _logger.LogWarning(exception, "Lost connection to Primary Service, reconnecting...");
             return Task.CompletedTask;
         }
 
         private async Task OnReconnected(string? connectionId)
         {
+            _primaryServiceShutdownInProgress = false;
             _logger.LogInformation("Reconnected to Primary Service with ConnectionId={ConnectionId}", connectionId);
 
             // Re-register after reconnection
@@ -370,6 +388,12 @@ namespace GameServer.Docker.Agent.Services
 
         private Task OnClosed(Exception? exception)
         {
+            if (_primaryServiceShutdownInProgress)
+            {
+                _logger.LogInformation("Connection to Primary Service closed during coordinated shutdown.");
+                return Task.CompletedTask;
+            }
+
             if (exception != null)
             {
                 _logger.LogError(exception, "Connection to Primary Service closed with error");
@@ -379,6 +403,47 @@ namespace GameServer.Docker.Agent.Services
                 _logger.LogInformation("Connection to Primary Service closed gracefully");
             }
             return Task.CompletedTask;
+        }
+
+        private async Task HandlePrimaryServiceShutdownAsync(string? message, CancellationToken stoppingToken)
+        {
+            if (stoppingToken.IsCancellationRequested || _hubConnection == null || _primaryServiceShutdownInProgress)
+            {
+                return;
+            }
+
+            _primaryServiceShutdownInProgress = true;
+            _logger.LogInformation("Primary Service signaled shutdown: {Message}", string.IsNullOrWhiteSpace(message) ? "No reason provided." : message);
+
+            try
+            {
+                await _hubConnection.StopAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error stopping SignalR connection after Primary Service shutdown signal.");
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.HeartbeatIntervalSeconds)), stoppingToken);
+                await ConnectAndRegisterWithRetryAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Primary Service graceful reconnect loop exited with an error.");
+            }
+            finally
+            {
+                _primaryServiceShutdownInProgress = false;
+            }
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)

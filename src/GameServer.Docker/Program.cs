@@ -157,6 +157,7 @@ namespace GameServer.Docker
 
                 // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
                 builder.Services.AddSingleton<NodeAgentClient>();
+                builder.Services.AddHostedService<Services.AgentShutdownNotificationService>();
 
                 // Add Resource Monitoring - Changed to Scoped because it depends on DockerServiceHelper
                 builder.Services.AddScoped<IGameServerResourceMonitor, GameServerResourceMonitorService>();
@@ -395,7 +396,7 @@ namespace GameServer.Docker
 
                 app.MapControllers();
 
-                mainLogger.LogInformation("🎯 WebHost is ready to accept connections. Database initialization will run in background...");
+                mainLogger.LogInformation("🎯 WebHost has started listening. Database initialization is still running in the background; the application will shut down if initialization fails.");
 
                 app.Run();
             }
