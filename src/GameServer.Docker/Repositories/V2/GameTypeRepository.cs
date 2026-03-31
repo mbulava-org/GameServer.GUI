@@ -1,6 +1,8 @@
 using System.Text.Json;
 using GameServer.Docker.Models.V2;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using DataV2 = GameServer.Docker.Data.V2;
 
 namespace GameServer.Docker.Repositories.V2;
@@ -8,9 +10,45 @@ namespace GameServer.Docker.Repositories.V2;
 public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<GameTypeRepository> logger)
     : IGameTypeRepository
 {
+    /// <summary>
+    /// Initialize the V2 database using the same startup pattern as the legacy repository.
+    /// </summary>
     public async Task InitializeDatabaseAsync()
     {
-        await context.Database.EnsureCreatedAsync();
+        logger.LogInformation("Initializing V2 database...");
+
+        try
+        {
+            logger.LogInformation("Applying V2 database migrations...");
+
+            var migrationsAssembly = context.GetService<IMigrationsAssembly>();
+            if (migrationsAssembly.Migrations.Any())
+            {
+                await context.Database.MigrateAsync().ConfigureAwait(false);
+                logger.LogInformation("V2 database migrations applied successfully");
+            }
+            else
+            {
+                logger.LogInformation("No V2 migrations found. Ensuring the database schema is created...");
+                await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
+                logger.LogInformation("V2 database schema ensured successfully");
+            }
+
+            var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
+            if (!hasGameTypes)
+            {
+                logger.LogInformation("V2 database initialized. No game types found.");
+                return;
+            }
+
+            var count = await context.GameTypes.CountAsync().ConfigureAwait(false);
+            logger.LogInformation("V2 database initialized. Found {Count} game types.", count);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error initializing V2 database");
+            throw;
+        }
     }
 
     public async Task<List<GameType>> GetAllAsync(bool includeInactive = false)

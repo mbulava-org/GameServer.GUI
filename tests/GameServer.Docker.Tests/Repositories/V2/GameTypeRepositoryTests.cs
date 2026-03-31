@@ -33,6 +33,25 @@ public class GameTypeRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task InitializeDatabaseAsync_WhenNoMigrationsExist_ShouldEnsureSchemaAndRemainQueryable()
+    {
+        var dbPath = $":memory:_{Guid.NewGuid()}";
+        var options = new DbContextOptionsBuilder<GameServerV2DbContext>()
+            .UseSqlite($"DataSource={dbPath};Mode=Memory;Cache=Shared")
+            .Options;
+
+        await using var context = new GameServerV2DbContext(options);
+        await context.Database.OpenConnectionAsync();
+
+        var repository = new GameTypeRepository(context, Mock.Of<ILogger<GameTypeRepository>>());
+
+        await repository.InitializeDatabaseAsync();
+
+        var count = await context.GameTypes.CountAsync();
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
     public async Task CreateAsync_WhenAggregateIncludesRevision_ShouldRoundTripAggregate()
     {
         var gameType = new GameType
