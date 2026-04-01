@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using MySql.Data.MySqlClient;
 using System.Reflection;
 
 namespace GameServer.Docker.Data.V2;
@@ -60,47 +61,20 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
     private static void ConfigureMySqlProvider(DbContextOptionsBuilder optionsBuilder, string connectionString)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
-
-        var extensionType = Type.GetType("Microsoft.EntityFrameworkCore.MySQLDbContextOptionsExtensions, MySql.EntityFrameworkCore")
-            ?? Type.GetType("Microsoft.EntityFrameworkCore.MySqlDbContextOptionsExtensions, MySql.EntityFrameworkCore");
-
-        if (extensionType is null)
+        var mySqlCS = new MySqlConnectionStringBuilder(connectionString)
         {
-            throw new InvalidOperationException("The MySQL EF Core provider assembly could not be loaded.");
-        }
+            Pooling = true,
+            ConnectionTimeout = 30,
+            DefaultCommandTimeout = 30,
+        };
 
-        var useMySqlMethod = extensionType
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .FirstOrDefault(method =>
-            {
-                if (!string.Equals(method.Name, "UseMySQL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(method.Name, "UseMySql", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                var parameters = method.GetParameters();
-                return parameters.Length >= 2 &&
-                       typeof(DbContextOptionsBuilder).IsAssignableFrom(parameters[0].ParameterType) &&
-                       parameters[1].ParameterType == typeof(string);
-            });
-
-        if (useMySqlMethod is null)
+        optionsBuilder.UseMySQL(mySqlCS.ConnectionString, options =>
         {
-            throw new InvalidOperationException("A compatible UseMySql/UseMySQL method was not found in the MySQL EF Core provider.");
-        }
-
-        var parameters = useMySqlMethod.GetParameters();
-        var invokeArguments = new object?[parameters.Length];
-        invokeArguments[0] = optionsBuilder;
-        invokeArguments[1] = connectionString;
-
-        for (var index = 2; index < parameters.Length; index++)
-        {
-            invokeArguments[index] = parameters[index].HasDefaultValue ? parameters[index].DefaultValue : null;
-        }
-
-        useMySqlMethod.Invoke(null, invokeArguments);
+            options.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorNumbersToAdd: null);
+        });
     }
 
     private static string? ResolveArgument(IReadOnlyList<string> args, string name)
