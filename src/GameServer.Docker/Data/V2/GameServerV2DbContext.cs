@@ -45,6 +45,8 @@ public class GameServerV2DbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        var isMySql = Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true;
+
         modelBuilder.Entity<GameTypeEntity>(entity =>
         {
             entity.ToTable("GameTypes");
@@ -55,8 +57,8 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.ImageReference).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+            ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
 
             entity.HasMany(e => e.Revisions)
                 .WithOne(e => e.GameType)
@@ -71,7 +73,7 @@ public class GameServerV2DbContext : DbContext
             entity.HasIndex(e => new { e.GameTypeId, e.VersionTag }).IsUnique();
             entity.Property(e => e.VersionTag).IsRequired().HasMaxLength(100);
             entity.Property(e => e.ImageDigest).HasMaxLength(250);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
 
             entity.HasMany(e => e.Ports)
                 .WithOne(e => e.GameTypeRevision)
@@ -183,8 +185,8 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.ServiceName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+            ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
 
             entity.HasMany(e => e.Settings)
                 .WithOne(e => e.GameServer)
@@ -226,5 +228,20 @@ public class GameServerV2DbContext : DbContext
                 gameServer.UpdatedAt = DateTime.UtcNow;
             }
         }
+    }
+
+    private static void ConfigureTimestampProperty<T>(Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder<T> propertyBuilder, bool isMySql)
+    {
+        ArgumentNullException.ThrowIfNull(propertyBuilder);
+
+        if (isMySql)
+        {
+            propertyBuilder
+                .HasColumnType("datetime(6)");
+
+            return;
+        }
+
+        propertyBuilder.HasDefaultValueSql("CURRENT_TIMESTAMP");
     }
 }

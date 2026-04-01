@@ -159,7 +159,8 @@ namespace GameServer.Docker.Services
         }
 
         public async Task<IList<SwarmService>> ListServicesAsync(
-            ServicesListParameters? parameters = null,
+            string? labelFilter = null,
+            string? serviceName = null,
             CancellationToken cancellationToken = default)
         {
             var managerAgent = GetManagerAgent();
@@ -172,18 +173,9 @@ namespace GameServer.Docker.Services
 
             // Build query string for label filter
             // Note: ServiceFilter.Label property may throw KeyNotFoundException if not set
-            var queryString = "";
-            try
-            {
-                if (parameters?.Filters?.Label?.Any() == true)
-                {
-                    queryString = $"?labelFilter={Uri.EscapeDataString(parameters.Filters.Label.First())}";
-                }
-            }
-            catch (KeyNotFoundException)
-            {
-                // Label filter not set - continue without filter
-            }
+            var queryString = string.IsNullOrWhiteSpace(labelFilter)
+                ? string.Empty
+                : $"?labelFilter={Uri.EscapeDataString(labelFilter)}";
 
             var response = await httpClient.GetAsync($"/api/services{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -224,6 +216,13 @@ namespace GameServer.Docker.Services
             var services = JsonSerializer.Deserialize<List<SwarmService>>(servicesProp.GetRawText(), options) 
                 ?? new List<SwarmService>();
 
+            if (!string.IsNullOrWhiteSpace(serviceName))
+            {
+                services = services
+                    .Where(service => string.Equals(service.Spec?.Name, serviceName, StringComparison.Ordinal))
+                    .ToList();
+            }
+
             _logger.LogDebug("Listed {Count} services via agent", services.Count);
 
             // Log first service details for debugging
@@ -237,6 +236,22 @@ namespace GameServer.Docker.Services
             }
 
             return services;
+        }
+
+        /// <summary>
+        /// Lists services via the manager agent without applying Docker list filters.
+        /// </summary>
+        public Task<IList<SwarmService>> ListServicesAsync()
+        {
+            return ListServicesAsync(null, null, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Lists services via the manager agent without applying Docker list filters.
+        /// </summary>
+        public Task<IList<SwarmService>> ListServicesAsync(CancellationToken cancellationToken)
+        {
+            return ListServicesAsync(null, null, cancellationToken);
         }
 
         public async Task<SwarmService> InspectServiceAsync(string serviceId, CancellationToken cancellationToken = default)

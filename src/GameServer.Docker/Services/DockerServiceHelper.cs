@@ -433,7 +433,7 @@ namespace GameServer.Docker.Services
                 Label = [$"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}"]
             };
 
-            var services = (await serviceOperations.ListServicesAsync(new ServicesListParameters { Filters = filters })).ToList();
+            var services = (await serviceOperations.ListServicesAsync(labelFilter: filters.Label.First())).ToList();
             logger.LogInformation($"Found {services.Count} managed game server services");
 
             if (services.Count == 0)
@@ -600,7 +600,7 @@ namespace GameServer.Docker.Services
                 Label = new[] { $"{ServiceLabels.ServerId}={Id}" }
             };
 
-            var services = (await serviceOperations.ListServicesAsync(new ServicesListParameters { Filters = filters })).ToList();
+            var services = (await serviceOperations.ListServicesAsync(labelFilter: filters.Label.First())).ToList();
 
             if (services.Count == 0)
             {
@@ -654,10 +654,7 @@ namespace GameServer.Docker.Services
                     Label = new[] { $"{ServiceLabels.ServerId}={server.ServerId}" }
                 };
 
-                var services = await serviceOperations.ListServicesAsync(new ServicesListParameters
-                {
-                    Filters = serviceFilter
-                });
+                var services = await serviceOperations.ListServicesAsync(labelFilter: serviceFilter.Label.First());
 
                 if (!services.Any())
                 {
@@ -772,13 +769,7 @@ namespace GameServer.Docker.Services
             if (server == null)
                 throw new InvalidOperationException($"Server {serverId} not found");
 
-            var serviceDetails = await serviceOperations.ListServicesAsync(new ServicesListParameters
-            {
-                Filters = new ServiceFilter
-                {
-                    Name = [server.ServiceName]
-                }
-            });
+            var serviceDetails = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName);
 
             var service = serviceDetails.FirstOrDefault();
             if (service == null)

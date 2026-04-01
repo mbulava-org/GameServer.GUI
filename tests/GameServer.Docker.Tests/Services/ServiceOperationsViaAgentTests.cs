@@ -133,7 +133,7 @@ public class ServiceOperationsViaAgentTests
             .ReturnsAsync(responseMessage);
 
         // Act
-        var result = await service.ListServicesAsync();
+        var result = await service.ListServicesAsync(cancellationToken: CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -323,7 +323,7 @@ public class ServiceOperationsViaAgentTests
             .ReturnsAsync(responseMessage);
 
         // Act
-        var result = await service.ListServicesAsync();
+        var result = await service.ListServicesAsync(cancellationToken: CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -348,7 +348,7 @@ public class ServiceOperationsViaAgentTests
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.ListServicesAsync());
+            () => service.ListServicesAsync(cancellationToken: CancellationToken.None));
         
         Assert.Contains("No healthy manager agent available", exception.Message);
     }
