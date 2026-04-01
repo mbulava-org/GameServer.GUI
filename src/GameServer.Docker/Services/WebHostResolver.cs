@@ -7,6 +7,7 @@ namespace GameServer.Docker.Services;
 /// Resolves web host definitions by evaluating conditions and dynamic port values
 /// against a server's actual settings.
 /// </summary>
+[Obsolete("This resolver still depends on legacy web host definitions. Migrate to V2 web host models before removing the old repository chain.")]
 public class WebHostResolver(ILogger<WebHostResolver> logger)
 {
     /// <summary>

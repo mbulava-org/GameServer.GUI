@@ -4,6 +4,7 @@ namespace GameServer.Docker.Models
     /// Defines a relationship between ports where one port's value determines another port's value.
     /// Used for games that require multiple related ports (e.g., game port, query port, RCON port).
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeSettingPortMapping for new persistence work. This legacy port relationship model will be removed with the old repository chain.")]
     public class PortRelationship
     {
         /// <summary>
@@ -72,6 +73,7 @@ namespace GameServer.Docker.Models
     /// <summary>
     /// Validation rule for port settings
     /// </summary>
+    [Obsolete("Use backend V2 validation services instead of legacy persisted port validation metadata. This model will be removed with the old repository chain.")]
     public class PortValidationRule
     {
         /// <summary>
@@ -115,6 +117,7 @@ namespace GameServer.Docker.Models
     /// Represents a web-accessible endpoint configuration for a port setting.
     /// Defines how a game server port should be exposed via load balancer (HTTP/HTTPS/TCP).
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeWebHost for new persistence work. This legacy web host model will be removed with the old repository chain.")]
     public class WebHost
     {
         /// <summary>

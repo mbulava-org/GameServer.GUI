@@ -1,5 +1,6 @@
 @page "/gametypes/{GameTypeKey}/metadata"
 @rendermode InteractiveServer
+@attribute [Obsolete("Legacy pre-V2 extended metadata page. Migrate to V2 revision metadata before removing the old repository chain.")]
 @using global::GameServer.Docker.Client
 @inject IGameTypeApi GameTypeApi
 @inject NavigationManager Navigation

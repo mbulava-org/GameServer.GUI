@@ -7,6 +7,7 @@ namespace GameServer.Docker.Controllers
 {
     [ApiController]
     [Route("api/gametypes/extended")]
+    [Obsolete("Legacy pre-V2 extended metadata API. Migrate to V2 revision metadata before removing the old repository chain.")]
     public class GameTypeExtendedMetadataController : ControllerBase
     {
         private readonly IGameTypeRepository _repository;

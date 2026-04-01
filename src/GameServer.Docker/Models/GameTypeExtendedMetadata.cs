@@ -47,6 +47,7 @@ namespace GameServer.Docker.Models
     /// Defines a web interface exposed by a game server container that should be
     /// accessible through a reverse proxy/load balancer.
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeWebHost for new persistence work. This legacy web host definition will be removed with the old repository chain.")]
     public class WebHostDefinition
     {
         /// <summary>

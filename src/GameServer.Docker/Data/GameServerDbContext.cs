@@ -6,6 +6,7 @@ namespace GameServer.Docker.Data
     /// <summary>
     /// Database context for GameType management using SQLite
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Data.V2.GameServerV2DbContext for new persistence work. This legacy DbContext will be removed with the old repository chain.")]
     public class GameServerDbContext : DbContext
     {
         public GameServerDbContext(DbContextOptions<GameServerDbContext> options)

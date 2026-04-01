@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 namespace GameServer.Docker.Services
 {
+    [Obsolete("Legacy pre-V2 Docker service helper. Migrate callers to GameServer.Docker.Models.V2 and V2 orchestration services before removing the old repository chain.")]
     public class DockerServiceHelper(ILogger<DockerServiceHelper> logger,
         IServiceOperations serviceOperations,
         IServiceProvider serviceProvider,

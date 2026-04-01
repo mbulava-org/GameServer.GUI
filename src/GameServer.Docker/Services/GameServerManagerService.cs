@@ -6,6 +6,7 @@ using System.Text;
 
 namespace GameServer.Docker.Services
 {
+    [Obsolete("Legacy pre-V2 game server manager implementation. Migrate to GameServer.Docker.Models.V2 and V2 orchestration services before removing the old repository chain.")]
     public class GameServerManagerService(ILogger<GameServerManagerService> logger,
         DockerServiceHelper dockerServiceHelper) : IGameServerManager
     {

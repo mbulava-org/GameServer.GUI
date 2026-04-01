@@ -3,6 +3,7 @@ namespace GameServer.Docker.Models
     /// <summary>
     /// Metadata for a game type setting/environment variable
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeSettingDefinition and related V2 metadata models for new persistence work. This legacy metadata model will be removed with the old repository chain.")]
     public class SettingMetadata
     {
         /// <summary>

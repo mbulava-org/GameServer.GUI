@@ -21,27 +21,31 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         {
             logger.LogInformation("Applying V2 database migrations...");
 
-            var migrationsAssembly = context.GetService<IMigrationsAssembly>();
-            if (migrationsAssembly.Migrations.Any())
-            {
-                await context.Database.MigrateAsync().ConfigureAwait(false);
-                logger.LogInformation("V2 database migrations applied successfully");
-            }
-            else
-            {
-                logger.LogInformation("No V2 migrations found. Ensuring the database schema is created...");
-                await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
-                logger.LogInformation("V2 database schema ensured successfully");
-            }
+            //var migrationsAssembly = context.GetService<IMigrationsAssembly>();
+            //if (migrationsAssembly.Migrations.Any())
+            //{
+            //    await context.Database.MigrateAsync().ConfigureAwait(false);
+            //    logger.LogInformation("V2 database migrations applied successfully");
+            //}
+            //else
+            //{
+            //    logger.LogInformation("No V2 migrations found. Ensuring the database schema is created...");
+            //    await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
+            //    logger.LogInformation("V2 database schema ensured successfully");
+            //}
+            // Apply any pending migrations (this will create the database if it doesn't exist)
+            logger.LogInformation("Applying database migrations...");
+            await context.Database.MigrateAsync();
+            logger.LogInformation("Database migrations applied successfully");
 
-            var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
+            var hasGameTypes = await context.GameTypes.AnyAsync();
             if (!hasGameTypes)
             {
                 logger.LogInformation("V2 database initialized. No game types found.");
                 return;
             }
 
-            var count = await context.GameTypes.CountAsync().ConfigureAwait(false);
+            var count = await context.GameTypes.CountAsync();
             logger.LogInformation("V2 database initialized. Found {Count} game types.", count);
         }
         catch (Exception ex)
