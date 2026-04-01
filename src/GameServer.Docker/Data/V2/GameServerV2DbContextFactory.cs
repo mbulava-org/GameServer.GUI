@@ -68,6 +68,16 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
             DefaultCommandTimeout = 30,
         };
 
+        try
+        {
+            // Test the connection string by opening a connection.
+            using var testConnection = new MySqlConnection(mySqlCS.ConnectionString);
+            testConnection.Open();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to connect to MySQL database with the provided connection string: \"{mySqlCS.ConnectionString}\". Please verify the connection details.", ex);
+        }
         optionsBuilder.UseMySQL(mySqlCS.ConnectionString, options =>
         {
             options.EnableRetryOnFailure(
