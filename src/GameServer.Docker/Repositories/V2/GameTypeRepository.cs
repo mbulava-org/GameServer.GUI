@@ -34,9 +34,9 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             //    logger.LogInformation("V2 database schema ensured successfully");
             //}
             // Apply any pending migrations (this will create the database if it doesn't exist)
-            logger.LogInformation("Applying database migrations...");
+            logger.LogInformation("Applying V2 database migrations...");
             await context.Database.MigrateAsync();
-            logger.LogInformation("Database migrations applied successfully");
+            logger.LogInformation("Database V2 migrations applied successfully");
 
             var hasGameTypes = await context.GameTypes.AnyAsync();
             if (!hasGameTypes)
