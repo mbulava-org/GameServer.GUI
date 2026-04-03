@@ -121,13 +121,15 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         var image = await dockerClient.Images.InspectImageAsync(imageReferenceWithTag, cancellationToken).ConfigureAwait(false);
         var config = image.Config;
 
+        var detectedPorts = GetDetectedPorts(config?.ExposedPorts);
+
         return new GameTypeSetupDetectionResultDto
         {
             ImageReference = gameType.ImageReference,
             VersionTag = versionTag,
             ImageDigest = GetImageDigest(gameType.ImageReference, image.RepoDigests),
-            Ports = GetDetectedPorts(config?.ExposedPorts),
-            Settings = GetDetectedSettings(config?.Env),
+            Ports = detectedPorts,
+            Settings = GetDetectedSettings(config?.Env, detectedPorts),
             Volumes = GetDetectedVolumes(config?.Volumes)
         };
     }
@@ -187,7 +189,7 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         };
     }
 
-    private static List<DetectedSettingDto> GetDetectedSettings(IList<string>? environmentVariables)
+    private static List<DetectedSettingDto> GetDetectedSettings(IList<string>? environmentVariables, IReadOnlyList<DetectedPortDto> detectedPorts)
     {
         if (environmentVariables is null || environmentVariables.Count == 0)
         {
@@ -195,14 +197,14 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         }
 
         return environmentVariables
-            .Select(ParseEnvironmentVariable)
+            .Select(x => ParseEnvironmentVariable(x, detectedPorts))
             .Where(x => x is not null)
             .Select(x => x!)
             .OrderBy(x => x.Key)
             .ToList();
     }
 
-    private static DetectedSettingDto? ParseEnvironmentVariable(string? environmentVariable)
+    private static DetectedSettingDto? ParseEnvironmentVariable(string? environmentVariable, IReadOnlyList<DetectedPortDto> detectedPorts)
     {
         if (string.IsNullOrWhiteSpace(environmentVariable))
         {
@@ -212,14 +214,103 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         var separatorIndex = environmentVariable.IndexOf('=');
         if (separatorIndex < 0)
         {
-            return new DetectedSettingDto { Key = environmentVariable };
+            return new DetectedSettingDto { Key = environmentVariable, PortMappings = InferDetectedPortMappings(environmentVariable, null, detectedPorts) };
         }
+
+        var key = environmentVariable[..separatorIndex];
+        var defaultValue = separatorIndex == environmentVariable.Length - 1 ? string.Empty : environmentVariable[(separatorIndex + 1)..];
 
         return new DetectedSettingDto
         {
-            Key = environmentVariable[..separatorIndex],
-            DefaultValue = separatorIndex == environmentVariable.Length - 1 ? string.Empty : environmentVariable[(separatorIndex + 1)..]
+            Key = key,
+            DefaultValue = defaultValue,
+            PortMappings = InferDetectedPortMappings(key, defaultValue, detectedPorts)
         };
+    }
+
+    private static List<DetectedSettingPortMappingDto> InferDetectedPortMappings(string key, string? defaultValue, IReadOnlyList<DetectedPortDto> detectedPorts)
+    {
+        if (!LooksLikePortSetting(key) || !int.TryParse(defaultValue, out var defaultPort) || defaultPort <= 0 || detectedPorts.Count == 0)
+        {
+            return [];
+        }
+
+        var matchingPorts = detectedPorts
+            .Where(port => port.ContainerPort == defaultPort)
+            .OrderBy(port => GetProtocolSortOrder(port.Protocol))
+            .ThenBy(port => port.Protocol, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matchingPorts.Count == 0)
+        {
+            return [];
+        }
+
+        var inferredMappings = new List<DetectedSettingPortMappingDto>();
+
+        inferredMappings.Add(new DetectedSettingPortMappingDto
+        {
+            MappingRole = Models.V2.GameTypeSettingPortMappingRole.Primary.ToString(),
+            RelationType = Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
+            TargetContainerPort = matchingPorts[0].ContainerPort,
+            TargetProtocol = matchingPorts[0].Protocol,
+            Description = $"Detected primary mapping for setting '{key}'.",
+            IsRequired = false
+        });
+
+        foreach (var additionalMatch in matchingPorts.Skip(1))
+        {
+            inferredMappings.Add(new DetectedSettingPortMappingDto
+            {
+                MappingRole = Models.V2.GameTypeSettingPortMappingRole.Related.ToString(),
+                RelationType = Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
+                TargetContainerPort = additionalMatch.ContainerPort,
+                TargetProtocol = additionalMatch.Protocol,
+                Description = $"Detected related mapping for setting '{key}' on protocol '{additionalMatch.Protocol}'.",
+                IsRequired = false
+            });
+        }
+
+        if (IsPrimaryPortSetting(key))
+        {
+            foreach (var relatedPort in detectedPorts
+                .Where(port => port.ContainerPort != defaultPort)
+                .OrderBy(port => Math.Abs(port.ContainerPort - defaultPort))
+                .ThenBy(port => GetProtocolSortOrder(port.Protocol))
+                .ThenBy(port => port.Protocol, StringComparer.OrdinalIgnoreCase))
+            {
+                inferredMappings.Add(new DetectedSettingPortMappingDto
+                {
+                    MappingRole = Models.V2.GameTypeSettingPortMappingRole.Related.ToString(),
+                    RelationType = Models.V2.GameTypeSettingPortRelationType.Offset.ToString(),
+                    TargetContainerPort = relatedPort.ContainerPort,
+                    TargetProtocol = relatedPort.Protocol,
+                    CalculationValue = relatedPort.ContainerPort - defaultPort,
+                    Description = $"Detected related exposed port for setting '{key}'.",
+                    IsRequired = false
+                });
+            }
+        }
+
+        return inferredMappings;
+    }
+
+    private static bool LooksLikePortSetting(string key)
+    {
+        return !string.IsNullOrWhiteSpace(key)
+            && key.Contains("PORT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPrimaryPortSetting(string key)
+    {
+        var normalizedKey = key.Trim().Replace("-", string.Empty, StringComparison.Ordinal).Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
+
+        return normalizedKey is "PORT" or "SERVERPORT" or "GAMEPORT" or "DEFAULTPORT" or "SERVICEPORT" or "PRIMARYPORT";
+    }
+
+    private static int GetProtocolSortOrder(string protocol)
+    {
+        return string.Equals(protocol, "tcp", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
     }
 
     private static List<DetectedVolumeDto> GetDetectedVolumes(IDictionary<string, DockerModels.EmptyStruct>? volumes)

@@ -1,0 +1,148 @@
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <RadzenCard>
+            <h5 class="mb-3">Revision Draft Summary</h5>
+            <div><strong>Version Tag:</strong> @(string.IsNullOrWhiteSpace(RevisionVersionTag) ? "Not set" : RevisionVersionTag)</div>
+            <div><strong>Digest:</strong> @(string.IsNullOrWhiteSpace(RevisionImageDigest) ? "Not set" : RevisionImageDigest)</div>
+            <div><strong>TTY:</strong> @(RevisionEnableTTY ? "Enabled" : "Disabled")</div>
+            <div><strong>Published:</strong> @(RevisionIsPublished ? "Yes" : "No")</div>
+        </RadzenCard>
+    </div>
+    <div class="col-lg-4">
+        <RadzenCard>
+            <h5 class="mb-3">Draft Contents</h5>
+            <div>@PortCount port(s)</div>
+            <div>@VolumeCount volume(s)</div>
+            <div>@SettingCount setting(s)</div>
+            <div>@WebHostCount web host(s)</div>
+            <div>@PortMappingCount port mapping rule(s)</div>
+        </RadzenCard>
+    </div>
+    <div class="col-lg-4">
+        <RadzenCard>
+            <h5 class="mb-3">Detection Status</h5>
+            @if (DetectionResult is null)
+            {
+                <div class="text-muted">No detection results have been applied.</div>
+            }
+            else
+            {
+                <div><strong>Tag:</strong> @DetectionResult.VersionTag</div>
+                <div><strong>Ports:</strong> @DetectionResult.Ports.Count</div>
+                <div><strong>Settings:</strong> @DetectionResult.Settings.Count</div>
+                <div><strong>Volumes:</strong> @DetectionResult.Volumes.Count</div>
+                @if (DetectionComparison is not null)
+                {
+                    <div><strong>Compared to:</strong> @DetectionComparison.RevisionVersionTag</div>
+                    <div><strong>Changes:</strong> @(DetectionComparison.HasChanges ? "Yes" : "No")</div>
+                }
+            }
+        </RadzenCard>
+    </div>
+    <div class="col-12">
+        <RadzenCard>
+            <h5 class="mb-3">Draft Diff vs Selected Revision</h5>
+            @if (ValidationIssues.Count > 0)
+            {
+                <div class="mb-3">
+                    <strong>Validation issues</strong>
+                    <ul class="mb-0 ps-3">
+                        @foreach (var issue in ValidationIssues)
+                        {
+                            <li>@issue</li>
+                        }
+                    </ul>
+                </div>
+            }
+            @if (Warnings.Count > 0)
+            {
+                <div class="mb-3">
+                    <strong>Warnings</strong>
+                    <ul class="mb-0 ps-3">
+                        @foreach (var warning in Warnings)
+                        {
+                            <li>@warning</li>
+                        }
+                    </ul>
+                </div>
+            }
+            @if (!DraftDifferences.Any())
+            {
+                <div class="text-muted">No draft differences detected from the selected revision.</div>
+            }
+            else
+            {
+                <ul class="mb-0">
+                    @foreach (var difference in DraftDifferences)
+                    {
+                        <li>@difference</li>
+                    }
+                </ul>
+            }
+
+            @if (DetailedDraftDifferences.Any())
+            {
+                <div class="mt-3">
+                    <strong>Detailed differences</strong>
+                    <ul class="mb-0 ps-3 mt-2">
+                        @foreach (var difference in DetailedDraftDifferences)
+                        {
+                            <li>@difference</li>
+                        }
+                    </ul>
+                </div>
+            }
+        </RadzenCard>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string RevisionVersionTag { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? RevisionImageDigest { get; set; }
+
+    [Parameter]
+    public bool RevisionEnableTTY { get; set; }
+
+    [Parameter]
+    public bool RevisionIsPublished { get; set; }
+
+    [Parameter]
+    public int PortCount { get; set; }
+
+    [Parameter]
+    public int VolumeCount { get; set; }
+
+    [Parameter]
+    public int SettingCount { get; set; }
+
+    [Parameter]
+    public int WebHostCount { get; set; }
+
+    [Parameter]
+    public int PortMappingCount { get; set; }
+
+    [Parameter]
+    public GameTypeSetupDetectionResult? DetectionResult { get; set; }
+
+    [Parameter]
+    public GameTypeSetupComparisonResult? DetectionComparison { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> ValidationIssues { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> Warnings { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> DraftDifferences { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> DetailedDraftDifferences { get; set; } = [];
+}

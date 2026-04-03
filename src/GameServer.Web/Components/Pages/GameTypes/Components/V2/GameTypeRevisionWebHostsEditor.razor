@@ -1,0 +1,100 @@
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-1">Web Host Rules</h5>
+        <small class="text-muted">Define the reverse-proxy endpoints that the Primary Service will derive from this revision.</small>
+    </div>
+    <RadzenButton Text="Add Web Host" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddWebHostDraft" />
+</div>
+
+@if (!WebHosts.Any())
+{
+    <p class="text-muted mb-0">No Web Host rules in this draft.</p>
+}
+else
+{
+    @foreach (var host in WebHosts)
+    {
+        <RadzenCard class="mb-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <RadzenFormField Text="Name" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.Name" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-3">
+                    <RadzenFormField Text="Path Segment" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.PathSegment" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-2">
+                    <RadzenFormField Text="Static Port" Variant="Variant.Outlined" class="w-100">
+                        <RadzenNumeric @bind-Value="host.ContainerPort" TValue="int?" Min="1" Max="65535" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-3">
+                    <RadzenFormField Text="Port Variable" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.ContainerPortVariable" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-1 text-end">
+                    <div class="d-flex justify-content-end gap-1">
+                        <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraft(host, -1))" Disabled="@(WebHosts.IndexOf(host) <= 0)" />
+                        <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraft(host, 1))" Disabled="@(WebHosts.IndexOf(host) >= WebHosts.Count - 1)" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveWebHostDraft(host))" />
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.Description" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-6">
+                    <RadzenFormField Text="Enabled When" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.EnabledWhen" class="w-100" />
+                    </RadzenFormField>
+                </div>
+            </div>
+        </RadzenCard>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public List<GameTypeRevisionWebHostDraft> WebHosts { get; set; } = [];
+
+    private void AddWebHostDraft()
+    {
+        WebHosts.Add(new GameTypeRevisionWebHostDraft());
+    }
+
+    private void RemoveWebHostDraft(GameTypeRevisionWebHostDraft host)
+    {
+        WebHosts.Remove(host);
+    }
+
+    private void MoveWebHostDraft(GameTypeRevisionWebHostDraft host, int delta)
+    {
+        MoveItem(WebHosts, host, delta);
+    }
+
+    private static void MoveItem<T>(List<T> items, T item, int delta)
+    {
+        var currentIndex = items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = currentIndex + delta;
+        if (newIndex < 0 || newIndex >= items.Count)
+        {
+            return;
+        }
+
+        items.RemoveAt(currentIndex);
+        items.Insert(newIndex, item);
+    }
+}

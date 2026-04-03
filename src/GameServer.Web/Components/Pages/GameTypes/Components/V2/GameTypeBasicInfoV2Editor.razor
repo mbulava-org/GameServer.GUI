@@ -1,0 +1,102 @@
+@using Radzen
+@using Radzen.Blazor
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <RadzenFormField Text="Key" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@KeyValue" ValueChanged="@OnKeyValueChanged" Disabled="@(!IsNew)" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-6">
+        <RadzenFormField Text="Display Name" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@DisplayName" ValueChanged="@OnDisplayNameChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-12">
+        <RadzenFormField Text="Image Reference" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@ImageReference" ValueChanged="@OnImageReferenceChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-6">
+        <RadzenFormField Text="Thumbnail URL" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@ThumbnailUrl" ValueChanged="@OnThumbnailUrlChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-6">
+        <RadzenFormField Text="Documentation URL" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@DocumentationUrl" ValueChanged="@OnDocumentationUrlChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-12">
+        <div class="d-flex align-items-center gap-2 pt-2">
+            <RadzenCheckBox Value="@IsActive" TValue="bool" Change="@OnIsActiveChanged" />
+            <span>Active</span>
+        </div>
+    </div>
+    <div class="col-12">
+        <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextArea Value="@Description" ValueChanged="@OnDescriptionChanged" Rows="4" class="w-100" />
+        </RadzenFormField>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public bool IsNew { get; set; }
+
+    [Parameter]
+    public string KeyValue { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> KeyValueChanged { get; set; }
+
+    [Parameter]
+    public string DisplayName { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> DisplayNameChanged { get; set; }
+
+    [Parameter]
+    public string ImageReference { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ImageReferenceChanged { get; set; }
+
+    [Parameter]
+    public string? ThumbnailUrl { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ThumbnailUrlChanged { get; set; }
+
+    [Parameter]
+    public string? DocumentationUrl { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> DocumentationUrlChanged { get; set; }
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> DescriptionChanged { get; set; }
+
+    [Parameter]
+    public bool IsActive { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
+    private Task OnKeyValueChanged(string value) => KeyValueChanged.InvokeAsync(value);
+
+    private Task OnDisplayNameChanged(string value) => DisplayNameChanged.InvokeAsync(value);
+
+    private Task OnImageReferenceChanged(string value) => ImageReferenceChanged.InvokeAsync(value);
+
+    private Task OnThumbnailUrlChanged(string? value) => ThumbnailUrlChanged.InvokeAsync(value);
+
+    private Task OnDocumentationUrlChanged(string? value) => DocumentationUrlChanged.InvokeAsync(value);
+
+    private Task OnDescriptionChanged(string? value) => DescriptionChanged.InvokeAsync(value);
+
+    private Task OnIsActiveChanged(bool value) => IsActiveChanged.InvokeAsync(value);
+}

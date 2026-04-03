@@ -30,6 +30,7 @@
 - Follow the architectural patterns defined in ARCHITECTURE.md
 - Use constants instead of magic strings
 - Add test coverage for services during implementation, but defer GUI component tests until the very end because the pages will continue to iterate on look and feel.
+- For new GameType GUI work, prefer creating automated GUI tests before manual testing and break large editing pages into smaller replaceable components for easier iteration.
 
 ## Code Style
 - Use specific formatting rules
@@ -80,6 +81,7 @@
 - When a `PortMapping`'s `PublishedPort` is 0, it should default to the `ContainerPort` value
 - The memory limit is fixed in the UI: do not allow adding or removing memory mappings
 - When a `MemoryMapping`'s `PublishedMemory` is 0, it should default to the `ContainerMemory` value
+- For GameType editing UX, prefer the existing settings editor master-detail pattern with a left-side settings list and a right-side details pane when redesigning similar pages such as the V2 editor.
 
 ### Extended Metadata
 - Use proper `DataType` values: `"string"`, `"number"`, `"boolean"`, `"enum"`, `"port"`

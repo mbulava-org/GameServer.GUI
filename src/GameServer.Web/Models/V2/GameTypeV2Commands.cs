@@ -101,6 +101,25 @@ public sealed record DetectedSetting
     public string Key { get; init; } = string.Empty;
 
     public string? DefaultValue { get; init; }
+
+    public List<DetectedSettingPortMapping> PortMappings { get; init; } = [];
+}
+
+public sealed record DetectedSettingPortMapping
+{
+    public string MappingRole { get; init; } = string.Empty;
+
+    public string RelationType { get; init; } = string.Empty;
+
+    public int TargetContainerPort { get; init; }
+
+    public string TargetProtocol { get; init; } = string.Empty;
+
+    public int? CalculationValue { get; init; }
+
+    public string? Description { get; init; }
+
+    public bool IsRequired { get; init; }
 }
 
 public sealed record DetectedVolume

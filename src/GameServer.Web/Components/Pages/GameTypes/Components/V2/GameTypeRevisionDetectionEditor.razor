@@ -1,0 +1,282 @@
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <RadzenFormField Text="Version Tag to Scan" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@DetectionVersionTag" ValueChanged="@OnDetectionVersionTagChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-6 d-flex align-items-end justify-content-end gap-2">
+        <RadzenButton Text="Scan Tag" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@(() => OnScanTag.InvokeAsync())" Disabled="@(IsDetecting || IsNew)" />
+        <RadzenButton Text="Apply All to Draft" Icon="content_paste" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplyAll.InvokeAsync())" Disabled="@(DetectionResult is null)" />
+    </div>
+</div>
+
+<RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light">
+    V2 image setup detection scans the fixed `ImageReference` with a selected tag and captures digest, ports, environment variables, and declared volumes for review before creating or updating a revision.
+</RadzenAlert>
+
+@if (DetectionResult is not null)
+{
+    <div class="mt-4">
+        <RadzenCard>
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                <div>
+                    <h5 class="mb-1">Detection Result</h5>
+                    <div><strong>Image:</strong> <code>@DetectionResult.ImageReference:@DetectionResult.VersionTag</code></div>
+                    <div><strong>Digest:</strong> @(DetectionResult.ImageDigest ?? "Unavailable")</div>
+                </div>
+                <div class="text-end">
+                    <div>@DetectionResult.Ports.Count port(s)</div>
+                    <div>@DetectionResult.Settings.Count setting(s)</div>
+                    <div>@DetectionResult.Volumes.Count volume(s)</div>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <RadzenButton Text="Apply Tag + Digest" Icon="sell" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplyIdentity.InvokeAsync())" />
+                <RadzenButton Text="Apply Ports" Icon="settings_ethernet" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplyPorts.InvokeAsync())" />
+                <RadzenButton Text="Apply Settings" Icon="settings" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplySettings.InvokeAsync())" />
+                <RadzenButton Text="Apply Volumes" Icon="folder" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplyVolumes.InvokeAsync())" />
+            </div>
+
+            <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+                <div class="fw-semibold mb-1">Suggested workflow</div>
+                <div class="small">
+                    Apply only the sections you trust from Docker detection. Existing draft metadata such as setting categories, validation rules, and Web Host rules are preserved unless you explicitly overwrite those sections.
+                </div>
+            </RadzenAlert>
+
+            <div class="row g-3">
+                <div class="col-lg-4">
+                    <h6>Detected Ports</h6>
+                    <RadzenDataGrid Data="@DetectionResult.Ports" TItem="DetectedPort">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="DetectedPort" Property="ContainerPort" Title="Port" />
+                            <RadzenDataGridColumn TItem="DetectedPort" Property="Protocol" Title="Protocol" />
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+                <div class="col-lg-4">
+                    <h6>Detected Settings</h6>
+                    <RadzenDataGrid Data="@DetectionResult.Settings" TItem="DetectedSetting">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="DetectedSetting" Property="Key" Title="Key" />
+                            <RadzenDataGridColumn TItem="DetectedSetting" Property="DefaultValue" Title="Default" />
+                            <RadzenDataGridColumn TItem="DetectedSetting" Title="Mappings">
+                                <Template Context="setting">
+                                    @setting.PortMappings.Count
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+                <div class="col-lg-4">
+                    <h6>Detected Volumes</h6>
+                    <RadzenDataGrid Data="@DetectionResult.Volumes" TItem="DetectedVolume">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="DetectedVolume" Property="ContainerPath" Title="Container Path" />
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+            </div>
+        </RadzenCard>
+    </div>
+
+    @if (DetectionComparison is not null)
+    {
+        <div class="mt-4">
+            <RadzenCard>
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                    <div>
+                        <h5 class="mb-1">Comparison vs Revision `@DetectionComparison.RevisionVersionTag`</h5>
+                        <div class="text-muted small">Compares the scanned Docker setup to the currently selected revision.</div>
+                    </div>
+                    <RadzenBadge BadgeStyle="@(DetectionComparison.HasChanges ? BadgeStyle.Warning : BadgeStyle.Success)"
+                                 Text="@(DetectionComparison.HasChanges ? "Changes detected" : "No changes detected")" />
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-lg-3">
+                        <div class="border rounded p-3 h-100">
+                            <strong>Digest</strong>
+                            <div class="mt-2">@(DetectionComparison.DigestChanged ? "Digest changed" : "No digest change")</div>
+                            <div class="small text-muted mt-1">@GetSectionRecommendation("identity")</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3">
+                        <div class="border rounded p-3 h-100">
+                            <strong>Ports</strong>
+                            <div class="mt-2">Added: @DetectionComparison.AddedPorts.Count</div>
+                            <div>Removed: @DetectionComparison.RemovedPorts.Count</div>
+                            <div class="small text-muted mt-1">@GetSectionRecommendation("ports")</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3">
+                        <div class="border rounded p-3 h-100">
+                            <strong>Settings</strong>
+                            <div class="mt-2">Added: @DetectionComparison.AddedSettings.Count</div>
+                            <div>Removed: @DetectionComparison.RemovedSettings.Count</div>
+                            <div>Changed: @DetectionComparison.ChangedSettings.Count</div>
+                            <div class="small text-muted mt-1">@GetSectionRecommendation("settings")</div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3">
+                        <div class="border rounded p-3 h-100">
+                            <strong>Volumes</strong>
+                            <div class="mt-2">Added: @DetectionComparison.AddedVolumes.Count</div>
+                            <div>Removed: @DetectionComparison.RemovedVolumes.Count</div>
+                            <div class="small text-muted mt-1">@GetSectionRecommendation("volumes")</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-lg-6">
+                        <h6>Added / Removed Ports</h6>
+                        @if (!DetectionComparison.AddedPorts.Any() && !DetectionComparison.RemovedPorts.Any())
+                        {
+                            <div class="text-muted small">No port differences detected.</div>
+                        }
+                        else
+                        {
+                            <ul class="mb-0">
+                                @foreach (var port in DetectionComparison.AddedPorts)
+                                {
+                                    <li>Added port: <code>@port</code></li>
+                                }
+                                @foreach (var port in DetectionComparison.RemovedPorts)
+                                {
+                                    <li>Removed port: <code>@port</code></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    <div class="col-lg-6">
+                        <h6>Added / Removed Volumes</h6>
+                        @if (!DetectionComparison.AddedVolumes.Any() && !DetectionComparison.RemovedVolumes.Any())
+                        {
+                            <div class="text-muted small">No volume differences detected.</div>
+                        }
+                        else
+                        {
+                            <ul class="mb-0">
+                                @foreach (var volume in DetectionComparison.AddedVolumes)
+                                {
+                                    <li>Added volume: <code>@volume</code></li>
+                                }
+                                @foreach (var volume in DetectionComparison.RemovedVolumes)
+                                {
+                                    <li>Removed volume: <code>@volume</code></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    <div class="col-lg-6">
+                        <h6>Added / Removed Settings</h6>
+                        @if (!DetectionComparison.AddedSettings.Any() && !DetectionComparison.RemovedSettings.Any())
+                        {
+                            <div class="text-muted small">No setting additions or removals detected.</div>
+                        }
+                        else
+                        {
+                            <ul class="mb-0">
+                                @foreach (var setting in DetectionComparison.AddedSettings)
+                                {
+                                    <li>Added setting: <code>@setting</code></li>
+                                }
+                                @foreach (var setting in DetectionComparison.RemovedSettings)
+                                {
+                                    <li>Removed setting: <code>@setting</code></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    <div class="col-lg-6">
+                        <h6>Changed Setting Defaults</h6>
+                        @if (!DetectionComparison.ChangedSettings.Any())
+                        {
+                            <div class="text-muted small">No setting default changes detected.</div>
+                        }
+                        else
+                        {
+                            <ul class="mb-0">
+                                @foreach (var setting in DetectionComparison.ChangedSettings)
+                                {
+                                    <li><code>@setting.Key</code>: <code>@(setting.RevisionValue ?? "(null)")</code> -> <code>@(setting.DetectedValue ?? "(null)")</code></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </RadzenCard>
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public bool IsNew { get; set; }
+
+    [Parameter]
+    public bool IsDetecting { get; set; }
+
+    [Parameter]
+    public string DetectionVersionTag { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> DetectionVersionTagChanged { get; set; }
+
+    [Parameter]
+    public GameTypeSetupDetectionResult? DetectionResult { get; set; }
+
+    [Parameter]
+    public GameTypeSetupComparisonResult? DetectionComparison { get; set; }
+
+    [Parameter]
+    public EventCallback OnScanTag { get; set; }
+
+    [Parameter]
+    public EventCallback OnApplyAll { get; set; }
+
+    [Parameter]
+    public EventCallback OnApplyIdentity { get; set; }
+
+    [Parameter]
+    public EventCallback OnApplyPorts { get; set; }
+
+    [Parameter]
+    public EventCallback OnApplySettings { get; set; }
+
+    [Parameter]
+    public EventCallback OnApplyVolumes { get; set; }
+
+    private Task OnDetectionVersionTagChanged(string value) => DetectionVersionTagChanged.InvokeAsync(value);
+
+    private string GetSectionRecommendation(string section)
+    {
+        if (DetectionComparison is null)
+        {
+            return "Run a comparison against a selected revision to get guidance.";
+        }
+
+        return section switch
+        {
+            "identity" => DetectionComparison.DigestChanged
+                ? "Apply the detected digest if this tag now resolves to a new image build."
+                : "No identity change detected.",
+            "ports" => DetectionComparison.AddedPorts.Count > 0 || DetectionComparison.RemovedPorts.Count > 0
+                ? "Review and apply ports if the container now exposes a different network shape."
+                : "No port changes detected.",
+            "settings" => DetectionComparison.AddedSettings.Count > 0 || DetectionComparison.RemovedSettings.Count > 0 || DetectionComparison.ChangedSettings.Count > 0
+                ? "Merge settings carefully so existing validation metadata is preserved."
+                : "No setting changes detected.",
+            "volumes" => DetectionComparison.AddedVolumes.Count > 0 || DetectionComparison.RemovedVolumes.Count > 0
+                ? "Apply volumes if the image now declares different persisted paths."
+                : "No volume changes detected.",
+            _ => string.Empty
+        };
+    }
+}

@@ -29,8 +29,16 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             else
             {
                 logger.LogInformation("No V2 migrations found. Ensuring the V2 database schema is created...");
-                await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
-                logger.LogInformation("V2 database schema ensured successfully");
+                var created = await context.Database.EnsureCreatedAsync();
+                if (created)
+                {
+                    logger.LogInformation("V2 database schema ensured successfully");
+                }
+                else
+                {
+                    logger.LogInformation("database schema already exists");
+                }
+
             }
 
             var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
