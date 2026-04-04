@@ -8,7 +8,7 @@ public sealed record SaveGameTypeRequestDto
 
     public string? Description { get; init; }
 
-    public string ImageReference { get; init; } = string.Empty;
+    public string Type { get; init; } = "docker";
 
     public string? ThumbnailUrl { get; init; }
 
@@ -20,6 +20,8 @@ public sealed record SaveGameTypeRequestDto
 public sealed record SaveGameTypeRevisionRequestDto
 {
     public string VersionTag { get; init; } = string.Empty;
+
+    public string ImageReference { get; init; } = string.Empty;
 
     public string? ImageDigest { get; init; }
 
@@ -45,12 +47,16 @@ public sealed record PublishRevisionRequestDto
 
 public sealed record DetectGameTypeSetupRequestDto
 {
-    public string VersionTag { get; init; } = string.Empty;
+    public string ImageReference { get; init; } = string.Empty;
+
+    public string? VersionTag { get; init; }
 }
 
 public sealed record CompareGameTypeSetupRequestDto
 {
-    public string VersionTag { get; init; } = string.Empty;
+    public string ImageReference { get; init; } = string.Empty;
+
+    public string? VersionTag { get; init; }
 
     public int RevisionId { get; init; }
 }

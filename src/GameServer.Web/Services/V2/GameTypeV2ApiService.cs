@@ -136,15 +136,15 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, I
     /// <summary>
     /// Detects Docker setup data for a V2 GameType tag.
     /// </summary>
-    public async Task<GameTypeSetupDetectionResult> DetectSetupAsync(string key, string versionTag, CancellationToken cancellationToken = default)
+    public async Task<GameTypeSetupDetectionResult> DetectSetupAsync(string key, string imageReference, string? versionTag, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentException.ThrowIfNullOrWhiteSpace(versionTag);
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
 
         using var client = CreateClient();
         using var response = await client.PostAsJsonAsync(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/detection/scan-tag",
-            new DetectGameTypeSetupRequest { VersionTag = versionTag },
+            new DetectGameTypeSetupRequest { ImageReference = imageReference, VersionTag = versionTag },
             cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -155,16 +155,17 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, I
     /// <summary>
     /// Compares detected Docker setup data to a selected V2 GameType revision.
     /// </summary>
-    public async Task<GameTypeSetupComparisonResult> CompareSetupAsync(string key, string versionTag, int revisionId, CancellationToken cancellationToken = default)
+    public async Task<GameTypeSetupComparisonResult> CompareSetupAsync(string key, string imageReference, string? versionTag, int revisionId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentException.ThrowIfNullOrWhiteSpace(versionTag);
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
 
         using var client = CreateClient();
         using var response = await client.PostAsJsonAsync(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/detection/compare",
             new CompareGameTypeSetupRequest
             {
+                ImageReference = imageReference,
                 VersionTag = versionTag,
                 RevisionId = revisionId
             },

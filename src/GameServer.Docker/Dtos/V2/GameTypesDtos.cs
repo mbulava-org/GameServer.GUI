@@ -10,7 +10,9 @@ public sealed record GameTypeListItemDto
 
     public string? Description { get; init; }
 
-    public string ImageReference { get; init; } = string.Empty;
+    public string Type { get; init; } = "docker";
+
+    public string? CurrentImageReference { get; init; }
 
     public string? ThumbnailUrl { get; init; }
 
@@ -37,7 +39,7 @@ public sealed record GameTypeDetailDto
 
     public string? Description { get; init; }
 
-    public string ImageReference { get; init; } = string.Empty;
+    public string Type { get; init; } = "docker";
 
     public string? ThumbnailUrl { get; init; }
 
@@ -59,6 +61,8 @@ public sealed record GameTypeRevisionDto
     public int Id { get; init; }
 
     public string VersionTag { get; init; } = string.Empty;
+
+    public string ImageReference { get; init; } = string.Empty;
 
     public string? ImageDigest { get; init; }
 

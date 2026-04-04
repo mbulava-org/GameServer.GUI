@@ -21,14 +21,14 @@ public class GameTypeQueryServiceTests
                     Id = 1,
                     Key = "minecraft",
                     DisplayName = "Minecraft",
-                    ImageReference = "itzg/minecraft-server",
+                    Type = "docker",
                     IsActive = true,
                     CurrentRevisionId = 10,
                     UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                     Revisions =
                     [
-                        new GameTypeRevision { Id = 9, VersionTag = "1.21.1", IsPublished = true, CreatedAt = new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Utc) },
-                        new GameTypeRevision { Id = 10, VersionTag = "1.21.2", IsPublished = true, CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) }
+                        new GameTypeRevision { Id = 9, ImageReference = "itzg/minecraft-server", VersionTag = "1.21.1", IsPublished = true, CreatedAt = new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Utc) },
+                        new GameTypeRevision { Id = 10, ImageReference = "itzg/minecraft-server", VersionTag = "1.21.2", IsPublished = true, CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) }
                     ]
                 }
             ]);
@@ -41,7 +41,8 @@ public class GameTypeQueryServiceTests
         // Assert
         var item = Assert.Single(result);
         Assert.Equal("minecraft", item.Key);
-        Assert.Equal("itzg/minecraft-server", item.ImageReference);
+        Assert.Equal("docker", item.Type);
+        Assert.Equal("itzg/minecraft-server", item.CurrentImageReference);
         Assert.Equal(10, item.CurrentRevisionId);
         Assert.Equal("1.21.2", item.CurrentVersionTag);
         Assert.Equal(2, item.RevisionCount);
@@ -60,13 +61,14 @@ public class GameTypeQueryServiceTests
                 Id = 1,
                 Key = "minecraft",
                 DisplayName = "Minecraft",
-                ImageReference = "itzg/minecraft-server",
+                Type = "docker",
                 CurrentRevisionId = 10,
                 Revisions =
                 [
                     new GameTypeRevision
                     {
                         Id = 10,
+                        ImageReference = "itzg/minecraft-server",
                         VersionTag = "1.21.2",
                         IsPublished = true,
                         Ports =
@@ -110,7 +112,9 @@ public class GameTypeQueryServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal("minecraft", result.Key);
+        Assert.Equal("docker", result.Type);
         var revision = Assert.Single(result.Revisions);
+        Assert.Equal("itzg/minecraft-server", revision.ImageReference);
         Assert.Equal("1.21.2", revision.VersionTag);
         Assert.Equal(25565, Assert.Single(revision.Ports).ContainerPort);
         var setting = Assert.Single(revision.SettingDefinitions);

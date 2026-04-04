@@ -16,11 +16,12 @@ Use this document as the functional reference for validating behavior before man
 - Composes the tab-level child components
 
 ### State owned here
-- basic GameType fields such as `keyValue`, `displayName`, and `imageReference`
+- basic GameType fields such as `keyValue`, `displayName`, and `gameTypeType`
 - selected/current revision ids
-- the in-progress revision draft fields
+- the in-progress revision draft fields, including `revisionImageReference`
 - detection and comparison results
 - save and loading flags
+- page-level save validation displayed above the tab set
 
 ### Why it remains the coordinator
 The page still owns cross-tab state because revision validation, detection application, save orchestration, and review all depend on the same in-memory draft, even though every tab now renders through a dedicated child component.
@@ -38,7 +39,7 @@ Edits the fixed GameType catalog fields that are not revision-specific.
 - two-way bindings for:
   - `KeyValue`
   - `DisplayName`
-  - `ImageReference`
+  - `Type`
   - `ThumbnailUrl`
   - `DocumentationUrl`
   - `Description`
@@ -53,21 +54,20 @@ Edits the fixed GameType catalog fields that are not revision-specific.
 `src/GameServer.Web/Components/Pages/GameTypes/Components/V2/GameTypeRevisionEditor.razor`
 
 #### Purpose
-Renders the revision draft header form and revision list.
+Renders the revision draft metadata form and revision list.
 
 #### Inputs
 - `RevisionRows`
 - `ValidationIssues`
 - `Warnings`
 - two-way bindings for:
+  - `ImageReference`
   - `VersionTag`
   - `ImageDigest`
   - `EnableTTY`
   - `Notes`
   - `IsPublished`
 - action callbacks for:
-  - new draft
-  - save revision
   - set current
   - publish + current
   - edit revision
@@ -75,8 +75,18 @@ Renders the revision draft header form and revision list.
 
 #### Behavior
 - shows the active unsaved draft row when the page provides one
-- keeps the revision command buttons grouped with the draft metadata form
+- keeps revision publish/current actions grouped with the draft metadata form
 - does not save directly; it raises callbacks back to the page
+
+### Active revision card in `GameTypeDetailsV2.razor`
+
+#### Purpose
+Hosts the selected revision dropdown plus the primary draft actions that affect the whole multi-tab editing flow.
+
+#### Behavior
+- shows `New Draft` and `Save Revision` beside the `Active Revision` selector
+- inserts and selects an unsaved draft option immediately when `New Draft` is clicked
+- keeps page-level save validation visible outside the tab content
 
 ### `GameTypeRevisionPortsEditor`
 `src/GameServer.Web/Components/Pages/GameTypes/Components/V2/GameTypeRevisionPortsEditor.razor`
@@ -155,11 +165,13 @@ Renders the detection scan workflow, detected image metadata, inferred setting m
 #### Inputs
 - `IsNew`
 - `IsDetecting`
+- `IsDockerType`
+- two-way binding for `DetectionImageReference`
 - two-way binding for `DetectionVersionTag`
 - `DetectionResult`
 - `DetectionComparison`
 - callbacks for:
-  - scan tag
+  - detect settings
   - apply all
   - apply identity
   - apply ports
@@ -167,7 +179,10 @@ Renders the detection scan workflow, detected image metadata, inferred setting m
   - apply volumes
 
 #### Behavior
-- disables scanning while a scan is in progress or when the GameType has not been created yet
+- lives to the left of `Basic` in the tab order and is only enabled for docker GameTypes
+- disables scanning while a scan is in progress, when the GameType has not been created yet, or when no Docker image reference has been supplied
+- detects from an explicit image reference plus optional version tag rather than from a fixed shell image
+- reuses an existing matching revision when the detected image/tag already exists; otherwise it seeds a new draft revision
 - shows detected port, setting, and volume counts
 - shows inferred setting mapping counts from detection results
 - shows comparison guidance per section when comparison data exists

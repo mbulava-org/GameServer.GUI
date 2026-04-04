@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Bunit;
 using GameServer.Web.Components.Pages.GameTypes;
 using GameServer.Web.Configurations;
@@ -29,13 +30,14 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
             Id = 1,
             Key = "minecraft",
             DisplayName = "Minecraft",
-            ImageReference = "itzg/minecraft-server",
+            Type = "docker",
             CurrentRevisionId = 11,
             Revisions =
             [
                 new GameTypeRevision
                 {
                     Id = 11,
+                    ImageReference = "itzg/minecraft-server",
                     VersionTag = "1.21",
                     EnableTTY = true,
                     CreatedAt = new DateTime(2025, 1, 1, 12, 0, 0, DateTimeKind.Utc),
@@ -69,6 +71,39 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         {
             Assert.Contains("Unsaved", cut.Markup);
             Assert.Contains("New Draft", cut.Markup);
+            Assert.True(Regex.Matches(cut.Markup, "New Draft").Count >= 2);
+        });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_NewDraft_WithoutVersionTagOrPorts_ShouldNotShowDraftCreationBlockers()
+    {
+        // Arrange
+        var detail = new GameTypeDetail
+        {
+            Id = 1,
+            Key = "minecraft",
+            DisplayName = "Minecraft",
+            Type = "docker",
+            Revisions = []
+        };
+
+        RegisterApi(detail);
+
+        // Act
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+        cut.WaitForAssertion(() => Assert.Contains("Minecraft", cut.Markup));
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Revisions", StringComparison.Ordinal)).Click();
+        cut.FindAll("button").First(button => button.TextContent.Contains("New Draft", StringComparison.Ordinal)).Click();
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unsaved", cut.Markup);
+            Assert.DoesNotContain("Revision version tag is required.", cut.Markup);
+            Assert.DoesNotContain("At least one port is required for a revision.", cut.Markup);
+            Assert.True(cut.FindAll("button").First(button => button.TextContent.Contains("Save Revision", StringComparison.Ordinal)).HasAttribute("disabled"));
         });
     }
 
@@ -81,13 +116,14 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
             Id = 1,
             Key = "minecraft",
             DisplayName = "Minecraft",
-            ImageReference = "itzg/minecraft-server",
+            Type = "docker",
             CurrentRevisionId = 11,
             Revisions =
             [
                 new GameTypeRevision
                 {
                     Id = 11,
+                    ImageReference = "itzg/minecraft-server",
                     VersionTag = "1.21",
                     ImageDigest = "sha256:test",
                     EnableTTY = true,
@@ -126,10 +162,63 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("Revision Draft Summary", cut.Markup);
-            Assert.Contains("Version Tag:</strong> 1.21", cut.Markup);
+            Assert.Contains("Version Tag:", cut.Markup);
+            Assert.Contains("1.21", cut.Markup);
             Assert.Contains("1 port(s)", cut.Markup);
             Assert.Contains("1 web host(s)", cut.Markup);
             Assert.Contains("1 port mapping rule(s)", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_CrossTabValidation_ShouldRenderOutsideTabs()
+    {
+        // Arrange
+        var detail = new GameTypeDetail
+        {
+            Id = 1,
+            Key = "minecraft",
+            DisplayName = "Minecraft",
+            Type = "docker",
+            CurrentRevisionId = 11,
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 11,
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "1.21",
+                    CreatedAt = new DateTime(2025, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+                    Ports = [],
+                    SettingDefinitions =
+                    [
+                        new GameTypeSettingDefinition
+                        {
+                            Id = 1,
+                            SettingKey = "SERVER_PORT",
+                            DefaultValue = "25565",
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                DataType = "port",
+                                PortMappings = [ new GameTypeSettingPortMapping { Id = 1, MappingRole = "Primary", RelationType = "Direct", TargetContainerPort = 25565, TargetProtocol = "tcp" } ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        RegisterApi(detail);
+
+        // Act
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Cross-tab revision validation", cut.Markup);
+            Assert.Contains("At least one port is required for a revision.", cut.Markup);
+            Assert.Contains("Setting 'SERVER_PORT' references missing target port '25565/tcp'.", cut.Markup);
         });
     }
 

@@ -72,11 +72,12 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
             Key = "minecraft-mysql-v2",
             DisplayName = "Minecraft MySql V2",
             Description = "MySQL-backed repository test",
-            ImageReference = "itzg/minecraft-server",
+            Type = "docker",
             Revisions =
             [
                 new GameTypeRevision
                 {
+                    ImageReference = "itzg/minecraft-server",
                     VersionTag = "latest",
                     ImageDigest = "sha256:mysql-test",
                     IsPublished = true,
@@ -112,8 +113,9 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
 
         Assert.NotNull(loaded);
         Assert.Equal(created.Id, loaded.Id);
-        Assert.Equal("itzg/minecraft-server", loaded.ImageReference);
+        Assert.Equal("docker", loaded.Type);
         Assert.Single(loaded.Revisions);
+        Assert.Equal("itzg/minecraft-server", loaded.Revisions[0].ImageReference);
         Assert.Equal("latest", loaded.Revisions[0].VersionTag);
         Assert.True(loaded.Revisions[0].Ports[0].AdvertisedPort);
     }

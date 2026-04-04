@@ -24,13 +24,13 @@ public class GameTypeCommandServiceTests
         {
             Key = "minecraft",
             DisplayName = "Minecraft",
-            ImageReference = "itzg/minecraft-server"
+            Type = "docker"
         });
 
         // Assert
         Assert.Equal(42, result.Id);
         Assert.Equal("minecraft", result.Key);
-        repository.Verify(x => x.CreateAsync(It.Is<GameType>(gt => gt.Key == "minecraft" && gt.ImageReference == "itzg/minecraft-server")), Times.Once);
+        repository.Verify(x => x.CreateAsync(It.Is<GameType>(gt => gt.Key == "minecraft" && gt.Type == "docker")), Times.Once);
     }
 
     [Fact]

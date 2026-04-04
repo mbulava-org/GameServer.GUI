@@ -19,7 +19,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             Key = request.Key,
             DisplayName = request.DisplayName,
             Description = request.Description,
-            ImageReference = request.ImageReference,
+            Type = request.Type,
             ThumbnailUrl = request.ThumbnailUrl,
             DocumentationUrl = request.DocumentationUrl,
             IsActive = request.IsActive
@@ -49,7 +49,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
         {
             DisplayName = request.DisplayName,
             Description = request.Description,
-            ImageReference = request.ImageReference,
+            Type = request.Type,
             ThumbnailUrl = request.ThumbnailUrl,
             DocumentationUrl = request.DocumentationUrl,
             IsActive = request.IsActive
@@ -120,6 +120,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
         return new GameTypeRevision
         {
             VersionTag = request.VersionTag,
+            ImageReference = request.ImageReference,
             ImageDigest = request.ImageDigest,
             EnableTTY = request.EnableTTY,
             Notes = request.Notes,
@@ -198,7 +199,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             Key = gameType.Key,
             DisplayName = gameType.DisplayName,
             Description = gameType.Description,
-            ImageReference = gameType.ImageReference,
+            Type = gameType.Type,
             ThumbnailUrl = gameType.ThumbnailUrl,
             DocumentationUrl = gameType.DocumentationUrl,
             IsActive = gameType.IsActive,
@@ -215,6 +216,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
         {
             Id = revision.Id,
             VersionTag = revision.VersionTag,
+            ImageReference = revision.ImageReference,
             ImageDigest = revision.ImageDigest,
             EnableTTY = revision.EnableTTY,
             Notes = revision.Notes,

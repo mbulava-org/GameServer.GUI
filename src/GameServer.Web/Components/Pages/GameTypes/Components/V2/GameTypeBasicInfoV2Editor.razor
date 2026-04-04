@@ -12,9 +12,13 @@
             <RadzenTextBox Value="@DisplayName" ValueChanged="@OnDisplayNameChanged" class="w-100" />
         </RadzenFormField>
     </div>
-    <div class="col-12">
-        <RadzenFormField Text="Image Reference" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@ImageReference" ValueChanged="@OnImageReferenceChanged" class="w-100" />
+    <div class="col-md-6">
+        <RadzenFormField Text="Type" Variant="Variant.Outlined" class="w-100">
+            <RadzenDropDown TValue="string"
+                            Value="@Type"
+                            ValueChanged="@OnTypeChanged"
+                            Data="TypeOptions"
+                            class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-md-6">
@@ -57,10 +61,13 @@
     public EventCallback<string> DisplayNameChanged { get; set; }
 
     [Parameter]
-    public string ImageReference { get; set; } = string.Empty;
+    public string Type { get; set; } = "docker";
 
     [Parameter]
-    public EventCallback<string> ImageReferenceChanged { get; set; }
+    public EventCallback<string> TypeChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> TypeOptions { get; set; } = ["docker"];
 
     [Parameter]
     public string? ThumbnailUrl { get; set; }
@@ -90,7 +97,7 @@
 
     private Task OnDisplayNameChanged(string value) => DisplayNameChanged.InvokeAsync(value);
 
-    private Task OnImageReferenceChanged(string value) => ImageReferenceChanged.InvokeAsync(value);
+    private Task OnTypeChanged(string value) => TypeChanged.InvokeAsync(string.IsNullOrWhiteSpace(value) ? "docker" : value);
 
     private Task OnThumbnailUrlChanged(string? value) => ThumbnailUrlChanged.InvokeAsync(value);
 

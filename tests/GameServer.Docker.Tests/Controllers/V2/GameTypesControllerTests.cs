@@ -25,7 +25,16 @@ public class GameTypesControllerTests
                     Id = 1,
                     Key = "minecraft",
                     DisplayName = "Minecraft",
-                    ImageReference = "itzg/minecraft-server"
+                    Type = "docker",
+                    Revisions =
+                    [
+                        new GameTypeRevision
+                        {
+                            Id = 1,
+                            ImageReference = "itzg/minecraft-server",
+                            VersionTag = "latest"
+                        }
+                    ]
                 }
             ]);
 

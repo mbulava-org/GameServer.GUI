@@ -60,10 +60,11 @@
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <h4 class="mb-0">@gameType.DisplayName</h4>
                                     <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@gameType.Key" Variant="Variant.Outlined" />
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@gameTypeType" Variant="Variant.Outlined" />
                                     <RadzenBadge BadgeStyle="@(gameType.IsActive ? BadgeStyle.Success : BadgeStyle.Secondary)" Text="@(gameType.IsActive ? "Active" : "Inactive")" />
                                 </div>
                                 <p class="text-muted mb-2">@(string.IsNullOrWhiteSpace(gameType.Description) ? "No description provided." : gameType.Description)</p>
-                                <div><strong>Image:</strong> <code>@gameType.ImageReference</code></div>
+                                <div><strong>Current Image:</strong> <code>@GetDisplayedImageReference()</code></div>
                                 @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
                                 {
                                     <div><strong>Docs:</strong> <a href="@gameType.DocumentationUrl" target="_blank">@gameType.DocumentationUrl</a></div>
@@ -81,7 +82,7 @@
                     <RadzenCard>
                         <RadzenFormField Text="Active Revision" Variant="Variant.Outlined" class="w-100">
                             <RadzenDropDown TValue="int?"
-                                            Data="@gameType.Revisions"
+                                            Data="@GetRevisionRows()"
                                             TextProperty="VersionTag"
                                             ValueProperty="Id"
                                             @bind-Value="selectedRevisionId"
@@ -89,18 +90,61 @@
                                             Placeholder="Select revision"
                                             class="w-100" />
                         </RadzenFormField>
+                        <div class="d-flex gap-2 mt-3 flex-wrap">
+                            <RadzenButton Text="New Draft"
+                                          Icon="add"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Click="@CreateNewRevisionDraft" />
+                            <RadzenButton Text="Save Revision"
+                                          Icon="save"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          Click="@SaveRevisionAsync"
+                                          Disabled="@(isSavingRevision || !CanSaveRevision())" />
+                        </div>
                     </RadzenCard>
                 </div>
             </div>
 
+            @if (GetVisibleCrossTabValidationIssues().Count > 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mb-3">
+                    <div class="fw-semibold mb-2">Cross-tab revision validation</div>
+                    <ul class="mb-0 ps-3">
+                        @foreach (var issue in GetVisibleCrossTabValidationIssues())
+                        {
+                            <li>@issue</li>
+                        }
+                    </ul>
+                </RadzenAlert>
+            }
+
             <RadzenTabs>
                 <Tabs>
+                    <RadzenTabsItem Text="Detection" Disabled="@(!IsDockerType())">
+                        <div class="p-4">
+                            <GameTypeRevisionDetectionEditor IsNew="isNew"
+                                                            IsDetecting="isDetecting"
+                                                            IsDockerType="@IsDockerType()"
+                                                            @bind-DetectionImageReference="detectionImageReference"
+                                                            @bind-DetectionVersionTag="detectionVersionTag"
+                                                            DetectionResult="detectionResult"
+                                                            DetectionComparison="detectionComparison"
+                                                            OnScanTag="@RunDetectionAsync"
+                                                            OnApplyAll="@ApplyDetectionToDraft"
+                                                            OnApplyIdentity="@ApplyDetectionIdentity"
+                                                            OnApplyPorts="@ApplyDetectionPorts"
+                                                            OnApplySettings="@ApplyDetectionSettings"
+                                                            OnApplyVolumes="@ApplyDetectionVolumes" />
+                        </div>
+                    </RadzenTabsItem>
+
                     <RadzenTabsItem Text="Basic">
                         <div class="p-4">
                             <GameTypeBasicInfoV2Editor IsNew="isNew"
                                                        @bind-KeyValue="keyValue"
                                                        @bind-DisplayName="displayName"
-                                                       @bind-ImageReference="imageReference"
+                                                       @bind-Type="gameTypeType"
+                                                       TypeOptions="gameTypeTypeOptions"
                                                        @bind-ThumbnailUrl="thumbnailUrl"
                                                        @bind-DocumentationUrl="documentationUrl"
                                                        @bind-Description="description"
@@ -111,8 +155,9 @@
                     <RadzenTabsItem Text="Revisions">
                         <div class="p-4">
                             <GameTypeRevisionEditor RevisionRows="@GetRevisionRows()"
-                                                   ValidationIssues="@GetRevisionValidationIssues()"
+                                                   ValidationIssues="Array.Empty<string>()"
                                                    Warnings="@GetRevisionWarnings()"
+                                                   @bind-ImageReference="revisionImageReference"
                                                    @bind-VersionTag="revisionVersionTag"
                                                    @bind-ImageDigest="revisionImageDigest"
                                                    @bind-EnableTTY="revisionEnableTTY"
@@ -120,7 +165,7 @@
                                                    @bind-IsPublished="revisionIsPublished"
                                                    IsSavingRevision="isSavingRevision"
                                                    CanSaveRevision="@CanSaveRevision()"
-                                                   CanSetCurrentRevision="@(editingRevisionId is not null && GetRevisionValidationIssues().Count == 0)"
+                                                   CanSetCurrentRevision="@(editingRevisionId is not null && GetRevisionSaveValidationIssues().Count == 0)"
                                                    OnCreateNewDraft="@CreateNewRevisionDraft"
                                                    OnSaveRevision="@SaveRevisionAsync"
                                                    OnSetCurrentRevision="@SetCurrentRevisionAsync"
@@ -161,25 +206,10 @@
                         </div>
                     </RadzenTabsItem>
 
-                    <RadzenTabsItem Text="Detection">
-                        <div class="p-4">
-                            <GameTypeRevisionDetectionEditor IsNew="isNew"
-                                                            IsDetecting="isDetecting"
-                                                            @bind-DetectionVersionTag="detectionVersionTag"
-                                                            DetectionResult="detectionResult"
-                                                            DetectionComparison="detectionComparison"
-                                                            OnScanTag="@RunDetectionAsync"
-                                                            OnApplyAll="@ApplyDetectionToDraft"
-                                                            OnApplyIdentity="@ApplyDetectionIdentity"
-                                                            OnApplyPorts="@ApplyDetectionPorts"
-                                                            OnApplySettings="@ApplyDetectionSettings"
-                                                            OnApplyVolumes="@ApplyDetectionVolumes" />
-                        </div>
-                    </RadzenTabsItem>
-
                     <RadzenTabsItem Text="Review">
                         <div class="p-4">
-                            <GameTypeRevisionReviewEditor RevisionVersionTag="revisionVersionTag"
+                            <GameTypeRevisionReviewEditor RevisionImageReference="revisionImageReference"
+                                                         RevisionVersionTag="revisionVersionTag"
                                                          RevisionImageDigest="revisionImageDigest"
                                                          RevisionEnableTTY="revisionEnableTTY"
                                                          RevisionIsPublished="revisionIsPublished"
@@ -190,7 +220,7 @@
                                                          PortMappingCount="revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count)"
                                                          DetectionResult="detectionResult"
                                                          DetectionComparison="detectionComparison"
-                                                         ValidationIssues="@GetRevisionValidationIssues()"
+                                                         ValidationIssues="Array.Empty<string>()"
                                                          Warnings="@GetRevisionWarnings()"
                                                          DraftDifferences="@GetDraftDifferences()"
                                                          DetailedDraftDifferences="@GetDetailedDraftDifferences()" />
@@ -206,6 +236,8 @@
     [Parameter]
     public string? Key { get; set; }
 
+    private const int UnsavedDraftRevisionSelectionId = 0;
+
     private GameTypeDetail? gameType;
     private bool isLoading = true;
     private bool isSaving;
@@ -216,11 +248,12 @@
     private string keyValue = string.Empty;
     private string displayName = string.Empty;
     private string? description;
-    private string imageReference = string.Empty;
+    private string gameTypeType = "docker";
     private string? thumbnailUrl;
     private string? documentationUrl;
     private bool isActive = true;
     private int? editingRevisionId;
+    private string revisionImageReference = string.Empty;
     private string revisionVersionTag = string.Empty;
     private string? revisionImageDigest;
     private bool revisionEnableTTY;
@@ -230,18 +263,47 @@
     private List<GameTypeRevisionVolumeDraft> revisionVolumes = [];
     private List<GameTypeRevisionSettingDraft> revisionSettingDefinitions = [];
     private List<GameTypeRevisionWebHostDraft> revisionWebHosts = [];
+    private string detectionImageReference = string.Empty;
     private string detectionVersionTag = string.Empty;
     private GameTypeSetupDetectionResult? detectionResult;
     private GameTypeSetupComparisonResult? detectionComparison;
+    private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
     private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
     private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "world", "mods", "gamefiles"];
     private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "enum", "port"];
     private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
     private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
 
-    private GameTypeRevision? CurrentRevision => gameType?.Revisions.FirstOrDefault(x => x.Id == selectedRevisionId)
+    private GameTypeRevision? CurrentRevision => selectedRevisionId == UnsavedDraftRevisionSelectionId
+        ? null
+        : gameType?.Revisions.FirstOrDefault(x => x.Id == selectedRevisionId)
         ?? gameType?.Revisions.FirstOrDefault(x => x.Id == gameType.CurrentRevisionId)
         ?? gameType?.Revisions.FirstOrDefault();
+
+    private string GetDisplayedImageReference()
+    {
+        return CurrentRevision?.ImageReference
+            ?? gameType?.Revisions.FirstOrDefault(x => x.Id == gameType.CurrentRevisionId)?.ImageReference
+            ?? gameType?.Revisions.FirstOrDefault()?.ImageReference
+            ?? "No current revision image";
+    }
+
+    private bool IsDockerType()
+    {
+        return string.Equals(gameTypeType, "docker", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private GameTypeRevision? FindRevisionByIdentity(string imageReference, string? versionTag)
+    {
+        if (gameType is null || string.IsNullOrWhiteSpace(imageReference) || string.IsNullOrWhiteSpace(versionTag))
+        {
+            return null;
+        }
+
+        return gameType.Revisions.FirstOrDefault(revision =>
+            string.Equals(revision.ImageReference, imageReference, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(revision.VersionTag, versionTag, StringComparison.OrdinalIgnoreCase));
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -260,7 +322,7 @@
                 {
                     Key = string.Empty,
                     DisplayName = string.Empty,
-                    ImageReference = string.Empty,
+                    Type = "docker",
                     Revisions = []
                 };
                 selectedRevisionId = null;
@@ -294,9 +356,9 @@
 
     private async Task SaveAsync()
     {
-        if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(imageReference))
+        if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(gameTypeType))
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Image Reference are required.");
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Type are required.");
             return;
         }
 
@@ -309,7 +371,7 @@
                 Key = keyValue,
                 DisplayName = displayName,
                 Description = description,
-                ImageReference = imageReference,
+                Type = gameTypeType,
                 ThumbnailUrl = thumbnailUrl,
                 DocumentationUrl = documentationUrl,
                 IsActive = isActive
@@ -342,12 +404,18 @@
 
     private void OnSelectedRevisionChanged()
     {
+        if (selectedRevisionId == UnsavedDraftRevisionSelectionId)
+        {
+            return;
+        }
+
         LoadRevisionDraft(CurrentRevision);
     }
 
     private void CreateNewRevisionDraft()
     {
         LoadRevisionDraft(CurrentRevision, asNewDraft: true);
+        selectedRevisionId = UnsavedDraftRevisionSelectionId;
     }
 
     private void EditRevisionDraft(GameTypeRevision revision)
@@ -376,9 +444,10 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(revisionVersionTag))
+        var saveIssues = GetRevisionSaveValidationIssues();
+        if (saveIssues.Count > 0)
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Revision version tag is required.");
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", saveIssues[0]);
             return;
         }
 
@@ -388,6 +457,7 @@
 
             var request = new SaveGameTypeRevisionRequest
             {
+                ImageReference = revisionImageReference,
                 VersionTag = revisionVersionTag,
                 ImageDigest = revisionImageDigest,
                 EnableTTY = revisionEnableTTY,
@@ -528,28 +598,58 @@
             return;
         }
 
-        var versionTag = string.IsNullOrWhiteSpace(detectionVersionTag) ? revisionVersionTag : detectionVersionTag;
-        if (string.IsNullOrWhiteSpace(versionTag))
+        if (!IsDockerType())
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Enter a version tag to scan.");
+            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Detection is only available for Docker game types.");
             return;
         }
+
+        var imageReference = string.IsNullOrWhiteSpace(detectionImageReference) ? revisionImageReference : detectionImageReference;
+        if (string.IsNullOrWhiteSpace(imageReference))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Enter a Docker image reference to scan.");
+            return;
+        }
+
+        var versionTag = string.IsNullOrWhiteSpace(detectionVersionTag) ? null : detectionVersionTag.Trim();
+        var comparisonRevision = CurrentRevision;
 
         try
         {
             isDetecting = true;
-            detectionResult = await GameTypeApiV2.DetectSetupAsync(gameType.Key, versionTag);
+            detectionResult = await GameTypeApiV2.DetectSetupAsync(gameType.Key, imageReference, versionTag);
+            detectionImageReference = detectionResult.ImageReference;
             detectionVersionTag = detectionResult.VersionTag;
-            NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Scanned tag '{detectionResult.VersionTag}'.");
+            var matchingRevision = FindRevisionByIdentity(detectionResult.ImageReference, detectionResult.VersionTag);
 
-            if (CurrentRevision is not null)
+            if (matchingRevision is not null)
             {
-                detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, versionTag, CurrentRevision.Id);
+                selectedRevisionId = matchingRevision.Id;
+                LoadRevisionDraft(matchingRevision);
+                detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, detectionResult.ImageReference, detectionResult.VersionTag, matchingRevision.Id);
                 detectionResult = detectionComparison.Detection;
+                ApplyDetectionIdentityToDraft(notify: false);
+                ApplyDetectedPortsToDraft(notify: false);
+                ApplyDetectedVolumesToDraft(notify: false);
+                ApplyDetectedSettingsToDraft(notify: false);
+                NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into revision '{matchingRevision.VersionTag}'.");
             }
             else
             {
-                detectionComparison = null;
+                CreateNewRevisionDraft();
+                ApplyDetectionToDraft();
+
+                if (comparisonRevision is not null)
+                {
+                    detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, detectionResult.ImageReference, detectionResult.VersionTag, comparisonRevision.Id);
+                    detectionResult = detectionComparison.Detection;
+                }
+                else
+                {
+                    detectionComparison = null;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into a new revision draft for '{detectionResult.ImageReference}:{detectionResult.VersionTag}'.");
             }
         }
         catch (HttpRequestException ex)
@@ -586,11 +686,12 @@
             return;
         }
 
+        revisionImageReference = detectionResult.ImageReference;
         revisionVersionTag = detectionResult.VersionTag;
         revisionImageDigest = detectionResult.ImageDigest;
         if (notify)
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected tag and digest have been applied to the draft.");
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected image, tag, and digest have been applied to the draft.");
         }
     }
 
@@ -745,7 +846,7 @@
         keyValue = detail.Key;
         displayName = detail.DisplayName;
         description = detail.Description;
-        imageReference = detail.ImageReference;
+        gameTypeType = string.IsNullOrWhiteSpace(detail.Type) ? "docker" : detail.Type;
         thumbnailUrl = detail.ThumbnailUrl;
         documentationUrl = detail.DocumentationUrl;
         isActive = detail.IsActive;
@@ -754,6 +855,7 @@
     private void LoadRevisionDraft(GameTypeRevision? revision, bool asNewDraft = false)
     {
         editingRevisionId = asNewDraft ? null : revision?.Id;
+        revisionImageReference = asNewDraft ? string.Empty : revision?.ImageReference ?? string.Empty;
         revisionVersionTag = asNewDraft ? string.Empty : revision?.VersionTag ?? string.Empty;
         revisionImageDigest = revision?.ImageDigest;
         revisionEnableTTY = revision?.EnableTTY ?? false;
@@ -811,8 +913,14 @@
             ContainerPortVariable = x.ContainerPortVariable,
             EnabledWhen = x.EnabledWhen
         }).ToList() ?? [];
+        detectionImageReference = string.IsNullOrWhiteSpace(revisionImageReference) ? detectionImageReference : revisionImageReference;
         detectionVersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? detectionVersionTag : revisionVersionTag;
         detectionComparison = null;
+
+        if (asNewDraft)
+        {
+            selectedRevisionId = UnsavedDraftRevisionSelectionId;
+        }
     }
 
     private IReadOnlyList<GameTypeRevisionListRow> GetRevisionRows()
@@ -835,10 +943,11 @@
             })
             .ToList();
 
-        if (editingRevisionId is null && HasRevisionDraftContent())
+        if (editingRevisionId is null && (selectedRevisionId == UnsavedDraftRevisionSelectionId || HasRevisionDraftContent()))
         {
             rows.Insert(0, new GameTypeRevisionListRow
             {
+                Id = UnsavedDraftRevisionSelectionId,
                 VersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? "New Draft" : revisionVersionTag,
                 ImageDigest = revisionImageDigest,
                 IsPublished = revisionIsPublished,
@@ -854,6 +963,7 @@
     private bool HasRevisionDraftContent()
     {
         return !string.IsNullOrWhiteSpace(revisionVersionTag)
+            || !string.IsNullOrWhiteSpace(revisionImageReference)
             || !string.IsNullOrWhiteSpace(revisionImageDigest)
             || !string.IsNullOrWhiteSpace(revisionNotes)
             || revisionEnableTTY
@@ -979,6 +1089,11 @@
         if (!string.Equals(revisionVersionTag, baseline.VersionTag, StringComparison.Ordinal))
         {
             differences.Add($"Version tag changed from '{baseline.VersionTag}' to '{revisionVersionTag}'.");
+        }
+
+        if (!string.Equals(revisionImageReference, baseline.ImageReference, StringComparison.Ordinal))
+        {
+            differences.Add($"Image reference changed from '{baseline.ImageReference}' to '{revisionImageReference}'.");
         }
 
         if (!string.Equals(revisionImageDigest, baseline.ImageDigest, StringComparison.Ordinal))
@@ -1187,19 +1302,68 @@
 
     private bool CanSaveRevision()
     {
-        return gameType is not null && !isNew && GetRevisionValidationIssues().Count == 0;
+        return gameType is not null && !isNew && GetRevisionSaveValidationIssues().Count == 0;
     }
 
-    private List<string> GetRevisionValidationIssues()
+    private List<string> GetVisibleCrossTabValidationIssues()
+    {
+        if (editingRevisionId is null && selectedRevisionId == UnsavedDraftRevisionSelectionId && !HasRevisionDraftContent())
+        {
+            return [];
+        }
+
+        var issues = new List<string>();
+
+        if (revisionPorts.Count == 0)
+        {
+            issues.Add("At least one port is required for a revision.");
+        }
+
+        if (revisionPorts.Count > 0 && revisionPorts.Count(x => x.AdvertisedPort) != 1)
+        {
+            issues.Add("Exactly one advertised port is required.");
+        }
+
+        foreach (var setting in revisionSettingDefinitions.Where(setting => !string.IsNullOrWhiteSpace(setting.SettingKey)))
+        {
+            foreach (var mapping in setting.Metadata.PortMappings)
+            {
+                var targetExists = revisionPorts.Any(x => x.ContainerPort == mapping.TargetContainerPort && string.Equals(x.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+                if (!targetExists)
+                {
+                    issues.Add($"Setting '{setting.SettingKey}' references missing target port '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
+                }
+            }
+        }
+
+        return issues.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private List<string> GetRevisionDraftIssues()
+    {
+        return GetRevisionValidationIssues(includeSaveRequirements: false);
+    }
+
+    private List<string> GetRevisionSaveValidationIssues()
+    {
+        return GetRevisionValidationIssues(includeSaveRequirements: true);
+    }
+
+    private List<string> GetRevisionValidationIssues(bool includeSaveRequirements)
     {
         var issues = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(revisionVersionTag))
+        if (includeSaveRequirements && string.IsNullOrWhiteSpace(revisionVersionTag))
         {
             issues.Add("Revision version tag is required.");
         }
 
-        if (revisionPorts.Count == 0)
+        if (includeSaveRequirements && string.IsNullOrWhiteSpace(revisionImageReference))
+        {
+            issues.Add("Revision image reference is required.");
+        }
+
+        if (includeSaveRequirements && revisionPorts.Count == 0)
         {
             issues.Add("At least one port is required for a revision.");
         }

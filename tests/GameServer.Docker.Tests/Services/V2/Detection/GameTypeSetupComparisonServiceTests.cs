@@ -21,12 +21,12 @@ public class GameTypeSetupComparisonServiceTests
             .ReturnsAsync(new GameType
             {
                 Key = "minecraft",
-                ImageReference = "itzg/minecraft-server",
                 Revisions =
                 [
                     new GameTypeRevision
                     {
                         Id = 5,
+                        ImageReference = "itzg/minecraft-server",
                         VersionTag = "1.21.1",
                         ImageDigest = "sha256:old",
                         Ports =
@@ -75,6 +75,7 @@ public class GameTypeSetupComparisonServiceTests
         // Act
         var result = await service.CompareAsync("minecraft", new CompareGameTypeSetupRequestDto
         {
+            ImageReference = "itzg/minecraft-server",
             VersionTag = "latest",
             RevisionId = 5
         });
@@ -102,8 +103,7 @@ public class GameTypeSetupComparisonServiceTests
             .Setup(x => x.GetByKeyAsync("minecraft"))
             .ReturnsAsync(new GameType
             {
-                Key = "minecraft",
-                ImageReference = "itzg/minecraft-server"
+                Key = "minecraft"
             });
 
         var service = new GameTypeSetupDetectionService(repository.Object, Mock.Of<IDockerClient>(), Mock.Of<ILogger<GameTypeSetupDetectionService>>());
@@ -111,6 +111,7 @@ public class GameTypeSetupComparisonServiceTests
         // Act
         var action = () => service.CompareAsync("minecraft", new CompareGameTypeSetupRequestDto
         {
+            ImageReference = "itzg/minecraft-server",
             VersionTag = "latest",
             RevisionId = 99
         });

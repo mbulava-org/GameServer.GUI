@@ -19,8 +19,8 @@ public class GameTypeEntity
     public string? Description { get; set; }
 
     [Required]
-    [MaxLength(500)]
-    public string ImageReference { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string Type { get; set; } = "docker";
 
     [MaxLength(500)]
     public string? ThumbnailUrl { get; set; }
@@ -48,6 +48,10 @@ public class GameTypeRevisionEntity
     [Required]
     [MaxLength(100)]
     public string VersionTag { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(500)]
+    public string ImageReference { get; set; } = string.Empty;
 
     [MaxLength(250)]
     public string? ImageDigest { get; set; }

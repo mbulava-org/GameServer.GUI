@@ -13,13 +13,14 @@ Owns the fixed catalog information:
 - key
 - display name
 - description
-- fixed image reference
+- type
 - thumbnail URL
 - documentation URL
 - active flag
 
 ### GameTypeRevision
 Owns the deployable template:
+- Docker image reference
 - version tag
 - image digest
 - TTY flag
@@ -36,18 +37,19 @@ Owns the deployable template:
 In the `Basic` tab, define the catalog identity:
 - choose a stable `Key`
 - set `Display Name`
-- set the fixed `Image Reference`
+- set `Type` to `docker`
 - optionally add thumbnail/docs/description
 - save the GameType before attempting revision work
 
 #### Validation checklist
-- key, display name, and image reference are required
+- key, display name, and type are required
 - existing GameTypes should keep the key read-only
 - the page should navigate to `/gametypes-v2/{key}` after creating a new GameType
 
 ### 2. Create a revision draft
 In the `Revisions` tab:
-- click `New Draft`
+- use `New Draft` beside the `Active Revision` selector
+- supply a `Docker Image Reference`
 - supply a `Version Tag`
 - optionally set `Image Digest`
 - decide whether `Enable TTY` should be on
@@ -55,9 +57,11 @@ In the `Revisions` tab:
 - leave `Published` off until the draft is ready
 
 #### Validation checklist
+- a new unsaved draft item should appear in the `Active Revision` selector and become selected immediately
 - a new unsaved draft row should appear in the revision list
 - the draft row should update as the version tag changes
-- validation warnings should appear before save when required draft data is missing
+- creating a draft should not be blocked by missing `Version Tag` or missing ports because those inputs are completed across different tabs
+- save and publish actions should remain blocked until required revision data such as `Docker Image Reference`, `Version Tag`, and at least one port has been provided
 
 ### 3. Define ports
 In the `Ports` tab:
@@ -121,17 +125,20 @@ In the `Web Hosts` tab:
 
 ## 7. Use detection when available
 In the `Detection` tab:
-- provide a version tag to scan
-- run detection against the fixed image reference
+- this tab appears before `Basic` and is only enabled when the GameType `Type` is `docker`
+- provide a Docker image reference
+- optionally provide a version tag to scan
+- run detection against the provided image identity
 - review detected ports, settings, and volumes
 - review inferred setting-to-port mapping counts in detected settings
-- apply only the sections you trust
+- detection should automatically seed the current revision draft
+- if the detected image/tag does not already exist as a revision, detection should switch to a new draft for it
 
 ### Recommended order
-1. scan the tag
-2. compare to the selected revision
-3. apply identity if the digest changed
-4. apply ports/settings/volumes selectively
+1. enter the image reference and optional tag
+2. run `Detect Settings`
+3. review the comparison against the selected revision when one exists
+4. fine-tune the imported ports/settings/volumes if needed
 5. re-review the draft before save
 
 ### Detection expectations for port mappings
@@ -140,7 +147,7 @@ In the `Detection` tab:
 - inferred mappings are suggestions and should still be reviewed before save or publish
 
 #### Validation checklist
-- detection should not overwrite revision metadata unless explicitly applied
+- detection should populate the revision draft with the detected image identity and inferred metadata
 - applying settings should preserve existing metadata where possible
 - comparison guidance should explain whether ports, settings, or volumes changed
 - the detection view should expose inferred mapping suggestions clearly enough to review before applying settings

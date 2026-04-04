@@ -10,6 +10,8 @@ namespace GameServer.Docker.Repositories.V2;
 public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<GameTypeRepository> logger)
     : IGameTypeRepository
 {
+    private const string InitialV2MigrationId = "20260404190753_RefactorV2GameTypeTypeAndRevisionImageReference";
+
     /// <summary>
     /// Initialize the V2 database using the same startup pattern as the legacy repository.
     /// </summary>
@@ -22,6 +24,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             var migrationsAssembly = context.GetService<IMigrationsAssembly>();
             if (migrationsAssembly.Migrations.Any())
             {
+                await PrepareDatabaseForMigrationsAsync().ConfigureAwait(false);
+
                 logger.LogInformation("Applying V2 database migrations...");
                 await context.Database.MigrateAsync().ConfigureAwait(false);
                 logger.LogInformation("V2 database migrations applied successfully");
@@ -58,6 +62,217 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         }
     }
 
+    private async Task PrepareDatabaseForMigrationsAsync()
+    {
+        var historyRepository = context.GetService<IHistoryRepository>();
+        var historyExists = await historyRepository.ExistsAsync().ConfigureAwait(false);
+        if (historyExists)
+        {
+            var appliedMigrations = await context.Database.GetAppliedMigrationsAsync().ConfigureAwait(false);
+            if (appliedMigrations.Contains(InitialV2MigrationId, StringComparer.Ordinal))
+            {
+                return;
+            }
+        }
+
+        if (!await TableExistsAsync("GameTypes").ConfigureAwait(false))
+        {
+            logger.LogInformation("No V2 tables found. Creating the current V2 schema before baselining migration history...");
+
+            var created = await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
+            if (created)
+            {
+                await context.Database.ExecuteSqlRawAsync(historyRepository.GetCreateIfNotExistsScript()).ConfigureAwait(false);
+                await context.Database.ExecuteSqlRawAsync(
+                    historyRepository.GetInsertScript(new HistoryRow(InitialV2MigrationId, context.Model.GetProductVersion())))
+                    .ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        var gameTypesHasLegacyImageReference = await ColumnExistsAsync("GameTypes", "ImageReference").ConfigureAwait(false);
+        var gameTypesHasType = await ColumnExistsAsync("GameTypes", "Type").ConfigureAwait(false);
+        var revisionsHasImageReference = await ColumnExistsAsync("GameTypeRevisions", "ImageReference").ConfigureAwait(false);
+
+        if (gameTypesHasLegacyImageReference && !revisionsHasImageReference)
+        {
+            logger.LogInformation("Detected existing V2 schema created before migrations. Upgrading legacy columns before applying migrations...");
+            await UpgradeLegacySchemaAsync().ConfigureAwait(false);
+        }
+        else if (!gameTypesHasType || !revisionsHasImageReference)
+        {
+            throw new InvalidOperationException("The existing V2 database schema does not match either the legacy pre-migration schema or the current migration baseline.");
+        }
+
+        await context.Database.ExecuteSqlRawAsync(historyRepository.GetCreateIfNotExistsScript()).ConfigureAwait(false);
+        await context.Database.ExecuteSqlRawAsync(
+            historyRepository.GetInsertScript(new HistoryRow(InitialV2MigrationId, context.Model.GetProductVersion())))
+            .ConfigureAwait(false);
+
+        logger.LogInformation("Recorded baseline V2 migration history for existing database '{MigrationId}'.", InitialV2MigrationId);
+    }
+
+    private async Task UpgradeLegacySchemaAsync()
+    {
+        if (context.Database.IsSqlite())
+        {
+            foreach (var statement in GetSqliteLegacyUpgradeStatements())
+            {
+                await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        if (context.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            foreach (var statement in GetMySqlLegacyUpgradeStatements())
+            {
+                await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        throw new NotSupportedException($"Unsupported V2 provider '{context.Database.ProviderName}' for legacy schema upgrade.");
+    }
+
+    private static IReadOnlyList<string> GetSqliteLegacyUpgradeStatements()
+    {
+        return
+        [
+            "PRAGMA foreign_keys=OFF;",
+            "ALTER TABLE \"GameTypeRevisions\" ADD COLUMN \"ImageReference\" TEXT NOT NULL DEFAULT '';",
+            "UPDATE \"GameTypeRevisions\" SET \"ImageReference\" = COALESCE((SELECT \"ImageReference\" FROM \"GameTypes\" WHERE \"GameTypes\".\"Id\" = \"GameTypeRevisions\".\"GameTypeId\"), '') WHERE \"ImageReference\" = '';",
+            "DROP INDEX IF EXISTS \"IX_GameTypeRevisions_GameTypeId_VersionTag\";",
+            "CREATE UNIQUE INDEX \"IX_GameTypeRevisions_GameTypeId_ImageReference_VersionTag\" ON \"GameTypeRevisions\" (\"GameTypeId\", \"ImageReference\", \"VersionTag\");",
+            "CREATE TABLE \"__GameTypes_Upgrade\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_GameTypes\" PRIMARY KEY AUTOINCREMENT, \"Key\" TEXT NOT NULL, \"DisplayName\" TEXT NOT NULL, \"Description\" TEXT NULL, \"Type\" TEXT NOT NULL DEFAULT 'docker', \"ThumbnailUrl\" TEXT NULL, \"DocumentationUrl\" TEXT NULL, \"IsActive\" INTEGER NOT NULL, \"CurrentRevisionId\" INTEGER NULL, \"CreatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \"UpdatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);",
+            "INSERT INTO \"__GameTypes_Upgrade\" (\"Id\", \"Key\", \"DisplayName\", \"Description\", \"Type\", \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\") SELECT \"Id\", \"Key\", \"DisplayName\", \"Description\", 'docker', \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\" FROM \"GameTypes\";",
+            "DROP TABLE \"GameTypes\";",
+            "ALTER TABLE \"__GameTypes_Upgrade\" RENAME TO \"GameTypes\";",
+            "CREATE INDEX \"IX_GameTypes_IsActive\" ON \"GameTypes\" (\"IsActive\");",
+            "CREATE UNIQUE INDEX \"IX_GameTypes_Key\" ON \"GameTypes\" (\"Key\");",
+            "PRAGMA foreign_keys=ON;"
+        ];
+    }
+
+    private static IReadOnlyList<string> GetMySqlLegacyUpgradeStatements()
+    {
+        return
+        [
+            "ALTER TABLE `GameTypeRevisions` ADD COLUMN `ImageReference` varchar(500) NOT NULL DEFAULT '';",
+            "UPDATE `GameTypeRevisions` r INNER JOIN `GameTypes` g ON g.`Id` = r.`GameTypeId` SET r.`ImageReference` = g.`ImageReference` WHERE r.`ImageReference` = '';",
+            "ALTER TABLE `GameTypes` ADD COLUMN `Type` varchar(50) NOT NULL DEFAULT 'docker';",
+            "DROP INDEX `IX_GameTypeRevisions_GameTypeId_VersionTag` ON `GameTypeRevisions`;",
+            "CREATE UNIQUE INDEX `IX_GameTypeRevisions_GameTypeId_ImageReference_VersionTag` ON `GameTypeRevisions` (`GameTypeId`, `ImageReference`, `VersionTag`);",
+            "ALTER TABLE `GameTypes` DROP COLUMN `ImageReference`;"
+        ];
+    }
+
+    private async Task<bool> TableExistsAsync(string tableName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+
+        return context.Database.IsSqlite()
+            ? await SqliteObjectExistsAsync("table", tableName).ConfigureAwait(false)
+            : await MySqlTableExistsAsync(tableName).ConfigureAwait(false);
+    }
+
+    private async Task<bool> ColumnExistsAsync(string tableName, string columnName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(columnName);
+
+        if (context.Database.IsSqlite())
+        {
+            await using var command = context.Database.GetDbConnection().CreateCommand();
+            command.CommandText = $"PRAGMA table_info(\"{tableName.Replace("\"", "\"\"")}\");";
+
+            if (command.Connection?.State != System.Data.ConnectionState.Open)
+            {
+                await command.Connection!.OpenAsync().ConfigureAwait(false);
+            }
+
+            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return await MySqlColumnExistsAsync(tableName, columnName).ConfigureAwait(false);
+    }
+
+    private async Task<bool> SqliteObjectExistsAsync(string objectType, string objectName)
+    {
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = $type AND name = $name LIMIT 1;";
+
+        var typeParameter = command.CreateParameter();
+        typeParameter.ParameterName = "$type";
+        typeParameter.Value = objectType;
+        command.Parameters.Add(typeParameter);
+
+        var nameParameter = command.CreateParameter();
+        nameParameter.ParameterName = "$name";
+        nameParameter.Value = objectName;
+        command.Parameters.Add(nameParameter);
+
+        if (command.Connection?.State != System.Data.ConnectionState.Open)
+        {
+            await command.Connection!.OpenAsync().ConfigureAwait(false);
+        }
+
+        return await command.ExecuteScalarAsync().ConfigureAwait(false) is not null;
+    }
+
+    private async Task<bool> MySqlTableExistsAsync(string tableName)
+    {
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = @tableName LIMIT 1;";
+
+        var tableParameter = command.CreateParameter();
+        tableParameter.ParameterName = "@tableName";
+        tableParameter.Value = tableName;
+        command.Parameters.Add(tableParameter);
+
+        if (command.Connection?.State != System.Data.ConnectionState.Open)
+        {
+            await command.Connection!.OpenAsync().ConfigureAwait(false);
+        }
+
+        return await command.ExecuteScalarAsync().ConfigureAwait(false) is not null;
+    }
+
+    private async Task<bool> MySqlColumnExistsAsync(string tableName, string columnName)
+    {
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = @tableName AND column_name = @columnName LIMIT 1;";
+
+        var tableParameter = command.CreateParameter();
+        tableParameter.ParameterName = "@tableName";
+        tableParameter.Value = tableName;
+        command.Parameters.Add(tableParameter);
+
+        var columnParameter = command.CreateParameter();
+        columnParameter.ParameterName = "@columnName";
+        columnParameter.Value = columnName;
+        command.Parameters.Add(columnParameter);
+
+        if (command.Connection?.State != System.Data.ConnectionState.Open)
+        {
+            await command.Connection!.OpenAsync().ConfigureAwait(false);
+        }
+
+        return await command.ExecuteScalarAsync().ConfigureAwait(false) is not null;
+    }
+
     public async Task<List<GameType>> GetAllAsync(bool includeInactive = false)
     {
         var query = QueryGameTypes();
@@ -91,7 +306,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Key = gameType.Key,
             DisplayName = gameType.DisplayName,
             Description = gameType.Description,
-            ImageReference = gameType.ImageReference,
+            Type = gameType.Type,
             ThumbnailUrl = gameType.ThumbnailUrl,
             DocumentationUrl = gameType.DocumentationUrl,
             IsActive = gameType.IsActive,
@@ -118,7 +333,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
 
         entity.DisplayName = gameType.DisplayName;
         entity.Description = gameType.Description;
-        entity.ImageReference = gameType.ImageReference;
+        entity.Type = gameType.Type;
         entity.ThumbnailUrl = gameType.ThumbnailUrl;
         entity.DocumentationUrl = gameType.DocumentationUrl;
         entity.IsActive = gameType.IsActive;
@@ -156,9 +371,10 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             throw new KeyNotFoundException($"V2 GameType '{gameTypeKey}' was not found");
         }
 
-        if (gameType.Revisions.Any(x => x.VersionTag == revision.VersionTag))
+        if (gameType.Revisions.Any(x => string.Equals(x.VersionTag, revision.VersionTag, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.ImageReference, revision.ImageReference, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException($"Version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
+            throw new InvalidOperationException($"Image reference '{revision.ImageReference}' with version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
         }
 
         var entity = MapRevisionToEntity(revision);
@@ -190,14 +406,18 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         }
 
         var duplicateVersionTagExists = await context.GameTypeRevisions
-            .AnyAsync(x => x.GameTypeId == entity.GameTypeId && x.Id != revision.Id && x.VersionTag == revision.VersionTag);
+            .AnyAsync(x => x.GameTypeId == entity.GameTypeId
+                && x.Id != revision.Id
+                && x.VersionTag == revision.VersionTag
+                && x.ImageReference == revision.ImageReference);
 
         if (duplicateVersionTagExists)
         {
-            throw new InvalidOperationException($"Version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
+            throw new InvalidOperationException($"Image reference '{revision.ImageReference}' with version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
         }
 
         entity.VersionTag = revision.VersionTag;
+        entity.ImageReference = revision.ImageReference;
         entity.ImageDigest = revision.ImageDigest;
         entity.EnableTTY = revision.EnableTTY;
         entity.Notes = revision.Notes;
@@ -337,9 +557,9 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             throw new InvalidOperationException("GameType display name is required");
         }
 
-        if (string.IsNullOrWhiteSpace(gameType.ImageReference))
+        if (string.IsNullOrWhiteSpace(gameType.Type))
         {
-            throw new InvalidOperationException("GameType image reference is required");
+            throw new InvalidOperationException("GameType type is required");
         }
 
         foreach (var revision in gameType.Revisions)
@@ -353,6 +573,11 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         if (string.IsNullOrWhiteSpace(revision.VersionTag))
         {
             throw new InvalidOperationException("Revision version tag is required");
+        }
+
+        if (string.IsNullOrWhiteSpace(revision.ImageReference))
+        {
+            throw new InvalidOperationException("Revision image reference is required");
         }
 
         if (revision.Ports.Count > 0 && revision.Ports.Count(x => x.AdvertisedPort) != 1)
@@ -369,7 +594,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Key = entity.Key,
             DisplayName = entity.DisplayName,
             Description = entity.Description,
-            ImageReference = entity.ImageReference,
+            Type = entity.Type,
             ThumbnailUrl = entity.ThumbnailUrl,
             DocumentationUrl = entity.DocumentationUrl,
             IsActive = entity.IsActive,
@@ -386,6 +611,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         {
             Id = entity.Id,
             VersionTag = entity.VersionTag,
+            ImageReference = entity.ImageReference,
             ImageDigest = entity.ImageDigest,
             EnableTTY = entity.EnableTTY,
             Notes = entity.Notes,
@@ -462,6 +688,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         return new DataV2.GameTypeRevisionEntity
         {
             VersionTag = model.VersionTag,
+            ImageReference = model.ImageReference,
             ImageDigest = model.ImageDigest,
             EnableTTY = model.EnableTTY,
             Notes = model.Notes,

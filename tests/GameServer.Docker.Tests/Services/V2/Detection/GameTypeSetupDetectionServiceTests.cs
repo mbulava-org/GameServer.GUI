@@ -20,14 +20,13 @@ public class GameTypeSetupDetectionServiceTests
             .Setup(x => x.GetByKeyAsync("minecraft"))
             .ReturnsAsync(new GameType
             {
-                Key = "minecraft",
-                ImageReference = "itzg/minecraft-server"
+                Key = "minecraft"
             });
 
         var service = new GameTypeSetupDetectionService(repository.Object, dockerClient: null, Mock.Of<ILogger<GameTypeSetupDetectionService>>());
 
         // Act
-        var action = () => service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { VersionTag = "latest" });
+        var action = () => service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { ImageReference = "itzg/minecraft-server", VersionTag = "latest" });
 
         // Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
@@ -46,7 +45,7 @@ public class GameTypeSetupDetectionServiceTests
         var service = new GameTypeSetupDetectionService(repository.Object, dockerClient.Object, Mock.Of<ILogger<GameTypeSetupDetectionService>>());
 
         // Act
-        var action = () => service.DetectAsync("missing", new DetectGameTypeSetupRequestDto { VersionTag = "latest" });
+        var action = () => service.DetectAsync("missing", new DetectGameTypeSetupRequestDto { ImageReference = "itzg/minecraft-server", VersionTag = "latest" });
 
         // Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(action);
@@ -64,7 +63,7 @@ public class GameTypeSetupDetectionServiceTests
             });
 
         // Act
-        var result = await service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { VersionTag = "latest" });
+        var result = await service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { ImageReference = "itzg/minecraft-server", VersionTag = "latest" });
 
         // Assert
         var setting = Assert.Single(result.Settings);
@@ -90,7 +89,7 @@ public class GameTypeSetupDetectionServiceTests
             });
 
         // Act
-        var result = await service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { VersionTag = "latest" });
+        var result = await service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { ImageReference = "itzg/minecraft-server", VersionTag = "latest" });
 
         // Assert
         var setting = Assert.Single(result.Settings);
@@ -120,8 +119,7 @@ public class GameTypeSetupDetectionServiceTests
             .Setup(x => x.GetByKeyAsync("minecraft"))
             .ReturnsAsync(new GameType
             {
-                Key = "minecraft",
-                ImageReference = "itzg/minecraft-server"
+                Key = "minecraft"
             });
 
         var imageOperations = new Mock<IImageOperations>();

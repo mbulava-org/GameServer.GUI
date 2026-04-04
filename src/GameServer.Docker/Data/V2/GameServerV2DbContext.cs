@@ -56,7 +56,7 @@ public class GameServerV2DbContext : DbContext
 
             entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.ImageReference).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(50);
             ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
             ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
 
@@ -70,8 +70,9 @@ public class GameServerV2DbContext : DbContext
         {
             entity.ToTable("GameTypeRevisions");
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.GameTypeId, e.VersionTag }).IsUnique();
+            entity.HasIndex(e => new { e.GameTypeId, e.ImageReference, e.VersionTag }).IsUnique();
             entity.Property(e => e.VersionTag).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.ImageReference).IsRequired().HasMaxLength(500);
             entity.Property(e => e.ImageDigest).HasMaxLength(250);
             ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
 

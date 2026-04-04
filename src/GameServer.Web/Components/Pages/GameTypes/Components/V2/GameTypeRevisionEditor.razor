@@ -8,25 +8,10 @@
         <small class="text-muted">Edit an existing revision or create a new draft before publishing it.</small>
     </div>
     <div class="d-flex gap-2">
-        <RadzenButton Text="New Draft" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@(() => OnCreateNewDraft.InvokeAsync())" />
-        <RadzenButton Text="Save Revision" Icon="save" ButtonStyle="ButtonStyle.Primary" Click="@(() => OnSaveRevision.InvokeAsync())" Disabled="@(IsSavingRevision || !CanSaveRevision)" />
         <RadzenButton Text="Set Current" Icon="check_circle" ButtonStyle="ButtonStyle.Secondary" Click="@(() => OnSetCurrentRevision.InvokeAsync())" Disabled="@(IsSavingRevision || !CanSetCurrentRevision)" />
         <RadzenButton Text="Publish + Current" Icon="publish" ButtonStyle="ButtonStyle.Success" Click="@(() => OnPublishAndSetCurrent.InvokeAsync())" Disabled="@(IsSavingRevision || !CanSetCurrentRevision)" />
     </div>
 </div>
-
-@if (ValidationIssues.Count > 0)
-{
-    <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mb-3">
-        <div class="fw-semibold mb-2">Revision draft validation</div>
-        <ul class="mb-0 ps-3">
-            @foreach (var issue in ValidationIssues)
-            {
-                <li>@issue</li>
-            }
-        </ul>
-    </RadzenAlert>
-}
 
 @if (Warnings.Count > 0)
 {
@@ -42,6 +27,11 @@
 }
 
 <div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <RadzenFormField Text="Docker Image Reference" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@ImageReference" ValueChanged="@OnImageReferenceChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
     <div class="col-md-4">
         <RadzenFormField Text="Version Tag" Variant="Variant.Outlined" class="w-100">
             <RadzenTextBox Value="@VersionTag" ValueChanged="@OnVersionTagChanged" class="w-100" />
@@ -116,6 +106,12 @@
     public string VersionTag { get; set; } = string.Empty;
 
     [Parameter]
+    public string ImageReference { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ImageReferenceChanged { get; set; }
+
+    [Parameter]
     public EventCallback<string> VersionTagChanged { get; set; }
 
     [Parameter]
@@ -168,6 +164,8 @@
 
     [Parameter]
     public EventCallback<GameTypeRevision> OnCloneRevision { get; set; }
+
+    private Task OnImageReferenceChanged(string value) => ImageReferenceChanged.InvokeAsync(value);
 
     private Task OnVersionTagChanged(string value) => VersionTagChanged.InvokeAsync(value);
 

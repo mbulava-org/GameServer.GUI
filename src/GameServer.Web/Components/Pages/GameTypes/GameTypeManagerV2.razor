@@ -97,9 +97,16 @@
                         </Template>
                     </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="GameTypeListItem" Property="ImageReference" Title="Docker Image" Width="240px">
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Property="CurrentImageReference" Title="Current Image" Width="240px">
                         <Template Context="gameType">
-                            <code class="gametype-list-image">@gameType.ImageReference</code>
+                            @if (string.IsNullOrWhiteSpace(gameType.CurrentImageReference))
+                            {
+                                <span class="text-muted">No current revision image</span>
+                            }
+                            else
+                            {
+                                <code class="gametype-list-image">@gameType.CurrentImageReference</code>
+                            }
                         </Template>
                     </RadzenDataGridColumn>
 

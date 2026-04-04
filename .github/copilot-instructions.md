@@ -82,6 +82,8 @@
 - The memory limit is fixed in the UI: do not allow adding or removing memory mappings
 - When a `MemoryMapping`'s `PublishedMemory` is 0, it should default to the `ContainerMemory` value
 - For GameType editing UX, prefer the existing settings editor master-detail pattern with a left-side settings list and a right-side details pane when redesigning similar pages such as the V2 editor.
+- For the V2 GameType editor, creating a new revision draft must not require the Version Tag or any Ports because those fields live on different tabs; those requirements should apply at save/validation time, not draft creation time.
+- Place `New Draft` and `Save Revision` by the active revision control; clicking `New Draft` should insert and select a dummy draft item in the revisions dropdown; cross-tab validation errors should render outside the tabs.
 
 ### Extended Metadata
 - Use proper `DataType` values: `"string"`, `"number"`, `"boolean"`, `"enum"`, `"port"`

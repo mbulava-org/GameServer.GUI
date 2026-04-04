@@ -4,6 +4,8 @@ public sealed record SaveGameTypeRevisionRequest
 {
     public string VersionTag { get; init; } = string.Empty;
 
+    public string ImageReference { get; init; } = string.Empty;
+
     public string? ImageDigest { get; init; }
 
     public bool EnableTTY { get; init; }
@@ -28,12 +30,16 @@ public sealed record PublishRevisionRequest
 
 public sealed record DetectGameTypeSetupRequest
 {
-    public string VersionTag { get; init; } = string.Empty;
+    public string ImageReference { get; init; } = string.Empty;
+
+    public string? VersionTag { get; init; }
 }
 
 public sealed record CompareGameTypeSetupRequest
 {
-    public string VersionTag { get; init; } = string.Empty;
+    public string ImageReference { get; init; } = string.Empty;
+
+    public string? VersionTag { get; init; }
 
     public int RevisionId { get; init; }
 }

@@ -41,11 +41,12 @@ public class GameServerRepositoryMySqlTests : IAsyncLifetime
         {
             Key = "mysql-server-test",
             DisplayName = "MySql Server Test",
-            ImageReference = "repo/test",
+            Type = "docker",
             Revisions =
             [
                 new GameServer.Docker.Models.V2.GameTypeRevision
                 {
+                    ImageReference = "repo/test",
                     VersionTag = "latest",
                     IsPublished = true,
                     Ports =

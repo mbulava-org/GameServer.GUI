@@ -14,7 +14,7 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.VersionTag);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
         cancellationToken.ThrowIfCancellationRequested();
 
         var gameType = await repository.GetByKeyAsync(key) ?? throw new KeyNotFoundException($"V2 GameType '{key}' was not found");
@@ -23,7 +23,7 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
             throw new InvalidOperationException("Docker image detection requires direct Docker access from the Primary Service.");
         }
 
-        return await DetectAsync(gameType, request.VersionTag, cancellationToken).ConfigureAwait(false);
+        return await DetectAsync(gameType, request.ImageReference, request.VersionTag, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -33,14 +33,14 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.VersionTag);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
         cancellationToken.ThrowIfCancellationRequested();
 
         var gameType = await repository.GetByKeyAsync(key) ?? throw new KeyNotFoundException($"V2 GameType '{key}' was not found");
         var revision = gameType.Revisions.FirstOrDefault(x => x.Id == request.RevisionId)
             ?? throw new KeyNotFoundException($"V2 GameType revision '{request.RevisionId}' was not found for '{key}'");
 
-        var detection = await DetectAsync(gameType, request.VersionTag, cancellationToken).ConfigureAwait(false);
+        var detection = await DetectAsync(gameType, request.ImageReference, request.VersionTag, cancellationToken).ConfigureAwait(false);
 
         var revisionPorts = revision.Ports
             .Select(x => $"{x.ContainerPort}/{x.Protocol.ToLowerInvariant()}")
@@ -108,14 +108,18 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         };
     }
 
-    private async Task<GameTypeSetupDetectionResultDto> DetectAsync(Models.V2.GameType gameType, string versionTag, CancellationToken cancellationToken)
+    private async Task<GameTypeSetupDetectionResultDto> DetectAsync(Models.V2.GameType gameType, string imageReference, string? versionTag, CancellationToken cancellationToken)
     {
         if (dockerClient is null)
         {
             throw new InvalidOperationException("Docker image detection requires direct Docker access from the Primary Service.");
         }
 
-        var imageReferenceWithTag = $"{gameType.ImageReference}:{versionTag}";
+        var normalizedVersionTag = NormalizeVersionTag(imageReference, versionTag);
+        var repositoryReference = RemoveTag(imageReference);
+        var imageReferenceWithTag = string.IsNullOrWhiteSpace(normalizedVersionTag)
+            ? imageReference
+            : $"{repositoryReference}:{normalizedVersionTag}";
         logger.LogInformation("Detecting Docker setup for V2 GameType {GameTypeKey} using image {ImageReferenceWithTag}", gameType.Key, imageReferenceWithTag);
 
         var image = await dockerClient.Images.InspectImageAsync(imageReferenceWithTag, cancellationToken).ConfigureAwait(false);
@@ -125,13 +129,36 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
 
         return new GameTypeSetupDetectionResultDto
         {
-            ImageReference = gameType.ImageReference,
-            VersionTag = versionTag,
-            ImageDigest = GetImageDigest(gameType.ImageReference, image.RepoDigests),
+            ImageReference = repositoryReference,
+            VersionTag = normalizedVersionTag,
+            ImageDigest = GetImageDigest(repositoryReference, image.RepoDigests),
             Ports = detectedPorts,
             Settings = GetDetectedSettings(config?.Env, detectedPorts),
             Volumes = GetDetectedVolumes(config?.Volumes)
         };
+    }
+
+    private static string? NormalizeVersionTag(string imageReference, string? versionTag)
+    {
+        if (!string.IsNullOrWhiteSpace(versionTag))
+        {
+            return versionTag.Trim();
+        }
+
+        var separatorIndex = imageReference.LastIndexOf(':');
+        var slashIndex = imageReference.LastIndexOf('/');
+        return separatorIndex > slashIndex && separatorIndex < imageReference.Length - 1
+            ? imageReference[(separatorIndex + 1)..]
+            : string.Empty;
+    }
+
+    private static string RemoveTag(string imageReference)
+    {
+        var separatorIndex = imageReference.LastIndexOf(':');
+        var slashIndex = imageReference.LastIndexOf('/');
+        return separatorIndex > slashIndex
+            ? imageReference[..separatorIndex]
+            : imageReference;
     }
 
     private static string? GetImageDigest(string imageReference, IList<string>? repoDigests)

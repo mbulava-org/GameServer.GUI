@@ -29,12 +29,13 @@ public class GameServerRepositoryTests : IDisposable
         {
             Key = "test-game",
             DisplayName = "Test Game",
-            ImageReference = "repo/test"
+            Type = "docker"
         };
 
         var revision = new GameTypeRevisionEntity
         {
             GameType = gameType,
+            ImageReference = "repo/test",
             VersionTag = "latest",
             ImageDigest = "sha256:test",
             IsPublished = true

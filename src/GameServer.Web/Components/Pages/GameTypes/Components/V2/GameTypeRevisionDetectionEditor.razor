@@ -4,18 +4,23 @@
 
 <div class="row g-3 mb-3">
     <div class="col-md-6">
+        <RadzenFormField Text="Docker Image Reference" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@DetectionImageReference" ValueChanged="@OnDetectionImageReferenceChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-3">
         <RadzenFormField Text="Version Tag to Scan" Variant="Variant.Outlined" class="w-100">
             <RadzenTextBox Value="@DetectionVersionTag" ValueChanged="@OnDetectionVersionTagChanged" class="w-100" />
         </RadzenFormField>
     </div>
-    <div class="col-md-6 d-flex align-items-end justify-content-end gap-2">
-        <RadzenButton Text="Scan Tag" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@(() => OnScanTag.InvokeAsync())" Disabled="@(IsDetecting || IsNew)" />
+    <div class="col-md-3 d-flex align-items-end justify-content-end gap-2">
+        <RadzenButton Text="Detect Settings" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@(() => OnScanTag.InvokeAsync())" Disabled="@(IsDetecting || IsNew || !IsDockerType || string.IsNullOrWhiteSpace(DetectionImageReference))" />
         <RadzenButton Text="Apply All to Draft" Icon="content_paste" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplyAll.InvokeAsync())" Disabled="@(DetectionResult is null)" />
     </div>
 </div>
 
 <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light">
-    V2 image setup detection scans the fixed `ImageReference` with a selected tag and captures digest, ports, environment variables, and declared volumes for review before creating or updating a revision.
+    Docker detection scans the provided image reference and optional version tag, then imports digest, ports, environment variables, and declared volumes to help seed a revision draft.
 </RadzenAlert>
 
 @if (DetectionResult is not null)
@@ -224,6 +229,15 @@
     public bool IsDetecting { get; set; }
 
     [Parameter]
+    public bool IsDockerType { get; set; } = true;
+
+    [Parameter]
+    public string DetectionImageReference { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> DetectionImageReferenceChanged { get; set; }
+
+    [Parameter]
     public string DetectionVersionTag { get; set; } = string.Empty;
 
     [Parameter]
@@ -252,6 +266,8 @@
 
     [Parameter]
     public EventCallback OnApplyVolumes { get; set; }
+
+    private Task OnDetectionImageReferenceChanged(string value) => DetectionImageReferenceChanged.InvokeAsync(value);
 
     private Task OnDetectionVersionTagChanged(string value) => DetectionVersionTagChanged.InvokeAsync(value);
 

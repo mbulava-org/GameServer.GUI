@@ -45,6 +45,7 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
 
         // Act
         var cut = Render<GameTypeRevisionDetectionEditor>(parameters => parameters
+            .Add(p => p.DetectionImageReference, "itzg/minecraft-server")
             .Add(p => p.DetectionVersionTag, "latest")
             .Add(p => p.DetectionResult, detection));
 
@@ -85,6 +86,7 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
 
         // Act
         var cut = Render<GameTypeRevisionDetectionEditor>(parameters => parameters
+            .Add(p => p.DetectionImageReference, "itzg/minecraft-server")
             .Add(p => p.DetectionVersionTag, "latest")
             .Add(p => p.DetectionResult, new GameTypeSetupDetectionResult())
             .Add(p => p.DetectionComparison, comparison));
@@ -106,6 +108,7 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
         var cut = Render<GameTypeRevisionDetectionEditor>(parameters => parameters
             .Add(p => p.IsNew, true)
             .Add(p => p.IsDetecting, true)
+            .Add(p => p.DetectionImageReference, "itzg/minecraft-server")
             .Add(p => p.DetectionVersionTag, "latest"));
 
         var buttons = cut.FindAll("button");
@@ -113,7 +116,7 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.True(buttons.First(button => button.TextContent.Contains("Scan Tag", StringComparison.Ordinal)).HasAttribute("disabled"));
+            Assert.True(buttons.First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).HasAttribute("disabled"));
             Assert.True(buttons.First(button => button.TextContent.Contains("Apply All to Draft", StringComparison.Ordinal)).HasAttribute("disabled"));
         });
     }
@@ -137,6 +140,7 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
 
         // Act
         var cut = Render<GameTypeRevisionDetectionEditor>(parameters => parameters
+            .Add(p => p.DetectionImageReference, "itzg/minecraft-server")
             .Add(p => p.DetectionVersionTag, "latest")
             .Add(p => p.DetectionResult, detection)
             .Add(p => p.OnScanTag, EventCallback.Factory.Create(this, () => scanInvoked = true))
@@ -146,7 +150,7 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
             .Add(p => p.OnApplySettings, EventCallback.Factory.Create(this, () => applySettingsInvoked = true))
             .Add(p => p.OnApplyVolumes, EventCallback.Factory.Create(this, () => applyVolumesInvoked = true)));
 
-        cut.FindAll("button").First(button => button.TextContent.Contains("Scan Tag", StringComparison.Ordinal)).Click();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).Click();
         cut.FindAll("button").First(button => button.TextContent.Contains("Apply All to Draft", StringComparison.Ordinal)).Click();
         cut.FindAll("button").First(button => button.TextContent.Contains("Apply Tag + Digest", StringComparison.Ordinal)).Click();
         cut.FindAll("button").First(button => button.TextContent.Contains("Apply Ports", StringComparison.Ordinal)).Click();
