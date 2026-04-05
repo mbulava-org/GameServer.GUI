@@ -1,11 +1,14 @@
-using Docker.DotNet;
-using Docker.DotNet.Models;
 using GameServer.Docker.Dtos.V2;
+using GameServer.Docker.Interfaces;
+using GameServer.Docker.Models;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2.Detection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Moq.Protected;
+using System.Net;
+using System.Net.Http.Json;
 
 namespace GameServer.Docker.Tests.Services.V2.Detection;
 
@@ -46,31 +49,49 @@ public class GameTypeSetupComparisonServiceTests
                 ]
             });
 
-        var imageOperations = new Mock<IImageOperations>();
-        imageOperations
-            .Setup(x => x.InspectImageAsync("itzg/minecraft-server:latest", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ImageInspectResponse
-            {
-                RepoDigests = ["itzg/minecraft-server@sha256:new"],
-                Config = new Config
+        var agentRegistry = new Mock<IAgentRegistry>();
+        agentRegistry
+            .Setup(x => x.GetHealthyAgents())
+            .Returns(
+            [
+                new NodeAgentEndpoint
                 {
-                    Env = ["EULA=TRUE", "DIFFICULTY=hard"],
-                    ExposedPorts = new Dictionary<string, EmptyStruct>
-                    {
-                        ["25565/tcp"] = default,
-                        ["25566/tcp"] = default
-                    },
-                    Volumes = new Dictionary<string, EmptyStruct>
-                    {
-                        ["/config"] = default
-                    }
+                    NodeId = "agent-1",
+                    NodeName = "agent-1",
+                    InternalUrl = "http://agent-1:8080",
+                    IsHealthy = true,
+                    IsManagerNode = true
                 }
+            ]);
+
+        var httpMessageHandler = new Mock<HttpMessageHandler>();
+        httpMessageHandler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    RepoDigests = new[] { "itzg/minecraft-server@sha256:new" },
+                    EnvironmentVariables = new[] { "EULA=TRUE", "DIFFICULTY=hard" },
+                    ExposedPorts = new[] { "25565/tcp", "25566/tcp" },
+                    VolumePaths = new[] { "/config" }
+                })
             });
 
-        var dockerClient = new Mock<IDockerClient>();
-        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(x => x.CreateClient(It.IsAny<string>()))
+            .Returns(new HttpClient(httpMessageHandler.Object));
 
-        var service = new GameTypeSetupDetectionService(repository.Object, dockerClient.Object, Mock.Of<ILogger<GameTypeSetupDetectionService>>());
+        var service = new GameTypeSetupDetectionService(
+            repository.Object,
+            agentRegistry.Object,
+            httpClientFactory.Object,
+            Mock.Of<ILogger<GameTypeSetupDetectionService>>());
 
         // Act
         var result = await service.CompareAsync("minecraft", new CompareGameTypeSetupRequestDto
@@ -106,7 +127,11 @@ public class GameTypeSetupComparisonServiceTests
                 Key = "minecraft"
             });
 
-        var service = new GameTypeSetupDetectionService(repository.Object, Mock.Of<IDockerClient>(), Mock.Of<ILogger<GameTypeSetupDetectionService>>());
+        var service = new GameTypeSetupDetectionService(
+            repository.Object,
+            Mock.Of<IAgentRegistry>(),
+            Mock.Of<IHttpClientFactory>(),
+            Mock.Of<ILogger<GameTypeSetupDetectionService>>());
 
         // Act
         var action = () => service.CompareAsync("minecraft", new CompareGameTypeSetupRequestDto

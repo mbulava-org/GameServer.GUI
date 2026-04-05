@@ -1,11 +1,17 @@
-using Docker.DotNet;
 using GameServer.Docker.Dtos.V2;
+using GameServer.Docker.Interfaces;
+using GameServer.Docker.Models;
 using GameServer.Docker.Repositories.V2;
-using DockerModels = global::Docker.DotNet.Models;
+using System.Net;
+using System.Net.Http.Json;
 
 namespace GameServer.Docker.Services.V2.Detection;
 
-public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository, IDockerClient? dockerClient, ILogger<GameTypeSetupDetectionService> logger)
+public sealed class GameTypeSetupDetectionService(
+    IGameTypeRepository repository,
+    IAgentRegistry agentRegistry,
+    IHttpClientFactory httpClientFactory,
+    ILogger<GameTypeSetupDetectionService> logger)
 {
     /// <summary>
     /// Detects Docker image setup data for a V2 GameType and tag.
@@ -18,10 +24,6 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         cancellationToken.ThrowIfCancellationRequested();
 
         var gameType = await repository.GetByKeyAsync(key) ?? throw new KeyNotFoundException($"V2 GameType '{key}' was not found");
-        if (dockerClient is null)
-        {
-            throw new InvalidOperationException("Docker image detection requires direct Docker access from the Primary Service.");
-        }
 
         return await DetectAsync(gameType, request.ImageReference, request.VersionTag, cancellationToken).ConfigureAwait(false);
     }
@@ -110,22 +112,16 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
 
     private async Task<GameTypeSetupDetectionResultDto> DetectAsync(Models.V2.GameType gameType, string imageReference, string? versionTag, CancellationToken cancellationToken)
     {
-        if (dockerClient is null)
-        {
-            throw new InvalidOperationException("Docker image detection requires direct Docker access from the Primary Service.");
-        }
-
         var normalizedVersionTag = NormalizeVersionTag(imageReference, versionTag);
         var repositoryReference = RemoveTag(imageReference);
         var imageReferenceWithTag = string.IsNullOrWhiteSpace(normalizedVersionTag)
             ? imageReference
             : $"{repositoryReference}:{normalizedVersionTag}";
-        logger.LogInformation("Detecting Docker setup for V2 GameType {GameTypeKey} using image {ImageReferenceWithTag}", gameType.Key, imageReferenceWithTag);
+        logger.LogInformation("Detecting Docker setup for V2 GameType {GameTypeKey} using image {ImageReferenceWithTag} via node agents", gameType.Key, imageReferenceWithTag);
 
-        var image = await dockerClient.Images.InspectImageAsync(imageReferenceWithTag, cancellationToken).ConfigureAwait(false);
-        var config = image.Config;
+        var image = await InspectImageViaAgentAsync(imageReferenceWithTag, cancellationToken).ConfigureAwait(false);
 
-        var detectedPorts = GetDetectedPorts(config?.ExposedPorts);
+        var detectedPorts = GetDetectedPorts(image.ExposedPorts);
 
         return new GameTypeSetupDetectionResultDto
         {
@@ -133,9 +129,112 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
             VersionTag = normalizedVersionTag,
             ImageDigest = GetImageDigest(repositoryReference, image.RepoDigests),
             Ports = detectedPorts,
-            Settings = GetDetectedSettings(config?.Env, detectedPorts),
-            Volumes = GetDetectedVolumes(config?.Volumes)
+            Settings = GetDetectedSettings(image.EnvironmentVariables, detectedPorts),
+            Volumes = GetDetectedVolumes(image.VolumePaths)
         };
+    }
+
+    private async Task<AgentImageInspectResponse> InspectImageViaAgentAsync(string imageReferenceWithTag, CancellationToken cancellationToken)
+    {
+        var agents = agentRegistry.GetHealthyAgents()
+            .OrderByDescending(agent => agent.IsManagerNode)
+            .ThenBy(agent => agent.NodeName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (agents.Count == 0)
+        {
+            throw new InvalidOperationException("Docker image detection requires at least one healthy node agent.");
+        }
+
+        var failures = new List<string>();
+        foreach (var agent in agents)
+        {
+            try
+            {
+                return await InspectImageOnAgentAsync(agent, imageReferenceWithTag, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                logger.LogWarning(ex, "Failed to reach node agent {NodeName} for image inspection of {ImageReference}", agent.NodeName, imageReferenceWithTag);
+                failures.Add($"{agent.NodeName}: {ex.Message}");
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogWarning(ex, "Node agent {NodeName} could not inspect image {ImageReference}", agent.NodeName, imageReferenceWithTag);
+                failures.Add($"{agent.NodeName}: {ex.Message}");
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Docker image '{imageReferenceWithTag}' could not be inspected by any healthy node agent. {string.Join(" | ", failures)}");
+    }
+
+    private async Task<AgentImageInspectResponse> InspectImageOnAgentAsync(NodeAgentEndpoint agent, string imageReferenceWithTag, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReferenceWithTag);
+
+        var httpClient = httpClientFactory.CreateClient();
+        var requestUri = new Uri(new Uri(agent.InternalUrl), "/api/images/inspect");
+
+        var response = await httpClient.PostAsJsonAsync(
+            requestUri,
+            new AgentInspectImageRequest { ImageReference = imageReferenceWithTag, PullIfMissing = true },
+            cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorMessage = await ReadAgentErrorAsync(response, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        var inspection = await response.Content.ReadFromJsonAsync<AgentImageInspectResponse>(cancellationToken).ConfigureAwait(false);
+        if (inspection is null)
+        {
+            throw new InvalidOperationException($"Node agent '{agent.NodeName}' returned an empty image inspection response.");
+        }
+
+        logger.LogInformation("Inspected image {ImageReference} via node agent {NodeName}", imageReferenceWithTag, agent.NodeName);
+        return inspection;
+    }
+
+    private static async Task<string> ReadAgentErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var responseBody = response.Content is null
+            ? string.Empty
+            : await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return $"Node agent returned {(int)response.StatusCode} ({response.ReasonPhrase}).";
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(responseBody);
+            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (document.RootElement.TryGetProperty("error", out var errorProperty) && errorProperty.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    return errorProperty.GetString() ?? responseBody;
+                }
+
+                if (document.RootElement.TryGetProperty("detail", out var detailProperty) && detailProperty.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    return detailProperty.GetString() ?? responseBody;
+                }
+
+                if (document.RootElement.TryGetProperty("title", out var titleProperty) && titleProperty.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    return titleProperty.GetString() ?? responseBody;
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+        }
+
+        return responseBody;
     }
 
     private static string? NormalizeVersionTag(string imageReference, string? versionTag)
@@ -180,14 +279,14 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         return repoDigests[0];
     }
 
-    private static List<DetectedPortDto> GetDetectedPorts(IDictionary<string, DockerModels.EmptyStruct>? exposedPorts)
+    private static List<DetectedPortDto> GetDetectedPorts(IReadOnlyList<string>? exposedPorts)
     {
         if (exposedPorts is null || exposedPorts.Count == 0)
         {
             return [];
         }
 
-        return exposedPorts.Keys
+        return exposedPorts
             .Select(ParsePort)
             .Where(x => x is not null)
             .Select(x => x!)
@@ -340,17 +439,31 @@ public sealed class GameTypeSetupDetectionService(IGameTypeRepository repository
         return string.Equals(protocol, "tcp", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
     }
 
-    private static List<DetectedVolumeDto> GetDetectedVolumes(IDictionary<string, DockerModels.EmptyStruct>? volumes)
+    private static List<DetectedVolumeDto> GetDetectedVolumes(IReadOnlyList<string>? volumes)
     {
         if (volumes is null || volumes.Count == 0)
         {
             return [];
         }
 
-        return volumes.Keys
+        return volumes
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Select(x => new DetectedVolumeDto { ContainerPath = x })
             .ToList();
+    }
+
+    private sealed record AgentInspectImageRequest
+    {
+        public string ImageReference { get; init; } = string.Empty;
+        public bool PullIfMissing { get; init; }
+    }
+
+    private sealed record AgentImageInspectResponse
+    {
+        public List<string> RepoDigests { get; init; } = [];
+        public List<string> EnvironmentVariables { get; init; } = [];
+        public List<string> ExposedPorts { get; init; } = [];
+        public List<string> VolumePaths { get; init; } = [];
     }
 }

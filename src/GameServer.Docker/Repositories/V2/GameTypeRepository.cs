@@ -26,9 +26,17 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             {
                 await PrepareDatabaseForMigrationsAsync().ConfigureAwait(false);
 
-                logger.LogInformation("Applying V2 database migrations...");
-                await context.Database.MigrateAsync().ConfigureAwait(false);
-                logger.LogInformation("V2 database migrations applied successfully");
+                var pendingMigrations = (await context.Database.GetPendingMigrationsAsync().ConfigureAwait(false)).ToList();
+                if (pendingMigrations.Count == 0)
+                {
+                    logger.LogInformation("No pending V2 database migrations to apply.");
+                }
+                else
+                {
+                    logger.LogInformation("Applying V2 database migrations...");
+                    await context.Database.MigrateAsync().ConfigureAwait(false);
+                    logger.LogInformation("V2 database migrations applied successfully");
+                }
             }
             else
             {

@@ -1,4 +1,5 @@
 using GameServer.Docker.Controllers.V2;
+using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2;
@@ -42,7 +43,11 @@ public class GameTypesControllerTests
         var commandService = new GameTypeCommandService(repository.Object);
         var detectionLogger = new Mock<ILogger<GameTypeSetupDetectionService>>().Object;
         var controllerLogger = new Mock<ILogger<GameTypesController>>().Object;
-        var detectionService = new GameTypeSetupDetectionService(repository.Object, null, detectionLogger);
+        var detectionService = new GameTypeSetupDetectionService(
+            repository.Object,
+            Mock.Of<IAgentRegistry>(),
+            Mock.Of<IHttpClientFactory>(),
+            detectionLogger);
         var controller = new GameTypesController(service, commandService, detectionService, controllerLogger);
 
         // Act
@@ -67,7 +72,11 @@ public class GameTypesControllerTests
         var commandService = new GameTypeCommandService(repository.Object);
         var detectionLogger = new Mock<ILogger<GameTypeSetupDetectionService>>().Object;
         var controllerLogger = new Mock<ILogger<GameTypesController>>().Object;
-        var detectionService = new GameTypeSetupDetectionService(repository.Object, null, detectionLogger);
+        var detectionService = new GameTypeSetupDetectionService(
+            repository.Object,
+            Mock.Of<IAgentRegistry>(),
+            Mock.Of<IHttpClientFactory>(),
+            detectionLogger);
         var controller = new GameTypesController(service, commandService, detectionService, controllerLogger);
 
         // Act

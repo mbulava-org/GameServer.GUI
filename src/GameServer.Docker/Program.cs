@@ -243,18 +243,11 @@ namespace GameServer.Docker
                 builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
                 builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
-                {
-                    IDockerClient? dockerClient = null;
-                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                    {
-                        dockerClient = sp.GetRequiredService<IDockerClient>();
-                    }
-
-                    return new ServicesV2Detection.GameTypeSetupDetectionService(
+                    new ServicesV2Detection.GameTypeSetupDetectionService(
                         sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),
-                        dockerClient,
-                        sp.GetRequiredService<ILogger<ServicesV2Detection.GameTypeSetupDetectionService>>());
-                });
+                        sp.GetRequiredService<IAgentRegistry>(),
+                        sp.GetRequiredService<IHttpClientFactory>(),
+                        sp.GetRequiredService<ILogger<ServicesV2Detection.GameTypeSetupDetectionService>>()));
 
                 // Keep file-based registries as fallback/migration helpers (optional)
                 // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
