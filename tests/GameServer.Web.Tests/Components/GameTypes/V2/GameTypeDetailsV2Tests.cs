@@ -218,7 +218,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         {
             Assert.Contains("Cross-tab revision validation", cut.Markup);
             Assert.Contains("At least one port is required for a revision.", cut.Markup);
-            Assert.Contains("Setting 'SERVER_PORT' references missing target port '25565/tcp'.", cut.Markup);
+            Assert.Contains("Setting 'SERVER_PORT' references a missing target port '25565/tcp'.", cut.Markup);
         });
     }
 

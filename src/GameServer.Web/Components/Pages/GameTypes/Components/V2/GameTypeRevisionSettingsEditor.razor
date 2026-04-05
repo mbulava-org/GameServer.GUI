@@ -215,7 +215,7 @@ else
                                                 </RadzenFormField>
                                             </div>
                                             <div class="col-md-3">
-                                                <RadzenFormField Text="Target Port" Variant="Variant.Outlined" class="w-100">
+                                                <RadzenFormField Text="@GetPortTargetFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
                                                     <RadzenDropDown TValue="string"
                                                                     Value="@GetSelectedPortTarget(mapping)"
                                                                     ValueChanged="@(value => OnPortTargetChanged(mapping, value))"
@@ -226,7 +226,7 @@ else
                                                 </RadzenFormField>
                                             </div>
                                             <div class="col-md-2">
-                                                <RadzenFormField Text="Calculation" Variant="Variant.Outlined" class="w-100">
+                                                <RadzenFormField Text="@GetCalculationFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
                                                     <RadzenNumeric @bind-Value="mapping.CalculationValue" TValue="int?" class="w-100" Disabled="@IsPrimaryMapping(mapping)" />
                                                 </RadzenFormField>
                                             </div>
@@ -671,6 +671,25 @@ else
         return string.IsNullOrWhiteSpace(portDescription)
             ? relationSummary
             : $"{relationSummary} - Port description: {portDescription}";
+    }
+
+    private static string GetPortTargetFieldText(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return IsPrimaryMapping(mapping) ? "Target Port / Protocol" : "Default Port / Protocol";
+    }
+
+    private static string GetCalculationFieldText(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        if (IsPrimaryMapping(mapping))
+        {
+            return "Calculation";
+        }
+
+        return string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? "Multiplier"
+            : "Offset";
     }
 
     private string? GetSelectedPortDescription(GameTypeRevisionPortMappingDraft mapping)

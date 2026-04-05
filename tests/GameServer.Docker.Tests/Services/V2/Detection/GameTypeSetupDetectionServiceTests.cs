@@ -118,6 +118,27 @@ public class GameTypeSetupDetectionServiceTests
     }
 
     [Fact]
+    public async Task DetectAsync_WhenRelatedPortIsExactMultiple_ShouldInferMultiplierMapping()
+    {
+        // Arrange
+        var service = CreateService(
+            environmentVariables: ["SERVER_PORT=7777"],
+            exposedPorts: ["7777/tcp", "15554/udp"]);
+
+        // Act
+        var result = await service.DetectAsync("minecraft", new DetectGameTypeSetupRequestDto { ImageReference = "itzg/minecraft-server", VersionTag = "latest" });
+
+        // Assert
+        var setting = Assert.Single(result.Settings);
+        Assert.Contains(setting.PortMappings, mapping =>
+            mapping.MappingRole == GameTypeSettingPortMappingRole.Related.ToString()
+            && mapping.RelationType == GameTypeSettingPortRelationType.Multiplier.ToString()
+            && mapping.TargetContainerPort == 15554
+            && mapping.TargetProtocol == "udp"
+            && mapping.CalculationValue == 2);
+    }
+
+    [Fact]
     public async Task DetectAsync_WhenFirstAgentCannotInspectImage_ShouldTryNextHealthyAgent()
     {
         // Arrange

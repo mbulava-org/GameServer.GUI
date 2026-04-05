@@ -170,7 +170,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                 var targetPortIdentity = new RevisionPortIdentity(mapping.TargetContainerPort, NormalizeProtocol(mapping.TargetProtocol));
                 if (!ports.Contains(targetPortIdentity))
                 {
-                    throw new ArgumentException($"Setting '{setting.SettingKey}' references missing target port '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}'.", nameof(request));
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' references missing default related port '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}'.", nameof(request));
                 }
 
                 if (!isPortSetting)
@@ -184,7 +184,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
 
                 if (mapping.TargetContainerPort != expectedPort)
                 {
-                    throw new ArgumentException($"Setting '{setting.SettingKey}' has related mapping '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}' that does not match the calculated port '{expectedPort}'.", nameof(request));
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' has default related port '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}' that does not match the calculated port '{expectedPort}/{targetPortIdentity.Protocol}'.", nameof(request));
                 }
             }
         }

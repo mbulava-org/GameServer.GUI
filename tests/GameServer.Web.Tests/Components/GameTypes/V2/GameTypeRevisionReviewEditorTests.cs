@@ -53,6 +53,8 @@ public sealed class GameTypeRevisionReviewEditorTests : BunitContext
             Assert.Contains("Revision Draft Summary", cut.Markup);
             Assert.Contains("1.21.1", cut.Markup);
             Assert.Contains("2 port(s)", cut.Markup);
+            Assert.Contains("2 primary direct / default related port mapping rule(s)", cut.Markup);
+            Assert.Contains("Primary mappings point directly at declared GameType ports.", cut.Markup);
             Assert.Contains("Compared to:", cut.Markup);
             Assert.Contains("Validation issues", cut.Markup);
             Assert.Contains("Detailed differences", cut.Markup);

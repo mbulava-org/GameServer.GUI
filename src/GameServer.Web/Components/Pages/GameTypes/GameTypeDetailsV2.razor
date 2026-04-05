@@ -1500,7 +1500,7 @@
             var targetExists = revisionPorts.Any(x => x.ContainerPort == mapping.TargetContainerPort && string.Equals(x.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
             if (!targetExists)
             {
-                issues.Add($"Setting '{setting.SettingKey}' references missing target port '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
+                issues.Add($"Setting '{setting.SettingKey}' references missing {GetPortReferenceLabel(mapping)} '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
             }
 
             if (primaryMapping is null || ReferenceEquals(mapping, primaryMapping))
@@ -1556,7 +1556,7 @@
 
         if (!mapping.CalculationValue.HasValue)
         {
-            issues.Add($"Setting '{setting.SettingKey}' must define a calculation value for related port mapping '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
+            issues.Add($"Setting '{setting.SettingKey}' must define a calculation value for related mapping '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
             return;
         }
 
@@ -1571,8 +1571,16 @@
 
         if (mapping.TargetContainerPort != expectedPort)
         {
-            issues.Add($"Setting '{setting.SettingKey}' has related mapping '{mapping.TargetContainerPort}/{mapping.TargetProtocol}' that does not match the calculated port '{expectedPort}'.");
+            issues.Add($"Setting '{setting.SettingKey}' has default related port '{mapping.TargetContainerPort}/{mapping.TargetProtocol}' that does not match the calculated port '{expectedPort}/{mapping.TargetProtocol}'.");
         }
+    }
+
+    private static string GetPortReferenceLabel(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase)
+            ? "default related port"
+            : "target port";
     }
 
 }

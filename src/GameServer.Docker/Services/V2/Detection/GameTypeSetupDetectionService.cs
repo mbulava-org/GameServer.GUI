@@ -385,13 +385,14 @@ public sealed class GameTypeSetupDetectionService(
 
         foreach (var additionalMatch in matchingPorts.Skip(1))
         {
+            var (relationType, calculationValue) = InferRelatedPortRelation(defaultPort, additionalMatch.ContainerPort);
             inferredMappings.Add(new DetectedSettingPortMappingDto
             {
                 MappingRole = Models.V2.GameTypeSettingPortMappingRole.Related.ToString(),
-                RelationType = Models.V2.GameTypeSettingPortRelationType.Offset.ToString(),
+                RelationType = relationType,
                 TargetContainerPort = additionalMatch.ContainerPort,
                 TargetProtocol = additionalMatch.Protocol,
-                CalculationValue = additionalMatch.ContainerPort - defaultPort,
+                CalculationValue = calculationValue,
                 IsRequired = false
             });
         }
@@ -404,19 +405,30 @@ public sealed class GameTypeSetupDetectionService(
                 .ThenBy(port => GetProtocolSortOrder(port.Protocol))
                 .ThenBy(port => port.Protocol, StringComparer.OrdinalIgnoreCase))
             {
+                var (relationType, calculationValue) = InferRelatedPortRelation(defaultPort, relatedPort.ContainerPort);
                 inferredMappings.Add(new DetectedSettingPortMappingDto
                 {
                     MappingRole = Models.V2.GameTypeSettingPortMappingRole.Related.ToString(),
-                    RelationType = Models.V2.GameTypeSettingPortRelationType.Offset.ToString(),
+                    RelationType = relationType,
                     TargetContainerPort = relatedPort.ContainerPort,
                     TargetProtocol = relatedPort.Protocol,
-                    CalculationValue = relatedPort.ContainerPort - defaultPort,
+                    CalculationValue = calculationValue,
                     IsRequired = false
                 });
             }
         }
 
         return inferredMappings;
+    }
+
+    private static (string RelationType, int CalculationValue) InferRelatedPortRelation(int defaultPort, int relatedPort)
+    {
+        if (defaultPort > 0 && relatedPort > defaultPort && relatedPort % defaultPort == 0)
+        {
+            return (Models.V2.GameTypeSettingPortRelationType.Multiplier.ToString(), relatedPort / defaultPort);
+        }
+
+        return (Models.V2.GameTypeSettingPortRelationType.Offset.ToString(), relatedPort - defaultPort);
     }
 
     private static bool LooksLikePortSetting(string key)
