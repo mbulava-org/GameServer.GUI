@@ -380,7 +380,6 @@ public sealed class GameTypeSetupDetectionService(
             RelationType = Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
             TargetContainerPort = matchingPorts[0].ContainerPort,
             TargetProtocol = matchingPorts[0].Protocol,
-            Description = $"Detected primary mapping for setting '{key}'.",
             IsRequired = false
         });
 
@@ -389,10 +388,10 @@ public sealed class GameTypeSetupDetectionService(
             inferredMappings.Add(new DetectedSettingPortMappingDto
             {
                 MappingRole = Models.V2.GameTypeSettingPortMappingRole.Related.ToString(),
-                RelationType = Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
+                RelationType = Models.V2.GameTypeSettingPortRelationType.Offset.ToString(),
                 TargetContainerPort = additionalMatch.ContainerPort,
                 TargetProtocol = additionalMatch.Protocol,
-                Description = $"Detected related mapping for setting '{key}' on protocol '{additionalMatch.Protocol}'.",
+                CalculationValue = additionalMatch.ContainerPort - defaultPort,
                 IsRequired = false
             });
         }
@@ -412,7 +411,6 @@ public sealed class GameTypeSetupDetectionService(
                     TargetContainerPort = relatedPort.ContainerPort,
                     TargetProtocol = relatedPort.Protocol,
                     CalculationValue = relatedPort.ContainerPort - defaultPort,
-                    Description = $"Detected related exposed port for setting '{key}'.",
                     IsRequired = false
                 });
             }

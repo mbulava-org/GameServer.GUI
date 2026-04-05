@@ -68,6 +68,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        ValidateRevisionRequest(request);
+
         var revision = await repository.AddRevisionAsync(key, MapToModel(request));
         return MapToDto(revision);
     }
@@ -81,8 +83,116 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        ValidateRevisionRequest(request);
+
         var revision = await repository.UpdateRevisionAsync(key, MapToModel(request) with { Id = revisionId });
         return MapToDto(revision);
+    }
+
+    private static void ValidateRevisionRequest(SaveGameTypeRevisionRequestDto request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var ports = request.Ports
+            .Select(port => new RevisionPortIdentity(port.ContainerPort, NormalizeProtocol(port.Protocol)))
+            .ToHashSet();
+
+        foreach (var setting in request.SettingDefinitions)
+        {
+            if (string.IsNullOrWhiteSpace(setting.SettingKey) || setting.Metadata is null)
+            {
+                continue;
+            }
+
+            var isPortSetting = string.Equals(setting.Metadata.DataType, "port", StringComparison.OrdinalIgnoreCase);
+            var mappings = setting.Metadata.PortMappings;
+            if (isPortSetting && mappings.Count == 0)
+            {
+                throw new ArgumentException($"Port setting '{setting.SettingKey}' must define at least one port mapping.", nameof(request));
+            }
+
+            if (mappings.Count == 0)
+            {
+                continue;
+            }
+
+            var primaryMappings = mappings
+                .Where(mapping => string.Equals(mapping.MappingRole, GameTypeSettingPortMappingRole.Primary.ToString(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (primaryMappings.Count != 1)
+            {
+                throw new ArgumentException($"Setting '{setting.SettingKey}' must define exactly one primary port mapping.", nameof(request));
+            }
+
+            var primaryMapping = primaryMappings[0];
+            if (!string.Equals(primaryMapping.RelationType, GameTypeSettingPortRelationType.Direct.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"Setting '{setting.SettingKey}' must use a direct relation for its primary port mapping.", nameof(request));
+            }
+
+            var primaryPortIdentity = new RevisionPortIdentity(primaryMapping.TargetContainerPort, NormalizeProtocol(primaryMapping.TargetProtocol));
+            if (!ports.Contains(primaryPortIdentity))
+            {
+                throw new ArgumentException($"Setting '{setting.SettingKey}' references missing target port '{primaryMapping.TargetContainerPort}/{primaryPortIdentity.Protocol}'.", nameof(request));
+            }
+
+            var hasParsedDefaultPort = int.TryParse(setting.DefaultValue, out var defaultPort) && defaultPort > 0;
+            if (isPortSetting && !hasParsedDefaultPort)
+            {
+                throw new ArgumentException($"Port setting '{setting.SettingKey}' must have a numeric default value before port mappings can be validated.", nameof(request));
+            }
+
+            if (isPortSetting && primaryMapping.TargetContainerPort != defaultPort)
+            {
+                throw new ArgumentException($"Port setting '{setting.SettingKey}' must directly map its primary rule to '{defaultPort}/{primaryPortIdentity.Protocol}'.", nameof(request));
+            }
+
+            foreach (var mapping in mappings.Where(mapping => !ReferenceEquals(mapping, primaryMapping)))
+            {
+                if (!string.Equals(mapping.MappingRole, GameTypeSettingPortMappingRole.Related.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' can only use related mappings after the primary mapping.", nameof(request));
+                }
+
+                var isOffset = string.Equals(mapping.RelationType, GameTypeSettingPortRelationType.Offset.ToString(), StringComparison.OrdinalIgnoreCase);
+                var isMultiplier = string.Equals(mapping.RelationType, GameTypeSettingPortRelationType.Multiplier.ToString(), StringComparison.OrdinalIgnoreCase);
+                if (!isOffset && !isMultiplier)
+                {
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' can only use offset or multiplier relations for related port mappings.", nameof(request));
+                }
+
+                if (!mapping.CalculationValue.HasValue)
+                {
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' must define a calculation value for related port mapping '{mapping.TargetContainerPort}/{NormalizeProtocol(mapping.TargetProtocol)}'.", nameof(request));
+                }
+
+                var targetPortIdentity = new RevisionPortIdentity(mapping.TargetContainerPort, NormalizeProtocol(mapping.TargetProtocol));
+                if (!ports.Contains(targetPortIdentity))
+                {
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' references missing target port '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}'.", nameof(request));
+                }
+
+                if (!isPortSetting)
+                {
+                    continue;
+                }
+
+                var expectedPort = isMultiplier
+                    ? defaultPort * mapping.CalculationValue.Value
+                    : defaultPort + mapping.CalculationValue.Value;
+
+                if (mapping.TargetContainerPort != expectedPort)
+                {
+                    throw new ArgumentException($"Setting '{setting.SettingKey}' has related mapping '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}' that does not match the calculated port '{expectedPort}'.", nameof(request));
+                }
+            }
+        }
+    }
+
+    private static string NormalizeProtocol(string? protocol)
+    {
+        return string.IsNullOrWhiteSpace(protocol) ? string.Empty : protocol.Trim().ToLowerInvariant();
     }
 
     /// <summary>
@@ -171,7 +281,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                         TargetContainerPort = pm.TargetContainerPort,
                         TargetProtocol = pm.TargetProtocol,
                         CalculationValue = pm.CalculationValue,
-                        Description = pm.Description,
+                        Description = null,
                         IsRequired = pm.IsRequired,
                         DisplayOrder = pm.DisplayOrder
                     }).ToList()
@@ -287,4 +397,6 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             }).ToList()
         };
     }
+
+    private sealed record RevisionPortIdentity(int ContainerPort, string Protocol);
 }

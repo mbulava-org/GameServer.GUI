@@ -23,6 +23,19 @@
     Docker detection scans the provided image reference and optional version tag, then imports digest, ports, environment variables, and declared volumes to help seed a revision draft.
 </RadzenAlert>
 
+@if (IsDetecting)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mt-3">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+            <div>
+                <div class="fw-semibold">Scanning image through node agents</div>
+                <div class="small text-muted">This can take a little while when an agent needs to pull the requested image before inspection completes.</div>
+            </div>
+        </div>
+    </RadzenAlert>
+}
+
 @if (DetectionResult is not null)
 {
     <div class="mt-4">

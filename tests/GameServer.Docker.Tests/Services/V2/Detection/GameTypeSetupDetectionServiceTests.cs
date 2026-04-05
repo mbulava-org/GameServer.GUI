@@ -106,7 +106,7 @@ public class GameTypeSetupDetectionServiceTests
             && mapping.TargetProtocol == "tcp");
         Assert.Contains(setting.PortMappings, mapping =>
             mapping.MappingRole == GameTypeSettingPortMappingRole.Related.ToString()
-            && mapping.RelationType == GameTypeSettingPortRelationType.Direct.ToString()
+            && mapping.RelationType == GameTypeSettingPortRelationType.Offset.ToString()
             && mapping.TargetContainerPort == 25565
             && mapping.TargetProtocol == "udp");
         Assert.Contains(setting.PortMappings, mapping =>

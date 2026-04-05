@@ -1,3 +1,4 @@
+@using GameServer.Web.Models.V2
 @using Radzen
 @using Radzen.Blazor
 
@@ -171,6 +172,13 @@ else
                                 <RadzenButton Text="Add Port Mapping" Icon="add" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => AddPortMappingDraft(setting))" Disabled="@(!DefinedPorts.Any())" />
                             </div>
 
+                            @if (IsPortSetting(setting))
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+                                    Port settings must define one direct primary mapping to an existing revision port. Additional mappings must be related offset or multiplier rules that also point to defined revision ports.
+                                </RadzenAlert>
+                            }
+
                             @if (!DefinedPorts.Any())
                             {
                                 <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
@@ -190,15 +198,23 @@ else
                                         <div class="row g-3 align-items-end">
                                             <div class="col-md-2">
                                                 <RadzenFormField Text="Role" Variant="Variant.Outlined" class="w-100">
-                                                    <RadzenDropDown @bind-Value="mapping.MappingRole" Data="PortMappingRoleOptions" class="w-100" />
+                                                    <RadzenDropDown TValue="string"
+                                                                    Value="@mapping.MappingRole"
+                                                                    ValueChanged="@(value => OnPortMappingRoleChanged(setting, mapping, value))"
+                                                                    Data="@GetPortMappingRoleOptions(setting, mapping)"
+                                                                    class="w-100" />
                                                 </RadzenFormField>
                                             </div>
                                             <div class="col-md-2">
                                                 <RadzenFormField Text="Relation" Variant="Variant.Outlined" class="w-100">
-                                                    <RadzenDropDown @bind-Value="mapping.RelationType" Data="PortRelationTypeOptions" class="w-100" />
+                                                    <RadzenDropDown TValue="string"
+                                                                    Value="@mapping.RelationType"
+                                                                    ValueChanged="@(value => OnPortMappingRelationChanged(setting, mapping, value))"
+                                                                    Data="@GetPortRelationTypeOptions(setting, mapping)"
+                                                                    class="w-100" />
                                                 </RadzenFormField>
                                             </div>
-                                            <div class="col-md-2">
+                                            <div class="col-md-3">
                                                 <RadzenFormField Text="Target Port" Variant="Variant.Outlined" class="w-100">
                                                     <RadzenDropDown TValue="string"
                                                                     Value="@GetSelectedPortTarget(mapping)"
@@ -211,18 +227,16 @@ else
                                             </div>
                                             <div class="col-md-2">
                                                 <RadzenFormField Text="Calculation" Variant="Variant.Outlined" class="w-100">
-                                                    <RadzenNumeric @bind-Value="mapping.CalculationValue" TValue="int?" class="w-100" />
+                                                    <RadzenNumeric @bind-Value="mapping.CalculationValue" TValue="int?" class="w-100" Disabled="@IsPrimaryMapping(mapping)" />
                                                 </RadzenFormField>
                                             </div>
-                                            <div class="col-md-2 text-end">
+                                            <div class="col-md-1 text-end">
                                                 <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemovePortMappingDraft(setting, mapping))" />
                                             </div>
                                             <div class="col-md-8">
-                                                <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                                                    <RadzenTextBox @bind-Value="mapping.Description" class="w-100" />
-                                                </RadzenFormField>
+                                                <div class="small text-muted">@GetPortMappingSummary(setting, mapping)</div>
                                             </div>
-                                            <div class="col-md-4 d-flex align-items-center gap-2 pt-4">
+                                            <div class="col-md-4 d-flex align-items-center gap-2 pt-2">
                                                 <RadzenCheckBox @bind-Value="mapping.IsRequired" TValue="bool" />
                                                 <span>Required mapping</span>
                                             </div>
@@ -493,11 +507,19 @@ else
             return;
         }
 
-        var firstPort = DefinedPorts[0];
+        var primaryMapping = setting.Metadata.PortMappings.FirstOrDefault(IsPrimaryMapping);
+        var firstPort = primaryMapping is null
+            ? DefinedPorts[0]
+            : DefinedPorts.FirstOrDefault(port => port.ContainerPort != primaryMapping.TargetContainerPort || !string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase))
+                ?? DefinedPorts[0];
+
         setting.Metadata.PortMappings.Add(new GameTypeRevisionPortMappingDraft
         {
+            MappingRole = primaryMapping is null ? nameof(GameTypeSettingPortMappingRole.Primary) : nameof(GameTypeSettingPortMappingRole.Related),
+            RelationType = primaryMapping is null ? nameof(GameTypeSettingPortRelationType.Direct) : nameof(GameTypeSettingPortRelationType.Offset),
             TargetContainerPort = firstPort.ContainerPort,
-            TargetProtocol = firstPort.Protocol
+            TargetProtocol = firstPort.Protocol,
+            CalculationValue = primaryMapping is null ? null : firstPort.ContainerPort - primaryMapping.TargetContainerPort
         });
     }
 
@@ -532,7 +554,7 @@ else
     private IReadOnlyList<PortTargetOption> GetPortTargetOptions(GameTypeRevisionPortMappingDraft mapping)
     {
         var options = DefinedPorts
-            .Select(port => new PortTargetOption(GetPortTargetValue(port.ContainerPort, port.Protocol), $"{port.ContainerPort}/{port.Protocol.ToLowerInvariant()}"))
+            .Select(port => new PortTargetOption(GetPortTargetValue(port.ContainerPort, port.Protocol), GetPortTargetLabel(port)))
             .DistinctBy(option => option.Value, StringComparer.OrdinalIgnoreCase)
             .OrderBy(option => option.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -544,6 +566,125 @@ else
         }
 
         return options;
+    }
+
+    private static bool IsPortSetting(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        return string.Equals(setting.Metadata.DataType, "port", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPrimaryMapping(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Primary), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlyList<string> GetPortMappingRoleOptions(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var hasAnotherPrimary = setting.Metadata.PortMappings.Any(existing => !ReferenceEquals(existing, mapping) && IsPrimaryMapping(existing));
+        if (hasAnotherPrimary)
+        {
+            return [nameof(GameTypeSettingPortMappingRole.Related)];
+        }
+
+        return [nameof(GameTypeSettingPortMappingRole.Primary), nameof(GameTypeSettingPortMappingRole.Related)];
+    }
+
+    private static IReadOnlyList<string> GetPortRelationTypeOptions(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        return IsPrimaryMapping(mapping)
+            ? [nameof(GameTypeSettingPortRelationType.Direct)]
+            : [nameof(GameTypeSettingPortRelationType.Offset), nameof(GameTypeSettingPortRelationType.Multiplier)];
+    }
+
+    private static Task OnPortMappingRoleChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        mapping.MappingRole = string.IsNullOrWhiteSpace(value)
+            ? nameof(GameTypeSettingPortMappingRole.Primary)
+            : value;
+
+        if (IsPrimaryMapping(mapping))
+        {
+            mapping.RelationType = nameof(GameTypeSettingPortRelationType.Direct);
+            mapping.CalculationValue = null;
+        }
+        else
+        {
+            if (!string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase))
+            {
+                mapping.RelationType = nameof(GameTypeSettingPortRelationType.Offset);
+            }
+
+            mapping.CalculationValue ??= 0;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task OnPortMappingRelationChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (IsPrimaryMapping(mapping))
+        {
+            mapping.RelationType = nameof(GameTypeSettingPortRelationType.Direct);
+            mapping.CalculationValue = null;
+            return Task.CompletedTask;
+        }
+
+        mapping.RelationType = string.Equals(value, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? nameof(GameTypeSettingPortRelationType.Multiplier)
+            : nameof(GameTypeSettingPortRelationType.Offset);
+        mapping.CalculationValue ??= 0;
+        return Task.CompletedTask;
+    }
+
+    private string GetPortMappingSummary(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var portDescription = GetSelectedPortDescription(mapping);
+        if (IsPrimaryMapping(mapping))
+        {
+            return string.IsNullOrWhiteSpace(portDescription)
+                ? "Primary mappings must directly target a revision port defined in the Ports tab."
+                : $"Primary port description: {portDescription}";
+        }
+
+        var relationSummary = string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? $"Related multiplier value: {mapping.CalculationValue?.ToString() ?? "(required)"}"
+            : $"Related offset value: {mapping.CalculationValue?.ToString() ?? "(required)"}";
+
+        return string.IsNullOrWhiteSpace(portDescription)
+            ? relationSummary
+            : $"{relationSummary} - Port description: {portDescription}";
+    }
+
+    private string? GetSelectedPortDescription(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return DefinedPorts.FirstOrDefault(port => port.ContainerPort == mapping.TargetContainerPort && string.Equals(port.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase))?.Description;
+    }
+
+    private static string GetPortTargetLabel(GameTypeRevisionPortDraft port)
+    {
+        ArgumentNullException.ThrowIfNull(port);
+        return string.IsNullOrWhiteSpace(port.Description)
+            ? GetPortTargetValue(port.ContainerPort, port.Protocol)
+            : $"{GetPortTargetValue(port.ContainerPort, port.Protocol)} - {port.Description}";
     }
 
     private static string? GetSelectedPortTarget(GameTypeRevisionPortMappingDraft mapping)
