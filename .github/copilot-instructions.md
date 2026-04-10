@@ -75,6 +75,7 @@
 - Port validation is a backend service responsibility and should not be stored in V2 database metadata. The backend should validate requested port/protocol combinations for availability across multiple GameServer instances before assigning or changing exposed game ports.
 - Each port mapping should have a single calculation value column interpreted by `RelationType` and `MappingRole`, instead of separate `OffsetValue`, `FixedValue`, and `MultiplierValue` columns.
 - Port DataType settings must require a primary direct port mapping to an existing GameType port, allow only one primary mapping per setting, restrict non-primary mappings to related offset/multiplier mappings, and port mapping descriptions should come from the GameType port description rather than separate mapping descriptions.
+- For V2 setting port mappings, related offset or multiplier mappings should derive their target port from the primary direct mapping's port; the UI should not require a separate target port selector for those mappings, and referenced ports must already exist in the revision ports list.
 
 ### UI Components
 - Move component logic from code-behind into the `.razor` file when possible
