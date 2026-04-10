@@ -173,14 +173,9 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                     throw new ArgumentException($"Setting '{setting.SettingKey}' references missing default related port '{mapping.TargetContainerPort}/{targetPortIdentity.Protocol}'.", nameof(request));
                 }
 
-                if (!isPortSetting)
-                {
-                    continue;
-                }
-
                 var expectedPort = isMultiplier
-                    ? defaultPort * mapping.CalculationValue.Value
-                    : defaultPort + mapping.CalculationValue.Value;
+                    ? primaryMapping.TargetContainerPort * mapping.CalculationValue.Value
+                    : primaryMapping.TargetContainerPort + mapping.CalculationValue.Value;
 
                 if (mapping.TargetContainerPort != expectedPort)
                 {

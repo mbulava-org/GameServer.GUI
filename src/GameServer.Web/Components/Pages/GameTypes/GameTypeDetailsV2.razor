@@ -30,7 +30,7 @@
                 <RadzenButton Text="Save"
                               Icon="save"
                               ButtonStyle="ButtonStyle.Primary"
-                              Click="@SaveAsync"
+                              Click="@SavePageAsync"
                               Disabled="@isSaving" />
             </div>
         </div>
@@ -354,7 +354,7 @@
         Navigation.NavigateTo("/gametypes-v2");
     }
 
-    private async Task SaveAsync()
+    private async Task SavePageAsync()
     {
         if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(gameTypeType))
         {
@@ -365,6 +365,8 @@
         try
         {
             isSaving = true;
+            var wasNewGameType = isNew;
+            var shouldSaveRevision = !wasNewGameType && ShouldSaveRevisionWithPageSave();
 
             var request = new SaveGameTypeRequest
             {
@@ -381,13 +383,27 @@
                 ? await GameTypeApiV2.CreateAsync(request)
                 : await GameTypeApiV2.UpdateAsync(keyValue, request);
 
-            selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
             PopulateForm(gameType);
-            LoadRevisionDraft(CurrentRevision);
+            if (!shouldSaveRevision)
+            {
+                selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
+                LoadRevisionDraft(CurrentRevision);
+                NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
+            }
+            else
+            {
+                var revisionSaved = await SaveRevisionInternalAsync(notifySuccess: false);
+                if (revisionSaved)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType and selected revision saved successfully.");
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Partially saved", "V2 GameType changes were saved, but the selected revision changes were not saved.");
+                }
+            }
 
-            NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
-
-            if (isNew)
+            if (wasNewGameType)
             {
                 Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
             }
@@ -438,17 +454,22 @@
 
     private async Task SaveRevisionAsync()
     {
+        await SaveRevisionInternalAsync(notifySuccess: true);
+    }
+
+    private async Task<bool> SaveRevisionInternalAsync(bool notifySuccess)
+    {
         if (gameType is null || isNew)
         {
             NotificationService.Notify(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
-            return;
+            return false;
         }
 
         var saveIssues = GetRevisionSaveValidationIssues();
         if (saveIssues.Count > 0)
         {
             NotificationService.Notify(NotificationSeverity.Warning, "Validation", saveIssues[0]);
-            return;
+            return false;
         }
 
         try
@@ -505,7 +526,7 @@
                             RelationType = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortRelationType>(mapping.RelationType, true, out var relationType)
                                 ? relationType.ToString()
                                 : GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
-                            TargetContainerPort = mapping.TargetContainerPort,
+                            TargetContainerPort = ResolveTargetContainerPort(setting, mapping),
                             TargetProtocol = mapping.TargetProtocol,
                             CalculationValue = mapping.CalculationValue,
                             IsRequired = mapping.IsRequired,
@@ -530,16 +551,29 @@
                 : await GameTypeApiV2.UpdateRevisionAsync(gameType.Key, editingRevisionId.Value, request);
 
             await ReloadGameTypeAsync(gameType.Key, revision.Id);
-            NotificationService.Notify(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
+            if (notifySuccess)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
+            }
+
+            return true;
         }
         catch (HttpRequestException ex)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Save revision failed", ex.Message);
+            return false;
         }
         finally
         {
             isSavingRevision = false;
         }
+    }
+
+    private bool ShouldSaveRevisionWithPageSave()
+    {
+        return editingRevisionId is not null
+            || selectedRevisionId == UnsavedDraftRevisionSelectionId
+            || HasRevisionDraftContent();
     }
 
     private async Task PublishAndSetCurrentAsync()
@@ -1493,10 +1527,13 @@
 
         foreach (var mapping in setting.Metadata.PortMappings)
         {
-            var targetExists = revisionPorts.Any(x => x.ContainerPort == mapping.TargetContainerPort && string.Equals(x.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+            var resolvedTargetPort = ResolveTargetContainerPort(setting, mapping, primaryMapping);
+            var targetExists = resolvedTargetPort is int resolvedTargetPortValue
+                && revisionPorts.Any(x => x.ContainerPort == resolvedTargetPortValue && string.Equals(x.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
             if (!targetExists)
             {
-                issues.Add($"Setting '{setting.SettingKey}' references missing {GetPortReferenceLabel(mapping)} '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
+                var targetPortLabel = resolvedTargetPort is int resolvedPort ? resolvedPort.ToString() : "(unresolved)";
+                issues.Add($"Setting '{setting.SettingKey}' references missing {GetPortReferenceLabel(mapping)} '{targetPortLabel}/{mapping.TargetProtocol}'.");
             }
 
             if (primaryMapping is null || ReferenceEquals(mapping, primaryMapping))
@@ -1504,7 +1541,7 @@
                 continue;
             }
 
-            ValidateRelatedPortMapping(setting, mapping, isPortSetting, issues);
+            ValidateRelatedPortMapping(setting, mapping, primaryMapping, issues);
         }
 
         return issues;
@@ -1532,10 +1569,11 @@
         }
     }
 
-    private static void ValidateRelatedPortMapping(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, bool isPortSetting, List<string> issues)
+    private static void ValidateRelatedPortMapping(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, GameTypeRevisionPortMappingDraft primaryMapping, List<string> issues)
     {
         ArgumentNullException.ThrowIfNull(setting);
         ArgumentNullException.ThrowIfNull(mapping);
+        ArgumentNullException.ThrowIfNull(primaryMapping);
         ArgumentNullException.ThrowIfNull(issues);
 
         if (!string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase))
@@ -1552,23 +1590,32 @@
 
         if (!mapping.CalculationValue.HasValue)
         {
-            issues.Add($"Setting '{setting.SettingKey}' must define a calculation value for related mapping '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.");
+            issues.Add($"Setting '{setting.SettingKey}' must define a calculation value for related mapping '{mapping.TargetProtocol}'.");
             return;
         }
+    }
 
-        if (!isPortSetting || !int.TryParse(setting.DefaultValue, out var defaultPort) || defaultPort <= 0)
+    private static int? ResolveTargetContainerPort(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, GameTypeRevisionPortMappingDraft? primaryMapping = null)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)))
         {
-            return;
+            primaryMapping ??= setting.Metadata.PortMappings.FirstOrDefault(existing => string.Equals(existing.MappingRole, nameof(GameTypeSettingPortMappingRole.Primary), StringComparison.OrdinalIgnoreCase));
+            if (primaryMapping is not null && primaryMapping.TargetContainerPort > 0 && mapping.CalculationValue.HasValue)
+            {
+                return string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+                    ? primaryMapping.TargetContainerPort * mapping.CalculationValue.Value
+                    : primaryMapping.TargetContainerPort + mapping.CalculationValue.Value;
+            }
+
+            return null;
         }
 
-        var expectedPort = isMultiplier
-            ? defaultPort * mapping.CalculationValue.Value
-            : defaultPort + mapping.CalculationValue.Value;
-
-        if (mapping.TargetContainerPort != expectedPort)
-        {
-            issues.Add($"Setting '{setting.SettingKey}' has default related port '{mapping.TargetContainerPort}/{mapping.TargetProtocol}' that does not match the calculated port '{expectedPort}/{mapping.TargetProtocol}'.");
-        }
+        return mapping.TargetContainerPort;
     }
 
     private static string GetPortReferenceLabel(GameTypeRevisionPortMappingDraft mapping)

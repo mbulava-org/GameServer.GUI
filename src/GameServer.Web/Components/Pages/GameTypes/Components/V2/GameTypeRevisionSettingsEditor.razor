@@ -214,20 +214,47 @@ else
                                                                     class="w-100" />
                                                 </RadzenFormField>
                                             </div>
-                                            <div class="col-md-3">
-                                                <RadzenFormField Text="@GetPortTargetFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
-                                                    <RadzenDropDown TValue="string"
-                                                                    Value="@GetSelectedPortTarget(mapping)"
-                                                                    ValueChanged="@(value => OnPortTargetChanged(mapping, value))"
-                                                                    Data="@GetPortTargetOptions(mapping)"
-                                                                    TextProperty="Label"
-                                                                    ValueProperty="Value"
-                                                                    class="w-100" />
-                                                </RadzenFormField>
-                                            </div>
+                                            @if (UsesCalculatedTarget(setting, mapping))
+                                            {
+                                                <div class="col-md-2">
+                                                    <RadzenFormField Text="Calculated Port" Variant="Variant.Outlined" class="w-100">
+                                                        <RadzenNumeric TValue="int?"
+                                                                       Value="@GetResolvedTargetContainerPort(setting, mapping)"
+                                                                       Disabled="true"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <RadzenFormField Text="Protocol" Variant="Variant.Outlined" class="w-100">
+                                                        <RadzenDropDown TValue="string"
+                                                                        Value="@mapping.TargetProtocol"
+                                                                        ValueChanged="@(value => OnRelatedPortProtocolChanged(setting, mapping, value))"
+                                                                        Data="@GetRelatedProtocolOptions(setting, mapping)"
+                                                                        class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="col-md-3">
+                                                    <RadzenFormField Text="@GetPortTargetFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
+                                                        <RadzenDropDown TValue="string"
+                                                                        Value="@GetSelectedPortTarget(mapping)"
+                                                                        ValueChanged="@(value => OnPortTargetChanged(setting, mapping, value))"
+                                                                        Data="@GetPortTargetOptions(mapping)"
+                                                                        TextProperty="Label"
+                                                                        ValueProperty="Value"
+                                                                        class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                            }
                                             <div class="col-md-2">
                                                 <RadzenFormField Text="@GetCalculationFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
-                                                    <RadzenNumeric @bind-Value="mapping.CalculationValue" TValue="int?" class="w-100" Disabled="@IsPrimaryMapping(mapping)" />
+                                                    <RadzenNumeric TValue="int?"
+                                                                   Value="@mapping.CalculationValue"
+                                                                   ValueChanged="@(value => OnCalculationValueChanged(setting, mapping, value))"
+                                                                   class="w-100"
+                                                                   Disabled="@IsPrimaryMapping(mapping)" />
                                                 </RadzenFormField>
                                             </div>
                                             <div class="col-md-1 text-end">
@@ -457,6 +484,11 @@ else
 
     protected override void OnParametersSet()
     {
+        foreach (var setting in Settings)
+        {
+            SyncRelatedMappings(setting);
+        }
+
         if (SelectedSetting is null)
         {
             selectedSettingDraftId = Settings.FirstOrDefault()?.DraftId;
@@ -513,14 +545,17 @@ else
             : DefinedPorts.FirstOrDefault(port => port.ContainerPort != primaryMapping.TargetContainerPort || !string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase))
                 ?? DefinedPorts[0];
 
-        setting.Metadata.PortMappings.Add(new GameTypeRevisionPortMappingDraft
+        var mapping = new GameTypeRevisionPortMappingDraft
         {
             MappingRole = primaryMapping is null ? nameof(GameTypeSettingPortMappingRole.Primary) : nameof(GameTypeSettingPortMappingRole.Related),
             RelationType = primaryMapping is null ? nameof(GameTypeSettingPortRelationType.Direct) : nameof(GameTypeSettingPortRelationType.Offset),
             TargetContainerPort = firstPort.ContainerPort,
             TargetProtocol = firstPort.Protocol,
             CalculationValue = primaryMapping is null ? null : firstPort.ContainerPort - primaryMapping.TargetContainerPort
-        });
+        };
+
+        setting.Metadata.PortMappings.Add(mapping);
+        SyncRelatedMappings(setting);
     }
 
     private void RemovePortMappingDraft(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
@@ -604,7 +639,7 @@ else
             : [nameof(GameTypeSettingPortRelationType.Offset), nameof(GameTypeSettingPortRelationType.Multiplier)];
     }
 
-    private static Task OnPortMappingRoleChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    private Task OnPortMappingRoleChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
     {
         ArgumentNullException.ThrowIfNull(setting);
         ArgumentNullException.ThrowIfNull(mapping);
@@ -629,10 +664,11 @@ else
             mapping.CalculationValue ??= 0;
         }
 
+        SyncRelatedMappings(setting);
         return Task.CompletedTask;
     }
 
-    private static Task OnPortMappingRelationChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    private Task OnPortMappingRelationChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
     {
         ArgumentNullException.ThrowIfNull(setting);
         ArgumentNullException.ThrowIfNull(mapping);
@@ -648,6 +684,17 @@ else
             ? nameof(GameTypeSettingPortRelationType.Multiplier)
             : nameof(GameTypeSettingPortRelationType.Offset);
         mapping.CalculationValue ??= 0;
+        SyncRelatedMappings(setting);
+        return Task.CompletedTask;
+    }
+
+    private Task OnCalculationValueChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, int? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        mapping.CalculationValue = value;
+        SyncRelatedMappingTarget(setting, mapping);
         return Task.CompletedTask;
     }
 
@@ -664,9 +711,15 @@ else
                 : $"Primary port description: {portDescription}";
         }
 
+        var resolvedTarget = GetResolvedTargetContainerPort(setting, mapping);
         var relationSummary = string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
             ? $"Related multiplier value: {mapping.CalculationValue?.ToString() ?? "(required)"}"
             : $"Related offset value: {mapping.CalculationValue?.ToString() ?? "(required)"}";
+
+        if (resolvedTarget.HasValue)
+        {
+            relationSummary = $"{relationSummary} - Calculates {resolvedTarget.Value}/{mapping.TargetProtocol}";
+        }
 
         return string.IsNullOrWhiteSpace(portDescription)
             ? relationSummary
@@ -698,6 +751,65 @@ else
         return DefinedPorts.FirstOrDefault(port => port.ContainerPort == mapping.TargetContainerPort && string.Equals(port.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase))?.Description;
     }
 
+    private static bool UsesCalculatedTarget(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+        return !IsPrimaryMapping(mapping)
+            && (string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private int? GetResolvedTargetContainerPort(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (!UsesCalculatedTarget(setting, mapping))
+        {
+            return mapping.TargetContainerPort > 0 ? mapping.TargetContainerPort : null;
+        }
+
+        var primaryMapping = setting.Metadata.PortMappings.FirstOrDefault(IsPrimaryMapping);
+        if (primaryMapping is null || primaryMapping.TargetContainerPort <= 0 || !mapping.CalculationValue.HasValue)
+        {
+            return null;
+        }
+
+        return string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? primaryMapping.TargetContainerPort * mapping.CalculationValue.Value
+            : primaryMapping.TargetContainerPort + mapping.CalculationValue.Value;
+    }
+
+    private IReadOnlyList<string> GetRelatedProtocolOptions(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var resolvedTargetPort = GetResolvedTargetContainerPort(setting, mapping);
+        if (!resolvedTargetPort.HasValue)
+        {
+            return string.IsNullOrWhiteSpace(mapping.TargetProtocol)
+                ? ProtocolOptions
+                : [mapping.TargetProtocol];
+        }
+
+        var options = DefinedPorts
+            .Where(port => port.ContainerPort == resolvedTargetPort.Value)
+            .Select(port => port.Protocol)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(protocol => protocol, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(mapping.TargetProtocol)
+            && options.All(protocol => !string.Equals(protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase)))
+        {
+            options.Insert(0, mapping.TargetProtocol);
+        }
+
+        return options;
+    }
+
     private static string GetPortTargetLabel(GameTypeRevisionPortDraft port)
     {
         ArgumentNullException.ThrowIfNull(port);
@@ -721,8 +833,11 @@ else
         return $"{containerPort}/{protocol.ToLowerInvariant()}";
     }
 
-    private static Task OnPortTargetChanged(GameTypeRevisionPortMappingDraft mapping, string? value)
+    private Task OnPortTargetChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
     {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
         if (string.IsNullOrWhiteSpace(value))
         {
             return Task.CompletedTask;
@@ -741,7 +856,59 @@ else
 
         mapping.TargetContainerPort = port;
         mapping.TargetProtocol = value[(separatorIndex + 1)..];
+        SyncRelatedMappings(setting);
         return Task.CompletedTask;
+    }
+
+    private Task OnRelatedPortProtocolChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            mapping.TargetProtocol = value;
+        }
+
+        SyncRelatedMappingTarget(setting, mapping);
+        return Task.CompletedTask;
+    }
+
+    private void SyncRelatedMappings(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        foreach (var mapping in setting.Metadata.PortMappings)
+        {
+            SyncRelatedMappingTarget(setting, mapping);
+        }
+    }
+
+    private void SyncRelatedMappingTarget(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var resolvedTargetPort = GetResolvedTargetContainerPort(setting, mapping);
+        if (!resolvedTargetPort.HasValue)
+        {
+            return;
+        }
+
+        mapping.TargetContainerPort = resolvedTargetPort.Value;
+
+        var availableProtocols = DefinedPorts
+            .Where(port => port.ContainerPort == resolvedTargetPort.Value)
+            .Select(port => port.Protocol)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(protocol => protocol, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (availableProtocols.Count > 0
+            && availableProtocols.All(protocol => !string.Equals(protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase)))
+        {
+            mapping.TargetProtocol = availableProtocols[0];
+        }
     }
 
     private static void MoveItem<T>(List<T> items, T item, int delta)
