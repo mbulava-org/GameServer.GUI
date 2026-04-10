@@ -158,7 +158,6 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
                                 TargetContainerPort = pm.TargetContainerPort,
                                 TargetProtocol = pm.TargetProtocol,
                                 CalculationValue = pm.CalculationValue,
-                                Description = pm.Description,
                                 IsRequired = pm.IsRequired,
                                 DisplayOrder = pm.DisplayOrder
                             })

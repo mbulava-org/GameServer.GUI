@@ -7,7 +7,7 @@ public sealed class V2DatabaseOptions
 {
     public const string SectionName = "V2Database";
 
-    public string Provider { get; set; } = "Sqlite";
+    public string Provider { get; set; } = "PostgreSql";
 
-    public string? ConnectionStringName { get; set; } = "GameServerV2Db";
+    public string? ConnectionStringName { get; set; } = "GameServerV2PostgresDb";
 }

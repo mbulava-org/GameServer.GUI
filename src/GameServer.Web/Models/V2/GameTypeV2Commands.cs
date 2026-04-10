@@ -123,8 +123,6 @@ public sealed record DetectedSettingPortMapping
 
     public int? CalculationValue { get; init; }
 
-    public string? Description { get; init; }
-
     public bool IsRequired { get; init; }
 }
 

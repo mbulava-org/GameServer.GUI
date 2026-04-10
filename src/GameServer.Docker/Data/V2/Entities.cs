@@ -198,8 +198,6 @@ public class GameTypeSettingPortMappingEntity
 
     public int? CalculationValue { get; set; }
 
-    public string? Description { get; set; }
-
     public bool IsRequired { get; set; } = true;
 
     public int DisplayOrder { get; set; }

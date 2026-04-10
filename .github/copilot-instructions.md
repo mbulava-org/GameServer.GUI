@@ -44,6 +44,7 @@
 - You may directly adjust the proposed database schema in documentation, including field renames, removals, and repurposings; follow the latest edited schema rather than earlier drafts.
 - For this project, new V2 DbContext work should follow the same pattern as the existing DbContext so automatic client generation is not disrupted.
 - For this project, V2 repository initialization should follow the same pattern as the legacy repository's `InitializeDatabaseAsync` behavior unless intentionally diverging.
+- For V2 database work, prefer adding PostgreSQL support through a dedicated PostgreSQL database project and use pgPacTool/postgresPacTools to deploy schema and database object changes instead of ad hoc schema deployment.
 
 ### Docker & Swarm
 - **NEVER** connect directly to `IDockerClient` from SignalR Hubs for container operations

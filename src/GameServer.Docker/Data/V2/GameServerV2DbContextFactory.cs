@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using MySql.Data.MySqlClient;
+using Npgsql;
 using System.Reflection;
 
 namespace GameServer.Docker.Data.V2;
@@ -17,7 +18,7 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
         var connectionString = ResolveArgument(args, "--connection") ?? "Data Source=:memory:";
 
         // Use a temporary in-memory SQLite database by default for design-time operations.
-        // MySQL can still be selected explicitly through arguments when needed.
+        // PostgreSQL and MySQL can still be selected explicitly through arguments when needed.
         ConfigureProvider(optionsBuilder, provider, connectionString);
         return new GameServerV2DbContext(optionsBuilder.Options);
     }
@@ -53,8 +54,13 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
                 ConfigureMySqlProvider(optionsBuilder, connectionString);
                 break;
 
+            case "postgres":
+            case "postgresql":
+                ConfigurePostgreSqlProvider(optionsBuilder, connectionString);
+                break;
+
             default:
-                throw new NotSupportedException($"Unsupported V2 database provider '{provider}'. Supported providers: sqlite, mysql.");
+                throw new NotSupportedException($"Unsupported V2 database provider '{provider}'. Supported providers: sqlite, mysql, postgresql.");
         }
     }
 
@@ -84,6 +90,26 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorNumbersToAdd: null);
+        });
+    }
+
+    private static void ConfigurePostgreSqlProvider(DbContextOptionsBuilder optionsBuilder, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+        var postgreSqlConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Pooling = true,
+            Timeout = 30,
+            CommandTimeout = 30
+        }.ConnectionString;
+
+        optionsBuilder.UseNpgsql(postgreSqlConnectionString, options =>
+        {
+            options.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorCodesToAdd: null);
         });
     }
 

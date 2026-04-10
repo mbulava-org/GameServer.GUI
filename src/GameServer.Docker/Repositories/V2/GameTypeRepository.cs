@@ -11,6 +11,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
     : IGameTypeRepository
 {
     private const string InitialV2MigrationId = "20260404190753_RefactorV2GameTypeTypeAndRevisionImageReference";
+    private const string PostgreSqlV2SchemaName = "core";
 
     /// <summary>
     /// Initialize the V2 database using the same startup pattern as the legacy repository.
@@ -21,6 +22,12 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
 
         try
         {
+            if (context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await InitializePostgreSqlDatabaseAsync().ConfigureAwait(false);
+                return;
+            }
+
             var migrationsAssembly = context.GetService<IMigrationsAssembly>();
             if (migrationsAssembly.Migrations.Any())
             {
@@ -41,16 +48,15 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             else
             {
                 logger.LogInformation("No V2 migrations found. Ensuring the V2 database schema is created...");
-                var created = await context.Database.EnsureCreatedAsync();
+                var created = await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
                 if (created)
                 {
                     logger.LogInformation("V2 database schema ensured successfully");
                 }
                 else
                 {
-                    logger.LogInformation("database schema already exists");
+                    logger.LogInformation("V2 database schema already exists");
                 }
-
             }
 
             var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
@@ -68,6 +74,29 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             logger.LogError(ex, "Error initializing V2 database");
             throw;
         }
+    }
+
+    private async Task InitializePostgreSqlDatabaseAsync()
+    {
+        if (!await context.Database.CanConnectAsync().ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Unable to connect to the configured V2 PostgreSQL database.");
+        }
+
+        if (!await PostgreSqlTableExistsAsync("GameTypes").ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("The V2 PostgreSQL schema has not been deployed. Use the pgPacTool database project and `scripts/Deploy-V2PostgresDatabase.ps1` (or `dotnet tool run pgpac publish`) before starting the application.");
+        }
+
+        var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
+        if (!hasGameTypes)
+        {
+            logger.LogInformation("V2 PostgreSQL database initialized. No game types found.");
+            return;
+        }
+
+        var count = await context.GameTypes.CountAsync().ConfigureAwait(false);
+        logger.LogInformation("V2 PostgreSQL database initialized. Found {Count} game types.", count);
     }
 
     private async Task PrepareDatabaseForMigrationsAsync()
@@ -231,6 +260,29 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         nameParameter.ParameterName = "$name";
         nameParameter.Value = objectName;
         command.Parameters.Add(nameParameter);
+
+        if (command.Connection?.State != System.Data.ConnectionState.Open)
+        {
+            await command.Connection!.OpenAsync().ConfigureAwait(false);
+        }
+
+        return await command.ExecuteScalarAsync().ConfigureAwait(false) is not null;
+    }
+
+    private async Task<bool> PostgreSqlTableExistsAsync(string tableName)
+    {
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT 1 FROM information_schema.tables WHERE table_schema = @schemaName AND table_name = @tableName LIMIT 1;";
+
+        var schemaParameter = command.CreateParameter();
+        schemaParameter.ParameterName = "@schemaName";
+        schemaParameter.Value = PostgreSqlV2SchemaName;
+        command.Parameters.Add(schemaParameter);
+
+        var tableParameter = command.CreateParameter();
+        tableParameter.ParameterName = "@tableName";
+        tableParameter.Value = tableName;
+        command.Parameters.Add(tableParameter);
 
         if (command.Connection?.State != System.Data.ConnectionState.Open)
         {
@@ -479,7 +531,6 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                     TargetContainerPort = pm.TargetContainerPort,
                     TargetProtocol = pm.TargetProtocol,
                     CalculationValue = pm.CalculationValue,
-                    Description = pm.Description,
                     IsRequired = pm.IsRequired,
                     DisplayOrder = pm.DisplayOrder
                 }).ToList()
@@ -671,7 +722,6 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                         TargetContainerPort = pr.TargetContainerPort,
                         TargetProtocol = pr.TargetProtocol,
                         CalculationValue = pr.CalculationValue,
-                        Description = pr.Description,
                         IsRequired = pr.IsRequired,
                         DisplayOrder = pr.DisplayOrder
                     }).ToList()
@@ -743,7 +793,6 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                         TargetContainerPort = pr.TargetContainerPort,
                         TargetProtocol = pr.TargetProtocol,
                         CalculationValue = pr.CalculationValue,
-                        Description = pr.Description,
                         IsRequired = pr.IsRequired,
                         DisplayOrder = pr.DisplayOrder
                     }).ToList()
@@ -785,3 +834,4 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         }
     }
 }
+

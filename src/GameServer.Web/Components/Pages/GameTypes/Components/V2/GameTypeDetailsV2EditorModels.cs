@@ -93,8 +93,6 @@ public sealed class GameTypeRevisionPortMappingDraft
 
     public int? CalculationValue { get; set; }
 
-    public string? Description { get; set; }
-
     public bool IsRequired { get; set; }
 }
 

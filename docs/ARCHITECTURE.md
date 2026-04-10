@@ -164,7 +164,8 @@ public class MyHub : Hub
 **Persistence:**
 - Legacy `GameServerDbContext` remains in place for the current API and automatic client generation path.
 - `GameServerV2DbContext` is a separate new implementation in the `V2` namespace.
-- V2 provider selection is configuration-driven and supports either SQLite or MySQL.
+- V2 provider selection is configuration-driven and supports SQLite, PostgreSQL, and MySQL.
+- PostgreSQL is the default and preferred V2 datastore and is modeled through the dedicated `GameServer.DB.PostgreSql` database project plus `pgpac` deployment tooling.
 - The V2 schema is normalized around:
   - `GameType` owning a fixed `ImageReference`
   - `GameTypeRevision` owning version-tagged deployable templates

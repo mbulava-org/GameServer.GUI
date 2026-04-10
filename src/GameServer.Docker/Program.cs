@@ -213,12 +213,19 @@ namespace GameServer.Docker
                 {
                     var v2Options = serviceProvider.GetRequiredService<IOptions<Configurations.V2DatabaseOptions>>().Value;
                     var provider = v2Options.Provider;
+                    var defaultConnectionName = provider.Trim().ToLowerInvariant() switch
+                    {
+                        "postgres" or "postgresql" => "GameServerV2PostgresDb",
+                        "mysql" => "GameServerV2MySqlDb",
+                        _ => "GameServerV2Db"
+                    };
                     var connectionName = string.IsNullOrWhiteSpace(v2Options.ConnectionStringName)
-                        ? "GameServerV2Db"
+                        ? defaultConnectionName
                         : v2Options.ConnectionStringName;
 
                     var v2ConnectionString = builder.Configuration.GetConnectionString(connectionName)
-                        ?? builder.Configuration.GetConnectionString("GameServerDb")
+                        ?? builder.Configuration.GetConnectionString(defaultConnectionName)
+                        ?? builder.Configuration.GetConnectionString("GameServerV2Db")
                         ?? "Data Source=./data/gameserver-v2.db";
 
                     DataV2.GameServerV2DbContextFactory.ConfigureProvider(

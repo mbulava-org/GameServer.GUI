@@ -46,6 +46,12 @@ public class GameServerV2DbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         var isMySql = Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true;
+        var isPostgreSql = Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (isPostgreSql)
+        {
+            modelBuilder.HasDefaultSchema("core");
+        }
 
         modelBuilder.Entity<GameTypeEntity>(entity =>
         {

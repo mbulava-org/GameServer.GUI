@@ -1,6 +1,6 @@
 # V2 Database Diagram
 
-This diagram reflects the intended V2 database layout described in `docs/DATABASE-REORGANIZATION-PROPOSAL.md`.
+This diagram reflects the current V2 persistence structures implemented in `src/GameServer.Docker/Data/V2/Entities.cs` and mirrored by the PostgreSQL project in `src/GameServer.DB.PostgreSql`.
 
 ## Entity Relationship Diagram
 
@@ -11,7 +11,7 @@ erDiagram
         string Key UK
         string DisplayName
         string Description
-        string ImageReference
+        string Type
         string ThumbnailUrl
         string DocumentationUrl
         bool IsActive
@@ -24,6 +24,7 @@ erDiagram
         int Id PK
         int GameTypeId FK
         string VersionTag
+        string ImageReference
         string ImageDigest
         bool EnableTTY
         string Notes
@@ -78,12 +79,11 @@ erDiagram
     GameTypeSettingPortMappings {
         int Id PK
         int GameTypeSettingMetadataId FK
-        string MappingRole
+        int MappingRole
         int RelationType
         int TargetContainerPort
         string TargetProtocol
         int CalculationValue
-        string Description
         bool IsRequired
         int DisplayOrder
     }
@@ -136,6 +136,48 @@ erDiagram
     
 ```
 
+## V2 Deployment Flow Diagram
+
+```mermaid
+flowchart TD
+    GT[GameType<br/>Catalog identity<br/>Type, display metadata] --> REV[GameTypeRevision<br/>Deployable template<br/>ImageReference, VersionTag]
+
+    REV --> PORTS[GameTypePorts<br/>Declared container ports]
+    REV --> VOLUMES[GameTypeVolumes<br/>Declared storage bindings]
+    REV --> SETTINGS[GameTypeSettingDefinitions<br/>Default setting definitions]
+    REV --> WEBHOSTS[GameTypeWebHosts<br/>Declared web endpoints]
+
+    SETTINGS --> META[GameTypeSettingMetadata<br/>UI + validation metadata]
+    META --> PMAPS[GameTypeSettingPortMappings<br/>Primary direct + related rules]
+
+    REV --> GS[GameServer<br/>Deployment intent<br/>References GameTypeRevisionId]
+    GS --> GSS[GameServerSettings<br/>Per-server overrides]
+
+    PORTS -. derived at deployment .-> RESOLVEDPORTS[Resolved published ports<br/>Not persisted in V2]
+    VOLUMES -. derived at deployment .-> RESOLVEDVOLUMES[Resolved volume mounts<br/>Not persisted in V2]
+    WEBHOSTS -. resolved with settings .-> RESOLVEDWEB[Resolved web hosts<br/>Not persisted in V2]
+    GSS -. influences .-> RESOLVEDPORTS
+    GSS -. influences .-> RESOLVEDWEB
+    PMAPS -. drives .-> RESOLVEDPORTS
+
+    RESOLVEDPORTS --> SWARM[Primary Service deployment<br/>Docker Swarm service update]
+    RESOLVEDVOLUMES --> SWARM
+    RESOLVEDWEB --> SWARM
+
+    class GT,REV,PORTS,VOLUMES,SETTINGS,WEBHOSTS,META,PMAPS,GS,GSS persisted
+    class RESOLVEDPORTS,RESOLVEDVOLUMES,RESOLVEDWEB derived
+    class SWARM deployment
+
+    classDef persisted fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#111827
+    classDef derived fill:#dcfce7,stroke:#16a34a,stroke-width:1px,color:#111827
+    classDef deployment fill:#fef3c7,stroke:#d97706,stroke-width:1px,color:#111827
+```
+
+Legend:
+- Blue = persisted V2 tables
+- Green = deployment-time derived state
+- Amber = deployment output / orchestration target
+
 ## Table Definitions
 
 ### `GameTypes`
@@ -146,7 +188,7 @@ erDiagram
 | `Key` | `string` | Not Null | Unique | Stable logical identifier such as `minecraft` or `valheim`. |
 | `DisplayName` | `string` | Not Null |  | User-facing name shown in editors and selection UIs. |
 | `Description` | `string` | Nullable |  | Human-readable summary of the game type. |
-| `ImageReference` | `string` | Not Null |  | Fixed Docker image reference for this game type; changing this should create a new `GameType` instead of mutating an existing one. |
+| `Type` | `string` | Not Null |  | Catalog/provider type, currently expected to be values such as `docker`. |
 | `ThumbnailUrl` | `string` | Nullable |  | Optional image used for catalog display in the UI. |
 | `DocumentationUrl` | `string` | Nullable |  | Optional reference to image or game setup documentation. |
 | `IsActive` | `bool` | Not Null |  | Indicates whether the game type should be available for new server creation. |
@@ -159,8 +201,9 @@ erDiagram
 | Column | Data Type | Nullability | Key / Constraint | Description |
 |---|---|---|---|---|
 | `Id` | `int` | Not Null | Primary Key | Internal identifier for the frozen deployable revision. |
-| `GameTypeId` | `int` | Not Null | Foreign Key -> `GameTypes.Id` | Associates the revision to the fixed-image game type it belongs to. |
-| `VersionTag` | `string` | Not Null | Unique with `GameTypeId` | Docker image tag represented by this revision for the parent `GameType.ImageReference`. |
+| `GameTypeId` | `int` | Not Null | Foreign Key -> `GameTypes.Id` | Associates the revision to the parent game type it belongs to. |
+| `VersionTag` | `string` | Not Null | Unique with `GameTypeId` + `ImageReference` | Docker image tag represented by this revision. |
+| `ImageReference` | `string` | Not Null | Unique with `GameTypeId` + `VersionTag` | Deployable Docker image reference owned by the revision rather than by `GameTypes`. |
 | `ImageDigest` | `string` | Nullable |  | Optional digest captured for the tagged image when the revision was created or published. |
 | `EnableTTY` | `bool` | Not Null |  | Indicates whether the deployed service should enable TTY for this revision. |
 | `Notes` | `string` | Nullable |  | Optional release or authoring notes describing what changed in this revision. |
@@ -207,7 +250,7 @@ erDiagram
 |---|---|---|---|---|
 | `Id` | `int` | Not Null | Primary Key | Internal identifier for the setting metadata row. |
 | `GameTypeSettingDefinitionId` | `int` | Not Null | Foreign Key -> `GameTypeSettingDefinitions.Id`; Unique | One-to-one metadata row describing how a setting should be rendered and interpreted. |
-| `DataType` | `string` | Not Null |  | Semantic type used by the UI and backend interpretation, such as `string`, `number`, `boolean`, `enum`, `port`, `list`, or `timezone`. |
+| `DataType` | `string` | Nullable |  | Semantic type used by the UI and backend interpretation, commonly `string`, `number`, `boolean`, `enum`, or `port`. |
 | `Category` | `string` | Nullable |  | Optional UI grouping label used to organize settings in editors. |
 | `IsRequired` | `bool` | Not Null |  | Indicates whether the setting must be provided before deployment. |
 | `CannotBeEmpty` | `bool` | Not Null |  | Indicates whether the setting may be present but blank. |
@@ -225,12 +268,11 @@ erDiagram
 |---|---|---|---|---|
 | `Id` | `int` | Not Null | Primary Key | Internal identifier for the port mapping rule. |
 | `GameTypeSettingMetadataId` | `int` | Not Null | Foreign Key -> `GameTypeSettingMetadata.Id` | Associates the mapping rule with the port-type setting metadata that owns it. |
-| `MappingRole` | `string` or `int` | Not Null |  | Distinguishes the primary mapping from related mappings generated from the same setting. |
-| `RelationType` | `string` or `int` | Not Null |  | Defines how the target port is derived, such as direct, offset, fixed, or multiplier. |
-| `TargetContainerPort` | `int` | Not Null |  | Container port definition that this mapping rule controls or derives. |
+| `MappingRole` | `int` | Not Null | Check constraint | Enum-backed role where `0 = Primary` and `1 = Related`. |
+| `RelationType` | `int` | Not Null | Check constraint | Enum-backed relation where `0 = Direct`, `1 = Offset`, `2 = Fixed`, `3 = Multiplier`. |
+| `TargetContainerPort` | `int` | Not Null |  | For primary mappings, the direct target GameType port; for related mappings, the default related GameType port that must match the relation calculation. |
 | `TargetProtocol` | `string` | Not Null |  | Protocol associated with the target container port. |
-| `CalculationValue` | `int` | Nullable |  | Single calculation operand interpreted according to `RelationType` and `MappingRole`. |
-| `Description` | `string` | Nullable |  | Human-readable summary of what the derived or primary mapping is intended to represent. |
+| `CalculationValue` | `int` | Nullable |  | Single calculation operand interpreted according to `RelationType` and `MappingRole`; used by related mappings. |
 | `IsRequired` | `bool` | Not Null |  | Indicates whether this derived mapping must exist for the setting to be considered valid. |
 | `DisplayOrder` | `int` | Not Null |  | UI ordering for displaying related mappings. |
 
@@ -277,15 +319,18 @@ erDiagram
 ## Notes
 
 - `GameTypes` is the logical catalog root.
-- `GameTypes` owns the fixed Docker image reference for the game type.
-- `GameTypeRevisions` is the frozen deployable template for a specific image tag of that fixed Docker image.
+- `GameTypes` stores catalog identity and high-level type metadata.
+- `GameTypeRevisions` is the frozen deployable template and owns both `ImageReference` and `VersionTag`.
 - `GameServers` stores deployment intent, not full runtime state.
 - `GameServers` references `GameTypeRevisionId` and should derive game type and image details through that revision instead of duplicating them.
 - Web Host state should be derived from `GameTypeWebHosts` plus `GameServerSettings`, not stored separately in V2.
 - `GameTypeSettingPortMappings` stores both primary and related port rules for a setting.
+- Primary port mappings are direct mappings to declared `GameTypePorts`; related mappings represent default related port/protocol combinations plus a relation calculation.
+- Port mapping descriptions are not persisted in V2; the UI should display the linked `GameTypePorts.Description` instead.
 - `CalculationValue` is interpreted according to `RelationType`, instead of using separate offset/fixed/multiplier columns.
 - `GameServerPorts`, `GameServerVolumes`, and runtime snapshot tables are intentionally excluded from V2.
-- if a different Docker image is needed for the same conceptual game, a new `GameType` should be created instead of changing the image on an existing one.
+- `CurrentRevisionId` is an optional selector on `GameTypes` and is not currently expressed as a physical foreign key in the PostgreSQL project.
+- Runtime deployment state such as resolved ports, resolved volume bindings, and resolved web hosts is computed from revision definitions plus `GameServerSettings` instead of being persisted in dedicated V2 tables.
 
 ## Key constraints
 
@@ -294,3 +339,4 @@ erDiagram
 - Each `GameTypeRevision` should have exactly one `GameTypePorts` row where `AdvertisedPort = true`.
 - `GameTypeSettingDefinitions` should be unique per `GameTypeRevisionId + SettingKey`.
 - `GameServerSettings` should be unique per `GameServerId + SettingKey`.
+

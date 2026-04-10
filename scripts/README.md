@@ -4,7 +4,24 @@ Scripts to synchronize GameTypes and their extended metadata between two GameSer
 
 ## Scripts Available
 
-### 1. PowerShell Script (Recommended)
+### 1. PostgreSQL V2 Schema Deployment
+**File**: `Deploy-V2PostgresDatabase.ps1`
+
+Build only:
+
+```powershell
+.\scripts\Deploy-V2PostgresDatabase.ps1
+```
+
+Build and publish to PostgreSQL:
+
+```powershell
+.\scripts\Deploy-V2PostgresDatabase.ps1 -TargetConnectionString "Host=localhost;Database=gameserver-v2;Username=postgres;Password=postgres"
+```
+
+This script restores the local `pgpac` tool, builds `src/GameServer.DB.PostgreSql`, and optionally publishes the generated `.pgpac` package to the target PostgreSQL database.
+
+### 2. PowerShell Script (Recommended)
 **File**: `Sync-GameTypes.ps1`
 
 **Usage**:
@@ -16,7 +33,7 @@ Scripts to synchronize GameTypes and their extended metadata between two GameSer
 .\scripts\Sync-GameTypes.ps1 -SourceBaseUrl "http://192.168.10.50:5164" -TargetBaseUrl "http://192.168.10.50:5163"
 ```
 
-### 2. C# Script (dotnet-script)
+### 3. C# Script (dotnet-script)
 **File**: `SyncGameTypes.csx`
 
 **Prerequisites**:

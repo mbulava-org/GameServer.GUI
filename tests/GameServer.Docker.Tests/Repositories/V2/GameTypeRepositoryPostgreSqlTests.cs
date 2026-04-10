@@ -1,0 +1,58 @@
+using GameServer.Docker.Data.V2;
+using GameServer.Docker.Repositories.V2;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Moq;
+using Testcontainers.PostgreSql;
+
+namespace GameServer.Docker.Tests.Repositories.V2;
+
+public class GameTypeRepositoryPostgreSqlTests : IAsyncLifetime
+{
+    private PostgreSqlContainer? _container;
+    private GameServerV2DbContext? _context;
+    private GameTypeRepository? _repository;
+
+    public async Task InitializeAsync()
+    {
+        _container = new PostgreSqlBuilder()
+            .WithImage("postgres:17")
+            .WithDatabase($"gameserver_v2_{Guid.NewGuid():N}")
+            .WithUsername("gameserver")
+            .WithPassword("P@ssw0rd123!")
+            .Build();
+
+        await _container.StartAsync();
+
+        var optionsBuilder = new DbContextOptionsBuilder<GameServerV2DbContext>();
+        GameServerV2DbContextFactory.ConfigureProvider(optionsBuilder, "postgresql", _container.GetConnectionString());
+
+        _context = new GameServerV2DbContext(optionsBuilder.Options);
+        _repository = new GameTypeRepository(_context, Mock.Of<ILogger<GameTypeRepository>>());
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_context is not null)
+        {
+            await _context.DisposeAsync();
+        }
+
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+        }
+    }
+
+    [Fact(Skip = "Requires Docker/Testcontainers to validate the PostgreSQL initialization path.")]
+    public async Task InitializeDatabaseAsync_WhenSchemaHasNotBeenDeployed_ShouldThrowGuidance()
+    {
+        ArgumentNullException.ThrowIfNull(_repository);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _repository.InitializeDatabaseAsync());
+
+        Assert.Contains("pgPacTool", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Deploy-V2PostgresDatabase.ps1", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+}
+

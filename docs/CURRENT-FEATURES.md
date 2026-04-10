@@ -175,11 +175,12 @@ The application currently has **two persistence layers** for game type and serve
 - `Repositories/IGameTypeRepository`
 - still used by the current controllers, extended metadata flows, and most existing UI behavior
 
-#### V2 persistence (implemented, separate, not the default application path yet)
+#### V2 persistence (implemented, separate from legacy, PostgreSQL-default)
 - `Data/V2/GameServerV2DbContext`
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
-- provider-aware configuration supporting either SQLite or MySQL
+- provider-aware configuration supporting SQLite, PostgreSQL, and MySQL
+- PostgreSQL is the default and preferred V2 path and is backed by the dedicated `src/GameServer.DB.PostgreSql` project plus `scripts/Deploy-V2PostgresDatabase.ps1`
 - normalized schema with:
   - `GameType` owning a fixed `ImageReference`
   - `GameTypeRevision` owning tag-based deployable templates

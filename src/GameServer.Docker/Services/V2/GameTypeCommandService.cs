@@ -281,7 +281,6 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                         TargetContainerPort = pm.TargetContainerPort,
                         TargetProtocol = pm.TargetProtocol,
                         CalculationValue = pm.CalculationValue,
-                        Description = null,
                         IsRequired = pm.IsRequired,
                         DisplayOrder = pm.DisplayOrder
                     }).ToList()
@@ -378,7 +377,6 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                         TargetContainerPort = pm.TargetContainerPort,
                         TargetProtocol = pm.TargetProtocol,
                         CalculationValue = pm.CalculationValue,
-                        Description = pm.Description,
                         IsRequired = pm.IsRequired,
                         DisplayOrder = pm.DisplayOrder
                     }).ToList()

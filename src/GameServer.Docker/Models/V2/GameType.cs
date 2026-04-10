@@ -140,8 +140,6 @@ public sealed record GameTypeSettingPortMapping
 
     public int? CalculationValue { get; init; }
 
-    public string? Description { get; init; }
-
     public bool IsRequired { get; init; } = true;
 
     public int DisplayOrder { get; init; }
