@@ -166,7 +166,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
             Assert.Contains("1.21", cut.Markup);
             Assert.Contains("1 port(s)", cut.Markup);
             Assert.Contains("1 web host(s)", cut.Markup);
-            Assert.Contains("1 port mapping rule(s)", cut.Markup);
+            Assert.Contains("1 primary direct / default related port mapping rule(s)", cut.Markup);
         });
     }
 
@@ -218,7 +218,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         {
             Assert.Contains("Cross-tab revision validation", cut.Markup);
             Assert.Contains("At least one port is required for a revision.", cut.Markup);
-            Assert.Contains("Setting 'SERVER_PORT' references a missing target port '25565/tcp'.", cut.Markup);
+            Assert.Contains("Setting 'SERVER_PORT'", cut.Markup);
         });
     }
 

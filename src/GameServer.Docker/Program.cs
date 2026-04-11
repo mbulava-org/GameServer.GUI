@@ -247,6 +247,9 @@ namespace GameServer.Docker
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
+                builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
+                builder.Services.AddScoped<ServicesV2.GameServerValidationService>();
+                builder.Services.AddScoped<ServicesV2.GameServerCommandService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
                 builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>

@@ -526,7 +526,7 @@
                             RelationType = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortRelationType>(mapping.RelationType, true, out var relationType)
                                 ? relationType.ToString()
                                 : GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
-                            TargetContainerPort = ResolveTargetContainerPortForSave(setting, mapping),
+                            TargetContainerPort = ResolveTargetContainerPort(setting, mapping).GetValueOrDefault(mapping.TargetContainerPort),
                             TargetProtocol = mapping.TargetProtocol,
                             CalculationValue = mapping.CalculationValue,
                             IsRequired = mapping.IsRequired,
@@ -1616,14 +1616,6 @@
         }
 
         return mapping.TargetContainerPort;
-    }
-
-    private static int ResolveTargetContainerPortForSave(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
-    {
-        ArgumentNullException.ThrowIfNull(setting);
-        ArgumentNullException.ThrowIfNull(mapping);
-
-        return ResolveTargetContainerPort(setting, mapping) ?? mapping.TargetContainerPort;
     }
 
     private static string GetPortReferenceLabel(GameTypeRevisionPortMappingDraft mapping)

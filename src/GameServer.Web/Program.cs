@@ -52,6 +52,7 @@ namespace GameServer.Web
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
                 builder.Services.AddHttpClient();
+                builder.Services.AddScoped<Services.V2.GameServerV2ApiService>();
                 builder.Services.AddScoped<Services.V2.GameTypeV2ApiService>();
 
                 //Simplification???
