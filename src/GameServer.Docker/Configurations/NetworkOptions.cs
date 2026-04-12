@@ -21,7 +21,7 @@
 
         /// <summary>
         /// The load balancer provider to use for generating discovery labels.
-        /// Supported values: "traefik", "nginx", "caddy", "none"
+        /// Supported values: "traefik", "none"
         /// Default: "traefik"
         /// </summary>
         public string LoadBalancerProvider { get; set; } = "traefik";
