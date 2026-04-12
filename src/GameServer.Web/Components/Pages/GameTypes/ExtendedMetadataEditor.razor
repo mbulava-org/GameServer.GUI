@@ -444,7 +444,7 @@
 
           <RadzenTabsItem Text="Web Hosts">
             <div class="p-3">
-              <WebHostsEditor WebHosts="@(metadata.WebHosts?.ToList() ?? new List<global::GameServer.Docker.Client.WebHostDefinition>())" 
+              <WebHostsEditor WebHosts="@(metadata.WebHosts ??= new List<global::GameServer.Docker.Client.WebHostDefinition>())" 
                               AvailableSettings="@GetAvailableSettings()" />
             </div>
           </RadzenTabsItem>
