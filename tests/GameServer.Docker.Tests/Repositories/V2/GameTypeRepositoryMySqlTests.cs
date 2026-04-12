@@ -122,4 +122,35 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
         Assert.Equal("latest", loaded.Revisions[0].VersionTag);
         Assert.True(loaded.Revisions[0].Ports[0].AdvertisedPort);
     }
+
+    [Fact]
+    public async Task InitializeDatabaseAsync_WhenBaselineHistoryExistsWithLegacyImageReferenceColumn_ShouldRepairSchemaAndAllowCreates()
+    {
+        ArgumentNullException.ThrowIfNull(_repository);
+        ArgumentNullException.ThrowIfNull(_context);
+
+        await _repository.InitializeDatabaseAsync();
+        await _context.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE `GameTypes` ADD COLUMN `ImageReference` varchar(500) NOT NULL DEFAULT ''; ");
+
+        await _repository.InitializeDatabaseAsync();
+
+        var hasLegacyImageReferenceColumn = await _context.Database
+            .SqlQueryRaw<int>("SELECT 1 AS `Value` FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'GameTypes' AND column_name = 'ImageReference' LIMIT 1")
+            .AnyAsync();
+
+        _context.GameTypes.Add(new GameTypeEntity
+        {
+            Key = "bedrock-mysql-v2",
+            DisplayName = "Minecraft Bedrock",
+            Type = "docker",
+            IsActive = true
+        });
+        await _context.SaveChangesAsync();
+
+        var createdCount = await _context.GameTypes.CountAsync();
+
+        Assert.False(hasLegacyImageReferenceColumn);
+        Assert.Equal(1, createdCount);
+    }
 }

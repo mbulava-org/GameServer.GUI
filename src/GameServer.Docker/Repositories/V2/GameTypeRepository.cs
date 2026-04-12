@@ -108,6 +108,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             var appliedMigrations = await context.Database.GetAppliedMigrationsAsync().ConfigureAwait(false);
             if (appliedMigrations.Contains(InitialV2MigrationId, StringComparer.Ordinal))
             {
+                await EnsureSchemaMatchesBaselineAsync().ConfigureAwait(false);
                 return;
             }
         }
@@ -150,6 +151,43 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         logger.LogInformation("Recorded baseline V2 migration history for existing database '{MigrationId}'.", InitialV2MigrationId);
     }
 
+    private async Task EnsureSchemaMatchesBaselineAsync()
+    {
+        if (!await TableExistsAsync("GameTypes").ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("The V2 database is missing the required 'GameTypes' table even though the baseline migration is recorded.");
+        }
+
+        if (!await TableExistsAsync("GameTypeRevisions").ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("The V2 database is missing the required 'GameTypeRevisions' table even though the baseline migration is recorded.");
+        }
+
+        var gameTypesHasLegacyImageReference = await ColumnExistsAsync("GameTypes", "ImageReference").ConfigureAwait(false);
+        var gameTypesHasType = await ColumnExistsAsync("GameTypes", "Type").ConfigureAwait(false);
+        var revisionsHasImageReference = await ColumnExistsAsync("GameTypeRevisions", "ImageReference").ConfigureAwait(false);
+
+        if (gameTypesHasLegacyImageReference && !revisionsHasImageReference)
+        {
+            logger.LogWarning("Detected V2 schema drift with baseline history present. Reapplying legacy schema upgrade to move ImageReference into revisions.");
+            await UpgradeLegacySchemaAsync().ConfigureAwait(false);
+            return;
+        }
+
+        if (!gameTypesHasType || !revisionsHasImageReference)
+        {
+            throw new InvalidOperationException("The recorded V2 migration history does not match the current V2 schema. The database requires manual repair before the application can continue.");
+        }
+
+        if (!gameTypesHasLegacyImageReference)
+        {
+            return;
+        }
+
+        logger.LogWarning("Detected stale V2 schema drift. Removing legacy GameTypes.ImageReference column so saves use the current schema.");
+        await RemoveLegacyGameTypesImageReferenceColumnAsync().ConfigureAwait(false);
+    }
+
     private async Task UpgradeLegacySchemaAsync()
     {
         if (context.Database.IsSqlite())
@@ -175,6 +213,27 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         throw new NotSupportedException($"Unsupported V2 provider '{context.Database.ProviderName}' for legacy schema upgrade.");
     }
 
+    private async Task RemoveLegacyGameTypesImageReferenceColumnAsync()
+    {
+        if (context.Database.IsSqlite())
+        {
+            foreach (var statement in GetSqliteLegacyImageReferenceRemovalStatements())
+            {
+                await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        if (context.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await context.Database.ExecuteSqlRawAsync("ALTER TABLE `GameTypes` DROP COLUMN `ImageReference`;").ConfigureAwait(false);
+            return;
+        }
+
+        throw new NotSupportedException($"Unsupported V2 provider '{context.Database.ProviderName}' for legacy ImageReference cleanup.");
+    }
+
     private static IReadOnlyList<string> GetSqliteLegacyUpgradeStatements()
     {
         return
@@ -188,6 +247,21 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             "INSERT INTO \"__GameTypes_Upgrade\" (\"Id\", \"Key\", \"DisplayName\", \"Description\", \"Type\", \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\") SELECT \"Id\", \"Key\", \"DisplayName\", \"Description\", 'docker', \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\" FROM \"GameTypes\";",
             "DROP TABLE \"GameTypes\";",
             "ALTER TABLE \"__GameTypes_Upgrade\" RENAME TO \"GameTypes\";",
+            "CREATE INDEX \"IX_GameTypes_IsActive\" ON \"GameTypes\" (\"IsActive\");",
+            "CREATE UNIQUE INDEX \"IX_GameTypes_Key\" ON \"GameTypes\" (\"Key\");",
+            "PRAGMA foreign_keys=ON;"
+        ];
+    }
+
+    private static IReadOnlyList<string> GetSqliteLegacyImageReferenceRemovalStatements()
+    {
+        return
+        [
+            "PRAGMA foreign_keys=OFF;",
+            "CREATE TABLE \"__GameTypes_Repair\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_GameTypes\" PRIMARY KEY AUTOINCREMENT, \"Key\" TEXT NOT NULL, \"DisplayName\" TEXT NOT NULL, \"Description\" TEXT NULL, \"Type\" TEXT NOT NULL DEFAULT 'docker', \"ThumbnailUrl\" TEXT NULL, \"DocumentationUrl\" TEXT NULL, \"IsActive\" INTEGER NOT NULL, \"CurrentRevisionId\" INTEGER NULL, \"CreatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \"UpdatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);",
+            "INSERT INTO \"__GameTypes_Repair\" (\"Id\", \"Key\", \"DisplayName\", \"Description\", \"Type\", \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\") SELECT \"Id\", \"Key\", \"DisplayName\", \"Description\", \"Type\", \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\" FROM \"GameTypes\";",
+            "DROP TABLE \"GameTypes\";",
+            "ALTER TABLE \"__GameTypes_Repair\" RENAME TO \"GameTypes\";",
             "CREATE INDEX \"IX_GameTypes_IsActive\" ON \"GameTypes\" (\"IsActive\");",
             "CREATE UNIQUE INDEX \"IX_GameTypes_Key\" ON \"GameTypes\" (\"Key\");",
             "PRAGMA foreign_keys=ON;"
