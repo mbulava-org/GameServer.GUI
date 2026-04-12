@@ -169,7 +169,7 @@ namespace GameServer.Docker.Services
                         Delay = 5000000000
                     }
                 },
-                Networks = CreateNetworkConfig(existingSpec?.Networks, extendedMetadata?.WebHosts).Result,
+                Networks = await CreateNetworkConfig(existingSpec?.Networks, extendedMetadata?.WebHosts),
                 EndpointSpec = new EndpointSpec
                 {
                     Ports = portConfigs
