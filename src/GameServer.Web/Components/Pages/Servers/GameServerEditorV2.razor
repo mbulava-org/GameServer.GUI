@@ -1,0 +1,599 @@
+@page "/gameservers-v2/new"
+@page "/gameservers-v2/{ServerId}/edit"
+@rendermode InteractiveServer
+@using System.Text.Json
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+@inject Services.V2.GameServerV2ApiService GameServerApiV2
+@inject Services.V2.GameTypeV2ApiService GameTypeApiV2
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+
+<PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</PageTitle>
+
+<div class="container-fluid mt-4">
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            <p class="mt-3">Loading V2 editor...</p>
+        </div>
+    }
+    else if (!isEditMode && !gameTypes.Any())
+    {
+        <RadzenCard>
+            <div class="text-center py-5">
+                <RadzenIcon Icon="inventory_2" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                <h4 class="mt-3">No V2 Game Types Available</h4>
+                <p class="text-muted">Create a V2 GameType revision before creating a V2 GameServer.</p>
+                <RadzenButton Text="Go to Game Types (V2)"
+                              Icon="arrow_forward"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
+            </div>
+        </RadzenCard>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <div>
+                <h2 class="mb-1">@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</h2>
+                <p class="text-muted mb-0">Configure a V2 GameServer from a V2 GameType revision with backend validation previews.</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <RadzenButton Text="Back"
+                              Icon="arrow_back"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@GoBack" />
+                <RadzenButton Text="Validate"
+                              Icon="rule"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Click="@ValidateAsync"
+                              Disabled="@isSaving" />
+                <RadzenButton Text="@(isEditMode ? "Save Changes" : "Create Server")"
+                              Icon="save"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Click="@SaveAsync"
+                              Disabled="@(isSaving || !CanSave)" />
+            </div>
+        </div>
+
+        @if (validationResult is not null)
+        {
+            <RadzenCard class="mb-3">
+                <h5 class="mb-3">Validation Summary</h5>
+                @if (!validationResult.Issues.Any())
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat">
+                        Validation passed. The current configuration is ready for persistence.
+                    </RadzenAlert>
+                }
+                else
+                {
+                    <ul class="mb-0 ps-3">
+                        @foreach (var issue in validationResult.Issues)
+                        {
+                            <li>
+                                <strong>@issue.Scope</strong>: @issue.Message
+                                @if (!issue.IsBlocking)
+                                {
+                                    <span class="text-muted"> (warning)</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </RadzenCard>
+        }
+
+        <div class="row g-3">
+            <div class="col-xl-4">
+                <RadzenCard class="mb-3">
+                    <h5 class="mb-3">Basic Information</h5>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Server Name" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="draft.Name" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextArea @bind-Value="draft.Description" Rows="4" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Service Name" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="draft.ServiceName" class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted">Leave blank to let the backend generate a service name.</small>
+                    </div>
+                </RadzenCard>
+
+                <RadzenCard class="mb-3">
+                    <h5 class="mb-3">Revision Selection</h5>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Game Type" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="string"
+                                            Value="@selectedGameTypeKey"
+                                            ValueChanged="@OnGameTypeChanged"
+                                            Data="@gameTypes"
+                                            TextProperty="DisplayName"
+                                            ValueProperty="Key"
+                                            class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Revision" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="int?"
+                                            Value="@draft.GameTypeRevisionId"
+                                            ValueChanged="@OnRevisionChanged"
+                                            Data="@availableRevisions"
+                                            TextProperty="Label"
+                                            ValueProperty="Id"
+                                            class="w-100"
+                                            Disabled="@(!availableRevisions.Any())" />
+                        </RadzenFormField>
+                    </div>
+                    @if (selectedGameType is not null)
+                    {
+                        <div class="small text-muted">
+                            <div><strong>Game Type:</strong> @selectedGameType.DisplayName</div>
+                            @if (!string.IsNullOrWhiteSpace(selectedGameType.Description))
+                            {
+                                <div class="mt-1">@selectedGameType.Description</div>
+                            }
+                        </div>
+                    }
+                </RadzenCard>
+
+                <RadzenCard>
+                    <h5 class="mb-3">Future Configuration Areas</h5>
+                    <p class="small text-muted mb-2">Docker volume and network options will land here as dedicated V2 rule-driven editors.</p>
+                    <ul class="small text-muted mb-0 ps-3">
+                        <li>Docker volume options placeholder</li>
+                        <li>Network options placeholder</li>
+                        <li>Configuration rule hook placeholder</li>
+                    </ul>
+                </RadzenCard>
+            </div>
+
+            <div class="col-xl-8">
+                <RadzenTabs SelectedIndex="@selectedTabIndex" Change="@OnSelectedTabChanged">
+                    <Tabs>
+                        <RadzenTabsItem Text="Settings">
+                            <div class="p-3">
+                                <RadzenCard>
+                                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                                        <h5 class="mb-0">Revision Settings</h5>
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Info"
+                                                     Text="@($"{CurrentSettingDefinitions.Count} setting definition(s)")"
+                                                     Variant="Variant.Outlined" />
+                                    </div>
+
+                                    @if (!CurrentSettingDefinitions.Any())
+                                    {
+                                        <p class="text-muted mb-0">The selected revision does not define any configurable settings.</p>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var category in GetSettingCategories())
+                                        {
+                                            <div class="v2-server-settings-category mb-4">
+                                                <h6 class="mb-3">@category.Key</h6>
+                                                <div class="row g-3">
+                                                    @foreach (var definition in category)
+                                                    {
+                                                        <div class="col-lg-6">
+                                                            <div class="v2-server-setting-field">
+                                                                <label class="form-label fw-semibold">
+                                                                    @definition.SettingKey
+                                                                    @if (definition.Metadata?.IsRequired == true)
+                                                                    {
+                                                                        <span class="text-danger">*</span>
+                                                                    }
+                                                                </label>
+                                                                <GameServerSettingFieldV2 Definition="definition"
+                                                                                          Value="@GetSettingValue(definition)"
+                                                                                          ValueChanged="@(value => SetSettingValue(definition.SettingKey, value))" />
+                                                                @if (!string.IsNullOrWhiteSpace(definition.Description))
+                                                                {
+                                                                    <div class="small text-muted mt-1">@definition.Description</div>
+                                                                }
+                                                                @if (!string.IsNullOrWhiteSpace(definition.DefaultValue))
+                                                                {
+                                                                    <div class="small text-muted">Default: <code>@definition.DefaultValue</code></div>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </RadzenCard>
+                            </div>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="Validation Preview">
+                            <div class="p-3">
+                                <div class="row g-3">
+                                    <div class="col-lg-4">
+                                        <RadzenCard>
+                                            <h5 class="mb-3">Resolved Ports</h5>
+                                            @if (validationResult?.ResolvedPorts.Any() == true)
+                                            {
+                                                <ul class="mb-0 ps-3">
+                                                    @foreach (var port in validationResult.ResolvedPorts.OrderBy(port => port.DisplayOrder))
+                                                    {
+                                                        <li>@port.ContainerPort/@port.Protocol</li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <p class="text-muted mb-0">Run validation to preview resolved ports.</p>
+                                            }
+                                        </RadzenCard>
+                                    </div>
+                                    <div class="col-lg-4">
+                                        <RadzenCard>
+                                            <h5 class="mb-3">Resolved Volumes</h5>
+                                            @if (validationResult?.ResolvedVolumes.Any() == true)
+                                            {
+                                                <ul class="mb-0 ps-3">
+                                                    @foreach (var volume in validationResult.ResolvedVolumes.OrderBy(volume => volume.DisplayOrder))
+                                                    {
+                                                        <li>@volume.Source (@volume.Usage)</li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <p class="text-muted mb-0">Run validation to preview resolved volumes.</p>
+                                            }
+                                        </RadzenCard>
+                                    </div>
+                                    <div class="col-lg-4">
+                                        <RadzenCard>
+                                            <h5 class="mb-3">Resolved Web Hosts</h5>
+                                            @if (validationResult?.ResolvedWebHosts.Any() == true)
+                                            {
+                                                <ul class="mb-0 ps-3">
+                                                    @foreach (var host in validationResult.ResolvedWebHosts.OrderBy(host => host.DisplayOrder))
+                                                    {
+                                                        <li>@host.Name (@host.ContainerPort)</li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <p class="text-muted mb-0">Run validation to preview resolved web hosts.</p>
+                                            }
+                                        </RadzenCard>
+                                    </div>
+                                </div>
+                            </div>
+                        </RadzenTabsItem>
+                    </Tabs>
+                </RadzenTabs>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .v2-server-settings-category {
+        border-bottom: 1px solid var(--rz-border-color);
+        padding-bottom: 1rem;
+    }
+
+    .v2-server-settings-category:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 0 !important;
+    }
+
+    .v2-server-setting-field code {
+        font-size: 0.8rem;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    private readonly List<GameTypeListItem> gameTypes = [];
+    private readonly List<RevisionOption> availableRevisions = [];
+    private GameServerEditorDraft draft = new();
+    private GameServerValidationResult? validationResult;
+    private GameTypeDetail? selectedGameType;
+    private string? selectedGameTypeKey;
+    private bool isLoading = true;
+    private bool isSaving;
+    private int selectedTabIndex;
+
+    private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
+
+    private IReadOnlyList<GameTypeSettingDefinition> CurrentSettingDefinitions =>
+        selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.SettingDefinitions
+        ?? [];
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(draft.Name) && draft.GameTypeRevisionId > 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            isLoading = true;
+            validationResult = null;
+            gameTypes.Clear();
+            availableRevisions.Clear();
+
+            if (isEditMode)
+            {
+                var gameTypesTask = GameTypeApiV2.GetListAsync(includeInactive: true);
+                var serverTask = GameServerApiV2.GetByServerIdAsync(ServerId!);
+                await Task.WhenAll(gameTypesTask, serverTask);
+
+                gameTypes.AddRange(await gameTypesTask);
+                var server = await serverTask;
+                if (server is null)
+                {
+                    draft = new();
+                    selectedGameType = null;
+                    selectedGameTypeKey = null;
+                    return;
+                }
+
+                draft = new GameServerEditorDraft
+                {
+                    Name = server.Name,
+                    Description = server.Description,
+                    GameTypeRevisionId = server.GameTypeRevisionId,
+                    ServiceName = server.ServiceName,
+                    Status = server.Status
+                };
+                foreach (var setting in server.Settings)
+                {
+                    draft.SettingValues[setting.SettingKey] = setting.Value;
+                }
+
+                selectedGameTypeKey = server.GameTypeKey;
+                if (!string.IsNullOrWhiteSpace(selectedGameTypeKey))
+                {
+                    selectedGameType = await GameTypeApiV2.GetByKeyAsync(selectedGameTypeKey);
+                }
+
+                RefreshRevisionOptions();
+                EnsureRevisionSelected();
+                EnsureSettingsInitialized();
+                return;
+            }
+
+            gameTypes.AddRange(await GameTypeApiV2.GetListAsync(includeInactive: true));
+            selectedGameTypeKey = gameTypes.FirstOrDefault()?.Key;
+            draft = new GameServerEditorDraft();
+
+            if (!string.IsNullOrWhiteSpace(selectedGameTypeKey))
+            {
+                selectedGameType = await GameTypeApiV2.GetByKeyAsync(selectedGameTypeKey);
+            }
+
+            RefreshRevisionOptions();
+            EnsureRevisionSelected();
+            EnsureSettingsInitialized();
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnGameTypeChanged(string? value)
+    {
+        selectedGameTypeKey = value;
+        selectedGameType = string.IsNullOrWhiteSpace(value)
+            ? null
+            : await GameTypeApiV2.GetByKeyAsync(value);
+
+        draft.GameTypeRevisionId = 0;
+        draft.SettingValues.Clear();
+        validationResult = null;
+        RefreshRevisionOptions();
+        EnsureRevisionSelected();
+        EnsureSettingsInitialized();
+    }
+
+    private Task OnRevisionChanged(int? revisionId)
+    {
+        draft.GameTypeRevisionId = revisionId ?? 0;
+        validationResult = null;
+        EnsureSettingsInitialized();
+        return Task.CompletedTask;
+    }
+
+    private void RefreshRevisionOptions()
+    {
+        availableRevisions.Clear();
+        if (selectedGameType is null)
+        {
+            return;
+        }
+
+        availableRevisions.AddRange(selectedGameType.Revisions
+            .OrderByDescending(revision => revision.CreatedAt)
+            .Select(revision => new RevisionOption(revision.Id, BuildRevisionLabel(revision))));
+    }
+
+    private void EnsureRevisionSelected()
+    {
+        if (draft.GameTypeRevisionId > 0 && availableRevisions.Any(option => option.Id == draft.GameTypeRevisionId))
+        {
+            return;
+        }
+
+        draft.GameTypeRevisionId = selectedGameType?.CurrentRevisionId
+            ?? availableRevisions.FirstOrDefault()?.Id
+            ?? 0;
+    }
+
+    private void EnsureSettingsInitialized()
+    {
+        foreach (var definition in CurrentSettingDefinitions)
+        {
+            if (!draft.SettingValues.ContainsKey(definition.SettingKey))
+            {
+                draft.SettingValues[definition.SettingKey] = definition.DefaultValue;
+            }
+        }
+
+        var validKeys = CurrentSettingDefinitions.Select(definition => definition.SettingKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in draft.SettingValues.Keys.Where(key => !validKeys.Contains(key)).ToList())
+        {
+            draft.SettingValues.Remove(key);
+        }
+    }
+
+    private IEnumerable<IGrouping<string, GameTypeSettingDefinition>> GetSettingCategories()
+    {
+        return CurrentSettingDefinitions
+            .OrderBy(definition => definition.Metadata?.Category ?? "General", StringComparer.OrdinalIgnoreCase)
+            .ThenBy(definition => definition.DisplayOrder)
+            .ThenBy(definition => definition.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(definition => string.IsNullOrWhiteSpace(definition.Metadata?.Category) ? "General" : definition.Metadata!.Category!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private string? GetSettingValue(GameTypeSettingDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue;
+    }
+
+    private Task SetSettingValue(string settingKey, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(settingKey))
+        {
+            return Task.CompletedTask;
+        }
+
+        draft.SettingValues[settingKey] = value;
+        validationResult = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task ValidateAsync()
+    {
+        try
+        {
+            validationResult = await GameServerApiV2.ValidateAsync(BuildSaveRequest());
+            selectedTabIndex = 1;
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation failed", ex.Message);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            isSaving = true;
+            validationResult = await GameServerApiV2.ValidateAsync(BuildSaveRequest());
+            if (!validationResult.IsValid)
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Validation failed", "Resolve the blocking validation issues before saving.");
+                selectedTabIndex = 1;
+                return;
+            }
+
+            var result = isEditMode
+                ? await GameServerApiV2.UpdateAsync(ServerId!, BuildSaveRequest())
+                : await GameServerApiV2.CreateAsync(BuildSaveRequest());
+
+            NotificationService.Notify(NotificationSeverity.Success, isEditMode ? "Server updated" : "Server created", $"'{result.Name}' was saved successfully.");
+            Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(result.ServerId)}");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Save failed", ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private SaveGameServerRequest BuildSaveRequest()
+    {
+        return new SaveGameServerRequest
+        {
+            ServerId = isEditMode ? ServerId : null,
+            Name = draft.Name,
+            Description = draft.Description,
+            GameTypeRevisionId = draft.GameTypeRevisionId,
+            ServiceName = string.IsNullOrWhiteSpace(draft.ServiceName) ? null : draft.ServiceName,
+            Status = string.IsNullOrWhiteSpace(draft.Status) ? null : draft.Status,
+            Settings = CurrentSettingDefinitions
+                .Select(definition => new GameServerSetting
+                {
+                    SettingKey = definition.SettingKey,
+                    Value = draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue
+                })
+                .ToList(),
+            DockerVolumeOptions = [],
+            NetworkOptions = []
+        };
+    }
+
+    private void GoBack()
+    {
+        if (isEditMode && !string.IsNullOrWhiteSpace(ServerId))
+        {
+            Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(ServerId)}");
+            return;
+        }
+
+        Navigation.NavigateTo("/gameservers-v2");
+    }
+
+    private Task OnSelectedTabChanged(int index)
+    {
+        selectedTabIndex = index;
+        return Task.CompletedTask;
+    }
+
+    private static string BuildRevisionLabel(GameTypeRevision revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+        return string.IsNullOrWhiteSpace(revision.VersionTag)
+            ? $"Revision {revision.Id}"
+            : $"{revision.VersionTag} ({revision.ImageReference})";
+    }
+
+    private sealed class GameServerEditorDraft
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string? Description { get; set; }
+
+        public int GameTypeRevisionId { get; set; }
+
+        public string? ServiceName { get; set; }
+
+        public string? Status { get; set; }
+
+        public Dictionary<string, string?> SettingValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed record RevisionOption(int Id, string Label);
+}

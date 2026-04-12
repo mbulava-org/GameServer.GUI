@@ -67,11 +67,41 @@
                     </div>
                 </div>
             </div>
-            <RadzenButton Text="Refresh"
-                          Icon="refresh"
-                          ButtonStyle="ButtonStyle.Light"
-                          Click="@LoadAsync" />
+            <div class="d-flex gap-2 flex-wrap">
+                <RadzenButton Text="Edit"
+                              Icon="edit"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Click='@(() => Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(ServerId)}/edit"))' />
+                <RadzenButton Text="Refresh"
+                              Icon="refresh"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@LoadAsync" />
+            </div>
         </div>
+
+        @if (validationPreview is not null)
+        {
+            <RadzenCard class="mb-3">
+                <h5 class="mb-3">Current Validation</h5>
+                @if (!validationPreview.Issues.Any())
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat">
+                        The current server configuration validates successfully against the selected revision.
+                    </RadzenAlert>
+                }
+                else
+                {
+                    <ul class="mb-0 ps-3">
+                        @foreach (var issue in validationPreview.Issues)
+                        {
+                            <li>
+                                <strong>@issue.Scope</strong>: @issue.Message
+                            </li>
+                        }
+                    </ul>
+                }
+            </RadzenCard>
+        }
 
         <div class="row g-3 mb-3">
             <div class="col-lg-4">
@@ -95,18 +125,18 @@
             <div class="col-lg-4">
                 <RadzenCard>
                     <h5 class="mb-3">Resolved Runtime</h5>
-                    <div><strong>Ports:</strong> @server.ResolvedPorts.Count</div>
-                    <div><strong>Volumes:</strong> @server.ResolvedVolumes.Count</div>
-                    <div><strong>Web Hosts:</strong> @server.ResolvedWebHosts.Count</div>
+                    <div><strong>Ports:</strong> @CurrentResolvedPorts.Count</div>
+                    <div><strong>Volumes:</strong> @CurrentResolvedVolumes.Count</div>
+                    <div><strong>Web Hosts:</strong> @CurrentResolvedWebHosts.Count</div>
                     <div><strong>Settings:</strong> @server.Settings.Count</div>
-                    <div><strong>Configuration Rules:</strong> @server.ConfigurationRules.Count</div>
+                    <div><strong>Configuration Rules:</strong> @CurrentValidationIssues.Count</div>
                 </RadzenCard>
             </div>
             <div class="col-lg-4">
                 <RadzenCard>
                     <h5 class="mb-3">Future Extension Points</h5>
-                    <div><strong>Docker Volume Options:</strong> @server.DockerVolumeOptions.Count</div>
-                    <div><strong>Network Options:</strong> @server.NetworkOptions.Count</div>
+                    <div><strong>Docker Volume Options:</strong> @(validationPreview?.DockerVolumeOptions.Count ?? server.DockerVolumeOptions.Count)</div>
+                    <div><strong>Network Options:</strong> @(validationPreview?.NetworkOptions.Count ?? server.NetworkOptions.Count)</div>
                     <p class="small text-muted mt-3 mb-0">These sections are reserved for Docker volume, network, and rule configuration as the V2 editor expands.</p>
                 </RadzenCard>
             </div>
@@ -153,13 +183,13 @@
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Ports</h5>
-                            @if (!server.ResolvedPorts.Any())
+                            @if (!CurrentResolvedPorts.Any())
                             {
                                 <p class="text-muted mb-0">No resolved ports were derived from the selected revision.</p>
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@server.ResolvedPorts.OrderBy(port => port.DisplayOrder)"
+                                <RadzenDataGrid Data="@CurrentResolvedPorts.OrderBy(port => port.DisplayOrder)"
                                                 TItem="GameServerResolvedPort"
                                                 AllowSorting="true">
                                     <Columns>
@@ -183,13 +213,13 @@
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Volumes</h5>
-                            @if (!server.ResolvedVolumes.Any())
+                            @if (!CurrentResolvedVolumes.Any())
                             {
                                 <p class="text-muted mb-0">No resolved volumes were derived from the selected revision.</p>
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@server.ResolvedVolumes.OrderBy(volume => volume.DisplayOrder)"
+                                <RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.DisplayOrder)"
                                                 TItem="GameServerResolvedVolume"
                                                 AllowSorting="true">
                                     <Columns>
@@ -207,13 +237,13 @@
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Web Hosts</h5>
-                            @if (!server.ResolvedWebHosts.Any())
+                            @if (!CurrentResolvedWebHosts.Any())
                             {
                                 <p class="text-muted mb-0">No web hosts are enabled for the current setting state.</p>
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@server.ResolvedWebHosts.OrderBy(host => host.DisplayOrder)"
+                                <RadzenDataGrid Data="@CurrentResolvedWebHosts.OrderBy(host => host.DisplayOrder)"
                                                 TItem="GameServerResolvedWebHost"
                                                 AllowSorting="true">
                                     <Columns>
@@ -233,14 +263,14 @@
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Validation and Configuration Rules</h5>
-                            @if (!server.ConfigurationRules.Any())
+                            @if (!CurrentValidationIssues.Any())
                             {
-                                <p class="text-muted mb-0">No stored configuration rule results are currently attached to this projection.</p>
+                                <p class="text-muted mb-0">No validation issues are currently reported for this server.</p>
                             }
                             else
                             {
                                 <ul class="mb-0 ps-3">
-                                    @foreach (var issue in server.ConfigurationRules)
+                                    @foreach (var issue in CurrentValidationIssues)
                                     {
                                         <li>@issue.Message</li>
                                     }
@@ -282,7 +312,16 @@
     public string ServerId { get; set; } = string.Empty;
 
     private GameServerDetail? server;
+    private GameServerValidationResult? validationPreview;
     private bool isLoading = true;
+
+    private IReadOnlyList<GameServerResolvedPort> CurrentResolvedPorts => validationPreview?.ResolvedPorts ?? server?.ResolvedPorts ?? [];
+
+    private IReadOnlyList<GameServerResolvedVolume> CurrentResolvedVolumes => validationPreview?.ResolvedVolumes ?? server?.ResolvedVolumes ?? [];
+
+    private IReadOnlyList<GameServerResolvedWebHost> CurrentResolvedWebHosts => validationPreview?.ResolvedWebHosts ?? server?.ResolvedWebHosts ?? [];
+
+    private IReadOnlyList<GameServerValidationIssue> CurrentValidationIssues => validationPreview?.Issues ?? server?.ConfigurationRules ?? [];
 
     protected override async Task OnParametersSetAsync()
     {
@@ -302,6 +341,7 @@
         {
             isLoading = true;
             server = await GameServerApiV2.GetByServerIdAsync(ServerId);
+            validationPreview = server is null ? null : await GameServerApiV2.ValidateAsync(BuildValidationRequest(server));
         }
         catch (HttpRequestException ex)
         {
@@ -316,6 +356,31 @@
     private void GoBack()
     {
         Navigation.NavigateTo("/gameservers-v2");
+    }
+
+    private static SaveGameServerRequest BuildValidationRequest(GameServerDetail server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        return new SaveGameServerRequest
+        {
+            ServerId = server.ServerId,
+            Name = server.Name,
+            Description = server.Description,
+            GameTypeRevisionId = server.GameTypeRevisionId,
+            ServiceName = server.ServiceName,
+            Status = server.Status,
+            Settings = server.Settings
+                .Select(setting => new GameServerSetting
+                {
+                    Id = setting.Id,
+                    SettingKey = setting.SettingKey,
+                    Value = setting.Value
+                })
+                .ToList(),
+            DockerVolumeOptions = server.DockerVolumeOptions,
+            NetworkOptions = server.NetworkOptions
+        };
     }
 
     private static BadgeStyle GetStatusBadgeStyle(string? status)

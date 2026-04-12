@@ -18,6 +18,10 @@
         <div class="d-flex gap-2 align-items-center">
             <RadzenCheckBox @bind-Value="includeDeleted" TValue="bool" Change="@(_ => LoadAsync())" />
             <span>Include deleted</span>
+            <RadzenButton Text="New V2 Server"
+                          Icon="add"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
             <RadzenButton Text="Refresh"
                           Icon="refresh"
                           ButtonStyle="ButtonStyle.Light"

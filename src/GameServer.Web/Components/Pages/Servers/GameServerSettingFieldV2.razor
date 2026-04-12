@@ -1,0 +1,94 @@
+@using System.Text.Json
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+
+@if (dataType == "boolean")
+{
+    <RadzenDropDown TValue="string"
+                    Value="@Value"
+                    ValueChanged="@OnStringChanged"
+                    Data="@booleanOptions"
+                    TextProperty="Label"
+                    ValueProperty="Value"
+                    class="w-100" />
+}
+else if (dataType == "enum")
+{
+    <RadzenDropDown TValue="string"
+                    Value="@Value"
+                    ValueChanged="@OnStringChanged"
+                    Data="@enumOptions"
+                    TextProperty="Label"
+                    ValueProperty="Value"
+                    class="w-100" />
+}
+else
+{
+    <RadzenTextBox Value="@Value"
+                   ValueChanged="@OnStringChanged"
+                   class="w-100" />
+}
+
+@code {
+    [Parameter]
+    public GameTypeSettingDefinition Definition { get; set; } = new();
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    private string dataType = string.Empty;
+    private IReadOnlyList<EnumOption> booleanOptions =
+    [
+        new("true", "True"),
+        new("false", "False")
+    ];
+    private IReadOnlyList<EnumOption> enumOptions = [];
+
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Definition);
+
+        dataType = string.IsNullOrWhiteSpace(Definition.Metadata?.DataType)
+            ? string.Empty
+            : Definition.Metadata.DataType.Trim().ToLowerInvariant();
+
+        enumOptions = GetEnumOptions(Definition);
+    }
+
+    private Task OnStringChanged(string? value)
+    {
+        return ValueChanged.InvokeAsync(value);
+    }
+
+    private static IReadOnlyList<EnumOption> GetEnumOptions(GameTypeSettingDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+
+        if (string.IsNullOrWhiteSpace(definition.Metadata?.AllowedValuesJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            var allowedValues = JsonSerializer.Deserialize<List<string>>(definition.Metadata.AllowedValuesJson) ?? [];
+            var valueMappings = string.IsNullOrWhiteSpace(definition.Metadata.ValueMappingsJson)
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(definition.Metadata.ValueMappingsJson) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            return allowedValues
+                .Select(value => new EnumOption(value, valueMappings.TryGetValue(value, out var label) ? label : value))
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private sealed record EnumOption(string Value, string Label);
+}
