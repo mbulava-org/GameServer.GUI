@@ -1,1 +1,1 @@
-CREATE SCHEMA "core";
+CREATE SCHEMA core;

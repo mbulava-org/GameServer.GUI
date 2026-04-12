@@ -4,9 +4,11 @@
     <File Path=".github/workflows/ci.yaml" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/GameServer.DB.PostgreSql/GameServer.DB.PostgreSql.csproj">
+      <Build Project="false" />
+    </Project>
     <Project Path="src/GameServer.Docker.Agent/GameServer.Docker.Agent.csproj" />
     <Project Path="src/GameServer.Docker.Client/GameServer.Docker.Client.csproj" />
-    <Project Path="src/GameServer.DB.PostgreSql/GameServer.DB.PostgreSql.csproj" />
     <Project Path="src/GameServer.Docker/GameServer.Docker.csproj" />
     <Project Path="src/GameServer.Web/GameServer.Web.csproj" />
   </Folder>
