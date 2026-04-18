@@ -39,7 +39,7 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
             {
                 new() { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true }
             })
-            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "enum", "port" })
+            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "yesno", "enum", "port" })
             .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
             .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
             .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
@@ -71,7 +71,7 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
             {
                 new() { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true }
             })
-            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "enum", "port" })
+            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "yesno", "enum", "port" })
             .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
             .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
             .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
@@ -112,7 +112,7 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
             {
                 new() { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true }
             })
-            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "enum", "port" })
+            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "yesno", "enum", "port" })
             .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
             .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
             .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
@@ -145,7 +145,7 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
         var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
             .Add(p => p.Settings, settings)
             .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
-            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "enum", "port" })
+            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "yesno", "enum", "port" })
             .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
             .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
             .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
@@ -157,6 +157,36 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
         {
             Assert.Contains("Define at least one port/protocol in the Ports tab", cut.Markup);
             Assert.True(cut.FindAll("button").First(button => button.TextContent.Contains("Add Port Mapping", StringComparison.Ordinal)).HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_ShouldRenderYesNoDataTypeOption()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new()
+            {
+                SettingKey = "ENABLE_FEATURE",
+                DefaultValue = "yes",
+                Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General", DataType = "yesno" }
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "yesno", "enum", "port" })
+            .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
+            .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
+            .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
+
+        cut.Find(".setting-list-item").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("yes/no", cut.Markup);
+            Assert.DoesNotContain(">yesno<", cut.Markup);
         });
     }
 }

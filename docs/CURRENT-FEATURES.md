@@ -191,6 +191,8 @@ The application currently has **two persistence layers** for game type and serve
 - `GameServerPorts` and `GameServerVolumes` are not stored in V2 and are expected to be derived from the selected revision.
 - Port availability validation is handled by backend services at deployment/update time, not persisted in V2 metadata.
 - Setting-to-port relationships are modeled through unified port mapping rules rather than duplicated link fields.
+- V2 revision volume usage categories now use `config`, `saves`, `backups`, `gamefiles`, and `logs`.
+- V2 setting metadata now supports a `yesno` data type for literal `yes`/`no` values in addition to `boolean` for `true`/`false` values.
 
 #### V2 editor Web Host rules
 - The V2 Web Hosts tab now guides authors toward relative, lowercase path segments and supports runtime placeholders such as `{serverId}`, `{name}`, `{serviceName}`, and `{gameType}`.
@@ -207,6 +209,7 @@ The application currently has **two persistence layers** for game type and serve
 - Cross-tab validation summaries refresh immediately when ports, settings, volumes, or Web Hosts are edited from their respective tabs.
 - New V2 settings now default their category to `General`, or reuse the currently selected/last-used category when one already exists.
 - The Detection tab can now scan Docker image metadata before the first save for a new V2 GameType, and comparison remains deferred until a saved GameType/revision exists.
+- Applying detected volumes now maps the detected container path into the volume `Source` field and infers a readable description plus usage category from that path.
 
 #### V2 list actions
 - The active `/gametypes-v2` list now includes row-level edit and delete actions for each GameType.
@@ -217,6 +220,7 @@ The application currently has **two persistence layers** for game type and serve
 - Portable packages omit persisted integer ids for the GameType, revisions, ports, volumes, settings, metadata, port mappings, and web hosts.
 - Nested revision relationships are preserved through JSON containment, child display order, and the exported `CurrentRevisionVersionTag` field.
 - Import creates a new V2 GameType with nested revisions from the package and restores the current revision by version tag.
+- Sample portable imports now live under `docs/samples/gametype-imports/`, including starter presets for Palworld Dedicated Server, Minecraft Bedrock Server, and Minecraft Java Server based on the referenced upstream Docker image documentation.
 
 ### ? GameType Editor
 

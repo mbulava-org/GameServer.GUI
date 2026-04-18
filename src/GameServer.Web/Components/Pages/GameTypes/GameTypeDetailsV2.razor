@@ -277,8 +277,8 @@
     private GameTypeSetupComparisonResult? detectionComparison;
     private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
     private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
-    private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "world", "mods", "gamefiles"];
-    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "enum", "port"];
+    private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "saves", "backups", "gamefiles", "logs"];
+    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "yesno", "enum", "port"];
     private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
     private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
     private static readonly HashSet<string> supportedWebHostVariableDataTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -825,11 +825,11 @@
         revisionVolumes = detectionResult.Volumes
             .Select(volume =>
             {
-                var existing = revisionVolumes.FirstOrDefault(x => string.Equals(x.Description, volume.ContainerPath, StringComparison.OrdinalIgnoreCase));
+                var existing = revisionVolumes.FirstOrDefault(x => string.Equals(x.Source, volume.ContainerPath, StringComparison.OrdinalIgnoreCase));
                 return new GameTypeRevisionVolumeDraft
                 {
-                    Source = existing?.Source ?? string.Empty,
-                    Description = volume.ContainerPath,
+                    Source = volume.ContainerPath,
+                    Description = existing?.Description ?? InferVolumeDescription(volume.ContainerPath),
                     Usage = existing?.Usage ?? InferVolumeUsage(volume.ContainerPath)
                 };
             })
@@ -1063,6 +1063,11 @@
             return "port";
         }
 
+        if (LooksLikeYesNoValue(value))
+        {
+            return "yesno";
+        }
+
         if (bool.TryParse(value, out _))
         {
             return "boolean";
@@ -1076,6 +1081,12 @@
         return "string";
     }
 
+    private static bool LooksLikeYesNoValue(string? value)
+    {
+        return string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "no", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string InferVolumeUsage(string containerPath)
     {
         if (containerPath.Contains("config", StringComparison.OrdinalIgnoreCase))
@@ -1083,17 +1094,34 @@
             return "config";
         }
 
-        if (containerPath.Contains("world", StringComparison.OrdinalIgnoreCase) || containerPath.Contains("save", StringComparison.OrdinalIgnoreCase))
+        if (containerPath.Contains("backup", StringComparison.OrdinalIgnoreCase))
         {
-            return "world";
+            return "backups";
         }
 
-        if (containerPath.Contains("mod", StringComparison.OrdinalIgnoreCase))
+        if (containerPath.Contains("log", StringComparison.OrdinalIgnoreCase))
         {
-            return "mods";
+            return "logs";
+        }
+
+        if (containerPath.Contains("world", StringComparison.OrdinalIgnoreCase) || containerPath.Contains("save", StringComparison.OrdinalIgnoreCase))
+        {
+            return "saves";
         }
 
         return "gamefiles";
+    }
+
+    private static string InferVolumeDescription(string containerPath)
+    {
+        return InferVolumeUsage(containerPath) switch
+        {
+            "config" => "Configuration files",
+            "saves" => "Save data",
+            "backups" => "Backup data",
+            "logs" => "Log output",
+            _ => "Game files"
+        };
     }
 
     private IReadOnlyList<WebHostPortVariableOption> GetWebHostPortVariableOptions()

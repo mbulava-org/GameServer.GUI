@@ -308,6 +308,107 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameTypeDetailsV2_ApplyDetectedVolumes_ShouldMapContainerPathToSourceAndInferNewUsageCategories()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/detection/scan-tag")
+            {
+                return CreateJsonResponse(new GameTypeSetupDetectionResult
+                {
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "latest",
+                    Volumes =
+                    [
+                        new DetectedVolume { ContainerPath = "/data/backups" },
+                        new DetectedVolume { ContainerPath = "/data/logs" },
+                        new DetectedVolume { ContainerPath = "/data/world" }
+                    ]
+                });
+            }
+
+            return CreateJsonResponse(new GameTypeDetail
+            {
+                Key = string.Empty,
+                DisplayName = string.Empty,
+                Type = "docker",
+                Revisions = []
+            });
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Detection", StringComparison.Ordinal)).Click();
+        var detectionEditor = cut.FindComponent<GameServer.Web.Components.Pages.GameTypes.Components.V2.GameTypeRevisionDetectionEditor>().Instance;
+        cut.InvokeAsync(() => detectionEditor.DetectionImageReferenceChanged.InvokeAsync("itzg/minecraft-server")).GetAwaiter().GetResult();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).Click();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Volumes", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("/data/backups", cut.Markup);
+            Assert.Contains("Backup data", cut.Markup);
+            Assert.Contains("backups", cut.Markup);
+            Assert.Contains("/data/logs", cut.Markup);
+            Assert.Contains("Log output", cut.Markup);
+            Assert.Contains("logs", cut.Markup);
+            Assert.Contains("/data/world", cut.Markup);
+            Assert.Contains("Save data", cut.Markup);
+            Assert.Contains("saves", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_DetectSettings_ShouldInferYesNoDataTypeForYesNoValues()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/detection/scan-tag")
+            {
+                return CreateJsonResponse(new GameTypeSetupDetectionResult
+                {
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "latest",
+                    Settings =
+                    [
+                        new DetectedSetting
+                        {
+                            Key = "USE_NATIVE_TRANSPORT",
+                            DefaultValue = "yes"
+                        }
+                    ]
+                });
+            }
+
+            return CreateJsonResponse(new GameTypeDetail
+            {
+                Key = string.Empty,
+                DisplayName = string.Empty,
+                Type = "docker",
+                Revisions = []
+            });
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Detection", StringComparison.Ordinal)).Click();
+        var detectionEditor = cut.FindComponent<GameServer.Web.Components.Pages.GameTypes.Components.V2.GameTypeRevisionDetectionEditor>().Instance;
+        cut.InvokeAsync(() => detectionEditor.DetectionImageReferenceChanged.InvokeAsync("itzg/minecraft-server")).GetAwaiter().GetResult();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).Click();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Settings", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("USE_NATIVE_TRANSPORT", cut.Markup);
+            Assert.Contains("yesno", cut.Markup);
+        });
+    }
+
     private void RegisterApi(GameTypeDetail detail)
     {
         Services.AddSingleton<NotificationService>();

@@ -1,0 +1,264 @@
+{
+  "formatVersion": "1.0",
+  "gameType": {
+    "key": "palworld-dedicated",
+    "displayName": "Palworld Dedicated Server",
+    "description": "Portable V2 GameType import based on thijsvanloef/palworld-server-docker. Includes the common game, query, RCON, and REST API ports plus core server settings.",
+    "type": "docker",
+    "documentationUrl": "https://github.com/thijsvanloef/palworld-server-docker",
+    "isActive": true,
+    "currentRevisionVersionTag": "latest",
+    "revisions": [
+      {
+        "versionTag": "latest",
+        "imageReference": "thijsvanloef/palworld-server-docker",
+        "enableTTY": false,
+        "notes": "Seeded from the upstream Docker image README. Review passwords, auto-update, and backup settings before publishing.",
+        "isPublished": false,
+        "ports": [
+          {
+            "containerPort": 8211,
+            "protocol": "udp",
+            "advertisedPort": true,
+            "description": "Primary Palworld game port",
+            "displayOrder": 0
+          },
+          {
+            "containerPort": 27015,
+            "protocol": "udp",
+            "advertisedPort": false,
+            "description": "Steam query port",
+            "displayOrder": 1
+          },
+          {
+            "containerPort": 25575,
+            "protocol": "tcp",
+            "advertisedPort": false,
+            "description": "RCON administration port",
+            "displayOrder": 2
+          },
+          {
+            "containerPort": 8212,
+            "protocol": "tcp",
+            "advertisedPort": false,
+            "description": "REST API port",
+            "displayOrder": 3
+          }
+        ],
+        "volumes": [
+          {
+            "source": "/palworld",
+            "description": "Persistent Palworld server data and backups",
+            "displayOrder": 0,
+            "usage": "saves"
+          }
+        ],
+        "settingDefinitions": [
+          {
+            "settingKey": "PORT",
+            "defaultValue": "8211",
+            "description": "UDP game port exposed by the Palworld server.",
+            "displayOrder": 0,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 8211,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "QUERY_PORT",
+            "defaultValue": "27015",
+            "description": "UDP query port used to communicate with Steam server listings.",
+            "displayOrder": 1,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 27015,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "RCON_PORT",
+            "defaultValue": "25575",
+            "description": "TCP RCON port for remote administration.",
+            "displayOrder": 2,
+            "metadata": {
+              "dataType": "port",
+              "category": "Administration",
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 25575,
+                  "targetProtocol": "tcp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "REST_API_PORT",
+            "defaultValue": "8212",
+            "description": "TCP REST API port provided by the image.",
+            "displayOrder": 3,
+            "metadata": {
+              "dataType": "port",
+              "category": "Administration",
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 8212,
+                  "targetProtocol": "tcp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "PLAYERS",
+            "defaultValue": "16",
+            "description": "Maximum number of players allowed on the server.",
+            "displayOrder": 4,
+            "metadata": {
+              "dataType": "number",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "SERVER_NAME",
+            "defaultValue": "Palworld Dedicated Server",
+            "description": "Visible server name.",
+            "displayOrder": 5,
+            "metadata": {
+              "dataType": "string",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "SERVER_DESCRIPTION",
+            "defaultValue": "Portable Palworld server preset",
+            "description": "Visible server description.",
+            "displayOrder": 6,
+            "metadata": {
+              "dataType": "string",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "SERVER_PASSWORD",
+            "defaultValue": "",
+            "description": "Optional server join password.",
+            "displayOrder": 7,
+            "metadata": {
+              "dataType": "string",
+              "category": "Security",
+              "placeholder": "Set before publishing or deployment"
+            }
+          },
+          {
+            "settingKey": "ADMIN_PASSWORD",
+            "defaultValue": "",
+            "description": "Required to access administration features such as RCON and REST APIs.",
+            "displayOrder": 8,
+            "metadata": {
+              "dataType": "string",
+              "category": "Security",
+              "placeholder": "Set before publishing or deployment"
+            }
+          },
+          {
+            "settingKey": "COMMUNITY",
+            "defaultValue": "false",
+            "description": "Whether the server appears in the community browser.",
+            "displayOrder": 9,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Discovery"
+            }
+          },
+          {
+            "settingKey": "MULTITHREADING",
+            "defaultValue": "true",
+            "description": "Enable multithreaded server optimizations.",
+            "displayOrder": 10,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Performance"
+            }
+          },
+          {
+            "settingKey": "RCON_ENABLED",
+            "defaultValue": "false",
+            "description": "Enable the Palworld RCON interface.",
+            "displayOrder": 11,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Administration"
+            }
+          },
+          {
+            "settingKey": "REST_API_ENABLED",
+            "defaultValue": "true",
+            "description": "Enable the built-in REST API.",
+            "displayOrder": 12,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Administration"
+            }
+          },
+          {
+            "settingKey": "BACKUP_ENABLED",
+            "defaultValue": "true",
+            "description": "Enable automated save backups.",
+            "displayOrder": 13,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Backups"
+            }
+          },
+          {
+            "settingKey": "TZ",
+            "defaultValue": "UTC",
+            "description": "Timezone used for logs and scheduled tasks.",
+            "displayOrder": 14,
+            "metadata": {
+              "dataType": "string",
+              "category": "General"
+            }
+          }
+        ],
+        "webHosts": [
+          {
+            "name": "REST API",
+            "description": "Optional Palworld REST API endpoint. Keep access restricted.",
+            "pathSegment": "palworld/{serverId}/api",
+            "containerPortVariable": "REST_API_PORT",
+            "enabledWhen": "REST_API_ENABLED",
+            "displayOrder": 0
+          }
+        ]
+      }
+    ]
+  }
+}

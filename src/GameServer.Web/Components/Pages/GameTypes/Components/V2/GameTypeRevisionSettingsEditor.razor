@@ -55,7 +55,7 @@ else
                                                 @if (!string.IsNullOrWhiteSpace(setting.Metadata.DataType))
                                                 {
                                                     <RadzenBadge BadgeStyle="BadgeStyle.Info"
-                                                                 Text="@setting.Metadata.DataType"
+                                                                 Text="@GetDataTypeDisplayName(setting.Metadata.DataType)"
                                                                  Variant="Variant.Outlined"
                                                                  Size="BadgeSize.ExtraSmall" />
                                                 }
@@ -117,7 +117,13 @@ else
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Data Type" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenDropDown @bind-Value="setting.Metadata.DataType" @bind-Value:after="NotifyDraftChangedAsync" Data="DataTypeOptions" class="w-100" />
+                                    <RadzenDropDown TValue="string"
+                                                    @bind-Value="setting.Metadata.DataType"
+                                                    @bind-Value:after="NotifyDraftChangedAsync"
+                                                    Data="@GetDataTypeOptionsForDisplay()"
+                                                    TextProperty="DisplayName"
+                                                    ValueProperty="Value"
+                                                    class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
@@ -953,10 +959,26 @@ else
         return string.IsNullOrWhiteSpace(lastCategory) ? "General" : lastCategory;
     }
 
+    private IReadOnlyList<DataTypeOption> GetDataTypeOptionsForDisplay()
+    {
+        return DataTypeOptions
+            .Select(value => new DataTypeOption(value, GetDataTypeDisplayName(value)))
+            .ToList();
+    }
+
+    private static string GetDataTypeDisplayName(string? value)
+    {
+        return string.Equals(value, "yesno", StringComparison.OrdinalIgnoreCase)
+            ? "yes/no"
+            : value ?? string.Empty;
+    }
+
     private Task NotifyDraftChangedAsync()
     {
         return OnDraftChanged.InvokeAsync();
     }
 
     private sealed record PortTargetOption(string Value, string Label);
+
+    private sealed record DataTypeOption(string Value, string DisplayName);
 }

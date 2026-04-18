@@ -33,17 +33,17 @@ else
     @foreach (var host in WebHosts)
     {
         <RadzenCard class="mb-3">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-3">
+            <div class="web-host-grid">
+                <div class="web-host-field">
                     <RadzenFormField Text="Name" Variant="Variant.Outlined" class="w-100">
                         <RadzenTextBox @bind-Value="host.Name" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                     </RadzenFormField>
                 </div>
-                <div class="col-md-3">
+                <div class="web-host-field web-host-field-wide">
                     <RadzenFormField Text="Path Segment" Variant="Variant.Outlined" class="w-100">
                         <RadzenTextBox @bind-Value="host.PathSegment" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                     </RadzenFormField>
-                    <div class="d-flex justify-content-between align-items-center mt-1 gap-2">
+                    <div class="web-host-helper-row">
                         <small class="text-muted">Example: <code>admin/@($"{{serverId}}")</code></small>
                         <RadzenButton Text="From Name"
                                       Icon="auto_fix_high"
@@ -53,7 +53,7 @@ else
                                       Disabled="@string.IsNullOrWhiteSpace(host.Name)" />
                     </div>
                 </div>
-                <div class="col-md-2">
+                <div class="web-host-field">
                     <RadzenFormField Text="Static Port" Variant="Variant.Outlined" class="w-100">
                         @if (HasSelectedPortVariable(host))
                         {
@@ -64,8 +64,9 @@ else
                             <RadzenNumeric @bind-Value="host.ContainerPort" @bind-Value:after="NotifyDraftChangedAsync" TValue="int?" Min="1" Max="65535" class="w-100" />
                         }
                     </RadzenFormField>
+                    <small class="text-muted d-block web-host-helper-text">Set a fixed port unless the web host derives its port from a setting.</small>
                 </div>
-                <div class="col-md-3">
+                <div class="web-host-field">
                     <RadzenFormField Text="Port Variable" Variant="Variant.Outlined" class="w-100">
                         <RadzenDropDown TValue="string"
                                         Data="@GetPortVariableOptionsForDisplay()"
@@ -77,21 +78,21 @@ else
                                         Placeholder="Select numeric setting"
                                         class="w-100" />
                     </RadzenFormField>
-                    <small class="text-muted d-block mt-1">@GetPortVariableHelpText(host)</small>
+                    <small class="text-muted d-block web-host-helper-text">@GetPortVariableHelpText(host)</small>
                 </div>
-                <div class="col-md-1 text-end">
+                <div class="web-host-actions">
                     <div class="d-flex justify-content-end gap-1">
                         <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraftAsync(host, -1))" Disabled="@(WebHosts.IndexOf(host) <= 0)" />
                         <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraftAsync(host, 1))" Disabled="@(WebHosts.IndexOf(host) >= WebHosts.Count - 1)" />
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveWebHostDraftAsync(host))" />
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="web-host-field web-host-field-half">
                     <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
                         <RadzenTextBox @bind-Value="host.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                     </RadzenFormField>
                 </div>
-                <div class="col-md-6">
+                <div class="web-host-field web-host-field-half">
                     <RadzenFormField Text="Enabled When" Variant="Variant.Outlined" class="w-100">
                         <RadzenTextBox @bind-Value="host.EnabledWhen" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                     </RadzenFormField>
@@ -100,6 +101,77 @@ else
         </RadzenCard>
     }
 }
+
+<style>
+    .web-host-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .web-host-field {
+        min-width: 0;
+    }
+
+    .web-host-field-wide {
+        min-width: 0;
+    }
+
+    .web-host-field-half {
+        min-width: 0;
+    }
+
+    .web-host-actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: start;
+        padding-top: 0.35rem;
+    }
+
+    .web-host-helper-row {
+        min-height: 2.25rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.35rem;
+    }
+
+    .web-host-helper-text {
+        min-height: 2.25rem;
+        margin-top: 0.35rem;
+    }
+
+    @@media (max-width: 1200px) {
+        .web-host-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .web-host-actions,
+        .web-host-field-half,
+        .web-host-field-wide {
+            grid-column: span 2;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .web-host-grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .web-host-actions,
+        .web-host-field-half,
+        .web-host-field-wide {
+            grid-column: span 1;
+        }
+
+        .web-host-helper-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
 
 @code {
     [Parameter, EditorRequired]
