@@ -674,7 +674,7 @@
 
     private async Task RunDetectionAsync()
     {
-        if (gameType is null || isNew)
+        if (gameType is null)
         {
             return;
         }
@@ -698,7 +698,9 @@
         try
         {
             isDetecting = true;
-            detectionResult = await GameTypeApiV2.DetectSetupAsync(gameType.Key, imageReference, versionTag);
+            detectionResult = isNew
+                ? await GameTypeApiV2.DetectSetupAsync(imageReference, versionTag)
+                : await GameTypeApiV2.DetectSetupAsync(gameType.Key, imageReference, versionTag);
             detectionImageReference = detectionResult.ImageReference;
             detectionVersionTag = detectionResult.VersionTag;
             var matchingRevision = FindRevisionByIdentity(detectionResult.ImageReference, detectionResult.VersionTag);
@@ -720,7 +722,7 @@
                 CreateNewRevisionDraft();
                 ApplyDetectionToDraft();
 
-                if (comparisonRevision is not null)
+                if (!isNew && comparisonRevision is not null)
                 {
                     detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, detectionResult.ImageReference, detectionResult.VersionTag, comparisonRevision.Id);
                     detectionResult = detectionComparison.Detection;

@@ -14,6 +14,24 @@ public sealed class GameTypeSetupDetectionService(
     ILogger<GameTypeSetupDetectionService> logger)
 {
     /// <summary>
+    /// Detects Docker image setup data without requiring a saved V2 GameType.
+    /// </summary>
+    public async Task<GameTypeSetupDetectionResultDto> DetectAsync(DetectGameTypeSetupRequestDto request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var probeGameType = new Models.V2.GameType
+        {
+            Key = "unsaved-detection",
+            Type = "docker"
+        };
+
+        return await DetectAsync(probeGameType, request.ImageReference, request.VersionTag, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Detects Docker image setup data for a V2 GameType and tag.
     /// </summary>
     public async Task<GameTypeSetupDetectionResultDto> DetectAsync(string key, DetectGameTypeSetupRequestDto request, CancellationToken cancellationToken = default)

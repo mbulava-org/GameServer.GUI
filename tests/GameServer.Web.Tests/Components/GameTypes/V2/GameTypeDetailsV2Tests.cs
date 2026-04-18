@@ -77,6 +77,30 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
     }
 
     [Fact]
+    public void GameTypeDetailsV2_NewGameType_ShouldEnableDetectionButtonWhenImageReferenceExists()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(new GameTypeDetail
+        {
+            Key = string.Empty,
+            DisplayName = string.Empty,
+            Type = "docker",
+            Revisions = []
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Detection", StringComparison.Ordinal)).Click();
+        var detectionEditor = cut.FindComponent<GameServer.Web.Components.Pages.GameTypes.Components.V2.GameTypeRevisionDetectionEditor>().Instance;
+        cut.InvokeAsync(() => detectionEditor.DetectionImageReferenceChanged.InvokeAsync("itzg/minecraft-server")).GetAwaiter().GetResult();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.False(cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
     public void GameTypeDetailsV2_NewGameType_ShouldStartWithUnsavedRevisionDraftSelected()
     {
         Services.AddSingleton<NotificationService>();

@@ -201,7 +201,7 @@
 </style>
 
 @code {
-    private readonly List<GameTypeListItem> gameTypes = [];
+    private List<GameTypeListItem> gameTypes = [];
     private bool includeInactive;
     private bool isLoading = true;
     private static readonly JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web);
@@ -216,8 +216,7 @@
         try
         {
             isLoading = true;
-            gameTypes.Clear();
-            gameTypes.AddRange(await GameTypeApiV2.GetListAsync(includeInactive));
+            gameTypes = (await GameTypeApiV2.GetListAsync(includeInactive)).ToList();
         }
         catch (HttpRequestException ex)
         {

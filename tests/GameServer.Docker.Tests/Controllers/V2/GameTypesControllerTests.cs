@@ -1,5 +1,6 @@
 using GameServer.Docker.Controllers.V2;
 using GameServer.Docker.Interfaces;
+using GameServer.Docker.Models;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2;
@@ -7,6 +8,7 @@ using GameServer.Docker.Services.V2.Detection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Moq.Protected;
 
 namespace GameServer.Docker.Tests.Controllers.V2;
 
@@ -192,5 +194,68 @@ public class GameTypesControllerTests
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var payload = Assert.IsType<GameServer.Docker.Dtos.V2.GameTypeDetailDto>(createdResult.Value);
         Assert.Equal("minecraft", payload.Key);
+    }
+
+    [Fact]
+    public async Task ScanTag_WhenRequestDoesNotRequireSavedGameType_ShouldReturnOk()
+    {
+        var repository = new Mock<IGameTypeRepository>();
+        var agentRegistry = new Mock<IAgentRegistry>();
+        agentRegistry
+            .Setup(x => x.GetHealthyAgents())
+            .Returns([
+                new NodeAgentEndpoint
+                {
+                    NodeId = "agent-1",
+                    NodeName = "agent-1",
+                    InternalUrl = "http://agent-1:8080",
+                    IsHealthy = true,
+                    IsManagerNode = true
+                }
+            ]);
+
+        var httpMessageHandler = new Mock<HttpMessageHandler>();
+        httpMessageHandler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = System.Net.Http.Json.JsonContent.Create(new
+                {
+                    RepoDigests = new[] { "itzg/minecraft-server@sha256:test" },
+                    EnvironmentVariables = new[] { "SERVER_PORT=25565" },
+                    ExposedPorts = new[] { "25565/tcp" },
+                    VolumePaths = Array.Empty<string>()
+                })
+            });
+
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(x => x.CreateClient(It.IsAny<string>()))
+            .Returns(new HttpClient(httpMessageHandler.Object));
+
+        var service = new GameTypeQueryService(repository.Object);
+        var commandService = new GameTypeCommandService(repository.Object);
+        var detectionLogger = new Mock<ILogger<GameTypeSetupDetectionService>>().Object;
+        var controllerLogger = new Mock<ILogger<GameTypesController>>().Object;
+        var detectionService = new GameTypeSetupDetectionService(
+            repository.Object,
+            agentRegistry.Object,
+            httpClientFactory.Object,
+            detectionLogger);
+        var controller = new GameTypesController(service, commandService, detectionService, controllerLogger);
+
+        var result = await controller.ScanTag(new GameServer.Docker.Dtos.V2.DetectGameTypeSetupRequestDto
+        {
+            ImageReference = "itzg/minecraft-server",
+            VersionTag = "latest"
+        });
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var payload = Assert.IsType<GameServer.Docker.Dtos.V2.GameTypeSetupDetectionResultDto>(okResult.Value);
+        Assert.Equal("itzg/minecraft-server", payload.ImageReference);
     }
 }

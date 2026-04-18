@@ -14,7 +14,7 @@
         </RadzenFormField>
     </div>
     <div class="col-md-3 d-flex align-items-end justify-content-end gap-2">
-        <RadzenButton Text="Detect Settings" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@(() => OnScanTag.InvokeAsync())" Disabled="@(IsDetecting || IsNew || !IsDockerType || string.IsNullOrWhiteSpace(DetectionImageReference))" />
+        <RadzenButton Text="Detect Settings" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@(() => OnScanTag.InvokeAsync())" Disabled="@(IsDetecting || !IsDockerType || string.IsNullOrWhiteSpace(DetectionImageReference))" />
         <RadzenButton Text="Apply All to Draft" Icon="content_paste" ButtonStyle="ButtonStyle.Light" Click="@(() => OnApplyAll.InvokeAsync())" Disabled="@(DetectionResult is null)" />
     </div>
 </div>

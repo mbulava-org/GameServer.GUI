@@ -65,6 +65,24 @@ public class GameTypeSetupDetectionServiceTests
     }
 
     [Fact]
+    public async Task DetectAsync_WhenRequestDoesNotRequireSavedGameType_ShouldInspectImage()
+    {
+        var service = CreateService(
+            environmentVariables: ["SERVER_PORT=25565"],
+            exposedPorts: ["25565/tcp"]);
+
+        var result = await service.DetectAsync(new DetectGameTypeSetupRequestDto
+        {
+            ImageReference = "itzg/minecraft-server",
+            VersionTag = "latest"
+        });
+
+        Assert.Equal("itzg/minecraft-server", result.ImageReference);
+        Assert.Equal("latest", result.VersionTag);
+        Assert.Single(result.Ports);
+    }
+
+    [Fact]
     public async Task DetectAsync_WhenPortSettingMatchesDefinedPort_ShouldInferDirectMapping()
     {
         // Arrange

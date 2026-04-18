@@ -176,6 +176,24 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, I
     }
 
     /// <summary>
+    /// Detects Docker setup data for an unsaved V2 GameType tag.
+    /// </summary>
+    public async Task<GameTypeSetupDetectionResult> DetectSetupAsync(string imageReference, string? versionTag, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsJsonAsync(
+            "api/v2/gametypes/detection/scan-tag",
+            new DetectGameTypeSetupRequest { ImageReference = imageReference, VersionTag = versionTag },
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameTypeSetupDetectionResult>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 detection response did not contain a payload.");
+    }
+
+    /// <summary>
     /// Detects Docker setup data for a V2 GameType tag.
     /// </summary>
     public async Task<GameTypeSetupDetectionResult> DetectSetupAsync(string key, string imageReference, string? versionTag, CancellationToken cancellationToken = default)

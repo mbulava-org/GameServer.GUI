@@ -59,6 +59,20 @@ public sealed class GameTypeRevisionDetectionEditorTests : BunitContext
     }
 
     [Fact]
+    public void GameTypeRevisionDetectionEditor_ShouldEnableScan_ForNewGameType_WhenImageReferenceExists()
+    {
+        var cut = Render<GameTypeRevisionDetectionEditor>(parameters => parameters
+            .Add(p => p.IsNew, true)
+            .Add(p => p.IsDockerType, true)
+            .Add(p => p.DetectionImageReference, "itzg/minecraft-server"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.False(cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
     public void GameTypeRevisionDetectionEditor_ShouldRenderComparisonDetails()
     {
         // Arrange

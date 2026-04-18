@@ -231,6 +231,29 @@ public sealed class GameTypesController(
     /// <summary>
     /// Detects Docker image setup data for a V2 GameType tag.
     /// </summary>
+    [HttpPost("detection/scan-tag")]
+    [ProducesResponseType(200, Type = typeof(GameTypeSetupDetectionResultDto))]
+    [ProducesResponseType(400)]
+    public async Task<ActionResult<GameTypeSetupDetectionResultDto>> ScanTag([FromBody] DetectGameTypeSetupRequestDto request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var detected = await detectionService.DetectAsync(request, cancellationToken);
+            return Ok(detected);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Detects Docker image setup data for a saved V2 GameType tag.
+    /// </summary>
     [HttpPost("{key}/detection/scan-tag")]
     [ProducesResponseType(200, Type = typeof(GameTypeSetupDetectionResultDto))]
     [ProducesResponseType(400)]

@@ -206,6 +206,7 @@ The application currently has **two persistence layers** for game type and serve
 - The first saved revision is automatically set as current when the GameType does not already have one.
 - Cross-tab validation summaries refresh immediately when ports, settings, volumes, or Web Hosts are edited from their respective tabs.
 - New V2 settings now default their category to `General`, or reuse the currently selected/last-used category when one already exists.
+- The Detection tab can now scan Docker image metadata before the first save for a new V2 GameType, and comparison remains deferred until a saved GameType/revision exists.
 
 #### V2 list actions
 - The active `/gametypes-v2` list now includes row-level edit and delete actions for each GameType.
