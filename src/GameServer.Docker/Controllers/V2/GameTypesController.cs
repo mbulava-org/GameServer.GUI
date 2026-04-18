@@ -44,6 +44,24 @@ public sealed class GameTypesController(
     }
 
     /// <summary>
+    /// Exports a V2 GameType as a portable JSON package without persisted integer ids.
+    /// </summary>
+    [HttpGet("{key}/export")]
+    [ProducesResponseType(200, Type = typeof(PortableGameTypePackageDto))]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<PortableGameTypePackageDto>> Export(string key, CancellationToken cancellationToken = default)
+    {
+        var package = await queryService.ExportAsync(key, cancellationToken);
+        if (package is null)
+        {
+            logger.LogDebug("V2 game type '{GameTypeKey}' was not found for export", key);
+            return NotFound();
+        }
+
+        return Ok(package);
+    }
+
+    /// <summary>
     /// Creates a V2 GameType.
     /// </summary>
     [HttpPost]
@@ -59,6 +77,31 @@ public sealed class GameTypesController(
         catch (ArgumentException ex)
         {
             logger.LogDebug(ex, "Invalid create request for V2 game type");
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Imports a portable V2 GameType package.
+    /// </summary>
+    [HttpPost("import")]
+    [ProducesResponseType(201, Type = typeof(GameTypeDetailDto))]
+    [ProducesResponseType(400)]
+    public async Task<ActionResult<GameTypeDetailDto>> Import([FromBody] PortableGameTypePackageDto package, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var created = await commandService.ImportAsync(package, cancellationToken);
+            return CreatedAtAction(nameof(GetByKey), new { key = created.Key }, created);
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogDebug(ex, "Invalid import package for V2 game type");
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogDebug(ex, "Unable to import V2 game type package");
             return BadRequest(ex.Message);
         }
     }
@@ -86,6 +129,17 @@ public sealed class GameTypesController(
         {
             return NotFound();
         }
+    }
+
+    /// <summary>
+    /// Deletes a V2 GameType.
+    /// </summary>
+    [HttpDelete("{key}")]
+    [ProducesResponseType(204)]
+    public async Task<IActionResult> Delete(string key, CancellationToken cancellationToken = default)
+    {
+        await commandService.DeleteAsync(key, cancellationToken);
+        return NoContent();
     }
 
     /// <summary>

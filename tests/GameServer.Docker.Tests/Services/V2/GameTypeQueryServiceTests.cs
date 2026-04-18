@@ -123,4 +123,55 @@ public class GameTypeQueryServiceTests
         Assert.Equal("Primary", portMapping.MappingRole);
         Assert.Equal("Direct", portMapping.RelationType);
     }
+
+    [Fact]
+    public async Task ExportAsync_WhenGameTypeExists_ShouldStripPersistedIds()
+    {
+        var repository = new Mock<IGameTypeRepository>();
+        repository
+            .Setup(x => x.GetByKeyAsync("minecraft"))
+            .ReturnsAsync(new GameType
+            {
+                Id = 1,
+                Key = "minecraft",
+                DisplayName = "Minecraft",
+                Type = "docker",
+                CurrentRevisionId = 10,
+                Revisions =
+                [
+                    new GameTypeRevision
+                    {
+                        Id = 10,
+                        VersionTag = "latest",
+                        ImageReference = "itzg/minecraft-server",
+                        Ports = [ new GameTypePort { Id = 100, ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 0 } ],
+                        SettingDefinitions =
+                        [
+                            new GameTypeSettingDefinition
+                            {
+                                Id = 200,
+                                SettingKey = "SERVER_PORT",
+                                DisplayOrder = 0,
+                                Metadata = new GameTypeSettingMetadata
+                                {
+                                    Id = 300,
+                                    DataType = "port",
+                                    PortMappings = [ new GameTypeSettingPortMapping { Id = 400, MappingRole = GameTypeSettingPortMappingRole.Primary, RelationType = GameTypeSettingPortRelationType.Direct, TargetContainerPort = 25565, TargetProtocol = "tcp", DisplayOrder = 0 } ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            });
+
+        var service = new GameTypeQueryService(repository.Object);
+
+        var result = await service.ExportAsync("minecraft");
+
+        Assert.NotNull(result);
+        Assert.Equal("minecraft", result.GameType.Key);
+        Assert.Equal("latest", result.GameType.CurrentRevisionVersionTag);
+        Assert.Equal(25565, Assert.Single(result.GameType.Revisions[0].Ports).ContainerPort);
+        Assert.Equal("Primary", Assert.Single(result.GameType.Revisions[0].SettingDefinitions[0].Metadata!.PortMappings).MappingRole);
+    }
 }

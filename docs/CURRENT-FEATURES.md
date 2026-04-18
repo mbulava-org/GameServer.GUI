@@ -192,6 +192,31 @@ The application currently has **two persistence layers** for game type and serve
 - Port availability validation is handled by backend services at deployment/update time, not persisted in V2 metadata.
 - Setting-to-port relationships are modeled through unified port mapping rules rather than duplicated link fields.
 
+#### V2 editor Web Host rules
+- The V2 Web Hosts tab now guides authors toward relative, lowercase path segments and supports runtime placeholders such as `{serverId}`, `{name}`, `{serviceName}`, and `{gameType}`.
+- The editor exposes a `From Name` helper to build a path segment from the Web Host name.
+- Port Variable choices come from revision settings that already have a numeric default port and use a compatible numeric data type (`number` or `port`).
+- When a Port Variable is selected, the Static Port field becomes a read-only preview of that setting's current default port instead of storing a second conflicting value.
+
+#### V2 editor draft workflow
+- Creating a new V2 GameType now starts with an unsaved revision draft already selected so revision fields are editable immediately.
+- Saving a brand-new V2 GameType now creates the parent record first, then persists the current revision draft in the same ordered save flow when the draft has content and passes validation.
+- The V2 editor now uses a single top-level Save action instead of separate GameType and revision save buttons.
+- If the parent GameType saves but the revision draft still fails validation, the editor keeps the draft in place instead of navigating away and dropping the unsaved aggregate edits.
+- The first saved revision is automatically set as current when the GameType does not already have one.
+- Cross-tab validation summaries refresh immediately when ports, settings, volumes, or Web Hosts are edited from their respective tabs.
+- New V2 settings now default their category to `General`, or reuse the currently selected/last-used category when one already exists.
+
+#### V2 list actions
+- The active `/gametypes-v2` list now includes row-level edit and delete actions for each GameType.
+- The active `/gametypes-v2` list now also supports importing portable GameType JSON packages exported from the V2 editor.
+
+#### V2 portable GameType packages
+- V2 GameTypes can now be exported from the editor screen and imported from the V2 list page as portable JSON packages.
+- Portable packages omit persisted integer ids for the GameType, revisions, ports, volumes, settings, metadata, port mappings, and web hosts.
+- Nested revision relationships are preserved through JSON containment, child display order, and the exported `CurrentRevisionVersionTag` field.
+- Import creates a new V2 GameType with nested revisions from the package and restores the current revision by version tag.
+
 ### ? GameType Editor
 
 **Location:** `/gametypes/{key}` or `/gametypes/new`

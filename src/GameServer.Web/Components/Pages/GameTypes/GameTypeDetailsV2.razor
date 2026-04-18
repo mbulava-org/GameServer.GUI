@@ -1,13 +1,17 @@
 @page "/gametypes-v2/{Key}"
 @page "/gametypes-v2/new"
 @rendermode InteractiveServer
+@using System.Text
+@using System.Text.Json
 @using GameServer.Web.Components.Pages.GameTypes.Components.V2
 @using GameServer.Web.Models.V2
+@using Microsoft.JSInterop
 @using Radzen
 @using Radzen.Blazor
 @inject Services.V2.GameTypeV2ApiService GameTypeApiV2
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>@(isNew ? "Create Game Type V2" : gameType?.DisplayName ?? "Game Type V2")</PageTitle>
 
@@ -27,6 +31,11 @@
                               Icon="close"
                               ButtonStyle="ButtonStyle.Light"
                               Click="@GoBack" />
+                <RadzenButton Text="Export"
+                              Icon="download"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@ExportGameTypeAsync"
+                              Disabled="@(isSaving || isNew || gameType is null)" />
                 <RadzenButton Text="Save"
                               Icon="save"
                               ButtonStyle="ButtonStyle.Primary"
@@ -59,7 +68,6 @@
                             <div>
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <h4 class="mb-0">@gameType.DisplayName</h4>
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@gameType.Key" Variant="Variant.Outlined" />
                                     <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@gameTypeType" Variant="Variant.Outlined" />
                                     <RadzenBadge BadgeStyle="@(gameType.IsActive ? BadgeStyle.Success : BadgeStyle.Secondary)" Text="@(gameType.IsActive ? "Active" : "Inactive")" />
                                 </div>
@@ -95,11 +103,6 @@
                                           Icon="add"
                                           ButtonStyle="ButtonStyle.Light"
                                           Click="@CreateNewRevisionDraft" />
-                            <RadzenButton Text="Save Revision"
-                                          Icon="save"
-                                          ButtonStyle="ButtonStyle.Primary"
-                                          Click="@SaveRevisionAsync"
-                                          Disabled="@(isSavingRevision || !CanSaveRevision())" />
                         </div>
                     </RadzenCard>
                 </div>
@@ -164,10 +167,8 @@
                                                    @bind-Notes="revisionNotes"
                                                    @bind-IsPublished="revisionIsPublished"
                                                    IsSavingRevision="isSavingRevision"
-                                                   CanSaveRevision="@CanSaveRevision()"
                                                    CanSetCurrentRevision="@(editingRevisionId is not null && GetRevisionSaveValidationIssues().Count == 0)"
                                                    OnCreateNewDraft="@CreateNewRevisionDraft"
-                                                   OnSaveRevision="@SaveRevisionAsync"
                                                    OnSetCurrentRevision="@SetCurrentRevisionAsync"
                                                    OnPublishAndSetCurrent="@PublishAndSetCurrentAsync"
                                                    OnEditRevision="@EditRevisionDraft"
@@ -178,14 +179,16 @@
                     <RadzenTabsItem Text="Ports">
                         <div class="p-4">
                             <GameTypeRevisionPortsEditor Ports="revisionPorts"
-                                                         ProtocolOptions="protocolOptions" />
+                                                         ProtocolOptions="protocolOptions"
+                                                         OnDraftChanged="HandleRevisionDraftChangedAsync" />
                         </div>
                     </RadzenTabsItem>
 
                     <RadzenTabsItem Text="Volumes">
                         <div class="p-4">
                             <GameTypeRevisionVolumesEditor Volumes="revisionVolumes"
-                                                           VolumeUsageOptions="volumeUsageOptions" />
+                                                           VolumeUsageOptions="volumeUsageOptions"
+                                                           OnDraftChanged="HandleRevisionDraftChangedAsync" />
                         </div>
                     </RadzenTabsItem>
 
@@ -196,13 +199,16 @@
                                                             DataTypeOptions="dataTypeOptions"
                                                             ProtocolOptions="protocolOptions"
                                                             PortMappingRoleOptions="portMappingRoleOptions"
-                                                            PortRelationTypeOptions="portRelationTypeOptions" />
+                                                            PortRelationTypeOptions="portRelationTypeOptions"
+                                                            OnDraftChanged="HandleRevisionDraftChangedAsync" />
                         </div>
                     </RadzenTabsItem>
 
                     <RadzenTabsItem Text="Web Hosts">
                         <div class="p-4">
-                            <GameTypeRevisionWebHostsEditor WebHosts="revisionWebHosts" />
+                            <GameTypeRevisionWebHostsEditor WebHosts="revisionWebHosts"
+                                                            PortVariableOptions="@GetWebHostPortVariableOptions()"
+                                                            OnDraftChanged="HandleRevisionDraftChangedAsync" />
                         </div>
                     </RadzenTabsItem>
 
@@ -237,13 +243,15 @@
     public string? Key { get; set; }
 
     private const int UnsavedDraftRevisionSelectionId = 0;
+    private string? createdGameTypeKey;
 
     private GameTypeDetail? gameType;
     private bool isLoading = true;
     private bool isSaving;
     private bool isSavingRevision;
     private bool isDetecting;
-    private bool isNew => string.IsNullOrWhiteSpace(Key);
+    private bool isNew => string.IsNullOrWhiteSpace(Key) && string.IsNullOrWhiteSpace(createdGameTypeKey);
+    private static readonly JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private int? selectedRevisionId;
     private string keyValue = string.Empty;
     private string displayName = string.Empty;
@@ -273,6 +281,11 @@
     private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "enum", "port"];
     private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
     private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
+    private static readonly HashSet<string> supportedWebHostVariableDataTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "number",
+        "port"
+    };
 
     private GameTypeRevision? CurrentRevision => selectedRevisionId == UnsavedDraftRevisionSelectionId
         ? null
@@ -318,6 +331,7 @@
 
             if (isNew)
             {
+                createdGameTypeKey = null;
                 gameType = new GameTypeDetail
                 {
                     Key = string.Empty,
@@ -325,18 +339,18 @@
                     Type = "docker",
                     Revisions = []
                 };
-                selectedRevisionId = null;
+                selectedRevisionId = UnsavedDraftRevisionSelectionId;
                 PopulateForm(gameType);
-                LoadRevisionDraft(null);
+                LoadRevisionDraft(null, asNewDraft: true);
                 return;
             }
 
             gameType = await GameTypeApiV2.GetByKeyAsync(Key!);
-            selectedRevisionId = gameType?.CurrentRevisionId ?? gameType?.Revisions.FirstOrDefault()?.Id;
             if (gameType is not null)
             {
+                selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id ?? UnsavedDraftRevisionSelectionId;
                 PopulateForm(gameType);
-                LoadRevisionDraft(CurrentRevision);
+                LoadRevisionDraft(selectedRevisionId == UnsavedDraftRevisionSelectionId ? null : CurrentRevision, asNewDraft: selectedRevisionId == UnsavedDraftRevisionSelectionId);
             }
         }
         catch (HttpRequestException ex)
@@ -354,6 +368,34 @@
         Navigation.NavigateTo("/gametypes-v2");
     }
 
+    private async Task ExportGameTypeAsync()
+    {
+        if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
+        {
+            return;
+        }
+
+        try
+        {
+            var package = await GameTypeApiV2.ExportAsync(gameType.Key);
+            var json = JsonSerializer.Serialize(package, jsonSerializerOptions);
+            var fileName = $"{gameType.Key}-portable.json";
+            var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+            await JS.InvokeVoidAsync("downloadFile", fileName, base64);
+            NotificationService.Notify(NotificationSeverity.Success, "Exported", $"Game type '{gameType.DisplayName}' was exported successfully.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Export failed", ex.Message);
+        }
+    }
+
+    private Task HandleRevisionDraftChangedAsync()
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     private async Task SavePageAsync()
     {
         if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(gameTypeType))
@@ -366,7 +408,8 @@
         {
             isSaving = true;
             var wasNewGameType = isNew;
-            var shouldSaveRevision = !wasNewGameType && ShouldSaveRevisionWithPageSave();
+            var shouldSaveRevision = ShouldSaveRevisionWithPageSave();
+            var revisionSaved = false;
 
             var request = new SaveGameTypeRequest
             {
@@ -382,6 +425,7 @@
             gameType = isNew
                 ? await GameTypeApiV2.CreateAsync(request)
                 : await GameTypeApiV2.UpdateAsync(keyValue, request);
+            createdGameTypeKey = gameType.Key;
 
             PopulateForm(gameType);
             if (!shouldSaveRevision)
@@ -392,7 +436,7 @@
             }
             else
             {
-                var revisionSaved = await SaveRevisionInternalAsync(notifySuccess: false);
+                revisionSaved = await SaveRevisionInternalAsync(notifySuccess: false);
                 if (revisionSaved)
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType and selected revision saved successfully.");
@@ -403,7 +447,7 @@
                 }
             }
 
-            if (wasNewGameType)
+            if (wasNewGameType && (!shouldSaveRevision || revisionSaved))
             {
                 Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
             }
@@ -459,7 +503,7 @@
 
     private async Task<bool> SaveRevisionInternalAsync(bool notifySuccess)
     {
-        if (gameType is null || isNew)
+        if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
         {
             NotificationService.Notify(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
             return false;
@@ -550,6 +594,11 @@
                 ? await GameTypeApiV2.AddRevisionAsync(gameType.Key, request)
                 : await GameTypeApiV2.UpdateRevisionAsync(gameType.Key, editingRevisionId.Value, request);
 
+            if (editingRevisionId is null && gameType.CurrentRevisionId is null)
+            {
+                await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, revision.Id);
+            }
+
             await ReloadGameTypeAsync(gameType.Key, revision.Id);
             if (notifySuccess)
             {
@@ -572,7 +621,6 @@
     private bool ShouldSaveRevisionWithPageSave()
     {
         return editingRevisionId is not null
-            || selectedRevisionId == UnsavedDraftRevisionSelectionId
             || HasRevisionDraftContent();
     }
 
@@ -1046,6 +1094,48 @@
         return "gamefiles";
     }
 
+    private IReadOnlyList<WebHostPortVariableOption> GetWebHostPortVariableOptions()
+    {
+        return revisionSettingDefinitions
+            .Select(CreateWebHostPortVariableOption)
+            .OfType<WebHostPortVariableOption>()
+            .OrderBy(option => option.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static WebHostPortVariableOption? CreateWebHostPortVariableOption(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        if (string.IsNullOrWhiteSpace(setting.SettingKey))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(setting.DefaultValue, out var defaultPort) || defaultPort <= 0 || defaultPort > 65535)
+        {
+            return null;
+        }
+
+        var dataType = setting.Metadata.DataType?.Trim();
+        if (!string.IsNullOrWhiteSpace(dataType) && !supportedWebHostVariableDataTypes.Contains(dataType))
+        {
+            return null;
+        }
+
+        var normalizedDataType = string.IsNullOrWhiteSpace(dataType)
+            ? "inferred numeric"
+            : dataType.ToLowerInvariant();
+
+        return new WebHostPortVariableOption
+        {
+            SettingKey = setting.SettingKey,
+            DefaultPort = defaultPort,
+            DataType = normalizedDataType,
+            Label = $"{setting.SettingKey} ({defaultPort}, {normalizedDataType})"
+        };
+    }
+
     private string GetDetectionSectionRecommendation(string section)
     {
         if (detectionComparison is null)
@@ -1375,6 +1465,8 @@
     private List<string> GetRevisionValidationIssues(bool includeSaveRequirements)
     {
         var issues = new List<string>();
+        var webHostPortVariables = GetWebHostPortVariableOptions()
+            .ToDictionary(option => option.SettingKey, StringComparer.OrdinalIgnoreCase);
 
         if (includeSaveRequirements && string.IsNullOrWhiteSpace(revisionVersionTag))
         {
@@ -1437,21 +1529,47 @@
 
         foreach (var host in revisionWebHosts)
         {
-            var hasStaticPort = host.ContainerPort.HasValue;
-            var hasVariablePort = !string.IsNullOrWhiteSpace(host.ContainerPortVariable);
-
-            if (!hasStaticPort && !hasVariablePort)
-            {
-                issues.Add($"Web Host '{(string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name)}' must define either a static port or a port variable.");
-            }
-
-            if (hasStaticPort && hasVariablePort)
-            {
-                issues.Add($"Web Host '{(string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name)}' cannot define both a static port and a port variable.");
-            }
+            issues.AddRange(GetWebHostValidationIssues(host, webHostPortVariables));
         }
 
         return issues.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private static List<string> GetWebHostValidationIssues(GameTypeRevisionWebHostDraft host, IReadOnlyDictionary<string, WebHostPortVariableOption> webHostPortVariables)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(webHostPortVariables);
+
+        var issues = new List<string>();
+        var hostLabel = string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name;
+        var hasStaticPort = host.ContainerPort.HasValue;
+        var hasVariablePort = !string.IsNullOrWhiteSpace(host.ContainerPortVariable);
+
+        if (!hasStaticPort && !hasVariablePort)
+        {
+            issues.Add($"Web Host '{hostLabel}' must define either a static port or a port variable.");
+        }
+
+        if (hasStaticPort && hasVariablePort)
+        {
+            issues.Add($"Web Host '{hostLabel}' cannot define both a static port and a port variable.");
+        }
+
+        if (hasVariablePort)
+        {
+            var variableName = host.ContainerPortVariable!.Trim();
+            if (!webHostPortVariables.ContainsKey(variableName))
+            {
+                issues.Add($"Web Host '{hostLabel}' port variable '{variableName}' must reference a revision setting with a numeric default port and a 'number' or 'port' data type.");
+            }
+        }
+
+        foreach (var pathIssue in GameTypeRevisionWebHostDraftRules.GetPathSegmentValidationIssues(host.PathSegment))
+        {
+            issues.Add($"Web Host '{hostLabel}' {pathIssue}");
+        }
+
+        return issues;
     }
 
     private List<string> GetRevisionWarnings()

@@ -92,6 +92,10 @@
     </Columns>
 </RadzenDataGrid>
 
+<div class="d-flex justify-content-end mt-3">
+    <RadzenButton Text="New Draft" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@(() => OnCreateNewDraft.InvokeAsync())" />
+</div>
+
 @code {
     [Parameter, EditorRequired]
     public IReadOnlyList<GameTypeRevisionListRow> RevisionRows { get; set; } = [];
@@ -142,16 +146,10 @@
     public bool IsSavingRevision { get; set; }
 
     [Parameter]
-    public bool CanSaveRevision { get; set; }
-
-    [Parameter]
     public bool CanSetCurrentRevision { get; set; }
 
     [Parameter]
     public EventCallback OnCreateNewDraft { get; set; }
-
-    [Parameter]
-    public EventCallback OnSaveRevision { get; set; }
 
     [Parameter]
     public EventCallback OnSetCurrentRevision { get; set; }

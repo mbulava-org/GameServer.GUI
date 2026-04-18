@@ -41,6 +41,32 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
         return MapToDetail(gameType);
     }
 
+    /// <summary>
+    /// Gets a portable V2 GameType package without persisted integer ids.
+    /// </summary>
+    public async Task<PortableGameTypePackageDto?> ExportAsync(string key, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("A game type key is required.", nameof(key));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var gameType = await repository.GetByKeyAsync(key);
+        if (gameType is null)
+        {
+            return null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return new PortableGameTypePackageDto
+        {
+            GameType = MapToPortable(gameType)
+        };
+    }
+
     private static GameTypeListItemDto MapToListItem(GameType gameType)
     {
         ArgumentNullException.ThrowIfNull(gameType);
@@ -177,6 +203,116 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
                     ContainerPortVariable = x.ContainerPortVariable,
                     EnabledWhen = x.EnabledWhen,
                     DisplayOrder = x.DisplayOrder
+                })
+                .ToList()
+        };
+    }
+
+    private static PortableGameTypeDto MapToPortable(GameType gameType)
+    {
+        ArgumentNullException.ThrowIfNull(gameType);
+
+        var currentRevision = gameType.Revisions.FirstOrDefault(revision => revision.Id == gameType.CurrentRevisionId);
+
+        return new PortableGameTypeDto
+        {
+            Key = gameType.Key,
+            DisplayName = gameType.DisplayName,
+            Description = gameType.Description,
+            Type = gameType.Type,
+            ThumbnailUrl = gameType.ThumbnailUrl,
+            DocumentationUrl = gameType.DocumentationUrl,
+            IsActive = gameType.IsActive,
+            CurrentRevisionVersionTag = currentRevision?.VersionTag,
+            Revisions = gameType.Revisions
+                .OrderBy(revision => revision.CreatedAt)
+                .ThenBy(revision => revision.VersionTag, StringComparer.OrdinalIgnoreCase)
+                .Select(MapToPortable)
+                .ToList()
+        };
+    }
+
+    private static PortableGameTypeRevisionDto MapToPortable(GameTypeRevision revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+
+        return new PortableGameTypeRevisionDto
+        {
+            VersionTag = revision.VersionTag,
+            ImageReference = revision.ImageReference,
+            ImageDigest = revision.ImageDigest,
+            EnableTTY = revision.EnableTTY,
+            Notes = revision.Notes,
+            IsPublished = revision.IsPublished,
+            Ports = revision.Ports
+                .OrderBy(port => port.DisplayOrder)
+                .Select(port => new PortableGameTypePortDto
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    AdvertisedPort = port.AdvertisedPort,
+                    Description = port.Description,
+                    DisplayOrder = port.DisplayOrder
+                })
+                .ToList(),
+            Volumes = revision.Volumes
+                .OrderBy(volume => volume.DisplayOrder)
+                .Select(volume => new PortableGameTypeVolumeDto
+                {
+                    Source = volume.Source,
+                    Description = volume.Description,
+                    DisplayOrder = volume.DisplayOrder,
+                    Usage = volume.Usage
+                })
+                .ToList(),
+            SettingDefinitions = revision.SettingDefinitions
+                .OrderBy(setting => setting.DisplayOrder)
+                .Select(setting => new PortableGameTypeSettingDefinitionDto
+                {
+                    SettingKey = setting.SettingKey,
+                    DefaultValue = setting.DefaultValue,
+                    Description = setting.Description,
+                    DisplayOrder = setting.DisplayOrder,
+                    Metadata = setting.Metadata is null ? null : new PortableGameTypeSettingMetadataDto
+                    {
+                        DataType = setting.Metadata.DataType,
+                        Category = setting.Metadata.Category,
+                        IsRequired = setting.Metadata.IsRequired,
+                        CannotBeEmpty = setting.Metadata.CannotBeEmpty,
+                        Placeholder = setting.Metadata.Placeholder,
+                        ValidationPattern = setting.Metadata.ValidationPattern,
+                        ValidationMessage = setting.Metadata.ValidationMessage,
+                        AutoAllocatePort = setting.Metadata.AutoAllocatePort,
+                        ValidateRelatedPortsAvailability = setting.Metadata.ValidateRelatedPortsAvailability,
+                        AllowedValuesJson = setting.Metadata.AllowedValuesJson,
+                        ValueMappingsJson = setting.Metadata.ValueMappingsJson,
+                        PortMappings = setting.Metadata.PortMappings
+                            .OrderBy(mapping => mapping.DisplayOrder)
+                            .Select(mapping => new PortableGameTypeSettingPortMappingDto
+                            {
+                                MappingRole = mapping.MappingRole.ToString(),
+                                RelationType = mapping.RelationType.ToString(),
+                                TargetContainerPort = mapping.TargetContainerPort,
+                                TargetProtocol = mapping.TargetProtocol,
+                                CalculationValue = mapping.CalculationValue,
+                                IsRequired = mapping.IsRequired,
+                                DisplayOrder = mapping.DisplayOrder
+                            })
+                            .ToList()
+                    }
+                })
+                .ToList(),
+            WebHosts = revision.WebHosts
+                .OrderBy(webHost => webHost.DisplayOrder)
+                .Select(webHost => new PortableGameTypeWebHostDto
+                {
+                    Name = webHost.Name,
+                    Description = webHost.Description,
+                    PathSegment = webHost.PathSegment,
+                    ContainerPort = webHost.ContainerPort,
+                    ContainerPortVariable = webHost.ContainerPortVariable,
+                    EnabledWhen = webHost.EnabledWhen,
+                    DisplayOrder = webHost.DisplayOrder
                 })
                 .ToList()
         };

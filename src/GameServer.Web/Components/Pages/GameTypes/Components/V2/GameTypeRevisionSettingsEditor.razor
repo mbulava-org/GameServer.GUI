@@ -107,59 +107,59 @@ else
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <RadzenFormField Text="Setting Key" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.SettingKey" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.SettingKey" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Default Value" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.DefaultValue" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.DefaultValue" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Data Type" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenDropDown @bind-Value="setting.Metadata.DataType" Data="DataTypeOptions" class="w-100" />
+                                    <RadzenDropDown @bind-Value="setting.Metadata.DataType" @bind-Value:after="NotifyDraftChangedAsync" Data="DataTypeOptions" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Category" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Metadata.Category" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.Metadata.Category" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Placeholder" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Metadata.Placeholder" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.Metadata.Placeholder" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Description" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Allowed Values JSON" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Metadata.AllowedValuesJson" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.Metadata.AllowedValuesJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Value Mappings JSON" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Metadata.ValueMappingsJson" class="w-100" />
+                                    <RadzenTextBox @bind-Value="setting.Metadata.ValueMappingsJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-12 d-flex gap-4 flex-wrap">
                                 <div class="d-flex align-items-center gap-2">
-                                    <RadzenCheckBox @bind-Value="setting.Metadata.IsRequired" TValue="bool" />
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.IsRequired" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
                                     <span>Required</span>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <RadzenCheckBox @bind-Value="setting.Metadata.CannotBeEmpty" TValue="bool" />
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.CannotBeEmpty" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
                                     <span>Cannot Be Empty</span>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <RadzenCheckBox @bind-Value="setting.Metadata.AutoAllocatePort" TValue="bool" />
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.AutoAllocatePort" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
                                     <span>Auto Allocate Port</span>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <RadzenCheckBox @bind-Value="setting.Metadata.ValidateRelatedPortsAvailability" TValue="bool" />
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.ValidateRelatedPortsAvailability" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
                                     <span>Validate Related Ports</span>
                                 </div>
                             </div>
@@ -475,6 +475,9 @@ else
     [Parameter]
     public IReadOnlyList<string> PortRelationTypeOptions { get; set; } = [];
 
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
     private string? selectedSettingDraftId;
     private string? searchQuery;
 
@@ -497,17 +500,20 @@ else
 
     private void AddSettingDraft()
     {
+        var defaultCategory = GetDefaultCategoryForNewSetting();
         var setting = new GameTypeRevisionSettingDraft
         {
             SettingKey = $"NEW_SETTING_{Settings.Count + 1}",
             Metadata = new GameTypeRevisionSettingMetadataDraft
             {
-                DataType = "string"
+                DataType = "string",
+                Category = defaultCategory
             }
         };
 
         Settings.Add(setting);
         selectedSettingDraftId = setting.DraftId;
+        _ = NotifyDraftChangedAsync();
     }
 
     private void DeleteSelectedSettingDraft()
@@ -519,6 +525,7 @@ else
 
         Settings.Remove(SelectedSetting);
         selectedSettingDraftId = Settings.FirstOrDefault()?.DraftId;
+        _ = NotifyDraftChangedAsync();
     }
 
     private void SelectSettingDraft(string draftId)
@@ -556,11 +563,13 @@ else
 
         setting.Metadata.PortMappings.Add(mapping);
         SyncRelatedMappings(setting);
+        _ = NotifyDraftChangedAsync();
     }
 
     private void RemovePortMappingDraft(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
     {
         setting.Metadata.PortMappings.Remove(mapping);
+        _ = NotifyDraftChangedAsync();
     }
 
     private void OnSearchQueryChanged(string? value)
@@ -665,7 +674,7 @@ else
         }
 
         SyncRelatedMappings(setting);
-        return Task.CompletedTask;
+        return NotifyDraftChangedAsync();
     }
 
     private Task OnPortMappingRelationChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
@@ -685,7 +694,7 @@ else
             : nameof(GameTypeSettingPortRelationType.Offset);
         mapping.CalculationValue ??= 0;
         SyncRelatedMappings(setting);
-        return Task.CompletedTask;
+        return NotifyDraftChangedAsync();
     }
 
     private Task OnCalculationValueChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, int? value)
@@ -695,7 +704,7 @@ else
 
         mapping.CalculationValue = value;
         SyncRelatedMappingTarget(setting, mapping);
-        return Task.CompletedTask;
+        return NotifyDraftChangedAsync();
     }
 
     private string GetPortMappingSummary(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
@@ -857,7 +866,7 @@ else
         mapping.TargetContainerPort = port;
         mapping.TargetProtocol = value[(separatorIndex + 1)..];
         SyncRelatedMappings(setting);
-        return Task.CompletedTask;
+        return NotifyDraftChangedAsync();
     }
 
     private Task OnRelatedPortProtocolChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
@@ -871,7 +880,7 @@ else
         }
 
         SyncRelatedMappingTarget(setting, mapping);
-        return Task.CompletedTask;
+        return NotifyDraftChangedAsync();
     }
 
     private void SyncRelatedMappings(GameTypeRevisionSettingDraft setting)
@@ -927,6 +936,26 @@ else
 
         items.RemoveAt(currentIndex);
         items.Insert(newIndex, item);
+    }
+
+    private string GetDefaultCategoryForNewSetting()
+    {
+        var selectedCategory = SelectedSetting?.Metadata.Category?.Trim();
+        if (!string.IsNullOrWhiteSpace(selectedCategory))
+        {
+            return selectedCategory;
+        }
+
+        var lastCategory = Settings
+            .Select(setting => setting.Metadata.Category?.Trim())
+            .LastOrDefault(category => !string.IsNullOrWhiteSpace(category));
+
+        return string.IsNullOrWhiteSpace(lastCategory) ? "General" : lastCategory;
+    }
+
+    private Task NotifyDraftChangedAsync()
+    {
+        return OnDraftChanged.InvokeAsync();
     }
 
     private sealed record PortTargetOption(string Value, string Label);

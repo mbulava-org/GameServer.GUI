@@ -72,6 +72,48 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, I
     }
 
     /// <summary>
+    /// Deletes a V2 GameType.
+    /// </summary>
+    public async Task DeleteAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        using var client = CreateClient();
+        using var response = await client.DeleteAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Exports a V2 GameType as a portable package.
+    /// </summary>
+    public async Task<PortableGameTypePackage> ExportAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        using var client = CreateClient();
+        using var response = await client.GetAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/export", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<PortableGameTypePackage>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 export response did not contain a portable package payload.");
+    }
+
+    /// <summary>
+    /// Imports a V2 GameType from a portable package.
+    /// </summary>
+    public async Task<GameTypeDetail> ImportAsync(PortableGameTypePackage package, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsJsonAsync("api/v2/gametypes/import", package, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameTypeDetail>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 import response did not contain a game type payload.");
+    }
+
+    /// <summary>
     /// Adds a revision to a V2 GameType.
     /// </summary>
     public async Task<GameTypeRevision> AddRevisionAsync(string key, SaveGameTypeRevisionRequest request, CancellationToken cancellationToken = default)

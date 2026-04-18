@@ -7,6 +7,7 @@ using GameServer.Web.Components.Pages.GameTypes;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services.V2;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -76,6 +77,67 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
     }
 
     [Fact]
+    public void GameTypeDetailsV2_NewGameType_ShouldStartWithUnsavedRevisionDraftSelected()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(new GameTypeDetail
+        {
+            Key = string.Empty,
+            DisplayName = string.Empty,
+            Type = "docker",
+            Revisions = []
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Revisions", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("New Draft", cut.Markup);
+            Assert.DoesNotContain("Save GameType first", cut.Markup);
+            Assert.Contains("Version Tag", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_AddingPort_ShouldClearCrossTabPortRequirement()
+    {
+        var detail = new GameTypeDetail
+        {
+            Id = 1,
+            Key = "minecraft",
+            DisplayName = "Minecraft",
+            Type = "docker",
+            CurrentRevisionId = 11,
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 11,
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "latest",
+                    Ports = []
+                }
+            ]
+        };
+
+        RegisterApi(detail);
+
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+        cut.WaitForAssertion(() => Assert.Contains("At least one port is required for a revision.", cut.Markup));
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Ports", StringComparison.Ordinal)).Click();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Add Port", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("At least one port is required for a revision.", cut.Markup);
+            Assert.Contains("25565", cut.Markup);
+        });
+    }
+
+    [Fact]
     public void GameTypeDetailsV2_NewDraft_WithoutVersionTagOrPorts_ShouldNotShowDraftCreationBlockers()
     {
         // Arrange
@@ -103,7 +165,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
             Assert.Contains("Unsaved", cut.Markup);
             Assert.DoesNotContain("Revision version tag is required.", cut.Markup);
             Assert.DoesNotContain("At least one port is required for a revision.", cut.Markup);
-            Assert.True(cut.FindAll("button").First(button => button.TextContent.Contains("Save Revision", StringComparison.Ordinal)).HasAttribute("disabled"));
+            Assert.DoesNotContain("Save Revision", cut.Markup);
         });
     }
 
@@ -230,7 +292,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
 
     private GameTypeV2ApiService CreateApiService(GameTypeDetail detail)
     {
-        var handler = new StubHttpMessageHandler(request =>
+        return CreateApiService(request =>
         {
             if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/minecraft")
             {
@@ -239,11 +301,16 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
+    }
+
+    private GameTypeV2ApiService CreateApiService(Func<HttpRequestMessage, HttpResponseMessage> responder)
+    {
+        var handler = new StubHttpMessageHandler(responder);
 
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory
             .Setup(factory => factory.CreateClient(It.IsAny<string>()))
-            .Returns(new HttpClient(handler)
+            .Returns(() => new HttpClient(handler)
             {
                 BaseAddress = new Uri("http://localhost/")
             });
@@ -256,9 +323,9 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         return new GameTypeV2ApiService(httpClientFactory.Object, options);
     }
 
-    private static HttpResponseMessage CreateJsonResponse<T>(T payload)
+    private static HttpResponseMessage CreateJsonResponse<T>(T payload, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
-        return new HttpResponseMessage(HttpStatusCode.OK)
+        return new HttpResponseMessage(statusCode)
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };

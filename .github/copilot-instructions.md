@@ -111,3 +111,6 @@
 - Web Hosts belong to `GameTypeRevision` but are enabled/disabled per `GameServer` instance, usually based on environment variables.
 - Redirects and web hosts refer to the same domain concept.
 - Load balancer configuration belongs in the Primary Service, and the current provider is Traefik running on a Swarm manager with label-driven updates.
+
+### Editable Data Packages
+- For editable data packages like GameTypes and Revisions, prefer concrete observable list types such as `List<T>` over `IEnumerable<T>` so nested collections can be observed and edited reliably in the UI.

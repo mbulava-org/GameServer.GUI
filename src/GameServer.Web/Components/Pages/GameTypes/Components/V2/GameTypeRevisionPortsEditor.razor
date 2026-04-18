@@ -21,30 +21,30 @@ else
             <div class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <RadzenFormField Text="Container Port" Variant="Variant.Outlined" class="w-100">
-                        <RadzenNumeric @bind-Value="port.ContainerPort" TValue="int" Min="1" Max="65535" class="w-100" />
+                        <RadzenNumeric @bind-Value="port.ContainerPort" @bind-Value:after="NotifyDraftChangedAsync" TValue="int" Min="1" Max="65535" class="w-100" />
                     </RadzenFormField>
                 </div>
                 <div class="col-md-2">
                     <RadzenFormField Text="Protocol" Variant="Variant.Outlined" class="w-100">
-                        <RadzenDropDown @bind-Value="port.Protocol" Data="ProtocolOptions" class="w-100" />
+                        <RadzenDropDown @bind-Value="port.Protocol" @bind-Value:after="NotifyDraftChangedAsync" Data="ProtocolOptions" class="w-100" />
                     </RadzenFormField>
                 </div>
                 <div class="col-md-2">
                     <div class="d-flex align-items-center gap-2 pt-4">
-                        <RadzenCheckBox Value="@port.AdvertisedPort" TValue="bool" Change="@(value => SetAdvertisedPort(port, value))" />
+                        <RadzenCheckBox Value="@port.AdvertisedPort" TValue="bool" Change="@(value => SetAdvertisedPortAsync(port, value))" />
                         <span>Advertised</span>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                        <RadzenTextBox @bind-Value="port.Description" class="w-100" />
+                        <RadzenTextBox @bind-Value="port.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                     </RadzenFormField>
                 </div>
                 <div class="col-md-1 text-end">
                     <div class="d-flex justify-content-end gap-1">
-                        <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MovePortDraft(port, -1))" Disabled="@(Ports.IndexOf(port) <= 0)" />
-                        <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MovePortDraft(port, 1))" Disabled="@(Ports.IndexOf(port) >= Ports.Count - 1)" />
-                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemovePortDraft(port))" />
+                        <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MovePortDraftAsync(port, -1))" Disabled="@(Ports.IndexOf(port) <= 0)" />
+                        <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MovePortDraftAsync(port, 1))" Disabled="@(Ports.IndexOf(port) >= Ports.Count - 1)" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemovePortDraftAsync(port))" />
                     </div>
                 </div>
             </div>
@@ -59,7 +59,10 @@ else
     [Parameter]
     public IReadOnlyList<string> ProtocolOptions { get; set; } = [];
 
-    private void AddPortDraft()
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
+    private async Task AddPortDraft()
     {
         Ports.Add(new GameTypeRevisionPortDraft
         {
@@ -68,23 +71,28 @@ else
             AdvertisedPort = !Ports.Any(x => x.AdvertisedPort),
             Description = Ports.Any() ? "Additional port" : "Primary connection port"
         });
+
+        await NotifyDraftChangedAsync();
     }
 
-    private void RemovePortDraft(GameTypeRevisionPortDraft port)
+    private async Task RemovePortDraftAsync(GameTypeRevisionPortDraft port)
     {
         Ports.Remove(port);
         if (Ports.Count > 0 && !Ports.Any(x => x.AdvertisedPort))
         {
             Ports[0].AdvertisedPort = true;
         }
+
+        await NotifyDraftChangedAsync();
     }
 
-    private void MovePortDraft(GameTypeRevisionPortDraft port, int delta)
+    private async Task MovePortDraftAsync(GameTypeRevisionPortDraft port, int delta)
     {
         MoveItem(Ports, port, delta);
+        await NotifyDraftChangedAsync();
     }
 
-    private void SetAdvertisedPort(GameTypeRevisionPortDraft selectedPort, bool advertised)
+    private async Task SetAdvertisedPortAsync(GameTypeRevisionPortDraft selectedPort, bool advertised)
     {
         if (!advertised)
         {
@@ -93,6 +101,7 @@ else
                 selectedPort.AdvertisedPort = true;
             }
 
+            await NotifyDraftChangedAsync();
             return;
         }
 
@@ -100,6 +109,13 @@ else
         {
             port.AdvertisedPort = ReferenceEquals(port, selectedPort);
         }
+
+        await NotifyDraftChangedAsync();
+    }
+
+    private Task NotifyDraftChangedAsync()
+    {
+        return OnDraftChanged.InvokeAsync();
     }
 
     private static void MoveItem<T>(List<T> items, T item, int delta)

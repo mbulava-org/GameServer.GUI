@@ -1,6 +1,7 @@
 namespace GameServer.Web.Components.Pages.GameTypes.Components.V2;
 
 using GameServer.Web.Models.V2;
+using System.Text.RegularExpressions;
 
 public sealed class GameTypeRevisionListRow
 {
@@ -109,4 +110,93 @@ public sealed class GameTypeRevisionWebHostDraft
     public string? ContainerPortVariable { get; set; }
 
     public string? EnabledWhen { get; set; }
+}
+
+public sealed class WebHostPortVariableOption
+{
+    public string SettingKey { get; init; } = string.Empty;
+
+    public string Label { get; init; } = string.Empty;
+
+    public int? DefaultPort { get; init; }
+
+    public string? DataType { get; init; }
+
+    public bool IsCompatible { get; init; } = true;
+}
+
+internal static partial class GameTypeRevisionWebHostDraftRules
+{
+    internal static IReadOnlyList<string> SupportedPathVariables { get; } = ["serverId", "name", "serviceName", "gameType"];
+
+    internal static string BuildPathSegmentFromName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return string.Empty;
+        }
+
+        var slug = NonPathCharacterRegex().Replace(name.Trim().ToLowerInvariant(), "-").Trim('-');
+        return MultiDashRegex().Replace(slug, "-");
+    }
+
+    internal static List<string> GetPathSegmentValidationIssues(string? pathSegment)
+    {
+        var issues = new List<string>();
+        if (string.IsNullOrWhiteSpace(pathSegment))
+        {
+            return issues;
+        }
+
+        if (!string.Equals(pathSegment, pathSegment.Trim(), StringComparison.Ordinal))
+        {
+            issues.Add("path segment cannot start or end with whitespace.");
+        }
+
+        var trimmedPathSegment = pathSegment.Trim();
+        if (trimmedPathSegment.StartsWith('/') || trimmedPathSegment.EndsWith('/'))
+        {
+            issues.Add("path segment cannot start or end with '/'. Use a relative path segment only.");
+        }
+
+        if (trimmedPathSegment.Contains("//", StringComparison.Ordinal))
+        {
+            issues.Add("path segment cannot contain empty path segments ('//').");
+        }
+
+        foreach (Match match in PathVariableRegex().Matches(trimmedPathSegment))
+        {
+            var variableName = match.Groups["name"].Value;
+            if (!SupportedPathVariables.Contains(variableName, StringComparer.OrdinalIgnoreCase))
+            {
+                var supportedVariables = string.Join(", ", SupportedPathVariables.Select(variable => $"{{{variable}}}"));
+                issues.Add($"path segment uses unsupported runtime variable '{{{variableName}}}'. Supported variables: {supportedVariables}.");
+            }
+        }
+
+        var literalContent = PathVariableRegex().Replace(trimmedPathSegment, string.Empty);
+        if (literalContent.Contains('{') || literalContent.Contains('}'))
+        {
+            issues.Add("path segment contains malformed runtime variable placeholders. Use values like '{serverId}'.");
+        }
+
+        if (!LiteralPathCharacterRegex().IsMatch(literalContent))
+        {
+            issues.Add("path segment can only contain lowercase letters, numbers, hyphens, forward slashes, and supported runtime variables.");
+        }
+
+        return issues.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    [GeneratedRegex("[^a-z0-9/{}-]+", RegexOptions.CultureInvariant)]
+    private static partial Regex NonPathCharacterRegex();
+
+    [GeneratedRegex("-{2,}", RegexOptions.CultureInvariant)]
+    private static partial Regex MultiDashRegex();
+
+    [GeneratedRegex("\\{(?<name>[A-Za-z][A-Za-z0-9]*)\\}", RegexOptions.CultureInvariant)]
+    private static partial Regex PathVariableRegex();
+
+    [GeneratedRegex("^[a-z0-9/-]*$", RegexOptions.CultureInvariant)]
+    private static partial Regex LiteralPathCharacterRegex();
 }

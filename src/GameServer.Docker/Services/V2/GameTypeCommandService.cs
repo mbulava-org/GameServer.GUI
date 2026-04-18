@@ -1,11 +1,28 @@
 using GameServer.Docker.Dtos.V2;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
+using System.Text.RegularExpressions;
 
 namespace GameServer.Docker.Services.V2;
 
 public sealed class GameTypeCommandService(IGameTypeRepository repository)
 {
+    private static readonly HashSet<string> SupportedWebHostPathVariables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "serverId",
+        "name",
+        "serviceName",
+        "gameType"
+    };
+
+    private static readonly HashSet<string> SupportedWebHostPortSettingDataTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "number",
+        "port"
+    };
+
+    private static readonly Regex WebHostPathVariableRegex = new("\\{(?<name>[A-Za-z][A-Za-z0-9]*)\\}", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     /// <summary>
     /// Creates a new V2 GameType.
     /// </summary>
@@ -27,6 +44,38 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
 
         cancellationToken.ThrowIfCancellationRequested();
         return MapToDetail(gameType);
+    }
+
+    /// <summary>
+    /// Imports a portable V2 GameType package.
+    /// </summary>
+    public async Task<GameTypeDetailDto> ImportAsync(PortableGameTypePackageDto package, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        ArgumentNullException.ThrowIfNull(package.GameType);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var gameTypeModel = MapPortableToModel(package.GameType);
+        var created = await repository.CreateAsync(gameTypeModel);
+
+        var currentRevisionVersionTag = package.GameType.CurrentRevisionVersionTag?.Trim();
+        if (!string.IsNullOrWhiteSpace(currentRevisionVersionTag))
+        {
+            var currentRevision = created.Revisions.FirstOrDefault(revision => string.Equals(revision.VersionTag, currentRevisionVersionTag, StringComparison.OrdinalIgnoreCase));
+            if (currentRevision is null)
+            {
+                throw new ArgumentException($"Portable package references missing current revision version tag '{currentRevisionVersionTag}'.", nameof(package));
+            }
+
+            if (created.CurrentRevisionId != currentRevision.Id)
+            {
+                await repository.SetCurrentRevisionAsync(created.Key, currentRevision.Id);
+                created = await repository.GetByKeyAsync(created.Key) ?? throw new InvalidOperationException("Failed to reload imported V2 GameType.");
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return MapToDetail(created);
     }
 
     /// <summary>
@@ -57,6 +106,17 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
 
         cancellationToken.ThrowIfCancellationRequested();
         return MapToDetail(updated);
+    }
+
+    /// <summary>
+    /// Deletes an existing V2 GameType.
+    /// </summary>
+    public async Task DeleteAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await repository.DeleteAsync(key);
     }
 
     /// <summary>
@@ -96,6 +156,10 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
         var ports = request.Ports
             .Select(port => new RevisionPortIdentity(port.ContainerPort, NormalizeProtocol(port.Protocol)))
             .ToHashSet();
+        var settingsByKey = request.SettingDefinitions
+            .Where(setting => !string.IsNullOrWhiteSpace(setting.SettingKey))
+            .GroupBy(setting => setting.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var setting in request.SettingDefinitions)
         {
@@ -183,6 +247,244 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                 }
             }
         }
+
+        foreach (var webHost in request.WebHosts)
+        {
+            ValidateWebHostRequest(webHost, settingsByKey, request);
+        }
+    }
+
+    private static GameType MapPortableToModel(PortableGameTypeDto gameType)
+    {
+        ArgumentNullException.ThrowIfNull(gameType);
+
+        if (string.IsNullOrWhiteSpace(gameType.Key))
+        {
+            throw new ArgumentException("Portable GameType key is required.", nameof(gameType));
+        }
+
+        if (string.IsNullOrWhiteSpace(gameType.DisplayName))
+        {
+            throw new ArgumentException("Portable GameType display name is required.", nameof(gameType));
+        }
+
+        if (string.IsNullOrWhiteSpace(gameType.Type))
+        {
+            throw new ArgumentException("Portable GameType type is required.", nameof(gameType));
+        }
+
+        var revisions = gameType.Revisions.Select(MapPortableToModel).ToList();
+        var duplicateRevision = revisions
+            .GroupBy(revision => new RevisionIdentity(revision.ImageReference, revision.VersionTag))
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateRevision is not null)
+        {
+            throw new ArgumentException($"Portable GameType contains duplicate revision identity '{duplicateRevision.Key.ImageReference}:{duplicateRevision.Key.VersionTag}'.", nameof(gameType));
+        }
+
+        var currentRevisionVersionTag = gameType.CurrentRevisionVersionTag?.Trim();
+        if (!string.IsNullOrWhiteSpace(currentRevisionVersionTag)
+            && revisions.All(revision => !string.Equals(revision.VersionTag, currentRevisionVersionTag, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException($"Portable GameType current revision version tag '{currentRevisionVersionTag}' was not found in the package revisions.", nameof(gameType));
+        }
+
+        return new GameType
+        {
+            Key = gameType.Key.Trim(),
+            DisplayName = gameType.DisplayName.Trim(),
+            Description = gameType.Description,
+            Type = gameType.Type.Trim(),
+            ThumbnailUrl = gameType.ThumbnailUrl,
+            DocumentationUrl = gameType.DocumentationUrl,
+            IsActive = gameType.IsActive,
+            Revisions = revisions
+        };
+    }
+
+    private static GameTypeRevision MapPortableToModel(PortableGameTypeRevisionDto revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+
+        var request = new SaveGameTypeRevisionRequestDto
+        {
+            VersionTag = revision.VersionTag,
+            ImageReference = revision.ImageReference,
+            ImageDigest = revision.ImageDigest,
+            EnableTTY = revision.EnableTTY,
+            Notes = revision.Notes,
+            IsPublished = revision.IsPublished,
+            Ports = revision.Ports.Select(port => new GameTypePortDto
+            {
+                ContainerPort = port.ContainerPort,
+                Protocol = port.Protocol,
+                AdvertisedPort = port.AdvertisedPort,
+                Description = port.Description,
+                DisplayOrder = port.DisplayOrder
+            }).ToList(),
+            Volumes = revision.Volumes.Select(volume => new GameTypeVolumeDto
+            {
+                Source = volume.Source,
+                Description = volume.Description,
+                DisplayOrder = volume.DisplayOrder,
+                Usage = volume.Usage
+            }).ToList(),
+            SettingDefinitions = revision.SettingDefinitions.Select(setting => new GameTypeSettingDefinitionDto
+            {
+                SettingKey = setting.SettingKey,
+                DefaultValue = setting.DefaultValue,
+                Description = setting.Description,
+                DisplayOrder = setting.DisplayOrder,
+                Metadata = setting.Metadata is null ? null : new GameTypeSettingMetadataDto
+                {
+                    DataType = setting.Metadata.DataType,
+                    Category = setting.Metadata.Category,
+                    IsRequired = setting.Metadata.IsRequired,
+                    CannotBeEmpty = setting.Metadata.CannotBeEmpty,
+                    Placeholder = setting.Metadata.Placeholder,
+                    ValidationPattern = setting.Metadata.ValidationPattern,
+                    ValidationMessage = setting.Metadata.ValidationMessage,
+                    AutoAllocatePort = setting.Metadata.AutoAllocatePort,
+                    ValidateRelatedPortsAvailability = setting.Metadata.ValidateRelatedPortsAvailability,
+                    AllowedValuesJson = setting.Metadata.AllowedValuesJson,
+                    ValueMappingsJson = setting.Metadata.ValueMappingsJson,
+                    PortMappings = setting.Metadata.PortMappings.Select(mapping => new GameTypeSettingPortMappingDto
+                    {
+                        MappingRole = mapping.MappingRole,
+                        RelationType = mapping.RelationType,
+                        TargetContainerPort = mapping.TargetContainerPort,
+                        TargetProtocol = mapping.TargetProtocol,
+                        CalculationValue = mapping.CalculationValue,
+                        IsRequired = mapping.IsRequired,
+                        DisplayOrder = mapping.DisplayOrder
+                    }).ToList()
+                }
+            }).ToList(),
+            WebHosts = revision.WebHosts.Select(webHost => new GameTypeWebHostDto
+            {
+                Name = webHost.Name,
+                Description = webHost.Description,
+                PathSegment = webHost.PathSegment,
+                ContainerPort = webHost.ContainerPort,
+                ContainerPortVariable = webHost.ContainerPortVariable,
+                EnabledWhen = webHost.EnabledWhen,
+                DisplayOrder = webHost.DisplayOrder
+            }).ToList()
+        };
+
+        ValidateRevisionRequest(request);
+        return MapToModel(request);
+    }
+
+    private sealed record RevisionIdentity(string ImageReference, string VersionTag);
+
+    private static void ValidateWebHostRequest(GameTypeWebHostDto webHost, IReadOnlyDictionary<string, GameTypeSettingDefinitionDto> settingsByKey, SaveGameTypeRevisionRequestDto request)
+    {
+        ArgumentNullException.ThrowIfNull(webHost);
+        ArgumentNullException.ThrowIfNull(settingsByKey);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var webHostLabel = string.IsNullOrWhiteSpace(webHost.Name) ? "(unnamed)" : webHost.Name;
+        var hasStaticPort = webHost.ContainerPort.HasValue;
+        var hasVariablePort = !string.IsNullOrWhiteSpace(webHost.ContainerPortVariable);
+
+        if (!hasStaticPort && !hasVariablePort)
+        {
+            throw new ArgumentException($"Web Host '{webHostLabel}' must define either a static port or a port variable.", nameof(request));
+        }
+
+        if (hasStaticPort && hasVariablePort)
+        {
+            throw new ArgumentException($"Web Host '{webHostLabel}' cannot define both a static port and a port variable.", nameof(request));
+        }
+
+        if (hasVariablePort)
+        {
+            var variableName = webHost.ContainerPortVariable!.Trim();
+            if (!settingsByKey.TryGetValue(variableName, out var referencedSetting))
+            {
+                throw new ArgumentException($"Web Host '{webHostLabel}' port variable '{variableName}' must reference an existing revision setting.", nameof(request));
+            }
+
+            if (!TryValidateWebHostPortSetting(referencedSetting, out var settingIssue))
+            {
+                throw new ArgumentException($"Web Host '{webHostLabel}' port variable '{variableName}' {settingIssue}", nameof(request));
+            }
+        }
+
+        foreach (var issue in GetWebHostPathSegmentIssues(webHost.PathSegment))
+        {
+            throw new ArgumentException($"Web Host '{webHostLabel}' {issue}", nameof(request));
+        }
+    }
+
+    private static bool TryValidateWebHostPortSetting(GameTypeSettingDefinitionDto setting, out string issue)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        if (!int.TryParse(setting.DefaultValue, out var defaultPort) || defaultPort <= 0 || defaultPort > 65535)
+        {
+            issue = "must have a numeric default value between 1 and 65535.";
+            return false;
+        }
+
+        var dataType = setting.Metadata?.DataType?.Trim();
+        if (!string.IsNullOrWhiteSpace(dataType) && !SupportedWebHostPortSettingDataTypes.Contains(dataType))
+        {
+            issue = "must use a setting whose DataType is 'number' or 'port'.";
+            return false;
+        }
+
+        issue = string.Empty;
+        return true;
+    }
+
+    private static List<string> GetWebHostPathSegmentIssues(string? pathSegment)
+    {
+        var issues = new List<string>();
+        if (string.IsNullOrWhiteSpace(pathSegment))
+        {
+            return issues;
+        }
+
+        if (!string.Equals(pathSegment, pathSegment.Trim(), StringComparison.Ordinal))
+        {
+            issues.Add("path segment cannot start or end with whitespace.");
+        }
+
+        var trimmedPathSegment = pathSegment.Trim();
+        if (trimmedPathSegment.StartsWith('/') || trimmedPathSegment.EndsWith('/'))
+        {
+            issues.Add("path segment cannot start or end with '/'. Use a relative path segment only.");
+        }
+
+        if (trimmedPathSegment.Contains("//", StringComparison.Ordinal))
+        {
+            issues.Add("path segment cannot contain empty path segments ('//').");
+        }
+
+        foreach (Match match in WebHostPathVariableRegex.Matches(trimmedPathSegment))
+        {
+            var variableName = match.Groups["name"].Value;
+            if (!SupportedWebHostPathVariables.Contains(variableName))
+            {
+                var supportedVariables = string.Join(", ", SupportedWebHostPathVariables.Select(variable => $"{{{variable}}}"));
+                issues.Add($"path segment uses unsupported runtime variable '{{{variableName}}}'. Supported variables: {supportedVariables}.");
+            }
+        }
+
+        var literalContent = WebHostPathVariableRegex.Replace(trimmedPathSegment, string.Empty);
+        if (literalContent.Contains('{') || literalContent.Contains('}'))
+        {
+            issues.Add("path segment contains malformed runtime variable placeholders. Use values like '{serverId}'.");
+        }
+
+        if (literalContent.Any(character => !(char.IsLower(character) || char.IsDigit(character) || character == '-' || character == '/')))
+        {
+            issues.Add("path segment can only contain lowercase letters, numbers, hyphens, forward slashes, and supported runtime variables.");
+        }
+
+        return issues.Distinct(StringComparer.Ordinal).ToList();
     }
 
     private static string NormalizeProtocol(string? protocol)

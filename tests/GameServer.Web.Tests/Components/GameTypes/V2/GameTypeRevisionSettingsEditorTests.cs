@@ -83,6 +83,47 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
         {
             Assert.Equal(2, settings.Count);
             Assert.Contains("NEW_SETTING_2", cut.Find(".setting-key-large").TextContent);
+            Assert.Equal("General", settings[1].Metadata.Category);
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_AddSetting_ShouldReuseSelectedCategory()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new()
+            {
+                SettingKey = "EULA",
+                DefaultValue = "TRUE",
+                Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General", DataType = "boolean" }
+            },
+            new()
+            {
+                SettingKey = "RCON_PORT",
+                DefaultValue = "25575",
+                Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "Network", DataType = "number" }
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, new List<GameTypeRevisionPortDraft>
+            {
+                new() { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true }
+            })
+            .Add(p => p.DataTypeOptions, new[] { "string", "number", "boolean", "enum", "port" })
+            .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
+            .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
+            .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
+
+        cut.FindAll(".setting-list-item")[1].Click();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Add Setting", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(3, settings.Count);
+            Assert.Equal("Network", settings[2].Metadata.Category);
         });
     }
 
