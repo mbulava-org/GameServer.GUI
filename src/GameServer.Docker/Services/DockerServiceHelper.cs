@@ -429,12 +429,7 @@ namespace GameServer.Docker.Services
             logger.LogInformation("Fetching managed services from Docker Swarm...");
 
             // Filter services by managed label to reduce API load
-            var filters = new ServiceFilter
-            {
-                Label = [$"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}"]
-            };
-
-            var services = (await serviceOperations.ListServicesAsync(labelFilter: filters.Label.First())).ToList();
+            var services = (await serviceOperations.ListServicesAsync(labelFilter: $"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}")).ToList();
             logger.LogInformation($"Found {services.Count} managed game server services");
 
             if (services.Count == 0)
@@ -596,12 +591,7 @@ namespace GameServer.Docker.Services
             logger.LogInformation($"Fetching service with ID: {Id}");
 
             // Use Docker label filter to fetch only the specific service - MUCH faster!
-            var filters = new ServiceFilter
-            {
-                Label = new[] { $"{ServiceLabels.ServerId}={Id}" }
-            };
-
-            var services = (await serviceOperations.ListServicesAsync(labelFilter: filters.Label.First())).ToList();
+            var services = (await serviceOperations.ListServicesAsync(labelFilter: $"{ServiceLabels.ServerId}={Id}")).ToList();
 
             if (services.Count == 0)
             {
@@ -649,13 +639,9 @@ namespace GameServer.Docker.Services
             {
                 logger.LogInformation($"Updating existing GameServer: {server.Name} ({server.ServerId})");
 
-                // Get the existing service from Docker
-                var serviceFilter = new ServiceFilter
-                {
-                    Label = new[] { $"{ServiceLabels.ServerId}={server.ServerId}" }
-                };
-
-                var services = await serviceOperations.ListServicesAsync(labelFilter: serviceFilter.Label.First());
+                // Get the existing service from Docker — filter by ServerId label (not Name) to ensure
+                // we update the correct service even if names are not unique.
+                var services = await serviceOperations.ListServicesAsync(labelFilter: $"{ServiceLabels.ServerId}={server.ServerId}");
 
                 if (!services.Any())
                 {
@@ -727,22 +713,28 @@ namespace GameServer.Docker.Services
         {
             logger.LogInformation($"Getting service ID for server {serverId}");
 
-            var services = await serviceOperations.ListServicesAsync();
+            // Use label-based filter to find services matching the ServerId label
+            var labelFilter = $"{ServiceLabels.ServerId}={serverId}";
+            var services = (await serviceOperations.ListServicesAsync(labelFilter: labelFilter)).ToList();
 
-            foreach (var svc in services)
+            if (services.Count == 0)
             {
-                if (svc.Spec.Labels.ContainsKey("gameserver.docker.managed") &&
-                    svc.Spec.Labels["gameserver.docker.managed"] == "true" &&
-                    svc.Spec.Labels.ContainsKey("gameserver.docker.Id") &&
-                    svc.Spec.Labels["gameserver.docker.Id"] == serverId)
-                {
-                    logger.LogDebug($"Found service {svc.ID} for server {serverId}");
-                    return svc.ID;
-                }
+                logger.LogWarning($"No service found for server {serverId}");
+                return string.Empty;
             }
 
-            logger.LogWarning($"No service found for server {serverId}");
-            return string.Empty;
+            if (services.Count > 1)
+            {
+                logger.LogError("❌ CRITICAL: Multiple services found with ServerId={ServerId}! Services: {ServiceNames}",
+                    serverId,
+                    string.Join(", ", services.Select(s => $"{s.Spec?.Name}({s.ID})")));
+
+                throw new InvalidOperationException($"Multiple services found with ServerId '{serverId}'. This indicates duplicate services in Docker Swarm!");
+            }
+
+            var svc = services.First();
+            logger.LogDebug($"Found service {svc.ID} (Name={svc.Spec?.Name}) for server {serverId}");
+            return svc.ID;
         }
 
 
@@ -770,27 +762,28 @@ namespace GameServer.Docker.Services
             if (server == null)
                 throw new InvalidOperationException($"Server {serverId} not found");
 
-            var serviceDetails = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName);
+            // Resolve the Docker Swarm service ID by ServerId label
+            var serviceId = await GetGameServerServiceIdAsync(serverId);
+            if (string.IsNullOrEmpty(serviceId))
+                throw new InvalidOperationException($"No service found for server {serverId}");
 
-            var service = serviceDetails.FirstOrDefault();
-            if (service == null)
-                throw new InvalidOperationException($"Unable to locate Service by name {server.ServiceName}");
+            logger.LogInformation("Resolved service ID {ServiceId} for server {ServerId}", serviceId, serverId);
 
-            // Find running task/container for this service
-            var tasks = await serviceOperations.ListTasksAsync();
+            // Fetch tasks for this service only
+            var tasks = await GetTasksForSwarmServiceAsync(serviceId);
 
             // Accept tasks that are Running, Starting, or Preparing (container might not be fully running yet)
             var activeStates = new[] { TaskState.Running, TaskState.Starting, TaskState.Preparing };
-            
+
             var runningTask = tasks
-                .Where(t => t.ServiceID == service.ID && activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
+                .Where(t => activeStates.Contains(t.Status?.State ?? TaskState.Shutdown))
                 .OrderByDescending(x => x.UpdatedAt)
                 .FirstOrDefault();
 
             if (runningTask == null)
             {
-                logger.LogWarning("No active task found for service {ServiceId} ({ServiceName}). Available tasks: {TaskCount}",
-                    service.ID, server.ServiceName, tasks.Count(t => t.ServiceID == service.ID));
+                logger.LogWarning("No active task found for service {ServiceId} ({ServerId}). Available tasks: {TaskCount}",
+                    serviceId, serverId, tasks.Count);
             }
 
             return runningTask?.Status?.ContainerStatus?.ContainerID ?? "";
