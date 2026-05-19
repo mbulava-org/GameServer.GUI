@@ -1,3 +1,4 @@
+@attribute [Obsolete("Legacy pre-V2 extended metadata editor. Migrate to V2 revision metadata before removing the old repository chain.")]
 @using global::GameServer.Docker.Client
 @using Radzen
 @using Radzen.Blazor
@@ -244,6 +245,131 @@
                                   }
                                 }
 
+                                @* Web Hosts Section - For configuring web-accessible endpoints *@
+                                @if (setting.DataType == "port")
+                                {
+                                  <div class="col-12 mt-3">
+                                    <RadzenCard Style="background: var(--rz-base-50); padding: 1rem;">
+                                      <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                          <h6 class="mb-1">
+                                            <RadzenIcon Icon="public" /> Web Hosts
+                                          </h6>
+                                          <small class="text-muted">Configure web-accessible endpoints (HTTP/HTTPS) for this port</small>
+                                        </div>
+                                        <RadzenButton Text="Add Web Host" 
+                                                      Icon="add" 
+                                                      Size="ButtonSize.ExtraSmall"
+                                                      ButtonStyle="ButtonStyle.Success"
+                                                      Click="@(() => AddWebHost(setting))" />
+                                      </div>
+
+                                      @if (setting.WebHosts == null || !setting.WebHosts.Any())
+                                      {
+                                        <p class="text-center text-muted mb-0">
+                                          <small>No web hosts configured. This port won't be accessible via load balancer.</small>
+                                        </p>
+                                      }
+                                      else
+                                      {
+                                        <RadzenStack Gap="0.5rem">
+                                          @foreach (var webHost in setting.WebHosts.ToList())
+                                          {
+                                            var webHostIndex = setting.WebHosts.ToList().IndexOf(webHost);
+                                            <RadzenCard Style="padding: 0.75rem;">
+                                              <div class="row g-2">
+                                                <div class="col-md-3">
+                                                  <RadzenFormField Text="Protocol *" Variant="@Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown @bind-Value="@webHost.Protocol"
+                                                                    Data="@(new[] { "http", "https", "tcp", "udp" })"
+                                                                    AllowClear="false"
+                                                                    class="w-100" />
+                                                  </RadzenFormField>
+                                                </div>
+
+                                                <div class="col-md-4">
+                                                  <RadzenFormField Text="Subdomain Pattern *" Variant="@Variant.Outlined" class="w-100">
+                                                    <RadzenTextBox @bind-Value="@webHost.SubdomainPattern"
+                                                                   Placeholder="{serverName}"
+                                                                   class="w-100" />
+                                                  </RadzenFormField>
+                                                  <small class="text-muted">Variables: {serverName}, {serverId}</small>
+                                                  @if (string.IsNullOrWhiteSpace(webHost.SubdomainPattern))
+                                                  {
+                                                    <small class="text-danger">⚠️ Subdomain pattern is required</small>
+                                                  }
+                                                </div>
+
+                                                <div class="col-md-2">
+                                                  <RadzenFormField Text="Port Source *" Variant="@Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown TValue="string"
+                                                                    Value="@webHost.PortSource"
+                                                                    ValueChanged="@((string value) => OnPortSourceChanged(webHost, value))"
+                                                                    Data="@(new[] { "Setting", "ContainerPort" })"
+                                                                    AllowClear="false"
+                                                                    class="w-100" />
+                                                  </RadzenFormField>
+                                                </div>
+
+                                                @if (webHost.PortSource == "Setting")
+                                                {
+                                                  <div class="col-md-2">
+                                                    <RadzenFormField Text="Setting Key *" Variant="@Variant.Outlined" class="w-100">
+                                                      <RadzenTextBox @bind-Value="@webHost.PortSettingKey"
+                                                                     Placeholder="@setting.Key"
+                                                                     class="w-100" />
+                                                    </RadzenFormField>
+                                                    @if (string.IsNullOrWhiteSpace(webHost.PortSettingKey))
+                                                    {
+                                                      <small class="text-danger">⚠️ Setting key is required</small>
+                                                    }
+                                                  </div>
+                                                }
+                                                else
+                                                {
+                                                  <div class="col-md-2">
+                                                    <RadzenFormField Text="Container Port *" Variant="@Variant.Outlined" class="w-100">
+                                                      <RadzenNumeric TValue="int?" 
+                                                                     Value="@webHost.PortContainerPort"
+                                                                     ValueChanged="@((int? value) => webHost.PortContainerPort = value)"
+                                                                     Min="1" 
+                                                                     Max="65535"
+                                                                     ShowUpDown="false"
+                                                                     class="w-100" />
+                                                    </RadzenFormField>
+                                                    @if (!webHost.PortContainerPort.HasValue || webHost.PortContainerPort.Value < 1)
+                                                    {
+                                                      <small class="text-danger">⚠️ Port is required (1-65535)</small>
+                                                    }
+                                                  </div>
+                                                }
+
+                                                <div class="col-md-1 d-flex align-items-end">
+                                                  <RadzenButton Icon="delete"
+                                                                Size="ButtonSize.Small"
+                                                                ButtonStyle="ButtonStyle.Danger"
+                                                                Click="@(() => RemoveWebHost(setting, webHostIndex))"
+                                                                title="Remove" />
+                                                </div>
+
+                                                <div class="col-12">
+                                                  <div class="d-flex gap-3">
+                                                    <div class="checkbox-group">
+                                                      <RadzenCheckBox @bind-Value="@webHost.EnableLoadBalancer" />
+                                                      <RadzenLabel Text="Enable Load Balancer" class="ms-2" />
+                                                    </div>
+                                                    <small class="text-muted">Priority: @webHost.Priority</small>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </RadzenCard>
+                                          }
+                                        </RadzenStack>
+                                      }
+                                    </RadzenCard>
+                                  </div>
+                                }
+
                                 <div class="col-md-6">
                                   <RadzenFormField Text="Validation Pattern (Regex)" Variant="@Variant.Outlined" class="w-100">
                                     <RadzenTextBox @bind-Value="@setting.ValidationPattern" 
@@ -313,6 +439,13 @@
                   </div>
                 }
               </RadzenCard>
+            </div>
+          </RadzenTabsItem>
+
+          <RadzenTabsItem Text="Web Hosts">
+            <div class="p-3">
+                            <WebHostsEditor WebHosts="@(metadata.WebHosts?.ToList() ?? new List<global::GameServer.Docker.Client.WebHostDefinition>())"
+                              AvailableSettings="@GetAvailableSettings()" />
             </div>
           </RadzenTabsItem>
         </Tabs>
@@ -785,19 +918,103 @@ private void SetValueMappings(SettingMetadata setting, string json)
     StateHasChanged();
   }
 
+  // Web Host Management Methods
+  private void AddWebHost(SettingMetadata setting)
+  {
+    var list = setting.WebHosts?.ToList() ?? new List<WebHost>();
+
+    var newWebHost = new WebHost
+    {
+      Protocol = "https",
+      SubdomainPattern = "{serverName}",
+      PortSource = "Setting",
+      PortSettingKey = setting.Key,
+      Priority = list.Count + 1,
+      EnableLoadBalancer = true
+    };
+
+    list.Add(newWebHost);
+    setting.WebHosts = list;
+    StateHasChanged();
+
+    NotificationService.Notify(new NotificationMessage
+    {
+      Severity = NotificationSeverity.Success,
+      Summary = "Web Host Added",
+      Detail = "New web host configuration added. Configure the details below.",
+      Duration = 3000
+    });
+  }
+
+  private void OnPortSourceChanged(WebHost webHost, string newSource)
+  {
+    webHost.PortSource = newSource;
+
+    // Initialize default values when switching port source
+    if (newSource == "ContainerPort")
+    {
+      // Set a default port if not already set
+      if (!webHost.PortContainerPort.HasValue)
+      {
+        webHost.PortContainerPort = 8080;
+      }
+      webHost.PortSettingKey = null;
+    }
+    else
+    {
+      // Clear container port when switching to Setting
+      webHost.PortContainerPort = null;
+    }
+
+    StateHasChanged();
+  }
+
+  private void RemoveWebHost(SettingMetadata setting, int index)
+  {
+    if (setting.WebHosts != null && index >= 0 && index < setting.WebHosts.Count)
+    {
+      var list = setting.WebHosts.ToList();
+      list.RemoveAt(index);
+      setting.WebHosts = list;
+
+      // Reorder priorities
+      for (int i = 0; i < list.Count; i++)
+      {
+        list[i].Priority = i + 1;
+      }
+
+      StateHasChanged();
+
+      NotificationService.Notify(new NotificationMessage
+      {
+        Severity = NotificationSeverity.Info,
+        Summary = "Web Host Removed",
+        Detail = "Web host configuration has been removed.",
+        Duration = 2000
+      });
+    }
+  }
+
   private async Task SaveMetadata()
   {
     if (metadata == null || string.IsNullOrEmpty(metadata.GameTypeKey)) return;
 
     try
     {
+      // Debug: Log the metadata before saving
+      var webHostCount = metadata.SettingsMetadata.Values
+        .Where(s => s.WebHosts != null)
+        .Sum(s => s.WebHosts.Count);
+
+      Console.WriteLine($"Saving metadata with {webHostCount} total web hosts across all settings");
+
       await MetadataApi.SaveAsync(metadata.GameTypeKey, metadata);
-      
+
       NotificationService.Notify(new NotificationMessage
       {
         Severity = NotificationSeverity.Success,
         Summary = "Saved",
-        Detail = "Extended metadata saved successfully.",
+        Detail = $"Extended metadata saved successfully. ({webHostCount} web hosts configured)",
         Duration = 3000
       });
 
@@ -805,6 +1022,7 @@ private void SetValueMappings(SettingMetadata setting, string json)
     }
     catch (Exception ex)
     {
+      Console.WriteLine($"Save error: {ex.Message}");
       NotificationService.Notify(new NotificationMessage
       {
         Severity = NotificationSeverity.Error,
@@ -814,13 +1032,12 @@ private void SetValueMappings(SettingMetadata setting, string json)
       });
     }
   }
-}
-      {
-        Severity = NotificationSeverity.Error,
-        Summary = "Save Failed",
-        Detail = $"Failed to save metadata: {ex.Message}",
-        Duration = 5000
-      });
-    }
+
+  private List<string> GetAvailableSettings()
+  {
+    if (gameTypeDefinition?.DefaultSettings == null)
+      return new List<string>();
+
+    return gameTypeDefinition.DefaultSettings.Keys.ToList();
   }
 }

@@ -25,7 +25,10 @@ namespace GameServer.Web
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //Serilog configuration
+                // Clear default logging providers to prevent duplicates
+                builder.Logging.ClearProviders();
+
+                //Serilog configuration - Console sink from code only (no appsettings.json config)
                 builder.Services.AddSerilog((services, loggerConfig) =>
                     loggerConfig
                         .ReadFrom.Configuration(builder.Configuration)
@@ -49,6 +52,8 @@ namespace GameServer.Web
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
                 builder.Services.AddHttpClient();
+                builder.Services.AddScoped<Services.V2.GameServerV2ApiService>();
+                builder.Services.AddScoped<Services.V2.GameTypeV2ApiService>();
 
                 //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";

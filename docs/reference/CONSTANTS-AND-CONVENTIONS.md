@@ -141,6 +141,7 @@ var filters = new ServiceFilter
 "string"   // Text input
 "number"   // Numeric input
 "boolean"  // Checkbox
+"yesno"    // Yes/No dropdown or equivalent selector
 "enum"     // Dropdown (requires AllowedValues)
 "list"     // Comma-separated list input
 "port"     // Port input with validation

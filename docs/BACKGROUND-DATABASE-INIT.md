@@ -2,7 +2,9 @@
 
 ## Overview
 
-Moved database initialization from blocking startup to a background service, allowing the webhost and SignalR hubs to start **immediately** while database initialization happens in parallel.
+Database initialization runs in a hosted background service after the webhost starts listening, allowing early infrastructure connectivity such as agent registration while initialization is in progress.
+
+**Current behavior:** if either the legacy or V2 database initialization fails, the application logs a critical error and shuts itself down. The host no longer continues running in a partially initialized state.
 
 ## Problem Solved
 
@@ -98,7 +100,7 @@ await repository.InitializeDatabaseAsync(); // This blocked webhost startup
 ```log
 [18:01:30] Starting GameServer.Docker Version - 0.0.4.220
 [18:01:32] 🚀 WebHost built successfully. Configuring middleware...
-[18:01:32] 🎯 WebHost is ready to accept connections. Database initialization will run in background...
+[18:01:32] 🎯 WebHost has started listening. Database initialization is still running in the background; the application will shut down if initialization fails.
 [18:01:33] Now listening on: http://0.0.0.0:8080
 [18:01:33] 🔄 Starting background database initialization...
 [18:01:33] Initializing database...
@@ -118,17 +120,17 @@ If database initialization fails:
 
 ```log
 [18:01:33] 🔄 Starting background database initialization...
-[18:01:34] [ERR] Failed to initialize database in background. Some features may not work correctly.
+[18:01:34] [FTL] Failed to initialize database in background. Shutting down the application.
 System.IO.IOException: Database file is locked
    at GameServer.Docker.Repositories.GameTypeRepository.InitializeDatabaseAsync()
    at DatabaseInitializationService.ExecuteAsync()
 ```
 
 **Application behavior**:
-- ✅ Webhost continues running
-- ✅ Agents can connect
-- ✅ Health checks return healthy
-- ⚠️ Database-dependent API calls may fail
+- ✅ Failure is logged immediately
+- ✅ Host exit code is set to `1`
+- ✅ `StopApplication()` is called
+- ❌ Webhost does not continue serving traffic
 
 ## Testing
 
@@ -157,16 +159,18 @@ await Task.Delay(10000); // 10 second delay
 **Expected**: Webhost starts immediately, agents connect, database init completes 10s later
 
 ### 3. Database Init Failure
-Simulate failure by using invalid database path:
+Simulate failure by using an invalid database path or unavailable V2 database:
 
 ```bash
 # Remove database permissions
 docker exec <container> chmod 000 /data
 ```
 
-**Expected**: Error logged, but webhost continues running
+**Expected**: Critical error logged and the application shuts down
 
-## Migration Path
+## Historical Note
+
+Earlier iterations of this service allowed the host to keep running when background initialization failed. That behavior has been intentionally removed because it left the application listening while the V2 persistence store was unavailable.
 
 If you need to revert to blocking initialization:
 

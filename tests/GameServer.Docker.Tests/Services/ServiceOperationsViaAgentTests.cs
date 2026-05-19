@@ -18,6 +18,7 @@ namespace GameServer.Docker.Tests.Services;
 public class ServiceOperationsViaAgentTests
 {
     private readonly Mock<IAgentRegistry> _mockAgentRegistry;
+    private readonly Mock<IUdpAgentRegistry> _mockUdpAgentRegistry;
     private readonly Mock<IHttpClientFactory> _mockHttpClientFactory;
     private readonly Mock<ILogger<ServiceOperationsViaAgent>> _mockLogger;
     private readonly Mock<HttpMessageHandler> _mockHttpMessageHandler;
@@ -25,9 +26,14 @@ public class ServiceOperationsViaAgentTests
     public ServiceOperationsViaAgentTests()
     {
         _mockAgentRegistry = new Mock<IAgentRegistry>();
+        _mockUdpAgentRegistry = new Mock<IUdpAgentRegistry>();
         _mockHttpClientFactory = new Mock<IHttpClientFactory>();
         _mockLogger = new Mock<ILogger<ServiceOperationsViaAgent>>();
         _mockHttpMessageHandler = new Mock<HttpMessageHandler>();
+
+        _mockUdpAgentRegistry
+            .Setup(x => x.GetAllAgents())
+            .Returns(Array.Empty<NodeAgentEndpoint>());
 
         // Setup HttpClient factory
         var httpClient = new HttpClient(_mockHttpMessageHandler.Object);
@@ -39,6 +45,7 @@ public class ServiceOperationsViaAgentTests
     {
         return new ServiceOperationsViaAgent(
             _mockAgentRegistry.Object,
+            _mockUdpAgentRegistry.Object,
             _mockHttpClientFactory.Object,
             _mockLogger.Object
         );
@@ -126,7 +133,7 @@ public class ServiceOperationsViaAgentTests
             .ReturnsAsync(responseMessage);
 
         // Act
-        var result = await service.ListServicesAsync();
+        var result = await service.ListServicesAsync(cancellationToken: CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -316,7 +323,7 @@ public class ServiceOperationsViaAgentTests
             .ReturnsAsync(responseMessage);
 
         // Act
-        var result = await service.ListServicesAsync();
+        var result = await service.ListServicesAsync(cancellationToken: CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -341,7 +348,7 @@ public class ServiceOperationsViaAgentTests
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.ListServicesAsync());
+            () => service.ListServicesAsync(cancellationToken: CancellationToken.None));
         
         Assert.Contains("No healthy manager agent available", exception.Message);
     }

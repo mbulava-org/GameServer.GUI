@@ -1,4 +1,5 @@
 ﻿@using GameServer.Docker.Client
+@attribute [Obsolete("Legacy pre-V2 create-server wizard step. Migrate to the V2 server flow before removing the old repository chain.")]
 <EditForm Model="Server" OnValidSubmit="@NextAsync">
     <DataAnnotationsValidator />
     <RadzenPanel AllowCollapse="false" class="rz-my-10 rz-mx-auto" 
@@ -14,7 +15,8 @@
                 <PortMappingEditor Server="Server" 
                                    GameTypeDefinition="Definition"
                                    OnChanged="@(s=> Server = s)" 
-                                   OnValidityChanged="@(a=> PortsValid = a)" />
+                                   OnValidityChanged="@(a=> PortsValid = a)"
+                                   @ref="portMappingEditor" />
                      </RadzenCard>
                     <RadzenCard Variant="Variant.Outlined" class="rz-mt-4">
                         <h4>Persistent Storage:</h4>
@@ -34,17 +36,25 @@
 
     [Parameter]
     public GameServer Server { get; set; } = new();
-    
+
     [Parameter]
     public GameTypeDefinition? Definition { get; set; }
-    
+
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
 
-
+    private PortMappingEditor? portMappingEditor;
 
     public bool PortsValid { get; set; } = false;
     public bool StorageValid { get; set; } = true;
+
+    public async Task RevalidatePortsAsync()
+    {
+        if (portMappingEditor != null)
+        {
+            await portMappingEditor.RevalidateAsync();
+        }
+    }
 
     async Task NextAsync() => await OnNext.InvokeAsync();
     async Task BackAsync() => await OnBack.InvokeAsync();  

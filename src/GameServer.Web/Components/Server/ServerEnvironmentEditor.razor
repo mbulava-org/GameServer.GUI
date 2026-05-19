@@ -1,9 +1,11 @@
 @using Radzen
 @using Radzen.Blazor
+@attribute [Obsolete("Legacy pre-V2 server environment editor. Migrate to the V2 server flow before removing the old repository chain.")]
 @using global::GameServer.Docker.Client
 @using System.Linq
 @using Microsoft.AspNetCore.Components.Rendering
 @inject IGameTypeExtendedMetadataApi ExtendedMetadataApi
+@inject IPortApi PortApi
 @inject NotificationService NotificationService
 
 @if (isLoadingMetadata)
@@ -64,7 +66,7 @@ else if (extendedMetadata?.SettingsMetadata?.Any() == true || GameTypeDefinition
 
     @if (categories.Count > 1)
     {
-        <RadzenTabs @bind-SelectedIndex="selectedTabIndex" RenderMode="TabRenderMode.Client">
+        <RadzenTabs @bind-SelectedIndex="selectedTabIndex">
             <Tabs>
                 @foreach (var category in categories)
                 {
@@ -180,6 +182,7 @@ else
     [Parameter] public GameServer? Server { get; set; }
     [Parameter] public EventCallback<GameServer> ServerChanged { get; set; }
     [Parameter] public EventCallback<bool> OnValidationChanged { get; set; }
+    [Parameter] public EventCallback OnPortsChanged { get; set; }
 
     private GameTypeExtendedMetadata? extendedMetadata;
     private bool isLoadingMetadata = false;
@@ -401,6 +404,12 @@ else
                         }
                     }
                 }
+
+                // Notify that ports were changed so validation can run
+                if (OnPortsChanged.HasDelegate)
+                {
+                    await OnPortsChanged.InvokeAsync();
+                }
             }
         }
 
@@ -456,16 +465,62 @@ else
             {
                 if (int.TryParse(portValue, out var port))
                 {
+                    // Validate range
                     if (settingMeta.PortValidation != null)
                     {
                         if (port < settingMeta.PortValidation.MinPort || port > settingMeta.PortValidation.MaxPort)
                         {
                             validationErrors.Add($"{settingMeta.Key} must be between {settingMeta.PortValidation.MinPort} and {settingMeta.PortValidation.MaxPort}");
+                            continue; // Skip availability check if range is invalid
                         }
                     }
                     else if (port < 1 || port > 65535)
                     {
                         validationErrors.Add($"{settingMeta.Key} must be a valid port (1-65535)");
+                        continue; // Skip availability check if range is invalid
+                    }
+
+                    // Validate availability if this setting maps to a container port
+                    if (settingMeta.MapsToContainerPort && settingMeta.LinkedContainerPort.HasValue)
+                    {
+                        // Find the protocol for this port
+                        var protocol = settingMeta.PortProtocol ?? "tcp";
+
+                        // Check if the main port is available
+                        var isMainPortAvailable = await PortApi.CheckAsync(protocol, port);
+                        if (!isMainPortAvailable)
+                        {
+                            validationErrors.Add($"{settingMeta.Key}: Port {port}/{protocol} is already in use");
+                        }
+
+                        // Validate all related ports from relationships
+                        if (settingMeta.PortRelationships?.Any() == true)
+                        {
+                            foreach (var relationship in settingMeta.PortRelationships)
+                            {
+                                int calculatedPort = relationship.RelationType switch
+                                {
+                                    PortRelationshipType.Offset => port + relationship.Offset,
+                                    PortRelationshipType.Fixed => (int)(relationship.FixedValue ?? relationship.TargetContainerPort),
+                                    PortRelationshipType.Multiplier => port * relationship.Offset,
+                                    _ => 0
+                                };
+
+                                // Validate calculated port range
+                                if (calculatedPort < 1 || calculatedPort > 65535)
+                                {
+                                    validationErrors.Add($"{relationship.Description ?? $"Related port {relationship.TargetContainerPort}/{relationship.TargetProtocol}"}: Calculated port {calculatedPort} is out of valid range (1-65535)");
+                                    continue;
+                                }
+
+                                // Check if calculated port is available
+                                var isRelatedPortAvailable = await PortApi.CheckAsync(relationship.TargetProtocol, calculatedPort);
+                                if (!isRelatedPortAvailable)
+                                {
+                                    validationErrors.Add($"{relationship.Description ?? $"Related port {relationship.TargetContainerPort}/{relationship.TargetProtocol}"}: Port {calculatedPort}/{relationship.TargetProtocol} is already in use");
+                                }
+                            }
+                        }
                     }
                 }
                 else

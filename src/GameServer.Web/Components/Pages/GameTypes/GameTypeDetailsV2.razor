@@ -1,0 +1,1777 @@
+@page "/gametypes-v2/{Key}"
+@page "/gametypes-v2/new"
+@rendermode InteractiveServer
+@using System.Text
+@using System.Text.Json
+@using GameServer.Web.Components.Pages.GameTypes.Components.V2
+@using GameServer.Web.Models.V2
+@using Microsoft.JSInterop
+@using Radzen
+@using Radzen.Blazor
+@inject Services.V2.GameTypeV2ApiService GameTypeApiV2
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>@(isNew ? "Create Game Type V2" : gameType?.DisplayName ?? "Game Type V2")</PageTitle>
+
+<div class="container-fluid game-type-details-page">
+    <div class="game-type-details-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <RadzenButton Icon="arrow_back"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@GoBack"
+                              class="me-3" />
+                <h2 class="d-inline">@(isNew ? "Create New Game Type V2" : $"Edit V2: {gameType?.DisplayName}")</h2>
+            </div>
+            <div class="d-flex gap-2">
+                <RadzenButton Text="Cancel"
+                              Icon="close"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@GoBack" />
+                <RadzenButton Text="Export"
+                              Icon="download"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@ExportGameTypeAsync"
+                              Disabled="@(isSaving || isNew || gameType is null)" />
+                <RadzenButton Text="Save"
+                              Icon="save"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Click="@SavePageAsync"
+                              Disabled="@isSaving" />
+            </div>
+        </div>
+    </div>
+
+    <div class="game-type-details-content">
+        @if (isLoading)
+        {
+            <div class="text-center py-5">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+                <p class="mt-3">Loading V2 game type...</p>
+            </div>
+        }
+        else if (!isNew && gameType is null)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light">
+                The requested V2 game type could not be found.
+            </RadzenAlert>
+        }
+        else if (gameType is not null)
+        {
+            <div class="row mb-3">
+                <div class="col-lg-8">
+                    <RadzenCard>
+                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <h4 class="mb-0">@gameType.DisplayName</h4>
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@gameTypeType" Variant="Variant.Outlined" />
+                                    <RadzenBadge BadgeStyle="@(gameType.IsActive ? BadgeStyle.Success : BadgeStyle.Secondary)" Text="@(gameType.IsActive ? "Active" : "Inactive")" />
+                                </div>
+                                <p class="text-muted mb-2">@(string.IsNullOrWhiteSpace(gameType.Description) ? "No description provided." : gameType.Description)</p>
+                                <div><strong>Current Image:</strong> <code>@GetDisplayedImageReference()</code></div>
+                                @if (!string.IsNullOrWhiteSpace(gameType.DocumentationUrl))
+                                {
+                                    <div><strong>Docs:</strong> <a href="@gameType.DocumentationUrl" target="_blank">@gameType.DocumentationUrl</a></div>
+                                }
+                            </div>
+                            <div class="text-end">
+                                <div><strong>Revisions:</strong> @gameType.Revisions.Count</div>
+                                <div><strong>Current:</strong> @(CurrentRevision?.VersionTag ?? "None")</div>
+                                <div><strong>Updated:</strong> @gameType.UpdatedAt.ToLocalTime().ToString("g")</div>
+                            </div>
+                        </div>
+                    </RadzenCard>
+                </div>
+                <div class="col-lg-4">
+                    <RadzenCard>
+                        <RadzenFormField Text="Active Revision" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="int?"
+                                            Data="@GetRevisionRows()"
+                                            TextProperty="VersionTag"
+                                            ValueProperty="Id"
+                                            @bind-Value="selectedRevisionId"
+                                            Change="@(_ => OnSelectedRevisionChanged())"
+                                            Placeholder="Select revision"
+                                            class="w-100" />
+                        </RadzenFormField>
+                        <div class="d-flex gap-2 mt-3 flex-wrap">
+                            <RadzenButton Text="New Draft"
+                                          Icon="add"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Click="@CreateNewRevisionDraft" />
+                        </div>
+                    </RadzenCard>
+                </div>
+            </div>
+
+            @if (GetVisibleCrossTabValidationIssues().Count > 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mb-3">
+                    <div class="fw-semibold mb-2">Cross-tab revision validation</div>
+                    <ul class="mb-0 ps-3">
+                        @foreach (var issue in GetVisibleCrossTabValidationIssues())
+                        {
+                            <li>@issue</li>
+                        }
+                    </ul>
+                </RadzenAlert>
+            }
+
+            <RadzenTabs>
+                <Tabs>
+                    <RadzenTabsItem Text="Detection" Disabled="@(!IsDockerType())">
+                        <div class="p-4">
+                            <GameTypeRevisionDetectionEditor IsNew="isNew"
+                                                            IsDetecting="isDetecting"
+                                                            IsDockerType="@IsDockerType()"
+                                                            @bind-DetectionImageReference="detectionImageReference"
+                                                            @bind-DetectionVersionTag="detectionVersionTag"
+                                                            DetectionResult="detectionResult"
+                                                            DetectionComparison="detectionComparison"
+                                                            OnScanTag="@RunDetectionAsync"
+                                                            OnApplyAll="@ApplyDetectionToDraft"
+                                                            OnApplyIdentity="@ApplyDetectionIdentity"
+                                                            OnApplyPorts="@ApplyDetectionPorts"
+                                                            OnApplySettings="@ApplyDetectionSettings"
+                                                            OnApplyVolumes="@ApplyDetectionVolumes" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Basic">
+                        <div class="p-4">
+                            <GameTypeBasicInfoV2Editor IsNew="isNew"
+                                                       @bind-KeyValue="keyValue"
+                                                       @bind-DisplayName="displayName"
+                                                       @bind-Type="gameTypeType"
+                                                       TypeOptions="gameTypeTypeOptions"
+                                                       @bind-ThumbnailUrl="thumbnailUrl"
+                                                       @bind-DocumentationUrl="documentationUrl"
+                                                       @bind-Description="description"
+                                                       @bind-IsActive="isActive" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Revisions">
+                        <div class="p-4">
+                            <GameTypeRevisionEditor RevisionRows="@GetRevisionRows()"
+                                                   ValidationIssues="Array.Empty<string>()"
+                                                   Warnings="@GetRevisionWarnings()"
+                                                   @bind-ImageReference="revisionImageReference"
+                                                   @bind-VersionTag="revisionVersionTag"
+                                                   @bind-ImageDigest="revisionImageDigest"
+                                                   @bind-EnableTTY="revisionEnableTTY"
+                                                   @bind-Notes="revisionNotes"
+                                                   @bind-IsPublished="revisionIsPublished"
+                                                   IsSavingRevision="isSavingRevision"
+                                                   CanSetCurrentRevision="@(editingRevisionId is not null && GetRevisionSaveValidationIssues().Count == 0)"
+                                                   OnCreateNewDraft="@CreateNewRevisionDraft"
+                                                   OnSetCurrentRevision="@SetCurrentRevisionAsync"
+                                                   OnPublishAndSetCurrent="@PublishAndSetCurrentAsync"
+                                                   OnEditRevision="@EditRevisionDraft"
+                                                   OnCloneRevision="@CloneRevisionDraft" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Ports">
+                        <div class="p-4">
+                            <GameTypeRevisionPortsEditor Ports="revisionPorts"
+                                                         ProtocolOptions="protocolOptions"
+                                                         OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Volumes">
+                        <div class="p-4">
+                            <GameTypeRevisionVolumesEditor Volumes="revisionVolumes"
+                                                           VolumeUsageOptions="volumeUsageOptions"
+                                                           OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Settings">
+                        <div class="p-4">
+                            <GameTypeRevisionSettingsEditor Settings="revisionSettingDefinitions"
+                                                            DefinedPorts="revisionPorts"
+                                                            DataTypeOptions="dataTypeOptions"
+                                                            ProtocolOptions="protocolOptions"
+                                                            PortMappingRoleOptions="portMappingRoleOptions"
+                                                            PortRelationTypeOptions="portRelationTypeOptions"
+                                                            OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Web Hosts">
+                        <div class="p-4">
+                            <GameTypeRevisionWebHostsEditor WebHosts="revisionWebHosts"
+                                                            PortVariableOptions="@GetWebHostPortVariableOptions()"
+                                                            OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Review">
+                        <div class="p-4">
+                            <GameTypeRevisionReviewEditor RevisionImageReference="revisionImageReference"
+                                                         RevisionVersionTag="revisionVersionTag"
+                                                         RevisionImageDigest="revisionImageDigest"
+                                                         RevisionEnableTTY="revisionEnableTTY"
+                                                         RevisionIsPublished="revisionIsPublished"
+                                                         PortCount="revisionPorts.Count"
+                                                         VolumeCount="revisionVolumes.Count"
+                                                         SettingCount="revisionSettingDefinitions.Count"
+                                                         WebHostCount="revisionWebHosts.Count"
+                                                         PortMappingCount="revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count)"
+                                                         DetectionResult="detectionResult"
+                                                         DetectionComparison="detectionComparison"
+                                                         ValidationIssues="Array.Empty<string>()"
+                                                         Warnings="@GetRevisionWarnings()"
+                                                         DraftDifferences="@GetDraftDifferences()"
+                                                         DetailedDraftDifferences="@GetDetailedDraftDifferences()" />
+                        </div>
+                    </RadzenTabsItem>
+                </Tabs>
+            </RadzenTabs>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? Key { get; set; }
+
+    private const int UnsavedDraftRevisionSelectionId = 0;
+    private string? createdGameTypeKey;
+
+    private GameTypeDetail? gameType;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool isSavingRevision;
+    private bool isDetecting;
+    private bool isNew => string.IsNullOrWhiteSpace(Key) && string.IsNullOrWhiteSpace(createdGameTypeKey);
+    private static readonly JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private int? selectedRevisionId;
+    private string keyValue = string.Empty;
+    private string displayName = string.Empty;
+    private string? description;
+    private string gameTypeType = "docker";
+    private string? thumbnailUrl;
+    private string? documentationUrl;
+    private bool isActive = true;
+    private int? editingRevisionId;
+    private string revisionImageReference = string.Empty;
+    private string revisionVersionTag = string.Empty;
+    private string? revisionImageDigest;
+    private bool revisionEnableTTY;
+    private string? revisionNotes;
+    private bool revisionIsPublished;
+    private List<GameTypeRevisionPortDraft> revisionPorts = [];
+    private List<GameTypeRevisionVolumeDraft> revisionVolumes = [];
+    private List<GameTypeRevisionSettingDraft> revisionSettingDefinitions = [];
+    private List<GameTypeRevisionWebHostDraft> revisionWebHosts = [];
+    private string detectionImageReference = string.Empty;
+    private string detectionVersionTag = string.Empty;
+    private GameTypeSetupDetectionResult? detectionResult;
+    private GameTypeSetupComparisonResult? detectionComparison;
+    private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
+    private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
+    private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "saves", "backups", "gamefiles", "logs"];
+    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "yesno", "enum", "port"];
+    private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
+    private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
+    private static readonly HashSet<string> supportedWebHostVariableDataTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "number",
+        "port"
+    };
+
+    private GameTypeRevision? CurrentRevision => selectedRevisionId == UnsavedDraftRevisionSelectionId
+        ? null
+        : gameType?.Revisions.FirstOrDefault(x => x.Id == selectedRevisionId)
+        ?? gameType?.Revisions.FirstOrDefault(x => x.Id == gameType.CurrentRevisionId)
+        ?? gameType?.Revisions.FirstOrDefault();
+
+    private string GetDisplayedImageReference()
+    {
+        return CurrentRevision?.ImageReference
+            ?? gameType?.Revisions.FirstOrDefault(x => x.Id == gameType.CurrentRevisionId)?.ImageReference
+            ?? gameType?.Revisions.FirstOrDefault()?.ImageReference
+            ?? "No current revision image";
+    }
+
+    private bool IsDockerType()
+    {
+        return string.Equals(gameTypeType, "docker", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private GameTypeRevision? FindRevisionByIdentity(string imageReference, string? versionTag)
+    {
+        if (gameType is null || string.IsNullOrWhiteSpace(imageReference) || string.IsNullOrWhiteSpace(versionTag))
+        {
+            return null;
+        }
+
+        return gameType.Revisions.FirstOrDefault(revision =>
+            string.Equals(revision.ImageReference, imageReference, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(revision.VersionTag, versionTag, StringComparison.OrdinalIgnoreCase));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            isLoading = true;
+
+            if (isNew)
+            {
+                createdGameTypeKey = null;
+                gameType = new GameTypeDetail
+                {
+                    Key = string.Empty,
+                    DisplayName = string.Empty,
+                    Type = "docker",
+                    Revisions = []
+                };
+                selectedRevisionId = UnsavedDraftRevisionSelectionId;
+                PopulateForm(gameType);
+                LoadRevisionDraft(null, asNewDraft: true);
+                return;
+            }
+
+            gameType = await GameTypeApiV2.GetByKeyAsync(Key!);
+            if (gameType is not null)
+            {
+                selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id ?? UnsavedDraftRevisionSelectionId;
+                PopulateForm(gameType);
+                LoadRevisionDraft(selectedRevisionId == UnsavedDraftRevisionSelectionId ? null : CurrentRevision, asNewDraft: selectedRevisionId == UnsavedDraftRevisionSelectionId);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/gametypes-v2");
+    }
+
+    private async Task ExportGameTypeAsync()
+    {
+        if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
+        {
+            return;
+        }
+
+        try
+        {
+            var package = await GameTypeApiV2.ExportAsync(gameType.Key);
+            var json = JsonSerializer.Serialize(package, jsonSerializerOptions);
+            var fileName = $"{gameType.Key}-portable.json";
+            var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+            await JS.InvokeVoidAsync("downloadFile", fileName, base64);
+            NotificationService.Notify(NotificationSeverity.Success, "Exported", $"Game type '{gameType.DisplayName}' was exported successfully.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Export failed", ex.Message);
+        }
+    }
+
+    private Task HandleRevisionDraftChangedAsync()
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task SavePageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(gameTypeType))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Type are required.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            var wasNewGameType = isNew;
+            var shouldSaveRevision = ShouldSaveRevisionWithPageSave();
+            var revisionSaved = false;
+
+            var request = new SaveGameTypeRequest
+            {
+                Key = keyValue,
+                DisplayName = displayName,
+                Description = description,
+                Type = gameTypeType,
+                ThumbnailUrl = thumbnailUrl,
+                DocumentationUrl = documentationUrl,
+                IsActive = isActive
+            };
+
+            gameType = isNew
+                ? await GameTypeApiV2.CreateAsync(request)
+                : await GameTypeApiV2.UpdateAsync(keyValue, request);
+            createdGameTypeKey = gameType.Key;
+
+            PopulateForm(gameType);
+            if (!shouldSaveRevision)
+            {
+                selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
+                LoadRevisionDraft(CurrentRevision);
+                NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
+            }
+            else
+            {
+                revisionSaved = await SaveRevisionInternalAsync(notifySuccess: false);
+                if (revisionSaved)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType and selected revision saved successfully.");
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Partially saved", "V2 GameType changes were saved, but the selected revision changes were not saved.");
+                }
+            }
+
+            if (wasNewGameType && (!shouldSaveRevision || revisionSaved))
+            {
+                Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Save failed", ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void OnSelectedRevisionChanged()
+    {
+        if (selectedRevisionId == UnsavedDraftRevisionSelectionId)
+        {
+            return;
+        }
+
+        LoadRevisionDraft(CurrentRevision);
+    }
+
+    private void CreateNewRevisionDraft()
+    {
+        LoadRevisionDraft(CurrentRevision, asNewDraft: true);
+        selectedRevisionId = UnsavedDraftRevisionSelectionId;
+    }
+
+    private void EditRevisionDraft(GameTypeRevision revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+        selectedRevisionId = revision.Id;
+        LoadRevisionDraft(revision);
+    }
+
+    private void CloneRevisionDraft(GameTypeRevision revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+        selectedRevisionId = revision.Id;
+        LoadRevisionDraft(revision, asNewDraft: true);
+        if (!string.IsNullOrWhiteSpace(revisionVersionTag))
+        {
+            revisionVersionTag = $"{revisionVersionTag}-copy";
+        }
+    }
+
+    private async Task SaveRevisionAsync()
+    {
+        await SaveRevisionInternalAsync(notifySuccess: true);
+    }
+
+    private async Task<bool> SaveRevisionInternalAsync(bool notifySuccess)
+    {
+        if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
+            return false;
+        }
+
+        var saveIssues = GetRevisionSaveValidationIssues();
+        if (saveIssues.Count > 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", saveIssues[0]);
+            return false;
+        }
+
+        try
+        {
+            isSavingRevision = true;
+
+            var request = new SaveGameTypeRevisionRequest
+            {
+                ImageReference = revisionImageReference,
+                VersionTag = revisionVersionTag,
+                ImageDigest = revisionImageDigest,
+                EnableTTY = revisionEnableTTY,
+                Notes = revisionNotes,
+                IsPublished = revisionIsPublished,
+                Ports = revisionPorts.Select((port, index) => new GameTypePort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    AdvertisedPort = port.AdvertisedPort,
+                    Description = port.Description,
+                    DisplayOrder = index
+                }).ToList(),
+                Volumes = revisionVolumes.Select((volume, index) => new GameTypeVolume
+                {
+                    Source = volume.Source,
+                    Description = volume.Description,
+                    DisplayOrder = index,
+                    Usage = volume.Usage
+                }).ToList(),
+                SettingDefinitions = revisionSettingDefinitions.Select((setting, index) => new GameTypeSettingDefinition
+                {
+                    SettingKey = setting.SettingKey,
+                    DefaultValue = setting.DefaultValue,
+                    Description = setting.Description,
+                    DisplayOrder = index,
+                    Metadata = new GameTypeSettingMetadata
+                    {
+                        DataType = setting.Metadata.DataType,
+                        Category = setting.Metadata.Category,
+                        IsRequired = setting.Metadata.IsRequired,
+                        CannotBeEmpty = setting.Metadata.CannotBeEmpty,
+                        Placeholder = setting.Metadata.Placeholder,
+                        ValidationPattern = setting.Metadata.ValidationPattern,
+                        ValidationMessage = setting.Metadata.ValidationMessage,
+                        AutoAllocatePort = setting.Metadata.AutoAllocatePort,
+                        ValidateRelatedPortsAvailability = setting.Metadata.ValidateRelatedPortsAvailability,
+                        AllowedValuesJson = setting.Metadata.AllowedValuesJson,
+                        ValueMappingsJson = setting.Metadata.ValueMappingsJson,
+                        PortMappings = setting.Metadata.PortMappings.Select((mapping, mappingIndex) => new GameTypeSettingPortMapping
+                        {
+                            MappingRole = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortMappingRole>(mapping.MappingRole, true, out var role)
+                                ? role.ToString()
+                                : GameServer.Web.Models.V2.GameTypeSettingPortMappingRole.Primary.ToString(),
+                            RelationType = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortRelationType>(mapping.RelationType, true, out var relationType)
+                                ? relationType.ToString()
+                                : GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
+                            TargetContainerPort = ResolveTargetContainerPort(setting, mapping).GetValueOrDefault(mapping.TargetContainerPort),
+                            TargetProtocol = mapping.TargetProtocol,
+                            CalculationValue = mapping.CalculationValue,
+                            IsRequired = mapping.IsRequired,
+                            DisplayOrder = mappingIndex
+                        }).ToList()
+                    }
+                }).ToList(),
+                WebHosts = revisionWebHosts.Select((host, index) => new GameTypeWebHost
+                {
+                    Name = host.Name,
+                    Description = host.Description,
+                    PathSegment = host.PathSegment,
+                    ContainerPort = host.ContainerPort,
+                    ContainerPortVariable = host.ContainerPortVariable,
+                    EnabledWhen = host.EnabledWhen,
+                    DisplayOrder = index
+                }).ToList()
+            };
+
+            var revision = editingRevisionId is null
+                ? await GameTypeApiV2.AddRevisionAsync(gameType.Key, request)
+                : await GameTypeApiV2.UpdateRevisionAsync(gameType.Key, editingRevisionId.Value, request);
+
+            if (editingRevisionId is null && gameType.CurrentRevisionId is null)
+            {
+                await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, revision.Id);
+            }
+
+            await ReloadGameTypeAsync(gameType.Key, revision.Id);
+            if (notifySuccess)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
+            }
+
+            return true;
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Save revision failed", ex.Message);
+            return false;
+        }
+        finally
+        {
+            isSavingRevision = false;
+        }
+    }
+
+    private bool ShouldSaveRevisionWithPageSave()
+    {
+        return editingRevisionId is not null
+            || HasRevisionDraftContent();
+    }
+
+    private async Task PublishAndSetCurrentAsync()
+    {
+        await PublishRevisionAsync(setAsCurrentRevision: true);
+    }
+
+    private async Task SetCurrentRevisionAsync()
+    {
+        if (gameType is null || editingRevisionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, editingRevisionId.Value);
+            await ReloadGameTypeAsync(gameType.Key, editingRevisionId.Value);
+            NotificationService.Notify(NotificationSeverity.Success, "Current revision updated", "The selected revision is now the active revision.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Set current failed", ex.Message);
+        }
+    }
+
+    private async Task PublishRevisionAsync(bool setAsCurrentRevision)
+    {
+        if (gameType is null || editingRevisionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            isSavingRevision = true;
+            var revision = await GameTypeApiV2.PublishRevisionAsync(gameType.Key, editingRevisionId.Value, setAsCurrentRevision);
+            await ReloadGameTypeAsync(gameType.Key, revision.Id);
+            NotificationService.Notify(NotificationSeverity.Success, "Revision published", $"Revision '{revision.VersionTag}' published successfully.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Publish failed", ex.Message);
+        }
+        finally
+        {
+            isSavingRevision = false;
+        }
+    }
+
+    private async Task RunDetectionAsync()
+    {
+        if (gameType is null)
+        {
+            return;
+        }
+
+        if (!IsDockerType())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Detection is only available for Docker game types.");
+            return;
+        }
+
+        var imageReference = string.IsNullOrWhiteSpace(detectionImageReference) ? revisionImageReference : detectionImageReference;
+        if (string.IsNullOrWhiteSpace(imageReference))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Enter a Docker image reference to scan.");
+            return;
+        }
+
+        var versionTag = string.IsNullOrWhiteSpace(detectionVersionTag) ? null : detectionVersionTag.Trim();
+        var comparisonRevision = CurrentRevision;
+
+        try
+        {
+            isDetecting = true;
+            detectionResult = isNew
+                ? await GameTypeApiV2.DetectSetupAsync(imageReference, versionTag)
+                : await GameTypeApiV2.DetectSetupAsync(gameType.Key, imageReference, versionTag);
+            detectionImageReference = detectionResult.ImageReference;
+            detectionVersionTag = detectionResult.VersionTag;
+            var matchingRevision = FindRevisionByIdentity(detectionResult.ImageReference, detectionResult.VersionTag);
+
+            if (matchingRevision is not null)
+            {
+                selectedRevisionId = matchingRevision.Id;
+                LoadRevisionDraft(matchingRevision);
+                detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, detectionResult.ImageReference, detectionResult.VersionTag, matchingRevision.Id);
+                detectionResult = detectionComparison.Detection;
+                ApplyDetectionIdentityToDraft(notify: false);
+                ApplyDetectedPortsToDraft(notify: false);
+                ApplyDetectedVolumesToDraft(notify: false);
+                ApplyDetectedSettingsToDraft(notify: false);
+                NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into revision '{matchingRevision.VersionTag}'.");
+            }
+            else
+            {
+                CreateNewRevisionDraft();
+                ApplyDetectionToDraft();
+
+                if (!isNew && comparisonRevision is not null)
+                {
+                    detectionComparison = await GameTypeApiV2.CompareSetupAsync(gameType.Key, detectionResult.ImageReference, detectionResult.VersionTag, comparisonRevision.Id);
+                    detectionResult = detectionComparison.Detection;
+                }
+                else
+                {
+                    detectionComparison = null;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into a new revision draft for '{detectionResult.ImageReference}:{detectionResult.VersionTag}'.");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Detection failed", ex.Message);
+        }
+        finally
+        {
+            isDetecting = false;
+        }
+    }
+
+    private void ApplyDetectionToDraft()
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        editingRevisionId = null;
+        revisionIsPublished = false;
+        ApplyDetectionIdentityToDraft(notify: false);
+        ApplyDetectedPortsToDraft(notify: false);
+        ApplyDetectedVolumesToDraft(notify: false);
+        ApplyDetectedSettingsToDraft(notify: false);
+
+        NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detection results have been applied to a new revision draft.");
+    }
+
+    private void ApplyDetectionIdentityToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        revisionImageReference = detectionResult.ImageReference;
+        revisionVersionTag = detectionResult.VersionTag;
+        revisionImageDigest = detectionResult.ImageDigest;
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected image, tag, and digest have been applied to the draft.");
+        }
+    }
+
+    private void ApplyDetectionIdentity()
+    {
+        ApplyDetectionIdentityToDraft();
+    }
+
+    private void ApplyDetectedPortsToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        revisionPorts = detectionResult.Ports
+            .Select((port, index) =>
+            {
+                var existing = revisionPorts.FirstOrDefault(x => x.ContainerPort == port.ContainerPort && string.Equals(x.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase));
+                return new GameTypeRevisionPortDraft
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    AdvertisedPort = index == 0,
+                    Description = existing?.Description ?? (index == 0 ? "Detected primary port" : "Detected exposed port")
+                };
+            })
+            .ToList();
+
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected ports have been applied to the draft.");
+        }
+    }
+
+    private void ApplyDetectionPorts()
+    {
+        ApplyDetectedPortsToDraft();
+    }
+
+    private void ApplyDetectedVolumesToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        revisionVolumes = detectionResult.Volumes
+            .Select(volume =>
+            {
+                var existing = revisionVolumes.FirstOrDefault(x => string.Equals(x.Source, volume.ContainerPath, StringComparison.OrdinalIgnoreCase));
+                return new GameTypeRevisionVolumeDraft
+                {
+                    Source = volume.ContainerPath,
+                    Description = existing?.Description ?? InferVolumeDescription(volume.ContainerPath),
+                    Usage = existing?.Usage ?? InferVolumeUsage(volume.ContainerPath)
+                };
+            })
+            .ToList();
+
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected volumes have been applied to the draft.");
+        }
+    }
+
+    private void ApplyDetectionVolumes()
+    {
+        ApplyDetectedVolumesToDraft();
+    }
+
+    private void ApplyDetectedSettingsToDraft(bool notify = true)
+    {
+        if (detectionResult is null)
+        {
+            return;
+        }
+
+        var existingSettings = revisionSettingDefinitions.ToDictionary(x => x.SettingKey, StringComparer.OrdinalIgnoreCase);
+
+        revisionSettingDefinitions = detectionResult.Settings
+            .Select(setting =>
+            {
+                if (existingSettings.TryGetValue(setting.Key, out var existing))
+                {
+                    return new GameTypeRevisionSettingDraft
+                    {
+                        SettingKey = existing.SettingKey,
+                        DefaultValue = setting.DefaultValue,
+                        Description = existing.Description,
+                        Metadata = new GameTypeRevisionSettingMetadataDraft
+                        {
+                            DataType = existing.Metadata.DataType ?? InferDataType(setting.Key, setting.DefaultValue),
+                            Category = existing.Metadata.Category,
+                            IsRequired = existing.Metadata.IsRequired,
+                            CannotBeEmpty = existing.Metadata.CannotBeEmpty,
+                            Placeholder = existing.Metadata.Placeholder,
+                            ValidationPattern = existing.Metadata.ValidationPattern,
+                            ValidationMessage = existing.Metadata.ValidationMessage,
+                            AutoAllocatePort = existing.Metadata.AutoAllocatePort,
+                            ValidateRelatedPortsAvailability = existing.Metadata.ValidateRelatedPortsAvailability,
+                            AllowedValuesJson = existing.Metadata.AllowedValuesJson,
+                            ValueMappingsJson = existing.Metadata.ValueMappingsJson,
+                            PortMappings = existing.Metadata.PortMappings.Count > 0
+                                ? existing.Metadata.PortMappings.Select(ClonePortMappingDraft).ToList()
+                                : setting.PortMappings.Select(MapDetectedPortMapping).ToList()
+                        }
+                    };
+                }
+
+                return new GameTypeRevisionSettingDraft
+                {
+                    SettingKey = setting.Key,
+                    DefaultValue = setting.DefaultValue,
+                    Metadata = new GameTypeRevisionSettingMetadataDraft
+                    {
+                        DataType = InferDataType(setting.Key, setting.DefaultValue),
+                        IsRequired = false,
+                        CannotBeEmpty = false,
+                        PortMappings = setting.PortMappings.Select(MapDetectedPortMapping).ToList()
+                    }
+                };
+            })
+            .ToList();
+
+        if (notify)
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected settings have been merged into the draft while preserving existing metadata where possible.");
+        }
+    }
+
+    private void ApplyDetectionSettings()
+    {
+        ApplyDetectedSettingsToDraft();
+    }
+
+    private async Task ReloadGameTypeAsync(string key, int? preferredRevisionId = null)
+    {
+        gameType = await GameTypeApiV2.GetByKeyAsync(key);
+        if (gameType is null)
+        {
+            return;
+        }
+
+        selectedRevisionId = preferredRevisionId ?? gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
+        PopulateForm(gameType);
+        LoadRevisionDraft(CurrentRevision);
+    }
+
+    private void PopulateForm(GameTypeDetail detail)
+    {
+        keyValue = detail.Key;
+        displayName = detail.DisplayName;
+        description = detail.Description;
+        gameTypeType = string.IsNullOrWhiteSpace(detail.Type) ? "docker" : detail.Type;
+        thumbnailUrl = detail.ThumbnailUrl;
+        documentationUrl = detail.DocumentationUrl;
+        isActive = detail.IsActive;
+    }
+
+    private void LoadRevisionDraft(GameTypeRevision? revision, bool asNewDraft = false)
+    {
+        editingRevisionId = asNewDraft ? null : revision?.Id;
+        revisionImageReference = asNewDraft ? string.Empty : revision?.ImageReference ?? string.Empty;
+        revisionVersionTag = asNewDraft ? string.Empty : revision?.VersionTag ?? string.Empty;
+        revisionImageDigest = revision?.ImageDigest;
+        revisionEnableTTY = revision?.EnableTTY ?? false;
+        revisionNotes = revision?.Notes;
+        revisionIsPublished = asNewDraft ? false : revision?.IsPublished ?? false;
+        revisionPorts = revision?.Ports.Select(x => new GameTypeRevisionPortDraft
+        {
+            ContainerPort = x.ContainerPort,
+            Protocol = x.Protocol,
+            AdvertisedPort = x.AdvertisedPort,
+            Description = x.Description
+        }).ToList() ?? [];
+        revisionVolumes = revision?.Volumes.Select(x => new GameTypeRevisionVolumeDraft
+        {
+            Source = x.Source,
+            Description = x.Description,
+            Usage = x.Usage
+        }).ToList() ?? [];
+        revisionSettingDefinitions = revision?.SettingDefinitions.Select(x => new GameTypeRevisionSettingDraft
+        {
+            SettingKey = x.SettingKey,
+            DefaultValue = x.DefaultValue,
+            Description = x.Description,
+            Metadata = new GameTypeRevisionSettingMetadataDraft
+            {
+                DataType = x.Metadata?.DataType,
+                Category = x.Metadata?.Category,
+                IsRequired = x.Metadata?.IsRequired ?? false,
+                CannotBeEmpty = x.Metadata?.CannotBeEmpty ?? false,
+                Placeholder = x.Metadata?.Placeholder,
+                ValidationPattern = x.Metadata?.ValidationPattern,
+                ValidationMessage = x.Metadata?.ValidationMessage,
+                AutoAllocatePort = x.Metadata?.AutoAllocatePort ?? false,
+                ValidateRelatedPortsAvailability = x.Metadata?.ValidateRelatedPortsAvailability ?? false,
+                AllowedValuesJson = x.Metadata?.AllowedValuesJson,
+                ValueMappingsJson = x.Metadata?.ValueMappingsJson,
+                PortMappings = x.Metadata?.PortMappings.Select(pm => new GameTypeRevisionPortMappingDraft
+                {
+                    MappingRole = pm.MappingRole,
+                    RelationType = pm.RelationType,
+                    TargetContainerPort = pm.TargetContainerPort,
+                    TargetProtocol = pm.TargetProtocol,
+                    CalculationValue = pm.CalculationValue,
+                    IsRequired = pm.IsRequired
+                }).ToList() ?? []
+            }
+        }).ToList() ?? [];
+        revisionWebHosts = revision?.WebHosts.Select(x => new GameTypeRevisionWebHostDraft
+        {
+            Name = x.Name,
+            Description = x.Description,
+            PathSegment = x.PathSegment,
+            ContainerPort = x.ContainerPort,
+            ContainerPortVariable = x.ContainerPortVariable,
+            EnabledWhen = x.EnabledWhen
+        }).ToList() ?? [];
+        detectionImageReference = string.IsNullOrWhiteSpace(revisionImageReference) ? detectionImageReference : revisionImageReference;
+        detectionVersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? detectionVersionTag : revisionVersionTag;
+        detectionComparison = null;
+
+        if (asNewDraft)
+        {
+            selectedRevisionId = UnsavedDraftRevisionSelectionId;
+        }
+    }
+
+    private IReadOnlyList<GameTypeRevisionListRow> GetRevisionRows()
+    {
+        if (gameType is null)
+        {
+            return [];
+        }
+
+        var rows = gameType.Revisions
+            .Select(revision => new GameTypeRevisionListRow
+            {
+                Id = revision.Id,
+                VersionTag = revision.VersionTag,
+                ImageDigest = revision.ImageDigest,
+                IsPublished = revision.IsPublished,
+                EnableTTY = revision.EnableTTY,
+                CreatedAt = revision.CreatedAt,
+                SourceRevision = revision
+            })
+            .ToList();
+
+        if (editingRevisionId is null && (selectedRevisionId == UnsavedDraftRevisionSelectionId || HasRevisionDraftContent()))
+        {
+            rows.Insert(0, new GameTypeRevisionListRow
+            {
+                Id = UnsavedDraftRevisionSelectionId,
+                VersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? "New Draft" : revisionVersionTag,
+                ImageDigest = revisionImageDigest,
+                IsPublished = revisionIsPublished,
+                EnableTTY = revisionEnableTTY,
+                CreatedAt = DateTime.UtcNow,
+                IsUnsavedDraft = true
+            });
+        }
+
+        return rows;
+    }
+
+    private bool HasRevisionDraftContent()
+    {
+        return !string.IsNullOrWhiteSpace(revisionVersionTag)
+            || !string.IsNullOrWhiteSpace(revisionImageReference)
+            || !string.IsNullOrWhiteSpace(revisionImageDigest)
+            || !string.IsNullOrWhiteSpace(revisionNotes)
+            || revisionEnableTTY
+            || revisionIsPublished
+            || revisionPorts.Count > 0
+            || revisionVolumes.Count > 0
+            || revisionSettingDefinitions.Count > 0
+            || revisionWebHosts.Count > 0;
+    }
+
+    private static string InferDataType(string key, string? value)
+    {
+        if (key.Contains("PORT", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out _))
+        {
+            return "port";
+        }
+
+        if (LooksLikeYesNoValue(value))
+        {
+            return "yesno";
+        }
+
+        if (bool.TryParse(value, out _))
+        {
+            return "boolean";
+        }
+
+        if (int.TryParse(value, out _) || double.TryParse(value, out _))
+        {
+            return "number";
+        }
+
+        return "string";
+    }
+
+    private static bool LooksLikeYesNoValue(string? value)
+    {
+        return string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "no", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string InferVolumeUsage(string containerPath)
+    {
+        if (containerPath.Contains("config", StringComparison.OrdinalIgnoreCase))
+        {
+            return "config";
+        }
+
+        if (containerPath.Contains("backup", StringComparison.OrdinalIgnoreCase))
+        {
+            return "backups";
+        }
+
+        if (containerPath.Contains("log", StringComparison.OrdinalIgnoreCase))
+        {
+            return "logs";
+        }
+
+        if (containerPath.Contains("world", StringComparison.OrdinalIgnoreCase) || containerPath.Contains("save", StringComparison.OrdinalIgnoreCase))
+        {
+            return "saves";
+        }
+
+        return "gamefiles";
+    }
+
+    private static string InferVolumeDescription(string containerPath)
+    {
+        return InferVolumeUsage(containerPath) switch
+        {
+            "config" => "Configuration files",
+            "saves" => "Save data",
+            "backups" => "Backup data",
+            "logs" => "Log output",
+            _ => "Game files"
+        };
+    }
+
+    private IReadOnlyList<WebHostPortVariableOption> GetWebHostPortVariableOptions()
+    {
+        return revisionSettingDefinitions
+            .Select(CreateWebHostPortVariableOption)
+            .OfType<WebHostPortVariableOption>()
+            .OrderBy(option => option.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static WebHostPortVariableOption? CreateWebHostPortVariableOption(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        if (string.IsNullOrWhiteSpace(setting.SettingKey))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(setting.DefaultValue, out var defaultPort) || defaultPort <= 0 || defaultPort > 65535)
+        {
+            return null;
+        }
+
+        var dataType = setting.Metadata.DataType?.Trim();
+        if (!string.IsNullOrWhiteSpace(dataType) && !supportedWebHostVariableDataTypes.Contains(dataType))
+        {
+            return null;
+        }
+
+        var normalizedDataType = string.IsNullOrWhiteSpace(dataType)
+            ? "inferred numeric"
+            : dataType.ToLowerInvariant();
+
+        return new WebHostPortVariableOption
+        {
+            SettingKey = setting.SettingKey,
+            DefaultPort = defaultPort,
+            DataType = normalizedDataType,
+            Label = $"{setting.SettingKey} ({defaultPort}, {normalizedDataType})"
+        };
+    }
+
+    private string GetDetectionSectionRecommendation(string section)
+    {
+        if (detectionComparison is null)
+        {
+            return "Run a comparison against a selected revision to get guidance.";
+        }
+
+        return section switch
+        {
+            "identity" => detectionComparison.DigestChanged
+                ? "Apply the detected digest if this tag now resolves to a new image build."
+                : "No identity change detected.",
+            "ports" => detectionComparison.AddedPorts.Count > 0 || detectionComparison.RemovedPorts.Count > 0
+                ? "Review and apply ports if the container now exposes a different network shape."
+                : "No port changes detected.",
+            "settings" => detectionComparison.AddedSettings.Count > 0 || detectionComparison.RemovedSettings.Count > 0 || detectionComparison.ChangedSettings.Count > 0
+                ? "Merge settings carefully so existing validation metadata is preserved."
+                : "No setting changes detected.",
+            "volumes" => detectionComparison.AddedVolumes.Count > 0 || detectionComparison.RemovedVolumes.Count > 0
+                ? "Apply volumes if the image now declares different persisted paths."
+                : "No volume changes detected.",
+            _ => string.Empty
+        };
+    }
+
+    private static GameTypeRevisionPortMappingDraft ClonePortMappingDraft(GameTypeRevisionPortMappingDraft mapping)
+    {
+        return new GameTypeRevisionPortMappingDraft
+        {
+            MappingRole = mapping.MappingRole,
+            RelationType = mapping.RelationType,
+            TargetContainerPort = mapping.TargetContainerPort,
+            TargetProtocol = mapping.TargetProtocol,
+            CalculationValue = mapping.CalculationValue,
+            IsRequired = mapping.IsRequired
+        };
+    }
+
+    private static GameTypeRevisionPortMappingDraft MapDetectedPortMapping(DetectedSettingPortMapping mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        return new GameTypeRevisionPortMappingDraft
+        {
+            MappingRole = mapping.MappingRole,
+            RelationType = mapping.RelationType,
+            TargetContainerPort = mapping.TargetContainerPort,
+            TargetProtocol = mapping.TargetProtocol,
+            CalculationValue = mapping.CalculationValue,
+            IsRequired = mapping.IsRequired
+        };
+    }
+
+    private IReadOnlyList<string> GetDraftDifferences()
+    {
+        var baseline = CurrentRevision;
+        if (baseline is null)
+        {
+            return
+            [
+                "This is a new revision draft.",
+                $"Ports: {revisionPorts.Count}",
+                $"Volumes: {revisionVolumes.Count}",
+                $"Settings: {revisionSettingDefinitions.Count}",
+                $"Web Hosts: {revisionWebHosts.Count}"
+            ];
+        }
+
+        var differences = new List<string>();
+
+        if (!string.Equals(revisionVersionTag, baseline.VersionTag, StringComparison.Ordinal))
+        {
+            differences.Add($"Version tag changed from '{baseline.VersionTag}' to '{revisionVersionTag}'.");
+        }
+
+        if (!string.Equals(revisionImageReference, baseline.ImageReference, StringComparison.Ordinal))
+        {
+            differences.Add($"Image reference changed from '{baseline.ImageReference}' to '{revisionImageReference}'.");
+        }
+
+        if (!string.Equals(revisionImageDigest, baseline.ImageDigest, StringComparison.Ordinal))
+        {
+            differences.Add("Image digest changed.");
+        }
+
+        if (revisionEnableTTY != baseline.EnableTTY)
+        {
+            differences.Add($"TTY changed from {(baseline.EnableTTY ? "enabled" : "disabled")} to {(revisionEnableTTY ? "enabled" : "disabled")}.");
+        }
+
+        if (revisionIsPublished != baseline.IsPublished)
+        {
+            differences.Add($"Published flag changed from {(baseline.IsPublished ? "published" : "draft")} to {(revisionIsPublished ? "published" : "draft")}.");
+        }
+
+        if (revisionPorts.Count != baseline.Ports.Count)
+        {
+            differences.Add($"Port count changed from {baseline.Ports.Count} to {revisionPorts.Count}.");
+        }
+
+        if (revisionVolumes.Count != baseline.Volumes.Count)
+        {
+            differences.Add($"Volume count changed from {baseline.Volumes.Count} to {revisionVolumes.Count}.");
+        }
+
+        if (revisionSettingDefinitions.Count != baseline.SettingDefinitions.Count)
+        {
+            differences.Add($"Setting count changed from {baseline.SettingDefinitions.Count} to {revisionSettingDefinitions.Count}.");
+        }
+
+        if (revisionWebHosts.Count != baseline.WebHosts.Count)
+        {
+            differences.Add($"Web Host count changed from {baseline.WebHosts.Count} to {revisionWebHosts.Count}.");
+        }
+
+        var baselinePortMappings = baseline.SettingDefinitions.Sum(x => x.Metadata?.PortMappings.Count ?? 0);
+        var draftPortMappings = revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count);
+        if (draftPortMappings != baselinePortMappings)
+        {
+            differences.Add($"Port mapping rule count changed from {baselinePortMappings} to {draftPortMappings}.");
+        }
+
+        if (!string.Equals(revisionNotes, baseline.Notes, StringComparison.Ordinal))
+        {
+            differences.Add("Revision notes changed.");
+        }
+
+        return differences;
+    }
+
+    private IReadOnlyList<string> GetDetailedDraftDifferences()
+    {
+        var baseline = CurrentRevision;
+        var differences = new List<string>();
+
+        if (baseline is null)
+        {
+            differences.AddRange(revisionPorts.Select((port, index) => $"Draft port #{index + 1}: {port.ContainerPort}/{port.Protocol} {(port.AdvertisedPort ? "(advertised)" : string.Empty)}".Trim()));
+            differences.AddRange(revisionVolumes.Select((volume, index) => $"Draft volume #{index + 1}: '{volume.Description ?? volume.Source}' ({volume.Usage})"));
+            differences.AddRange(revisionSettingDefinitions.Select(setting => $"Draft setting '{setting.SettingKey}' with {setting.Metadata.PortMappings.Count} port mapping rule(s)."));
+            differences.AddRange(revisionWebHosts.Select(host => $"Draft Web Host '{host.Name}' targeting {(host.ContainerPort.HasValue ? host.ContainerPort.Value.ToString() : host.ContainerPortVariable ?? "(unset)")}."));
+            return differences;
+        }
+
+        var baselinePorts = baseline.Ports.Select((port, index) => new { Key = $"{port.ContainerPort}/{port.Protocol}", Index = index, Port = port }).ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+        var draftPorts = revisionPorts.Select((port, index) => new { Key = $"{port.ContainerPort}/{port.Protocol}", Index = index, Port = port }).ToList();
+
+        foreach (var draftPort in draftPorts)
+        {
+            if (!baselinePorts.TryGetValue(draftPort.Key, out var baselinePort))
+            {
+                differences.Add($"Added port '{draftPort.Key}' at draft position {draftPort.Index + 1}.");
+                continue;
+            }
+
+            if (draftPort.Index != baselinePort.Index)
+            {
+                differences.Add($"Port '{draftPort.Key}' moved from position {baselinePort.Index + 1} to {draftPort.Index + 1}.");
+            }
+
+            if (draftPort.Port.AdvertisedPort != baselinePort.Port.AdvertisedPort)
+            {
+                differences.Add($"Port '{draftPort.Key}' advertised flag changed.");
+            }
+
+            if (!string.Equals(draftPort.Port.Description, baselinePort.Port.Description, StringComparison.Ordinal))
+            {
+                differences.Add($"Port '{draftPort.Key}' description changed.");
+            }
+        }
+
+        var removedPorts = baseline.Ports.Select(port => $"{port.ContainerPort}/{port.Protocol}").Except(draftPorts.Select(x => x.Key), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedPorts.Select(port => $"Removed port '{port}'."));
+
+        var baselineVolumes = baseline.Volumes.Select((volume, index) => new { Key = volume.Description ?? volume.Source, Index = index, Volume = volume }).ToDictionary(x => x.Key ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+        var draftVolumes = revisionVolumes.Select((volume, index) => new { Key = volume.Description ?? volume.Source, Index = index, Volume = volume }).ToList();
+
+        foreach (var draftVolume in draftVolumes)
+        {
+            var key = draftVolume.Key ?? string.Empty;
+            if (!baselineVolumes.TryGetValue(key, out var baselineVolume))
+            {
+                differences.Add($"Added volume '{key}'.");
+                continue;
+            }
+
+            if (draftVolume.Index != baselineVolume.Index)
+            {
+                differences.Add($"Volume '{key}' moved from position {baselineVolume.Index + 1} to {draftVolume.Index + 1}.");
+            }
+
+            if (!string.Equals(draftVolume.Volume.Usage, baselineVolume.Volume.Usage, StringComparison.OrdinalIgnoreCase))
+            {
+                differences.Add($"Volume '{key}' usage changed from '{baselineVolume.Volume.Usage}' to '{draftVolume.Volume.Usage}'.");
+            }
+
+            if (!string.Equals(draftVolume.Volume.Source, baselineVolume.Volume.Source, StringComparison.Ordinal))
+            {
+                differences.Add($"Volume '{key}' source changed.");
+            }
+        }
+
+        var removedVolumes = baseline.Volumes.Select(volume => volume.Description ?? volume.Source ?? string.Empty).Except(draftVolumes.Select(x => x.Key ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedVolumes.Select(volume => $"Removed volume '{volume}'."));
+
+        var baselineSettings = baseline.SettingDefinitions.ToDictionary(x => x.SettingKey, StringComparer.OrdinalIgnoreCase);
+        foreach (var draftSetting in revisionSettingDefinitions)
+        {
+            if (!baselineSettings.TryGetValue(draftSetting.SettingKey, out var baselineSetting))
+            {
+                differences.Add($"Added setting '{draftSetting.SettingKey}'.");
+                continue;
+            }
+
+            if (!string.Equals(draftSetting.DefaultValue, baselineSetting.DefaultValue, StringComparison.Ordinal))
+            {
+                differences.Add($"Setting '{draftSetting.SettingKey}' default value changed.");
+            }
+
+            if (!string.Equals(draftSetting.Metadata.DataType, baselineSetting.Metadata?.DataType, StringComparison.OrdinalIgnoreCase))
+            {
+                differences.Add($"Setting '{draftSetting.SettingKey}' data type changed.");
+            }
+
+            if (draftSetting.Metadata.PortMappings.Count != (baselineSetting.Metadata?.PortMappings.Count ?? 0))
+            {
+                differences.Add($"Setting '{draftSetting.SettingKey}' port mapping count changed from {baselineSetting.Metadata?.PortMappings.Count ?? 0} to {draftSetting.Metadata.PortMappings.Count}.");
+            }
+        }
+
+        var removedSettings = baseline.SettingDefinitions.Select(setting => setting.SettingKey).Except(revisionSettingDefinitions.Select(x => x.SettingKey), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedSettings.Select(setting => $"Removed setting '{setting}'."));
+
+        var baselineHosts = baseline.WebHosts.Select((host, index) => new { Key = host.Name, Index = index, Host = host }).ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+        var draftHosts = revisionWebHosts.Select((host, index) => new { Key = host.Name, Index = index, Host = host }).ToList();
+
+        foreach (var draftHost in draftHosts)
+        {
+            if (!baselineHosts.TryGetValue(draftHost.Key, out var baselineHost))
+            {
+                differences.Add($"Added Web Host '{draftHost.Key}'.");
+                continue;
+            }
+
+            if (draftHost.Index != baselineHost.Index)
+            {
+                differences.Add($"Web Host '{draftHost.Key}' moved from position {baselineHost.Index + 1} to {draftHost.Index + 1}.");
+            }
+
+            if (!string.Equals(draftHost.Host.PathSegment, baselineHost.Host.PathSegment, StringComparison.Ordinal))
+            {
+                differences.Add($"Web Host '{draftHost.Key}' path segment changed.");
+            }
+
+            if (draftHost.Host.ContainerPort != baselineHost.Host.ContainerPort || !string.Equals(draftHost.Host.ContainerPortVariable, baselineHost.Host.ContainerPortVariable, StringComparison.Ordinal))
+            {
+                differences.Add($"Web Host '{draftHost.Key}' port binding changed.");
+            }
+        }
+
+        var removedHosts = baseline.WebHosts.Select(host => host.Name).Except(revisionWebHosts.Select(x => x.Name), StringComparer.OrdinalIgnoreCase);
+        differences.AddRange(removedHosts.Select(host => $"Removed Web Host '{host}'."));
+
+        return differences;
+    }
+
+    private static void MoveItem<T>(List<T> items, T item, int delta)
+    {
+        var currentIndex = items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = currentIndex + delta;
+        if (newIndex < 0 || newIndex >= items.Count)
+        {
+            return;
+        }
+
+        items.RemoveAt(currentIndex);
+        items.Insert(newIndex, item);
+    }
+
+    private bool CanSaveRevision()
+    {
+        return gameType is not null && !isNew && GetRevisionSaveValidationIssues().Count == 0;
+    }
+
+    private List<string> GetVisibleCrossTabValidationIssues()
+    {
+        if (editingRevisionId is null && selectedRevisionId == UnsavedDraftRevisionSelectionId && !HasRevisionDraftContent())
+        {
+            return [];
+        }
+
+        var issues = new List<string>();
+
+        if (revisionPorts.Count == 0)
+        {
+            issues.Add("At least one port is required for a revision.");
+        }
+
+        if (revisionPorts.Count > 0 && revisionPorts.Count(x => x.AdvertisedPort) != 1)
+        {
+            issues.Add("Exactly one advertised port is required.");
+        }
+
+        foreach (var setting in revisionSettingDefinitions.Where(setting => !string.IsNullOrWhiteSpace(setting.SettingKey)))
+        {
+            issues.AddRange(GetSettingPortMappingValidationIssues(setting));
+        }
+
+        return issues.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private List<string> GetRevisionDraftIssues()
+    {
+        return GetRevisionValidationIssues(includeSaveRequirements: false);
+    }
+
+    private List<string> GetRevisionSaveValidationIssues()
+    {
+        return GetRevisionValidationIssues(includeSaveRequirements: true);
+    }
+
+    private List<string> GetRevisionValidationIssues(bool includeSaveRequirements)
+    {
+        var issues = new List<string>();
+        var webHostPortVariables = GetWebHostPortVariableOptions()
+            .ToDictionary(option => option.SettingKey, StringComparer.OrdinalIgnoreCase);
+
+        if (includeSaveRequirements && string.IsNullOrWhiteSpace(revisionVersionTag))
+        {
+            issues.Add("Revision version tag is required.");
+        }
+
+        if (includeSaveRequirements && string.IsNullOrWhiteSpace(revisionImageReference))
+        {
+            issues.Add("Revision image reference is required.");
+        }
+
+        if (includeSaveRequirements && revisionPorts.Count == 0)
+        {
+            issues.Add("At least one port is required for a revision.");
+        }
+
+        if (revisionPorts.Count > 0 && revisionPorts.Count(x => x.AdvertisedPort) != 1)
+        {
+            issues.Add("Exactly one advertised port is required.");
+        }
+
+        var duplicatePorts = revisionPorts
+            .GroupBy(x => $"{x.ContainerPort}/{x.Protocol}", StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+
+        foreach (var duplicatePort in duplicatePorts)
+        {
+            issues.Add($"Duplicate port mapping detected for '{duplicatePort}'.");
+        }
+
+        var duplicateSettingKeys = revisionSettingDefinitions
+            .Where(x => !string.IsNullOrWhiteSpace(x.SettingKey))
+            .GroupBy(x => x.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+
+        foreach (var duplicateSettingKey in duplicateSettingKeys)
+        {
+            issues.Add($"Duplicate setting key '{duplicateSettingKey}' detected.");
+        }
+
+        foreach (var setting in revisionSettingDefinitions)
+        {
+            if (string.IsNullOrWhiteSpace(setting.SettingKey))
+            {
+                issues.Add("Each setting must have a key.");
+                continue;
+            }
+
+            if (setting.Metadata.IsRequired && setting.Metadata.CannotBeEmpty && string.IsNullOrWhiteSpace(setting.DefaultValue))
+            {
+                issues.Add($"Required setting '{setting.SettingKey}' cannot have an empty default value.");
+            }
+
+            issues.AddRange(GetSettingPortMappingValidationIssues(setting));
+        }
+
+        foreach (var host in revisionWebHosts)
+        {
+            issues.AddRange(GetWebHostValidationIssues(host, webHostPortVariables));
+        }
+
+        return issues.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private static List<string> GetWebHostValidationIssues(GameTypeRevisionWebHostDraft host, IReadOnlyDictionary<string, WebHostPortVariableOption> webHostPortVariables)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(webHostPortVariables);
+
+        var issues = new List<string>();
+        var hostLabel = string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name;
+        var hasStaticPort = host.ContainerPort.HasValue;
+        var hasVariablePort = !string.IsNullOrWhiteSpace(host.ContainerPortVariable);
+
+        if (!hasStaticPort && !hasVariablePort)
+        {
+            issues.Add($"Web Host '{hostLabel}' must define either a static port or a port variable.");
+        }
+
+        if (hasStaticPort && hasVariablePort)
+        {
+            issues.Add($"Web Host '{hostLabel}' cannot define both a static port and a port variable.");
+        }
+
+        if (hasVariablePort)
+        {
+            var variableName = host.ContainerPortVariable!.Trim();
+            if (!webHostPortVariables.ContainsKey(variableName))
+            {
+                issues.Add($"Web Host '{hostLabel}' port variable '{variableName}' must reference a revision setting with a numeric default port and a 'number' or 'port' data type.");
+            }
+        }
+
+        foreach (var pathIssue in GameTypeRevisionWebHostDraftRules.GetPathSegmentValidationIssues(host.PathSegment))
+        {
+            issues.Add($"Web Host '{hostLabel}' {pathIssue}");
+        }
+
+        return issues;
+    }
+
+    private List<string> GetRevisionWarnings()
+    {
+        var warnings = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(revisionNotes))
+        {
+            warnings.Add("Revision notes are empty; consider recording what changed in this draft.");
+        }
+
+        if (revisionVolumes.Count == 0)
+        {
+            warnings.Add("No volumes are defined in this draft. That can be valid, but most dedicated servers persist at least one path.");
+        }
+
+        if (revisionSettingDefinitions.Count == 0)
+        {
+            warnings.Add("No settings are defined in this draft. Confirm the image truly does not require configurable environment variables.");
+        }
+
+        if (revisionWebHosts.Count == 0)
+        {
+            warnings.Add("No Web Host rules are defined. That is fine for headless servers, but web interfaces will not be derived until rules are added.");
+        }
+
+        if (detectionComparison is not null && detectionComparison.HasChanges)
+        {
+            warnings.Add("Detection comparison still reports changes against the selected revision. Review whether the draft should accept those changes before publishing.");
+        }
+
+        if (CurrentRevision is not null && !GetDraftDifferences().Any())
+        {
+            warnings.Add("This draft currently matches the selected revision summary. Consider whether a new revision is necessary before saving.");
+        }
+
+        return warnings.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private List<string> GetSettingPortMappingValidationIssues(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        var issues = new List<string>();
+        var hasMappings = setting.Metadata.PortMappings.Count > 0;
+        var isPortSetting = string.Equals(setting.Metadata.DataType, "port", StringComparison.OrdinalIgnoreCase);
+
+        if (isPortSetting && !hasMappings)
+        {
+            issues.Add($"Port setting '{setting.SettingKey}' must define at least one port mapping.");
+            return issues;
+        }
+
+        if (!hasMappings)
+        {
+            return issues;
+        }
+
+        var primaryMappings = setting.Metadata.PortMappings
+            .Where(mapping => string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Primary), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (primaryMappings.Count != 1)
+        {
+            issues.Add($"Setting '{setting.SettingKey}' must define exactly one primary port mapping.");
+        }
+
+        var primaryMapping = primaryMappings.FirstOrDefault();
+        if (primaryMapping is not null)
+        {
+            ValidatePrimaryPortMapping(setting, primaryMapping, isPortSetting, issues);
+        }
+
+        foreach (var mapping in setting.Metadata.PortMappings)
+        {
+            var resolvedTargetPort = ResolveTargetContainerPort(setting, mapping, primaryMapping);
+            var targetExists = resolvedTargetPort is int resolvedTargetPortValue
+                && revisionPorts.Any(x => x.ContainerPort == resolvedTargetPortValue && string.Equals(x.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+            if (!targetExists)
+            {
+                var targetPortLabel = resolvedTargetPort is int resolvedPort ? resolvedPort.ToString() : "(unresolved)";
+                issues.Add($"Setting '{setting.SettingKey}' references missing {GetPortReferenceLabel(mapping)} '{targetPortLabel}/{mapping.TargetProtocol}'.");
+            }
+
+            if (primaryMapping is null || ReferenceEquals(mapping, primaryMapping))
+            {
+                continue;
+            }
+
+            ValidateRelatedPortMapping(setting, mapping, primaryMapping, issues);
+        }
+
+        return issues;
+    }
+
+    private static void ValidatePrimaryPortMapping(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft primaryMapping, bool isPortSetting, List<string> issues)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(primaryMapping);
+        ArgumentNullException.ThrowIfNull(issues);
+
+        if (!string.Equals(primaryMapping.RelationType, nameof(GameTypeSettingPortRelationType.Direct), StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add($"Setting '{setting.SettingKey}' must use a direct relation for its primary port mapping.");
+        }
+
+        if (isPortSetting && int.TryParse(setting.DefaultValue, out var defaultPort) && defaultPort > 0 && primaryMapping.TargetContainerPort != defaultPort)
+        {
+            issues.Add($"Port setting '{setting.SettingKey}' must directly map its primary rule to '{defaultPort}/{primaryMapping.TargetProtocol}'.");
+        }
+
+        if (isPortSetting && (!int.TryParse(setting.DefaultValue, out var parsedPort) || parsedPort <= 0))
+        {
+            issues.Add($"Port setting '{setting.SettingKey}' must have a numeric default value before port mappings can be validated.");
+        }
+    }
+
+    private static void ValidateRelatedPortMapping(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, GameTypeRevisionPortMappingDraft primaryMapping, List<string> issues)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+        ArgumentNullException.ThrowIfNull(primaryMapping);
+        ArgumentNullException.ThrowIfNull(issues);
+
+        if (!string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add($"Setting '{setting.SettingKey}' can only use related mappings after the primary mapping.");
+        }
+
+        var isOffset = string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase);
+        var isMultiplier = string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase);
+        if (!isOffset && !isMultiplier)
+        {
+            issues.Add($"Setting '{setting.SettingKey}' can only use offset or multiplier relations for related port mappings.");
+        }
+
+        if (!mapping.CalculationValue.HasValue)
+        {
+            issues.Add($"Setting '{setting.SettingKey}' must define a calculation value for related mapping '{mapping.TargetProtocol}'.");
+            return;
+        }
+    }
+
+    private static int? ResolveTargetContainerPort(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, GameTypeRevisionPortMappingDraft? primaryMapping = null)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)))
+        {
+            primaryMapping ??= setting.Metadata.PortMappings.FirstOrDefault(existing => string.Equals(existing.MappingRole, nameof(GameTypeSettingPortMappingRole.Primary), StringComparison.OrdinalIgnoreCase));
+            if (primaryMapping is not null && primaryMapping.TargetContainerPort > 0 && mapping.CalculationValue.HasValue)
+            {
+                return string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+                    ? primaryMapping.TargetContainerPort * mapping.CalculationValue.Value
+                    : primaryMapping.TargetContainerPort + mapping.CalculationValue.Value;
+            }
+
+            return null;
+        }
+
+        return mapping.TargetContainerPort;
+    }
+
+    private static string GetPortReferenceLabel(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase)
+            ? "default related port"
+            : "target port";
+    }
+
+}

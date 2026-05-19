@@ -7,6 +7,7 @@ namespace GameServer.Docker.Controllers
 {
     [ApiController]
     [Route("api/servers")]
+    [Obsolete("Legacy pre-V2 server API. Migrate to GameServer.Docker.Models.V2 and V2 services before removing the old repository chain.")]
     public class GameServerController : ControllerBase
     {
         private readonly IGameServerManager _manager;

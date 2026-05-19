@@ -1,5 +1,6 @@
 ﻿namespace GameServer.Docker.Models
 {
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypePort for new persistence work.")]
     public class PortDefinition
     {
         public uint Port { get; set; }

@@ -1,0 +1,206 @@
+{
+  "formatVersion": "1.0",
+  "gameType": {
+    "key": "minecraft-bedrock",
+    "displayName": "Minecraft Bedrock Server",
+    "description": "Portable V2 GameType import based on itzg/minecraft-bedrock-server. Includes the default Bedrock UDP port and common Bedrock server properties exposed as environment variables.",
+    "type": "docker",
+    "documentationUrl": "https://github.com/itzg/docker-minecraft-bedrock-server",
+    "isActive": true,
+    "currentRevisionVersionTag": "latest",
+    "revisions": [
+      {
+        "versionTag": "latest",
+        "imageReference": "itzg/minecraft-bedrock-server",
+        "enableTTY": true,
+        "notes": "Seeded from the upstream README. EULA must be accepted before deployment and allow-list/operator identities should be customized.",
+        "isPublished": false,
+        "ports": [
+          {
+            "containerPort": 19132,
+            "protocol": "udp",
+            "advertisedPort": true,
+            "description": "Primary Bedrock server port",
+            "displayOrder": 0
+          }
+        ],
+        "volumes": [
+          {
+            "source": "/data",
+            "description": "Persistent Bedrock server data, world files, and server.properties",
+            "displayOrder": 0,
+            "usage": "saves"
+          }
+        ],
+        "settingDefinitions": [
+          {
+            "settingKey": "EULA",
+            "defaultValue": "TRUE",
+            "description": "Must be TRUE to accept the Minecraft EULA.",
+            "displayOrder": 0,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Required",
+              "isRequired": true
+            }
+          },
+          {
+            "settingKey": "VERSION",
+            "defaultValue": "LATEST",
+            "description": "Bedrock server version selector. LATEST auto-upgrades on startup.",
+            "displayOrder": 1,
+            "metadata": {
+              "dataType": "string",
+              "category": "General"
+            }
+          },
+          {
+            "settingKey": "SERVER_PORT",
+            "defaultValue": "19132",
+            "description": "Bedrock IPv4 UDP server port.",
+            "displayOrder": 2,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 19132,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "SERVER_NAME",
+            "defaultValue": "Minecraft Bedrock Server",
+            "description": "Visible Bedrock server name.",
+            "displayOrder": 3,
+            "metadata": {
+              "dataType": "string",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "GAMEMODE",
+            "defaultValue": "survival",
+            "description": "Default Bedrock game mode.",
+            "displayOrder": 4,
+            "metadata": {
+              "dataType": "enum",
+              "category": "Gameplay",
+              "allowedValuesJson": "[\"survival\",\"creative\",\"adventure\"]"
+            }
+          },
+          {
+            "settingKey": "DIFFICULTY",
+            "defaultValue": "normal",
+            "description": "Default Bedrock difficulty.",
+            "displayOrder": 5,
+            "metadata": {
+              "dataType": "enum",
+              "category": "Gameplay",
+              "allowedValuesJson": "[\"peaceful\",\"easy\",\"normal\",\"hard\"]"
+            }
+          },
+          {
+            "settingKey": "MAX_PLAYERS",
+            "defaultValue": "10",
+            "description": "Maximum number of concurrent Bedrock players.",
+            "displayOrder": 6,
+            "metadata": {
+              "dataType": "number",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "LEVEL_NAME",
+            "defaultValue": "Bedrock level",
+            "description": "World name used under /data/worlds.",
+            "displayOrder": 7,
+            "metadata": {
+              "dataType": "string",
+              "category": "World"
+            }
+          },
+          {
+            "settingKey": "LEVEL_SEED",
+            "defaultValue": "",
+            "description": "Optional Bedrock world seed.",
+            "displayOrder": 8,
+            "metadata": {
+              "dataType": "string",
+              "category": "World"
+            }
+          },
+          {
+            "settingKey": "ALLOW_LIST",
+            "defaultValue": "false",
+            "description": "Enable allowlist enforcement.",
+            "displayOrder": 9,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Security"
+            }
+          },
+          {
+            "settingKey": "ALLOW_LIST_USERS",
+            "defaultValue": "",
+            "description": "Optional newline or comma separated allowlist entries in gamerTag:XUID form.",
+            "displayOrder": 10,
+            "metadata": {
+              "dataType": "string",
+              "category": "Security",
+              "placeholder": "player1:1234567890"
+            }
+          },
+          {
+            "settingKey": "OPS",
+            "defaultValue": "",
+            "description": "Optional operator gamer tags or XUIDs.",
+            "displayOrder": 11,
+            "metadata": {
+              "dataType": "string",
+              "category": "Administration"
+            }
+          },
+          {
+            "settingKey": "ONLINE_MODE",
+            "defaultValue": "true",
+            "description": "Require authenticated Microsoft/Xbox accounts.",
+            "displayOrder": 12,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Security"
+            }
+          },
+          {
+            "settingKey": "WHITE_LIST",
+            "defaultValue": "false",
+            "description": "Legacy Bedrock whitelist toggle retained for compatibility.",
+            "displayOrder": 13,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Security"
+            }
+          },
+          {
+            "settingKey": "TZ",
+            "defaultValue": "UTC",
+            "description": "Container timezone for logs and maintenance output.",
+            "displayOrder": 14,
+            "metadata": {
+              "dataType": "string",
+              "category": "General"
+            }
+          }
+        ],
+        "webHosts": []
+      }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ namespace GameServer.Docker.Data
     /// <summary>
     /// Database context for GameType management using SQLite
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Data.V2.GameServerV2DbContext for new persistence work. This legacy DbContext will be removed with the old repository chain.")]
     public class GameServerDbContext : DbContext
     {
         public GameServerDbContext(DbContextOptions<GameServerDbContext> options)
@@ -128,11 +129,7 @@ namespace GameServer.Docker.Data
             // SettingMetadata configuration
             modelBuilder.Entity<SettingMetadataEntity>(entity =>
             {
-                entity.ToTable("SettingsMetadata", t =>
-                {
-                    t.HasCheckConstraint("CK_SettingsMetadata_DataType",
-                        "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port', 'timezone')");
-                });
+                entity.ToTable("SettingsMetadata");
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.DefaultSettingId).IsUnique();
                 entity.HasIndex(e => e.Category);
@@ -189,7 +186,6 @@ namespace GameServer.Docker.Data
                 entity.Property(e => e.IsRequired).HasDefaultValue(true);
             });
 
-            
         }
 
         /// <summary>

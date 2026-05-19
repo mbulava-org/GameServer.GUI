@@ -362,10 +362,7 @@ namespace GameServer.Docker.Data.Migrations
 
                     b.HasIndex("MapsToContainerPort");
 
-                    b.ToTable("SettingsMetadata", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_SettingsMetadata_DataType", "DataType IS NULL OR DataType IN ('string', 'number', 'boolean', 'enum', 'list', 'port', 'timezone')");
-                        });
+                    b.ToTable("SettingsMetadata", (string)null);
                 });
 
             modelBuilder.Entity("GameServer.Docker.Data.VolumeEntity", b =>

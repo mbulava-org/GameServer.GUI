@@ -26,7 +26,7 @@ namespace GameServer.Docker.Interfaces
         /// <summary>
         /// List all Docker Swarm services
         /// </summary>
-        Task<IList<SwarmService>> ListServicesAsync(ServicesListParameters? parameters = null, CancellationToken cancellationToken = default);
+        Task<IList<SwarmService>> ListServicesAsync(string? labelFilter = null, string? serviceName = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Get detailed information about a specific service

@@ -1,0 +1,299 @@
+@page "/gametypes-v2"
+@rendermode InteractiveServer
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+@inject Services.V2.GameTypeV2ApiService GameTypeApiV2
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Game Types V2</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>Game Types V2</h2>
+            <p class="text-muted mb-0">Normalized GameType catalog built on the V2 persistence model.</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <RadzenCheckBox @bind-Value="includeInactive" TValue="bool" Change="@(_ => LoadAsync())" />
+            <span>Include inactive</span>
+            <label class="rz-button rz-button-md rz-button-light mb-0" for="gametype-import-input">
+                <span class="rz-button-box">
+                    <span class="rz-button-icon-left material-icons">upload</span>
+                    <span class="rz-button-text">Import Game Type</span>
+                </span>
+            </label>
+            <InputFile id="gametype-import-input" OnChange="ImportGameTypeAsync" accept=".json,application/json" style="display:none" />
+            <RadzenButton Text="Add Game Type"
+                          Icon="add"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@CreateNewGameType" />
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            <p class="mt-3">Loading V2 game types...</p>
+        </div>
+    }
+    else if (!gameTypes.Any())
+    {
+        <RadzenCard>
+            <div class="text-center py-5">
+                <RadzenIcon Icon="sports_esports" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
+                <h4 class="mt-3">No V2 Game Types Found</h4>
+                <p class="text-muted">Create the first V2 game type to start defining revisions.</p>
+                <RadzenButton Text="Add Game Type"
+                              Icon="add"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Click="@CreateNewGameType"
+                              class="mt-3" />
+            </div>
+        </RadzenCard>
+    }
+    else
+    {
+        <RadzenCard>
+            <RadzenDataGrid Data="@gameTypes"
+                            TItem="GameTypeListItem"
+                            AllowSorting="true"
+                            AllowFiltering="true"
+                            FilterMode="FilterMode.Advanced"
+                            AllowColumnResize="true"
+                            RowDoubleClick="@OnRowDoubleClick">
+                <Columns>
+                    <RadzenDataGridColumn TItem="GameTypeListItem"
+                                          Property="ThumbnailUrl"
+                                          Title=""
+                                          Width="80px"
+                                          Sortable="false"
+                                          Filterable="false">
+                        <Template Context="gameType">
+                            @if (!string.IsNullOrWhiteSpace(gameType.ThumbnailUrl))
+                            {
+                                <img src="@gameType.ThumbnailUrl"
+                                     alt="@gameType.DisplayName"
+                                     class="gametype-list-thumbnail"
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                <div class="gametype-list-thumbnail-fallback" style="display: none;">
+                                    <RadzenIcon Icon="sports_esports" Style="font-size: 1.5rem;" />
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="gametype-list-thumbnail-fallback">
+                                    <RadzenIcon Icon="sports_esports" Style="font-size: 1.5rem;" />
+                                </div>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Property="DisplayName" Title="Name" Width="220px">
+                        <Template Context="gameType">
+                            <div class="gametype-list-name">
+                                <strong>@gameType.DisplayName</strong>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Property="CurrentImageReference" Title="Current Image" Width="240px">
+                        <Template Context="gameType">
+                            @if (string.IsNullOrWhiteSpace(gameType.CurrentImageReference))
+                            {
+                                <span class="text-muted">No current revision image</span>
+                            }
+                            else
+                            {
+                                <code class="gametype-list-image">@gameType.CurrentImageReference</code>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Title="Current Revision" Width="150px" Sortable="false" Filterable="false">
+                        <Template Context="gameType">
+                            @if (!string.IsNullOrWhiteSpace(gameType.CurrentVersionTag))
+                            {
+                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@gameType.CurrentVersionTag" />
+                            }
+                            else
+                            {
+                                <span class="text-muted">No current revision</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Title="Revisions" Width="120px" Sortable="false" Filterable="false">
+                        <Template Context="gameType">
+                            <span>@gameType.RevisionCount total / @gameType.PublishedRevisionCount published</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Property="IsActive" Title="Active" Width="90px">
+                        <Template Context="gameType">
+                            <RadzenBadge BadgeStyle="@(gameType.IsActive ? BadgeStyle.Success : BadgeStyle.Secondary)"
+                                         Text="@(gameType.IsActive ? "Yes" : "No")" />
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Property="UpdatedAt" Title="Updated" Width="160px">
+                        <Template Context="gameType">
+                            <span>@gameType.UpdatedAt.ToLocalTime().ToString("g")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameTypeListItem" Title="Actions" Width="140px" Sortable="false" Filterable="false">
+                        <Template Context="gameType">
+                            <div class="d-flex gap-2 justify-content-end">
+                                <RadzenButton Icon="edit"
+                                              Size="ButtonSize.Small"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => EditGameType(gameType))"
+                                              title="Edit" />
+                                <RadzenButton Icon="delete"
+                                              Size="ButtonSize.Small"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Click="@(() => DeleteGameTypeAsync(gameType))"
+                                              title="Delete" />
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenCard>
+    }
+</div>
+
+<style>
+    .gametype-list-thumbnail,
+    .gametype-list-thumbnail-fallback {
+        width: 60px;
+        height: 60px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: linear-gradient(135deg, var(--rz-base-100) 0%, var(--rz-base-200) 100%);
+    }
+
+    .gametype-list-thumbnail-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--rz-text-disabled-color);
+    }
+
+    .gametype-list-name {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .gametype-list-image {
+        font-size: 0.8rem;
+        word-break: break-word;
+    }
+</style>
+
+@code {
+    private List<GameTypeListItem> gameTypes = [];
+    private bool includeInactive;
+    private bool isLoading = true;
+    private static readonly JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            isLoading = true;
+            gameTypes = (await GameTypeApiV2.GetListAsync(includeInactive)).ToList();
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void CreateNewGameType()
+    {
+        Navigation.NavigateTo("/gametypes-v2/new");
+    }
+
+    private void OnRowDoubleClick(DataGridRowMouseEventArgs<GameTypeListItem> args)
+    {
+        Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(args.Data.Key)}");
+    }
+
+    private void EditGameType(GameTypeListItem gameType)
+    {
+        ArgumentNullException.ThrowIfNull(gameType);
+        Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
+    }
+
+    private async Task DeleteGameTypeAsync(GameTypeListItem gameType)
+    {
+        ArgumentNullException.ThrowIfNull(gameType);
+
+        try
+        {
+            await GameTypeApiV2.DeleteAsync(gameType.Key);
+            await LoadAsync();
+            NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"Game type '{gameType.DisplayName}' was deleted.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Delete failed", ex.Message);
+        }
+    }
+
+    private async Task ImportGameTypeAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var package = await JsonSerializer.DeserializeAsync<PortableGameTypePackage>(stream, jsonSerializerOptions);
+            if (package is null)
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Import failed", "The selected GameType package was empty.");
+                return;
+            }
+
+            var imported = await GameTypeApiV2.ImportAsync(package);
+            await LoadAsync();
+            NotificationService.Notify(NotificationSeverity.Success, "Imported", $"Game type '{imported.DisplayName}' was imported successfully.");
+            Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(imported.Key)}");
+        }
+        catch (JsonException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Import failed", ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Import failed", ex.Message);
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Import failed", ex.Message);
+        }
+    }
+}

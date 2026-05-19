@@ -5,6 +5,7 @@ namespace GameServer.Docker.Repositories
     /// <summary>
     /// Repository interface for GameType data access
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Repositories.V2.IGameTypeRepository for new persistence work.")]
     public interface IGameTypeRepository
     {
         // Initialization

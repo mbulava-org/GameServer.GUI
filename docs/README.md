@@ -1,162 +1,356 @@
 # GameServer.Docker Documentation
 
-Welcome to the GameServer.Docker documentation! This comprehensive guide will help you understand, deploy, and extend the game server management system.
+Welcome to the **GameServer.Docker** documentation! This comprehensive guide will help you understand, deploy, and extend this powerful game server management system built with modern .NET and Docker Swarm.
+
+## 🎮 What is GameServer.Docker?
+
+GameServer.Docker is a **comprehensive web-based management platform** for deploying and managing game servers in Docker Swarm environments. Built with **.NET 10**, **Blazor**, and **SignalR**, it provides a modern, real-time interface for managing containerized game servers across multiple nodes.
+
+### Key Features
+
+- 🚀 **Multi-Node Docker Swarm Support** - Deploy across multiple worker nodes
+- 🎨 **Modern Blazor UI** - Responsive, real-time web interface
+- 📊 **Real-Time Monitoring** - Live container stats, logs, and terminal access
+- 🔧 **Game Type System** - Extensible game server templates with metadata
+- 🌐 **Port Management** - Intelligent port mapping with automatic relationships
+- 🔐 **Agent-Based Architecture** - Secure node agents for distributed operations
+- 📦 **SQLite Database** - Persistent storage for configurations
+- 🛠️ **RESTful API** - Full API access for automation
+
+## 🏗️ Architecture
+
+### Technology Stack
+
+- **Backend:** .NET 10, ASP.NET Core
+- **Frontend:** Blazor Server, Radzen UI Components
+- **Real-Time:** SignalR for live updates
+- **Container Orchestration:** Docker Swarm
+- **Database:** SQLite with Entity Framework Core
+- **API Documentation:** OpenAPI/Swagger, Scalar
+- **Logging:** Serilog
+
+### System Components
+
+```
+┌────────────────────────────────────────────────────────┐
+│                 GameServer.Web                         │
+│              (Blazor Server UI)                        │
+│       Port: 5102 (dev) / 8080 (docker)                 │
+└─────────────────┬──────────────────────────────────────┘
+                  │
+┌─────────────────▼──────────────────────────────────────┐
+│              GameServer.Docker                         │
+│          (REST API & Orchestration)                    │
+│   Port: 5164 (dev) / 8080 (docker) | Swagger/API      │
+└─────────────────┬──────────────────────────────────────┘
+                  │
+        ┌─────────┴──────────┬──────────────┐
+        │                    │              │
+┌───────▼─────────┐  ┌──────▼──────┐  ┌───▼─────────┐
+│ Node Agent #1   │  │ Node Agent  │  │ Node Agent  │
+│   (Worker 1)    │  │  (Worker 2) │  │  (Worker N) │
+│   Port: 8080    │  │ Port: 8080  │  │ Port: 8080  │
+└─────────────────┘  └─────────────┘  └─────────────┘
+```
+
+**See [ARCHITECTURE.md](ARCHITECTURE.md) for complete architecture details.**
 
 ## 📚 Quick Links
 
-### Getting Started
+### 🚀 Getting Started
 - **[Quick Start Guide](QUICK-START.md)** - Get up and running in 5 minutes
-- **[Agent Quick Start](AGENT-QUICK-START.md)** - ⭐ **NEW:** Agent-based architecture setup
-- **[Architecture Overview](ARCHITECTURE.md)** - Understand the system design
-- **[Implementation Summary](AGENT-IMPLEMENTATION-SUMMARY.md)** - 🎉 **NEW:** Complete architecture transformation
-- **[Current Features](CURRENT-FEATURES.md)** - See what's implemented
+- **[Agent Quick Start](AGENT-QUICK-START.md)** - ⭐ Agent-based architecture setup
+- **[Architecture Overview](ARCHITECTURE.md)** - **READ THIS FIRST!** System design & patterns
+- **[Current Features](CURRENT-FEATURES.md)** - Complete feature list
+- **[Installation & Deployment](AGENT-QUICK-START.md)** - Production deployment guide
 
-### For Developers
+### 👨‍💻 For Developers
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
-- **[Testing Guide](TESTING-QUICK-REFERENCE.md)** - Testing guidelines
+- **[Testing Guide](TESTING-QUICK-REFERENCE.md)** - Testing best practices
 - **[Constants & Conventions](reference/CONSTANTS-AND-CONVENTIONS.md)** - Coding standards
+- **[Quick Reference Card](reference/QUICK-REFERENCE-CARD.md)** - Common operations
+- **[Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md)** - Performance patterns
+
+### 📖 Feature Guides
+- **[GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata system
+- **[GameType Editor Guide](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI
+- **[Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md)** - Port configuration
+- **[Database Guide](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
+- **[Agent Registration Migration](AGENT-REGISTRATION-MIGRATION.md)** - Migrate to push-based agents
+
+## 📂 Projects in this Solution
+
+### Main Applications
+
+| Project | Description | Technology | Dev Port | Docker Port |
+|---------|-------------|------------|----------|-------------|
+| **GameServer.Web** | Blazor Server UI | .NET 10, Radzen, SignalR | 5102 / 7198 | 8080 / 8081 |
+| **GameServer.Docker** | REST API & Orchestration | .NET 10, ASP.NET Core | 5164 / 7145 | 8080 / 8081 |
+| **GameServer.Docker.Agent** | Node Agent Service | .NET 10, Docker.DotNet | 54879 / 54878 | 8080 |
+| **GameServer.Docker.Client** | Shared Models & DTOs | .NET 10 Class Library | - | - |
+
+### Test Projects
+
+| Project | Description |
+|---------|-------------|
+| **GameServer.Docker.Tests** | Unit tests for Docker service |
+| **GameServer.Web.Tests** | Unit tests for Web UI |
+| **GameServer.Docker.Agent.Tests** | Unit tests for Agent service |
+| **GameServer.Integration.Tests** | Integration tests |
 
 ## 📖 Documentation Structure
 
 ### Core Documentation
 
-**[ARCHITECTURE.md](ARCHITECTURE.md)**  
-System architecture, multi-node design, and mandatory architectural patterns. **Read this before making any changes!**
-
-**[CURRENT-FEATURES.md](CURRENT-FEATURES.md)**  
-Comprehensive list of all implemented features and functionality.
-
-**[QUICK-START.md](QUICK-START.md)**  
-Step-by-step guide to get the system running locally.
-
-**[TESTING-QUICK-REFERENCE.md](TESTING-QUICK-REFERENCE.md)**  
-Quick reference for testing the application.
-
-**[CONTRIBUTING.md](CONTRIBUTING.md)**  
-Guidelines for contributing code, tests, and documentation.
-
-**[DOCUMENTATION-CLEANUP-PLAN.md](DOCUMENTATION-CLEANUP-PLAN.md)**  
-Historical: Documentation reorganization plan (Feb 2026).
+| Document | Description |
+|----------|-------------|
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | ⚠️ **REQUIRED READING** - System architecture, multi-node design, and mandatory patterns |
+| **[CURRENT-FEATURES.md](CURRENT-FEATURES.md)** | Complete feature list with implementation details |
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | Development guidelines and contribution workflow |
+| **[QUICK-START.md](QUICK-START.md)** | 5-minute setup guide for local development |
+| **[TESTING-QUICK-REFERENCE.md](TESTING-QUICK-REFERENCE.md)** | Testing patterns and practices |
 
 ### Guides (`guides/`)
 
 Detailed guides for specific features and subsystems:
 
-- **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deploy and configure Node Agents (legacy)
-- **[AGENT-QUICK-START.md](AGENT-QUICK-START.md)** - ⭐ **NEW:** Quick start for agent-based architecture
-- **[AGENT-REGISTRATION-MIGRATION.md](AGENT-REGISTRATION-MIGRATION.md)** - ⚠️ Migrate from pull-based discovery to push-based registration
-- **[AGENT-ARCHITECTURE-TESTING.md](AGENT-ARCHITECTURE-TESTING.md)** - 🧪 Comprehensive testing guide for agent architecture
-- **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
-- **[GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata system
-- **[GameType-Editor-Complete-Functionality-Guide.md](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI
-- **[Port-Mapping-Integration-Guide.md](guides/Port-Mapping-Integration-Guide.md)** - Port mapping and relationships
+- **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deploy and configure Node Agents
+- **[AGENT-QUICK-START.md](AGENT-QUICK-START.md)** - ⭐ Agent-based architecture setup (current)
+- **[AGENT-REGISTRATION-MIGRATION.md](AGENT-REGISTRATION-MIGRATION.md)** - Migration guide
+- **[AGENT-ARCHITECTURE-TESTING.md](AGENT-ARCHITECTURE-TESTING.md)** - Testing guide
+- **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Database setup
+- **[GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata
+- **[GameType-Editor-Complete-Functionality-Guide.md](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor
+- **[Port-Mapping-Integration-Guide.md](guides/Port-Mapping-Integration-Guide.md)** - Port relationships
 
 ### Reference (`reference/`)
 
 Quick reference materials and API documentation:
 
-- **[QUICK-REFERENCE-CARD.md](reference/QUICK-REFERENCE-CARD.md)** - Common operations quick reference
-- **[CONSTANTS-AND-CONVENTIONS.md](reference/CONSTANTS-AND-CONVENTIONS.md)** - Coding standards and constants
+- **[QUICK-REFERENCE-CARD.md](reference/QUICK-REFERENCE-CARD.md)** - Common operations
+- **[CONSTANTS-AND-CONVENTIONS.md](reference/CONSTANTS-AND-CONVENTIONS.md)** - Coding standards
 - **[SQLite-GameType-Database-Schema.md](reference/SQLite-GameType-Database-Schema.md)** - Database schema
-- **[Game-Server-Port-Examples.json](reference/Game-Server-Port-Examples.json)** - Port configuration examples
+- **[Game-Server-Port-Examples.json](reference/Game-Server-Port-Examples.json)** - Port examples
 
 ### Architecture (`architecture/`)
 
 Deep dives into system architecture and design:
 
-- **[Agent-Architecture.md](architecture/Agent-Architecture.md)** - Node Agent design and implementation
-- **[Agent-Security.md](architecture/Agent-Security.md)** - Security considerations for agents
-- **[Agent-Why-Overlay-Network.md](architecture/Agent-Why-Overlay-Network.md)** - Network architecture rationale
-- **[Agent-README.md](architecture/Agent-README.md)** - Agent service overview
-- **[PERFORMANCE-OPTIMIZATIONS.md](architecture/PERFORMANCE-OPTIMIZATIONS.md)** - Performance patterns and optimizations
+- **[Agent-Architecture.md](architecture/Agent-Architecture.md)** - Node Agent design
+- **[Agent-Security.md](architecture/Agent-Security.md)** - Security considerations
+- **[Agent-Why-Overlay-Network.md](architecture/Agent-Why-Overlay-Network.md)** - Network design
+- **[PERFORMANCE-OPTIMIZATIONS.md](architecture/PERFORMANCE-OPTIMIZATIONS.md)** - Performance patterns
 
-## 🎯 Find What You Need
+## 🎯 Common Tasks
 
 ### I want to...
 
-**...get started quickly**
-→ Read [QUICK-START.md](QUICK-START.md)
+| Task | Documentation |
+|------|---------------|
+| **Get started quickly** | [QUICK-START.md](QUICK-START.md) |
+| **Understand the architecture** | [ARCHITECTURE.md](ARCHITECTURE.md) ⚠️ **Required** |
+| **Add a new feature** | [CONTRIBUTING.md](CONTRIBUTING.md) + [ARCHITECTURE.md](ARCHITECTURE.md) |
+| **Add a new game type** | [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md) |
+| **Deploy to production** | [Agent Quick Start](AGENT-QUICK-START.md) |
+| **Fix a performance issue** | [Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md) |
+| **Understand coding standards** | [Constants & Conventions](reference/CONSTANTS-AND-CONVENTIONS.md) |
+| **Set up the database** | [Database Guide](guides/DATABASE-INITIALIZATION.md) |
+| **Configure port mappings** | [Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md) |
+| **Write tests** | [Testing Guide](TESTING-QUICK-REFERENCE.md) |
 
-**...understand the architecture**
-→ Read [ARCHITECTURE.md](ARCHITECTURE.md)
+## 🏗️ Key Architectural Concepts
 
-**...add a new feature**
-→ Read [CONTRIBUTING.md](CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
+### Agent-Based Architecture (Current)
 
-**...add a new game type**
-→ Read [guides/GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)
+The system uses **push-based agent registration** where Node Agents connect to the Primary Service via SignalR:
 
-**...deploy to production**
-→ Read [guides/Agent-QuickStart.md](guides/Agent-QuickStart.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
+✅ **Benefits:**
+- Real-time agent health tracking via heartbeats (every 30s)
+- O(1) container-to-agent lookups (no Docker API calls)
+- Works with standalone Docker, not just Swarm
+- Primary Service doesn't need Docker access
 
-**...fix a performance issue**
-→ Read [architecture/PERFORMANCE-OPTIMIZATIONS.md](architecture/PERFORMANCE-OPTIMIZATIONS.md)
+⚠️ **CRITICAL RULE:** Never connect directly to `IDockerClient` from SignalR Hubs for container operations. Always use Node Agents via `INodeAgentDiscovery`.
 
-**...understand the constants**
-→ Read [reference/CONSTANTS-AND-CONVENTIONS.md](reference/CONSTANTS-AND-CONVENTIONS.md)
-
-**...set up the database**
-→ Read [guides/DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)
-
-**...understand port mapping**
-→ Read [guides/Port-Mapping-Integration-Guide.md](guides/Port-Mapping-Integration-Guide.md)
-
-## 🏗️ Key Concepts
-
-### Multi-Node Architecture
-
-GameServer.Docker uses a **multi-node Docker Swarm architecture** with Node Agents on each worker node. Never connect directly to the Docker daemon from SignalR Hubs - always use Node Agents for container operations.
+**See [ARCHITECTURE.md](ARCHITECTURE.md) for complete details.**
 
 ### Service Labels
 
-All Docker labels use constants from `GameServer.Docker.Constants.ServiceLabels`. Never hardcode label strings!
+All Docker service labels use **constants** from `GameServer.Docker.Constants.ServiceLabels`:
 
-### Extended Metadata
+```csharp
+// ✅ CORRECT
+filters.Add("label", ServiceLabels.Managed);
 
-GameTypes support rich metadata for settings including dropdowns, validation, port relationships, and more. See the metadata guide for details.
+// ❌ WRONG - Never hardcode!
+filters.Add("label", "gameserver.docker.managed");
+```
+
+### Extended Metadata System
+
+GameTypes support rich metadata for settings:
+- **Data Types:** `string`, `number`, `boolean`, `enum`, `port`
+- **Validation:** Min/Max values, allowed values
+- **Port Relationships:** Offset, Fixed, Multiplier
+- **UI Rendering:** Categories, descriptions, defaults
+
+**See [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md) for details.**
 
 ### Performance Patterns
 
-- Use parallel processing with `Task.WhenAll`
-- Use Docker label filters to narrow queries
-- Batch API calls to avoid N+1 queries
-- Pre-fetch related data
+1. **Parallel Processing:** Use `Task.WhenAll` for collections
+2. **Filtered Queries:** Use Docker label filters to narrow results
+3. **Batch Operations:** Pre-fetch related data to avoid N+1 queries
+4. **Caching:** Agent registry maintains in-memory container→agent mappings
+
+**See [PERFORMANCE-OPTIMIZATIONS.md](architecture/PERFORMANCE-OPTIMIZATIONS.md) for details.**
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- .NET 10 SDK
+- Docker Desktop with Swarm mode enabled
+- Visual Studio 2026 or VS Code
+
+### Run Locally
+
+```bash
+# Clone the repository
+git clone https://github.com/mbulava-org/GameServer.GUI.git
+cd GameServer.GUI
+
+# Initialize Docker Swarm (if not already)
+docker swarm init
+
+# Run the Web UI
+cd src/GameServer.Web
+dotnet run
+
+# Run the API (in another terminal)
+cd src/GameServer.Docker
+dotnet run
+
+# Access the application
+# Web UI: http://localhost:5102 (or https://localhost:7198)
+# API: http://localhost:5164/swagger (or https://localhost:7145/swagger)
+```
+
+**See [QUICK-START.md](QUICK-START.md) for complete setup instructions.**
+
+## 🧪 Testing
+
+The project uses **xUnit** for testing. All tests follow the AAA (Arrange-Act-Assert) pattern.
+
+```bash
+# Run all tests
+dotnet test
+
+# Run with coverage
+dotnet-coverage collect -f cobertura -o coverage.cobertura.xml dotnet test
+
+# Run specific test project
+dotnet test tests/GameServer.Docker.Tests
+```
+
+**See [TESTING-QUICK-REFERENCE.md](TESTING-QUICK-REFERENCE.md) for testing guidelines.**
+
+## 📦 NuGet Packages
+
+### Key Dependencies
+
+- **Docker.DotNet** (3.125.15) - Docker API client
+- **Radzen.Blazor** (9.0.4) - UI components
+- **Serilog.AspNetCore** (10.0.0) - Structured logging
+- **Microsoft.AspNetCore.SignalR.Client** (10.0.3) - Real-time communication
+- **XtermBlazor** (2.3.0) - Terminal emulator for container attach
 
 ## 📝 Documentation Standards
 
 All documentation follows these standards:
 
-- **Markdown format** - Easy to read and version control
-- **Code examples** - Show, don't just tell
-- **Keep current** - Update docs when code changes
-- **Link related docs** - Help readers find more info
-- **Concise & focused** - Get to the point
+- ✅ **Markdown format** - Easy to read and version control
+- ✅ **Code examples** - Show, don't just tell
+- ✅ **Stay current** - Update docs when code changes
+- ✅ **Link related docs** - Help readers find more info
+- ✅ **Be concise** - Get to the point quickly
 
-## 🔄 Recent Changes
+## 🔄 Recent Updates
 
-**February 2026 - Documentation Reorganization**
-- Cleaned up 80+ obsolete docs
-- Created new folder structure (guides/, reference/, architecture/)
-- Added PERFORMANCE-OPTIMIZATIONS.md
-- Added CONSTANTS-AND-CONVENTIONS.md
-- Added CONTRIBUTING.md
+### March 2026
+- ✨ Added web redirect configuration support
+- 🔒 Enhanced agent security and authentication
+- 🐛 Fixed critical agent serialization bugs
+- 📊 Improved configuration consolidation
 
-## 🤝 Contributing to Documentation
+### February 2026
+- 📚 Major documentation reorganization
+- 🗂️ Created guides/, reference/, architecture/ folders
+- 📖 Added PERFORMANCE-OPTIMIZATIONS.md
+- 📋 Added CONSTANTS-AND-CONVENTIONS.md
+- 🤝 Added CONTRIBUTING.md
+- 🧹 Cleaned up 80+ obsolete docs
 
-Documentation improvements are always welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## 🤝 Contributing
 
-**When updating docs:**
-1. Keep them current with code changes
-2. Add examples for new features
-3. Update architecture docs for design changes
-4. Link related documentation
+We welcome contributions! Please follow these steps:
 
-## 📞 Getting Help
+1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for design patterns
+3. Check [CURRENT-FEATURES.md](CURRENT-FEATURES.md) to avoid duplicates
+4. Create a feature branch
+5. Write tests for new features
+6. Update documentation
+7. Submit a pull request
 
-- **Issues:** Report bugs or request features
-- **Discussions:** Ask questions in GitHub Discussions
-- **Architecture Questions:** Read `ARCHITECTURE.md` first!
+**When contributing:**
+- ✅ Follow .NET 10 conventions
+- ✅ Use constants from `ServiceLabels`
+- ✅ Write tests (xUnit)
+- ✅ Update relevant documentation
+- ✅ Follow architecture patterns in ARCHITECTURE.md
+
+## 📞 Support & Community
+
+- **GitHub Issues:** Report bugs or request features
+- **GitHub Discussions:** Ask questions and share ideas
+- **Documentation:** Comprehensive guides in `/docs`
+
+### Getting Help
+
+1. **Check the docs first!** Most questions are answered in:
+   - [ARCHITECTURE.md](ARCHITECTURE.md) - Architecture questions
+   - [QUICK-REFERENCE-CARD.md](reference/QUICK-REFERENCE-CARD.md) - Common operations
+   - [CURRENT-FEATURES.md](CURRENT-FEATURES.md) - Feature availability
+
+2. **Search existing issues** - Your question might already be answered
+
+3. **Create a new issue** - Provide details and context
+
+## 📜 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
-**Happy coding!** 🚀
+## 🎯 Project Status
+
+**Version:** 0.1.0 (Beta)  
+**Target Framework:** .NET 10  
+**Status:** Active Development  
+**Last Updated:** March 2026
+
+### Roadmap
+
+- [ ] Kubernetes support
+- [ ] Multi-cluster management
+- [ ] Advanced scheduling
+- [ ] Backup/restore functionality
+- [ ] Metrics & alerting
+- [ ] User authentication & RBAC
+
+---
+
+**Happy Gaming!** 🎮🚀
+
+Built with ❤️ using .NET 10, Blazor, and Docker

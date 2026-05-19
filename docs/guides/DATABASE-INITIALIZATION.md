@@ -192,6 +192,8 @@ No changes needed. The Dockerfile runs the application normally, so database ini
 
 ## Database Location
 
+### Legacy persistence
+
 **Default:** `./data/gameserver.db`
 
 **Configured in:** `appsettings.json`
@@ -204,7 +206,30 @@ No changes needed. The Dockerfile runs the application normally, so database ini
 }
 ```
 
-**Docker Mount:** Ensure `/data` is mounted as a volume to persist database across container restarts.
+### V2 persistence
+
+V2 is provider-driven through `V2Database` settings. The base application configuration now defaults V2 to PostgreSQL, while SQLite and MySQL remain available for explicit alternate configurations.
+
+```json
+{
+  "ConnectionStrings": {
+    "GameServerV2Db": "Data Source=./data/gameserver-v2.db",
+    "GameServerV2PostgresDb": "Host=localhost;Database=gameserver-v2;Username=postgres;Password=postgres"
+  },
+  "V2Database": {
+    "Provider": "PostgreSql",
+    "ConnectionStringName": "GameServerV2PostgresDb"
+  }
+}
+```
+
+When using PostgreSQL, deploy the schema first:
+
+```powershell
+.\scripts\Deploy-V2PostgresDatabase.ps1 -TargetConnectionString "Host=localhost;Database=gameserver-v2;Username=postgres;Password=postgres"
+```
+
+**Docker Mount:** Ensure `/data` is mounted as a volume to persist the legacy SQLite database across container restarts.
 
 ---
 

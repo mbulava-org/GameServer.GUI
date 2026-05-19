@@ -3,6 +3,7 @@ namespace GameServer.Docker.Models
     /// <summary>
     /// Metadata for a game type setting/environment variable
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeSettingDefinition and related V2 metadata models for new persistence work. This legacy metadata model will be removed with the old repository chain.")]
     public class SettingMetadata
     {
         /// <summary>
@@ -126,5 +127,12 @@ namespace GameServer.Docker.Models
         /// (defined in PortRelationships) are available before allowing the change.
         /// </summary>
         public bool ValidateRelatedPortsAvailability { get; set; } = true;
+
+        /// <summary>
+        /// For port-type settings, defines web-accessible endpoints (HTTP/HTTPS) that use this port.
+        /// Includes protocol, subdomain pattern, and load balancer configuration.
+        /// Example: HTTP/HTTPS endpoints, TCP stream endpoints, etc.
+        /// </summary>
+        public List<WebHost>? WebHosts { get; set; }
     }
 }

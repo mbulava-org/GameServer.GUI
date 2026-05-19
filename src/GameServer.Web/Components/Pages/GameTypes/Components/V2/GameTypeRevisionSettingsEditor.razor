@@ -1,0 +1,984 @@
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-1">Setting Definitions</h5>
+        <small class="text-muted">Edit revision-owned settings, metadata, and preserve port mapping rules until a dedicated editor is added.</small>
+    </div>
+    <RadzenButton Text="Add Setting" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddSettingDraft" />
+</div>
+
+@if (!Settings.Any())
+{
+    <p class="text-muted mb-0">No settings in this draft.</p>
+}
+else
+{
+    <div class="settings-master-detail">
+        <div class="settings-list-panel">
+            <div class="settings-search-box mb-3">
+                <RadzenTextBox Value="@searchQuery"
+                               ValueChanged="@OnSearchQueryChanged"
+                               Placeholder="Search by key..."
+                               class="w-100"
+                               @oninput="@((ChangeEventArgs e) => OnSearchQueryChanged(e.Value?.ToString()))" />
+            </div>
+
+            @{
+                var filteredSettings = GetFilteredAndGroupedSettings();
+
+                if (!filteredSettings.Any())
+                {
+                    <p class="text-muted text-center py-3">No settings match your search.</p>
+                }
+                else
+                {
+                    @foreach (var group in filteredSettings)
+                    {
+                        <div class="settings-group mb-3">
+                            <div class="settings-group-header">@group.Key</div>
+                            @foreach (var setting in group)
+                            {
+                                var isSelected = selectedSettingDraftId == setting.DraftId;
+                                <div class="setting-list-item @(isSelected ? "selected" : "")"
+                                     @onclick="@(() => SelectSettingDraft(setting.DraftId))">
+                                    <div class="setting-list-item-content">
+                                        <div class="setting-list-item-header">
+                                            <code class="setting-key">@(string.IsNullOrWhiteSpace(setting.SettingKey) ? "NEW_SETTING" : setting.SettingKey)</code>
+                                            <div class="setting-badges">
+                                                @if (setting.Metadata.IsRequired)
+                                                {
+                                                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Required" Size="BadgeSize.ExtraSmall" />
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(setting.Metadata.DataType))
+                                                {
+                                                    <RadzenBadge BadgeStyle="BadgeStyle.Info"
+                                                                 Text="@GetDataTypeDisplayName(setting.Metadata.DataType)"
+                                                                 Variant="Variant.Outlined"
+                                                                 Size="BadgeSize.ExtraSmall" />
+                                                }
+                                                @if (setting.Metadata.PortMappings.Count > 0)
+                                                {
+                                                    <RadzenBadge BadgeStyle="BadgeStyle.Warning"
+                                                                 Text="Port Rules"
+                                                                 Size="BadgeSize.ExtraSmall" />
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="setting-list-item-value">
+                                            <code>@(string.IsNullOrEmpty(setting.DefaultValue) ? "(empty)" : setting.DefaultValue)</code>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(setting.Description))
+                                        {
+                                            <div class="setting-list-item-description">
+                                                @setting.Description
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            }
+        </div>
+
+        <div class="settings-detail-panel">
+            @if (SelectedSetting is not null)
+            {
+                var setting = SelectedSetting;
+                <div class="setting-detail-header">
+                    <div>
+                        <h6 class="mb-1">Edit Setting Definition</h6>
+                        <code class="setting-key-large">@(string.IsNullOrWhiteSpace(setting.SettingKey) ? "NEW_SETTING" : setting.SettingKey)</code>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => MoveSettingDraft(setting, -1))" Disabled="@(Settings.IndexOf(setting) <= 0)" />
+                        <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => MoveSettingDraft(setting, 1))" Disabled="@(Settings.IndexOf(setting) >= Settings.Count - 1)" />
+                        <RadzenButton Icon="delete" Text="Delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Click="@DeleteSelectedSettingDraft" />
+                    </div>
+                </div>
+
+                <div class="setting-detail-content">
+                    <RadzenStack Gap="1.5rem">
+                        <div class="section-title">Basic Settings</div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Setting Key" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.SettingKey" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Default Value" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.DefaultValue" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Data Type" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenDropDown TValue="string"
+                                                    @bind-Value="setting.Metadata.DataType"
+                                                    @bind-Value:after="NotifyDraftChangedAsync"
+                                                    Data="@GetDataTypeOptionsForDisplay()"
+                                                    TextProperty="DisplayName"
+                                                    ValueProperty="Value"
+                                                    class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Category" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.Metadata.Category" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Placeholder" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.Metadata.Placeholder" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Allowed Values JSON" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.Metadata.AllowedValuesJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-6">
+                                <RadzenFormField Text="Value Mappings JSON" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="setting.Metadata.ValueMappingsJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-12 d-flex gap-4 flex-wrap">
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.IsRequired" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
+                                    <span>Required</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.CannotBeEmpty" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
+                                    <span>Cannot Be Empty</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.AutoAllocatePort" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
+                                    <span>Auto Allocate Port</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenCheckBox @bind-Value="setting.Metadata.ValidateRelatedPortsAvailability" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
+                                    <span>Validate Related Ports</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="section-title">Port Mappings</div>
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="text-muted small">Configure how this setting maps to one or more revision ports already defined in the Ports tab.</div>
+                                <RadzenButton Text="Add Port Mapping" Icon="add" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => AddPortMappingDraft(setting))" Disabled="@(!DefinedPorts.Any())" />
+                            </div>
+
+                            @if (IsPortSetting(setting))
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+                                    Port settings must define one direct primary mapping to an existing revision port. Additional mappings must be related offset or multiplier rules that also point to defined revision ports.
+                                </RadzenAlert>
+                            }
+
+                            @if (!DefinedPorts.Any())
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+                                    Define at least one port/protocol in the Ports tab before adding setting port mappings.
+                                </RadzenAlert>
+                            }
+
+                            @if (!setting.Metadata.PortMappings.Any())
+                            {
+                                <div class="text-muted small">No port mappings defined for this setting.</div>
+                            }
+                            else
+                            {
+                                @foreach (var mapping in setting.Metadata.PortMappings)
+                                {
+                                    <RadzenCard class="mb-2">
+                                        <div class="row g-3 align-items-end">
+                                            <div class="col-md-2">
+                                                <RadzenFormField Text="Role" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown TValue="string"
+                                                                    Value="@mapping.MappingRole"
+                                                                    ValueChanged="@(value => OnPortMappingRoleChanged(setting, mapping, value))"
+                                                                    Data="@GetPortMappingRoleOptions(setting, mapping)"
+                                                                    class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <RadzenFormField Text="Relation" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenDropDown TValue="string"
+                                                                    Value="@mapping.RelationType"
+                                                                    ValueChanged="@(value => OnPortMappingRelationChanged(setting, mapping, value))"
+                                                                    Data="@GetPortRelationTypeOptions(setting, mapping)"
+                                                                    class="w-100" />
+                                                </RadzenFormField>
+                                            </div>
+                                            @if (UsesCalculatedTarget(setting, mapping))
+                                            {
+                                                <div class="col-md-2">
+                                                    <RadzenFormField Text="Calculated Port" Variant="Variant.Outlined" class="w-100">
+                                                        <RadzenNumeric TValue="int?"
+                                                                       Value="@GetResolvedTargetContainerPort(setting, mapping)"
+                                                                       Disabled="true"
+                                                                       class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <RadzenFormField Text="Protocol" Variant="Variant.Outlined" class="w-100">
+                                                        <RadzenDropDown TValue="string"
+                                                                        Value="@mapping.TargetProtocol"
+                                                                        ValueChanged="@(value => OnRelatedPortProtocolChanged(setting, mapping, value))"
+                                                                        Data="@GetRelatedProtocolOptions(setting, mapping)"
+                                                                        class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="col-md-3">
+                                                    <RadzenFormField Text="@GetPortTargetFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
+                                                        <RadzenDropDown TValue="string"
+                                                                        Value="@GetSelectedPortTarget(mapping)"
+                                                                        ValueChanged="@(value => OnPortTargetChanged(setting, mapping, value))"
+                                                                        Data="@GetPortTargetOptions(mapping)"
+                                                                        TextProperty="Label"
+                                                                        ValueProperty="Value"
+                                                                        class="w-100" />
+                                                    </RadzenFormField>
+                                                </div>
+                                            }
+                                            <div class="col-md-2">
+                                                <RadzenFormField Text="@GetCalculationFieldText(mapping)" Variant="Variant.Outlined" class="w-100">
+                                                    <RadzenNumeric TValue="int?"
+                                                                   Value="@mapping.CalculationValue"
+                                                                   ValueChanged="@(value => OnCalculationValueChanged(setting, mapping, value))"
+                                                                   class="w-100"
+                                                                   Disabled="@IsPrimaryMapping(mapping)" />
+                                                </RadzenFormField>
+                                            </div>
+                                            <div class="col-md-1 text-end">
+                                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemovePortMappingDraft(setting, mapping))" />
+                                            </div>
+                                            <div class="col-md-8">
+                                                <div class="small text-muted">@GetPortMappingSummary(setting, mapping)</div>
+                                            </div>
+                                            <div class="col-md-4 d-flex align-items-center gap-2 pt-2">
+                                                <RadzenCheckBox @bind-Value="mapping.IsRequired" TValue="bool" />
+                                                <span>Required mapping</span>
+                                            </div>
+                                        </div>
+                                    </RadzenCard>
+                                }
+                            }
+                        </div>
+                    </RadzenStack>
+                </div>
+            }
+            else
+            {
+                <div class="settings-detail-empty">
+                    <RadzenIcon Icon="settings" Style="font-size: 3rem; color: var(--rz-text-disabled-color);" />
+                    <h6 class="mt-3">Select a setting</h6>
+                    <p class="text-muted mb-0">Choose a setting from the list to edit its metadata and port mapping rules.</p>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+.settings-master-detail {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 1.5rem;
+    min-height: 500px;
+}
+
+.settings-list-panel {
+    border-right: 1px solid var(--rz-border-color);
+    padding-right: 1rem;
+    overflow-y: auto;
+    max-height: 70vh;
+}
+
+.settings-search-box {
+    position: sticky;
+    top: 0;
+    background: var(--rz-base-background-color);
+    z-index: 5;
+    padding: 0.5rem 0;
+}
+
+.settings-group-header {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--rz-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.5rem 0.75rem;
+    background: var(--rz-base-50);
+    border-left: 3px solid var(--rz-primary);
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
+}
+
+.setting-list-item {
+    padding: 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+    margin-bottom: 0.5rem;
+}
+
+.setting-list-item:hover {
+    background-color: var(--rz-base-50);
+    border-color: var(--rz-base-200);
+}
+
+.setting-list-item.selected {
+    background-color: var(--rz-primary-lighter);
+    border-color: var(--rz-primary);
+}
+
+.setting-list-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.setting-list-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.setting-key {
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    color: var(--rz-primary);
+}
+
+.setting-badges {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.setting-list-item-value {
+    font-size: 0.75rem;
+    color: var(--rz-text-secondary-color);
+}
+
+.setting-list-item-value code {
+    background: var(--rz-base-100);
+    padding: 0.125rem 0.375rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+}
+
+.setting-list-item-description {
+    font-size: 0.75rem;
+    color: var(--rz-text-tertiary-color);
+    line-height: 1.3;
+    max-height: 2.6em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.settings-detail-panel {
+    overflow-y: auto;
+    max-height: 70vh;
+    padding-left: 1rem;
+}
+
+.settings-detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.setting-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--rz-border-color);
+}
+
+.setting-key-large {
+    font-size: 1.25rem;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    color: var(--rz-primary);
+    background: var(--rz-base-100);
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.section-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--rz-primary);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rz-border-color);
+}
+
+@@media (max-width: 992px) {
+    .settings-master-detail {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-list-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--rz-border-color);
+        padding-right: 0;
+        padding-bottom: 1rem;
+        max-height: 300px;
+    }
+
+    .settings-detail-panel {
+        padding-left: 0;
+    }
+}
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public List<GameTypeRevisionSettingDraft> Settings { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<GameTypeRevisionPortDraft> DefinedPorts { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> DataTypeOptions { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> ProtocolOptions { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> PortMappingRoleOptions { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> PortRelationTypeOptions { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
+    private string? selectedSettingDraftId;
+    private string? searchQuery;
+
+    private GameTypeRevisionSettingDraft? SelectedSetting => string.IsNullOrWhiteSpace(selectedSettingDraftId)
+        ? null
+        : Settings.FirstOrDefault(x => x.DraftId == selectedSettingDraftId);
+
+    protected override void OnParametersSet()
+    {
+        foreach (var setting in Settings)
+        {
+            SyncRelatedMappings(setting);
+        }
+
+        if (SelectedSetting is null)
+        {
+            selectedSettingDraftId = Settings.FirstOrDefault()?.DraftId;
+        }
+    }
+
+    private void AddSettingDraft()
+    {
+        var defaultCategory = GetDefaultCategoryForNewSetting();
+        var setting = new GameTypeRevisionSettingDraft
+        {
+            SettingKey = $"NEW_SETTING_{Settings.Count + 1}",
+            Metadata = new GameTypeRevisionSettingMetadataDraft
+            {
+                DataType = "string",
+                Category = defaultCategory
+            }
+        };
+
+        Settings.Add(setting);
+        selectedSettingDraftId = setting.DraftId;
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private void DeleteSelectedSettingDraft()
+    {
+        if (SelectedSetting is null)
+        {
+            return;
+        }
+
+        Settings.Remove(SelectedSetting);
+        selectedSettingDraftId = Settings.FirstOrDefault()?.DraftId;
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private void SelectSettingDraft(string draftId)
+    {
+        selectedSettingDraftId = draftId;
+    }
+
+    private void MoveSettingDraft(GameTypeRevisionSettingDraft setting, int delta)
+    {
+        MoveItem(Settings, setting, delta);
+        selectedSettingDraftId = setting.DraftId;
+    }
+
+    private void AddPortMappingDraft(GameTypeRevisionSettingDraft setting)
+    {
+        if (!DefinedPorts.Any())
+        {
+            return;
+        }
+
+        var primaryMapping = setting.Metadata.PortMappings.FirstOrDefault(IsPrimaryMapping);
+        var firstPort = primaryMapping is null
+            ? DefinedPorts[0]
+            : DefinedPorts.FirstOrDefault(port => port.ContainerPort != primaryMapping.TargetContainerPort || !string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase))
+                ?? DefinedPorts[0];
+
+        var mapping = new GameTypeRevisionPortMappingDraft
+        {
+            MappingRole = primaryMapping is null ? nameof(GameTypeSettingPortMappingRole.Primary) : nameof(GameTypeSettingPortMappingRole.Related),
+            RelationType = primaryMapping is null ? nameof(GameTypeSettingPortRelationType.Direct) : nameof(GameTypeSettingPortRelationType.Offset),
+            TargetContainerPort = firstPort.ContainerPort,
+            TargetProtocol = firstPort.Protocol,
+            CalculationValue = primaryMapping is null ? null : firstPort.ContainerPort - primaryMapping.TargetContainerPort
+        };
+
+        setting.Metadata.PortMappings.Add(mapping);
+        SyncRelatedMappings(setting);
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private void RemovePortMappingDraft(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        setting.Metadata.PortMappings.Remove(mapping);
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private void OnSearchQueryChanged(string? value)
+    {
+        searchQuery = value;
+    }
+
+    private IReadOnlyList<IGrouping<string, GameTypeRevisionSettingDraft>> GetFilteredAndGroupedSettings()
+    {
+        IEnumerable<GameTypeRevisionSettingDraft> query = Settings;
+
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            query = query.Where(setting =>
+                (!string.IsNullOrWhiteSpace(setting.SettingKey) && setting.SettingKey.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(setting.Description) && setting.Description.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return query
+            .OrderBy(setting => setting.Metadata.Category ?? "General", StringComparer.OrdinalIgnoreCase)
+            .ThenBy(setting => setting.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(setting => string.IsNullOrWhiteSpace(setting.Metadata.Category) ? "General" : setting.Metadata.Category!, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private IReadOnlyList<PortTargetOption> GetPortTargetOptions(GameTypeRevisionPortMappingDraft mapping)
+    {
+        var options = DefinedPorts
+            .Select(port => new PortTargetOption(GetPortTargetValue(port.ContainerPort, port.Protocol), GetPortTargetLabel(port)))
+            .DistinctBy(option => option.Value, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(option => option.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var currentValue = GetSelectedPortTarget(mapping);
+        if (!string.IsNullOrWhiteSpace(currentValue) && options.All(option => !string.Equals(option.Value, currentValue, StringComparison.OrdinalIgnoreCase)))
+        {
+            options.Insert(0, new PortTargetOption(currentValue, $"Missing target: {currentValue}"));
+        }
+
+        return options;
+    }
+
+    private static bool IsPortSetting(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        return string.Equals(setting.Metadata.DataType, "port", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPrimaryMapping(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Primary), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlyList<string> GetPortMappingRoleOptions(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var hasAnotherPrimary = setting.Metadata.PortMappings.Any(existing => !ReferenceEquals(existing, mapping) && IsPrimaryMapping(existing));
+        if (hasAnotherPrimary)
+        {
+            return [nameof(GameTypeSettingPortMappingRole.Related)];
+        }
+
+        return [nameof(GameTypeSettingPortMappingRole.Primary), nameof(GameTypeSettingPortMappingRole.Related)];
+    }
+
+    private static IReadOnlyList<string> GetPortRelationTypeOptions(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        return IsPrimaryMapping(mapping)
+            ? [nameof(GameTypeSettingPortRelationType.Direct)]
+            : [nameof(GameTypeSettingPortRelationType.Offset), nameof(GameTypeSettingPortRelationType.Multiplier)];
+    }
+
+    private Task OnPortMappingRoleChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        mapping.MappingRole = string.IsNullOrWhiteSpace(value)
+            ? nameof(GameTypeSettingPortMappingRole.Primary)
+            : value;
+
+        if (IsPrimaryMapping(mapping))
+        {
+            mapping.RelationType = nameof(GameTypeSettingPortRelationType.Direct);
+            mapping.CalculationValue = null;
+        }
+        else
+        {
+            if (!string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase))
+            {
+                mapping.RelationType = nameof(GameTypeSettingPortRelationType.Offset);
+            }
+
+            mapping.CalculationValue ??= 0;
+        }
+
+        SyncRelatedMappings(setting);
+        return NotifyDraftChangedAsync();
+    }
+
+    private Task OnPortMappingRelationChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (IsPrimaryMapping(mapping))
+        {
+            mapping.RelationType = nameof(GameTypeSettingPortRelationType.Direct);
+            mapping.CalculationValue = null;
+            return Task.CompletedTask;
+        }
+
+        mapping.RelationType = string.Equals(value, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? nameof(GameTypeSettingPortRelationType.Multiplier)
+            : nameof(GameTypeSettingPortRelationType.Offset);
+        mapping.CalculationValue ??= 0;
+        SyncRelatedMappings(setting);
+        return NotifyDraftChangedAsync();
+    }
+
+    private Task OnCalculationValueChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, int? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        mapping.CalculationValue = value;
+        SyncRelatedMappingTarget(setting, mapping);
+        return NotifyDraftChangedAsync();
+    }
+
+    private string GetPortMappingSummary(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var portDescription = GetSelectedPortDescription(mapping);
+        if (IsPrimaryMapping(mapping))
+        {
+            return string.IsNullOrWhiteSpace(portDescription)
+                ? "Primary mappings must directly target a revision port defined in the Ports tab."
+                : $"Primary port description: {portDescription}";
+        }
+
+        var resolvedTarget = GetResolvedTargetContainerPort(setting, mapping);
+        var relationSummary = string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? $"Related multiplier value: {mapping.CalculationValue?.ToString() ?? "(required)"}"
+            : $"Related offset value: {mapping.CalculationValue?.ToString() ?? "(required)"}";
+
+        if (resolvedTarget.HasValue)
+        {
+            relationSummary = $"{relationSummary} - Calculates {resolvedTarget.Value}/{mapping.TargetProtocol}";
+        }
+
+        return string.IsNullOrWhiteSpace(portDescription)
+            ? relationSummary
+            : $"{relationSummary} - Port description: {portDescription}";
+    }
+
+    private static string GetPortTargetFieldText(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return IsPrimaryMapping(mapping) ? "Target Port / Protocol" : "Default Port / Protocol";
+    }
+
+    private static string GetCalculationFieldText(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        if (IsPrimaryMapping(mapping))
+        {
+            return "Calculation";
+        }
+
+        return string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? "Multiplier"
+            : "Offset";
+    }
+
+    private string? GetSelectedPortDescription(GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        return DefinedPorts.FirstOrDefault(port => port.ContainerPort == mapping.TargetContainerPort && string.Equals(port.Protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase))?.Description;
+    }
+
+    private static bool UsesCalculatedTarget(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+        return !IsPrimaryMapping(mapping)
+            && (string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Offset), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private int? GetResolvedTargetContainerPort(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (!UsesCalculatedTarget(setting, mapping))
+        {
+            return mapping.TargetContainerPort > 0 ? mapping.TargetContainerPort : null;
+        }
+
+        var primaryMapping = setting.Metadata.PortMappings.FirstOrDefault(IsPrimaryMapping);
+        if (primaryMapping is null || primaryMapping.TargetContainerPort <= 0 || !mapping.CalculationValue.HasValue)
+        {
+            return null;
+        }
+
+        return string.Equals(mapping.RelationType, nameof(GameTypeSettingPortRelationType.Multiplier), StringComparison.OrdinalIgnoreCase)
+            ? primaryMapping.TargetContainerPort * mapping.CalculationValue.Value
+            : primaryMapping.TargetContainerPort + mapping.CalculationValue.Value;
+    }
+
+    private IReadOnlyList<string> GetRelatedProtocolOptions(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var resolvedTargetPort = GetResolvedTargetContainerPort(setting, mapping);
+        if (!resolvedTargetPort.HasValue)
+        {
+            return string.IsNullOrWhiteSpace(mapping.TargetProtocol)
+                ? ProtocolOptions
+                : [mapping.TargetProtocol];
+        }
+
+        var options = DefinedPorts
+            .Where(port => port.ContainerPort == resolvedTargetPort.Value)
+            .Select(port => port.Protocol)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(protocol => protocol, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(mapping.TargetProtocol)
+            && options.All(protocol => !string.Equals(protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase)))
+        {
+            options.Insert(0, mapping.TargetProtocol);
+        }
+
+        return options;
+    }
+
+    private static string GetPortTargetLabel(GameTypeRevisionPortDraft port)
+    {
+        ArgumentNullException.ThrowIfNull(port);
+        return string.IsNullOrWhiteSpace(port.Description)
+            ? GetPortTargetValue(port.ContainerPort, port.Protocol)
+            : $"{GetPortTargetValue(port.ContainerPort, port.Protocol)} - {port.Description}";
+    }
+
+    private static string? GetSelectedPortTarget(GameTypeRevisionPortMappingDraft mapping)
+    {
+        if (mapping.TargetContainerPort <= 0 || string.IsNullOrWhiteSpace(mapping.TargetProtocol))
+        {
+            return null;
+        }
+
+        return GetPortTargetValue(mapping.TargetContainerPort, mapping.TargetProtocol);
+    }
+
+    private static string GetPortTargetValue(int containerPort, string protocol)
+    {
+        return $"{containerPort}/{protocol.ToLowerInvariant()}";
+    }
+
+    private Task OnPortTargetChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Task.CompletedTask;
+        }
+
+        var separatorIndex = value.IndexOf('/');
+        if (separatorIndex <= 0 || separatorIndex >= value.Length - 1)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (!int.TryParse(value[..separatorIndex], out var port))
+        {
+            return Task.CompletedTask;
+        }
+
+        mapping.TargetContainerPort = port;
+        mapping.TargetProtocol = value[(separatorIndex + 1)..];
+        SyncRelatedMappings(setting);
+        return NotifyDraftChangedAsync();
+    }
+
+    private Task OnRelatedPortProtocolChanged(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            mapping.TargetProtocol = value;
+        }
+
+        SyncRelatedMappingTarget(setting, mapping);
+        return NotifyDraftChangedAsync();
+    }
+
+    private void SyncRelatedMappings(GameTypeRevisionSettingDraft setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        foreach (var mapping in setting.Metadata.PortMappings)
+        {
+            SyncRelatedMappingTarget(setting, mapping);
+        }
+    }
+
+    private void SyncRelatedMappingTarget(GameTypeRevisionSettingDraft setting, GameTypeRevisionPortMappingDraft mapping)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var resolvedTargetPort = GetResolvedTargetContainerPort(setting, mapping);
+        if (!resolvedTargetPort.HasValue)
+        {
+            return;
+        }
+
+        mapping.TargetContainerPort = resolvedTargetPort.Value;
+
+        var availableProtocols = DefinedPorts
+            .Where(port => port.ContainerPort == resolvedTargetPort.Value)
+            .Select(port => port.Protocol)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(protocol => protocol, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (availableProtocols.Count > 0
+            && availableProtocols.All(protocol => !string.Equals(protocol, mapping.TargetProtocol, StringComparison.OrdinalIgnoreCase)))
+        {
+            mapping.TargetProtocol = availableProtocols[0];
+        }
+    }
+
+    private static void MoveItem<T>(List<T> items, T item, int delta)
+    {
+        var currentIndex = items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = currentIndex + delta;
+        if (newIndex < 0 || newIndex >= items.Count)
+        {
+            return;
+        }
+
+        items.RemoveAt(currentIndex);
+        items.Insert(newIndex, item);
+    }
+
+    private string GetDefaultCategoryForNewSetting()
+    {
+        var selectedCategory = SelectedSetting?.Metadata.Category?.Trim();
+        if (!string.IsNullOrWhiteSpace(selectedCategory))
+        {
+            return selectedCategory;
+        }
+
+        var lastCategory = Settings
+            .Select(setting => setting.Metadata.Category?.Trim())
+            .LastOrDefault(category => !string.IsNullOrWhiteSpace(category));
+
+        return string.IsNullOrWhiteSpace(lastCategory) ? "General" : lastCategory;
+    }
+
+    private IReadOnlyList<DataTypeOption> GetDataTypeOptionsForDisplay()
+    {
+        return DataTypeOptions
+            .Select(value => new DataTypeOption(value, GetDataTypeDisplayName(value)))
+            .ToList();
+    }
+
+    private static string GetDataTypeDisplayName(string? value)
+    {
+        return string.Equals(value, "yesno", StringComparison.OrdinalIgnoreCase)
+            ? "yes/no"
+            : value ?? string.Empty;
+    }
+
+    private Task NotifyDraftChangedAsync()
+    {
+        return OnDraftChanged.InvokeAsync();
+    }
+
+    private sealed record PortTargetOption(string Value, string Label);
+
+    private sealed record DataTypeOption(string Value, string DisplayName);
+}

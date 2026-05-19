@@ -2,6 +2,7 @@
 @using global::GameServer.Docker.Client
 @page "/servers/new"
 @rendermode InteractiveServer
+@attribute [Obsolete("Legacy pre-V2 create-server wizard. Migrate to the V2 server flow before removing the old repository chain.")]
 
 
 <PageTitle>Create New Game Server</PageTitle>
@@ -25,14 +26,17 @@
         <StepGameSettings Server="Server"
                           Definition="SelectedDefinition"
                           OnNext="Next"
-                          OnBack="Back" />
+                          OnBack="Back"
+                          OnPortsChanged="OnPortsChangedFromSettings"
+                          @ref="stepGameSettings" />
     }
     else if (Step == 4)
     {
         <StepTechnicalDetails Server="Server"
                               Definition="SelectedDefinition"
                               OnNext="Next"
-                              OnBack="Back" />
+                              OnBack="Back"
+                              @ref="stepTechnicalDetails" />
     }
     else if (Step == 5)
     {
@@ -51,6 +55,9 @@
     protected List<GameTypeDefinition> GameTypes { get; set; } = new();
     protected GameTypeDefinition? SelectedDefinition { get; set; }
 
+    private StepGameSettings? stepGameSettings;
+    private StepTechnicalDetails? stepTechnicalDetails;
+
     [Inject] public IGameTypeApi GameTypeApi { get; set; } = default!;
     [Inject] public IGameServerApi ServerApi { get; set; } = default!;
     [Inject] public IPortApi PortApi { get; set; } = default!;
@@ -60,6 +67,16 @@
     {
         var data = await GameTypeApi.GetAllAsync();
         GameTypes = data.ToList();
+    }
+
+    private async Task OnPortsChangedFromSettings()
+    {
+        // When ports change in the settings step (via port relationships),
+        // trigger revalidation in the technical details step
+        if (stepTechnicalDetails != null)
+        {
+            await stepTechnicalDetails.RevalidatePortsAsync();
+        }
     }
 
 

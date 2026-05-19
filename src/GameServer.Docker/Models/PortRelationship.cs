@@ -4,6 +4,7 @@ namespace GameServer.Docker.Models
     /// Defines a relationship between ports where one port's value determines another port's value.
     /// Used for games that require multiple related ports (e.g., game port, query port, RCON port).
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeSettingPortMapping for new persistence work. This legacy port relationship model will be removed with the old repository chain.")]
     public class PortRelationship
     {
         /// <summary>
@@ -72,6 +73,7 @@ namespace GameServer.Docker.Models
     /// <summary>
     /// Validation rule for port settings
     /// </summary>
+    [Obsolete("Use backend V2 validation services instead of legacy persisted port validation metadata. This model will be removed with the old repository chain.")]
     public class PortValidationRule
     {
         /// <summary>
@@ -109,5 +111,51 @@ namespace GameServer.Docker.Models
         /// Suggested/recommended port numbers for this setting
         /// </summary>
         public List<uint>? SuggestedPorts { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a web-accessible endpoint configuration for a port setting.
+    /// Defines how a game server port should be exposed via load balancer (HTTP/HTTPS/TCP).
+    /// </summary>
+    [Obsolete("Use GameServer.Docker.Models.V2.GameTypeWebHost for new persistence work. This legacy web host model will be removed with the old repository chain.")]
+    public class WebHost
+    {
+        /// <summary>
+        /// Protocol for the web host (http, https, tcp, udp)
+        /// </summary>
+        public string Protocol { get; set; } = "https";
+
+        /// <summary>
+        /// Subdomain pattern for URL generation.
+        /// Supports variables: {serverName}, {serverId}
+        /// Example: "{serverName}" becomes "myserver.example.com"
+        /// Example: "{serverName}-admin" becomes "myserver-admin.example.com"
+        /// </summary>
+        public string SubdomainPattern { get; set; } = "{serverName}";
+
+        /// <summary>
+        /// Source of the port value: "Setting" or "ContainerPort"
+        /// </summary>
+        public string PortSource { get; set; } = "Setting";
+
+        /// <summary>
+        /// When PortSource="Setting", the setting key to read the port from
+        /// </summary>
+        public string? PortSettingKey { get; set; }
+
+        /// <summary>
+        /// When PortSource="ContainerPort", the container port number
+        /// </summary>
+        public uint? PortContainerPort { get; set; }
+
+        /// <summary>
+        /// Priority/order for this web host (lower = higher priority)
+        /// </summary>
+        public int Priority { get; set; } = 1;
+
+        /// <summary>
+        /// Whether to enable load balancer routing for this endpoint
+        /// </summary>
+        public bool EnableLoadBalancer { get; set; } = true;
     }
 }

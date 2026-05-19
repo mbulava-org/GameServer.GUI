@@ -8,18 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.3" />
-    <PackageReference Include="Radzen.Blazor" Version="9.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.5" />
+    <PackageReference Include="Radzen.Blazor" Version="10.2.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="XtermBlazor" Version="2.3.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\GameServer.Docker.Client\GameServer.Docker.Client.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Services\" />
   </ItemGroup>
 
   <!-- Workaround for .NET 10 static web assets issue -->
@@ -30,13 +26,9 @@
       <XtermAssets Include="$(NuGetPackageRoot)xtermblazor\2.3.0\staticwebassets\**\*.*" />
     </ItemGroup>
     
-    <Copy SourceFiles="@(RadzenAssets)" 
-          DestinationFolder="$(OutputPath)wwwroot\_content\Radzen.Blazor\%(RecursiveDir)" 
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(RadzenAssets)" DestinationFolder="$(OutputPath)wwwroot\_content\Radzen.Blazor\%(RecursiveDir)" SkipUnchangedFiles="true" />
     
-    <Copy SourceFiles="@(XtermAssets)" 
-          DestinationFolder="$(OutputPath)wwwroot\_content\XtermBlazor\%(RecursiveDir)" 
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(XtermAssets)" DestinationFolder="$(OutputPath)wwwroot\_content\XtermBlazor\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

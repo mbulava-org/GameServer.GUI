@@ -1,5 +1,6 @@
 ﻿@page "/servers/{ServerId}"
 @rendermode InteractiveServer
+@attribute [Obsolete("Legacy pre-V2 server details page. Migrate to the V2 server flow before removing the old repository chain.")]
 @using GameServer.Web.Components.Server
 @using Radzen
 @using Radzen.Blazor
@@ -337,6 +338,18 @@ else
             }
           </div>
         </RadzenTabsItem>
+
+        @if (extendedMetadata?.WebHosts?.Any() == true)
+        {
+          <RadzenTabsItem Text="Web Access">
+            <div class="tab-content">
+              <WebHostsDisplay WebHosts="@extendedMetadata.WebHosts"
+                               ServerSettings="@server.Settings"
+                               ServerId="@server.ServerId"
+                               LoadBalancerDomain="@GetLoadBalancerDomain()" />
+            </div>
+          </RadzenTabsItem>
+        }
 
         <RadzenTabsItem Text="Files">
           <div class="tab-content">
@@ -1116,6 +1129,13 @@ private async Task LoadServerAsync()
     private bool IsTtyEnabled()
     {
         return extendedMetadata?.EnableTTY == true;
+    }
+
+    private string GetLoadBalancerDomain()
+    {
+        // This could be configured via appsettings.json or environment variable
+        // For now, return a default or use the VanityDomain
+        return Environment.GetEnvironmentVariable("LOADBALANCER_DOMAIN") ?? VanityDomain;
     }
 
 }

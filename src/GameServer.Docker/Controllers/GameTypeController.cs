@@ -8,6 +8,7 @@ namespace GameServer.Docker.Controllers
 {
     [ApiController]
     [Route("api/gametypes")]
+    [Obsolete("Legacy pre-V2 game type API. Use `GameServer.Docker.Controllers.V2.GameTypesController` before removing the old repository chain.")]
     public class GameTypeController : ControllerBase
     {
         private readonly IGameTypeRepository _repository;

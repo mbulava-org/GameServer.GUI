@@ -9,6 +9,7 @@ namespace GameServer.Docker.Controllers
 {
     [ApiController]
     [Route("api/dashboard")]
+    [Obsolete("Legacy pre-V2 dashboard flow. Migrate to GameServer.Docker.Models.V2 and V2 query services before removing the old repository chain.")]
     public class DashboardController : ControllerBase
     {
         private readonly IGameTypeRepository _repository;

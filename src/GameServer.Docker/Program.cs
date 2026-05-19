@@ -1,5 +1,4 @@
 using Docker.DotNet;
-using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +6,10 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using System.Reflection;
 using Scalar.AspNetCore;
+using RepositoriesV2 = GameServer.Docker.Repositories.V2;
+using DataV2 = GameServer.Docker.Data.V2;
+using ServicesV2 = GameServer.Docker.Services.V2;
+using ServicesV2Detection = GameServer.Docker.Services.V2.Detection;
 
 namespace GameServer.Docker
 {
@@ -20,7 +23,7 @@ namespace GameServer.Docker
                 .MinimumLevel.Information()
                 .Enrich.FromLogContext()
                 .CreateBootstrapLogger();
-                
+
             try
             {
                 //Log startup information
@@ -29,15 +32,17 @@ namespace GameServer.Docker
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //Serilog configuration - This replaces the bootstrap logger
+                // Clear default logging providers to prevent duplicates
+                builder.Logging.ClearProviders();
+
+                //Serilog configuration - Reads from appsettings.json
                 builder.Services.AddSerilog((services, loggerConfig) =>
                     loggerConfig
                         .ReadFrom.Configuration(builder.Configuration)
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
-                        .Enrich.WithProperty("ApplicationName", "GameServer.Docker")
-                        .WriteTo.Console(
-                            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
+                        .Enrich.WithProperty("ApplicationName", "GameServer.Docker"));
+                        // Console sink is configured in appsettings.json - don't add it here!
 
                 //Add configuration sources
                 builder.Services.Configure<Configurations.DockerConnection>(builder.Configuration.GetSection("DockerConnection"));
@@ -47,11 +52,13 @@ namespace GameServer.Docker
                 builder.Services.Configure<Configurations.VolumeDriverConfigOptions>(builder.Configuration.GetSection("VolumeDriverConfigOptions"));
                 builder.Services.Configure<Configurations.NetworkOptions>(builder.Configuration.GetSection("NetworkOptions"));
                 builder.Services.Configure<Configurations.NodeAgentOptions>(builder.Configuration.GetSection("NodeAgentOptions"));
+                builder.Services.Configure<Configurations.UdpAgentDiscoveryOptions>(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName));
                 builder.Services.Configure<Configurations.ServiceOperationsOptions>(builder.Configuration.GetSection("ServiceOperations"));
+                builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
 
                 // Docker Client - Only needed for Direct mode
                 // In Agent mode, all Docker operations are delegated to manager agents
-                var serviceOpsMode = builder.Configuration.GetValue<string>("ServiceOperations:Mode") ?? "Direct";
+                var serviceOpsMode = builder.Configuration.GetValue<string>("ServiceOperations:Mode") ?? "Agent";
 
                 if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
                 {
@@ -73,6 +80,13 @@ namespace GameServer.Docker
                             "All Docker operations should go through IServiceOperations.");
                     });
                 }
+
+                // Agent Registry (new registration-based system) - MUST BE BEFORE ServiceOperations and NodeAgentDiscovery
+                // Agents connect to the Primary Service and push their state
+                // This will eventually replace NodeAgentDiscoveryService
+                builder.Services.AddSingleton<IAgentRegistry, AgentRegistryService>();
+                builder.Services.AddSingleton<IUdpAgentRegistry, UdpAgentRegistryService>();
+                builder.Services.AddHostedService<UdpAgentAnnouncementListenerService>();
 
                 // Service Operations - Choose implementation based on configuration
                 builder.Services.AddSingleton<IServiceOperations>(sp =>
@@ -97,14 +111,16 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<ServiceOperationsViaDirect>();
                 builder.Services.AddSingleton<ServiceOperationsViaAgent>();
 
-                builder.Services.AddSingleton<DockerServiceHelper>();
+                // DockerServiceHelper - Changed to Scoped because it depends on IGameTypeRepository (Scoped)
+                builder.Services.AddScoped<DockerServiceHelper>();
+                builder.Services.AddSingleton<WebHostResolver>();
 
-                // File Management
-                builder.Services.AddSingleton<IGameServerFileManager, GameServerFileManagerService>();
+                // File Management - Changed to Scoped because it depends on DockerServiceHelper
+                builder.Services.AddScoped<IGameServerFileManager, GameServerFileManagerService>();
 
-                // Server Management
-                builder.Services.AddSingleton<IGameServerManager, GameServerManagerService>();
-                
+                // Server Management - Changed to Scoped because it depends on DockerServiceHelper
+                builder.Services.AddScoped<IGameServerManager, GameServerManagerService>();
+
                 // Node Agent Discovery (for real-time container stats)
                 // Registered as both singleton and hosted service for background discovery
                 // HttpClient instances are created per node agent for optimal connection pooling
@@ -116,8 +132,9 @@ namespace GameServer.Docker
                 {
                     var logger = sp.GetRequiredService<ILogger<NodeAgentDiscoveryService>>();
                     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-                    var agentOptions = sp.GetRequiredService<IOptions<NodeAgentOptions>>();
+                    var agentOptions = sp.GetRequiredService<IOptions<Configurations.NodeAgentOptions>>();
                     var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
+                    var udpAgentRegistry = sp.GetRequiredService<IUdpAgentRegistry>();
 
                     // Try to get IDockerClient, but don't fail if unavailable (Agent mode)
                     IDockerClient? dockerClient = null;
@@ -132,21 +149,18 @@ namespace GameServer.Docker
                         sp, // Pass IServiceProvider to avoid circular dependency
                         agentOptions,
                         agentRegistry,
+                        udpAgentRegistry,
                         dockerClient);
                 });
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
 
-                // Agent Registry (new registration-based system)
-                // Agents connect to the Primary Service and push their state
-                // This will eventually replace NodeAgentDiscoveryService
-                builder.Services.AddSingleton<IAgentRegistry, AgentRegistryService>();
-
                 // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
                 builder.Services.AddSingleton<NodeAgentClient>();
+                builder.Services.AddHostedService<Services.AgentShutdownNotificationService>();
 
-                // Add Resource Monitoring (uses Node Agents for real-time stats)
-                builder.Services.AddSingleton<IGameServerResourceMonitor, GameServerResourceMonitorService>();
+                // Add Resource Monitoring - Changed to Scoped because it depends on DockerServiceHelper
+                builder.Services.AddScoped<IGameServerResourceMonitor, GameServerResourceMonitorService>();
 
                 // PortAllocator - Conditionally provide IDockerClient
                 builder.Services.AddSingleton<PortAllocator>();/* sp =>
@@ -160,7 +174,7 @@ namespace GameServer.Docker
                     return new PortAllocator(dockerClient, portOptions);
                 });*/
 
-                // Add SQLite Database for GameType management
+                // Add legacy SQLite database for the current GameType management implementation
                 var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
                     ?? "Data Source=./data/gameserver.db";//let this default to a sub path to avoid NSwag build errors.
                 
@@ -193,16 +207,63 @@ namespace GameServer.Docker
                     options.EnableServiceProviderCaching(false);
                 });
 
+                // Add separate V2 database context for the new persistence implementation.
+                // Provider selection is isolated from the legacy DbContext so both paths can coexist.
+                builder.Services.AddDbContext<DataV2.GameServerV2DbContext>((serviceProvider, options) =>
+                {
+                    var v2Options = serviceProvider.GetRequiredService<IOptions<Configurations.V2DatabaseOptions>>().Value;
+                    var provider = v2Options.Provider;
+                    var defaultConnectionName = provider.Trim().ToLowerInvariant() switch
+                    {
+                        "postgres" or "postgresql" => "GameServerV2PostgresDb",
+                        "mysql" => "GameServerV2MySqlDb",
+                        _ => "GameServerV2Db"
+                    };
+                    var connectionName = string.IsNullOrWhiteSpace(v2Options.ConnectionStringName)
+                        ? defaultConnectionName
+                        : v2Options.ConnectionStringName;
+
+                    var v2ConnectionString = builder.Configuration.GetConnectionString(connectionName)
+                        ?? builder.Configuration.GetConnectionString(defaultConnectionName)
+                        ?? builder.Configuration.GetConnectionString("GameServerV2Db")
+                        ?? "Data Source=./data/gameserver-v2.db";
+
+                    DataV2.GameServerV2DbContextFactory.ConfigureProvider(
+                        (DbContextOptionsBuilder)options,
+                        provider,
+                        v2ConnectionString);
+
+                    if (builder.Environment.IsDevelopment())
+                    {
+                        options.EnableSensitiveDataLogging();
+                    }
+
+                    options.EnableServiceProviderCaching(false);
+                });
+
                 // Add GameType Repository (database-backed) - This replaces file-based registries
                 // Register IMemoryCache for GameType caching
                 builder.Services.AddMemoryCache();
                 builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
+                builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
+                builder.Services.AddScoped<ServicesV2.GameServerValidationService>();
+                builder.Services.AddScoped<ServicesV2.GameServerCommandService>();
+                builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
+                builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
+                builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
+                    new ServicesV2Detection.GameTypeSetupDetectionService(
+                        sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),
+                        sp.GetRequiredService<IAgentRegistry>(),
+                        sp.GetRequiredService<IHttpClientFactory>(),
+                        sp.GetRequiredService<ILogger<ServicesV2Detection.GameTypeSetupDetectionService>>()));
 
                 // Keep file-based registries as fallback/migration helpers (optional)
                 // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
                 // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
 
-                // GameTypeMetadataApplier needs to be Scoped since it depends on scoped IGameTypeRepository
+                // GameTypeMetadataApplier - Changed to Scoped because it depends on IGameTypeRepository (Scoped)
                 builder.Services.AddScoped<GameTypeMetadataApplier>();
 
                 // Database Initialization - Runs in background after webhost starts
@@ -278,8 +339,29 @@ namespace GameServer.Docker
                 // Terminal Session Manager (singleton for long-lived terminal sessions)
                 builder.Services.AddSingleton<Services.TerminalSessionManager>();
 
+                WebApplication app;
+                try
+                {
+                    app = builder.Build();
+                }
+                catch (Exception ex)
+                {
+                    Log.Fatal(ex, "Failed to build WebApplication. Dependency Injection error:");
 
-                var app = builder.Build();
+                    // Log all inner exceptions for AggregateException
+                    if (ex is AggregateException aggEx)
+                    {
+                        Log.Fatal("AggregateException with {Count} inner exceptions:", aggEx.InnerExceptions.Count);
+                        foreach (var innerEx in aggEx.InnerExceptions)
+                        {
+                            Log.Fatal(innerEx, "  → Inner Exception: {Message}", innerEx.Message);
+                        }
+                    }
+
+                    Log.CloseAndFlush();
+                    Environment.ExitCode = 1;
+                    throw;
+                }
 
                 var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
                 mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
@@ -317,13 +399,26 @@ namespace GameServer.Docker
 
                 app.MapControllers();
 
-                mainLogger.LogInformation("🎯 WebHost is ready to accept connections. Database initialization will run in background...");
+                mainLogger.LogInformation("🎯 WebHost has started listening. Database initialization is still running in the background; the application will shut down if initialization fails.");
 
                 app.Run();
             }
             catch (Exception ex)
             {
                 Log.Fatal(ex, "Application terminated unexpectedly");
+
+                // Log all inner exceptions for AggregateException
+                if (ex is AggregateException aggEx)
+                {
+                    foreach (var innerEx in aggEx.InnerExceptions)
+                    {
+                        Log.Fatal(innerEx, "  Inner Exception: {Message}", innerEx.Message);
+                    }
+                }
+
+                // Ensure we exit with error code
+                Environment.ExitCode = 1;
+                throw;
             }
             finally
             {

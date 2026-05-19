@@ -1,0 +1,177 @@
+@using GameServer.Web.Models.V2
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-1">Revision Draft</h5>
+        <small class="text-muted">Edit an existing revision or create a new draft before publishing it.</small>
+    </div>
+    <div class="d-flex gap-2">
+        <RadzenButton Text="Set Current" Icon="check_circle" ButtonStyle="ButtonStyle.Secondary" Click="@(() => OnSetCurrentRevision.InvokeAsync())" Disabled="@(IsSavingRevision || !CanSetCurrentRevision)" />
+        <RadzenButton Text="Publish + Current" Icon="publish" ButtonStyle="ButtonStyle.Success" Click="@(() => OnPublishAndSetCurrent.InvokeAsync())" Disabled="@(IsSavingRevision || !CanSetCurrentRevision)" />
+    </div>
+</div>
+
+@if (Warnings.Count > 0)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+        <div class="fw-semibold mb-2">Revision draft guidance</div>
+        <ul class="mb-0 ps-3">
+            @foreach (var warning in Warnings)
+            {
+                <li>@warning</li>
+            }
+        </ul>
+    </RadzenAlert>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <RadzenFormField Text="Docker Image Reference" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@ImageReference" ValueChanged="@OnImageReferenceChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-4">
+        <RadzenFormField Text="Version Tag" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@VersionTag" ValueChanged="@OnVersionTagChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-4">
+        <RadzenFormField Text="Image Digest" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextBox Value="@ImageDigest" ValueChanged="@OnImageDigestChanged" class="w-100" />
+        </RadzenFormField>
+    </div>
+    <div class="col-md-4 d-flex align-items-center">
+        <div class="d-flex gap-4 flex-wrap pt-3">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenCheckBox Value="@EnableTTY" TValue="bool" Change="@OnEnableTTYChanged" />
+                <span>Enable TTY</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <RadzenCheckBox Value="@IsPublished" TValue="bool" Change="@OnIsPublishedChanged" />
+                <span>Published</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <RadzenFormField Text="Revision Notes" Variant="Variant.Outlined" class="w-100">
+            <RadzenTextArea Value="@Notes" ValueChanged="@OnNotesChanged" Rows="4" class="w-100" />
+        </RadzenFormField>
+    </div>
+</div>
+
+<RadzenDataGrid Data="@RevisionRows" TItem="GameTypeRevisionListRow" AllowSorting="true">
+    <Columns>
+        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Title="Tag">
+            <Template Context="revision">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span>@revision.VersionTag</span>
+                    @if (revision.IsUnsavedDraft)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Unsaved" Size="BadgeSize.ExtraSmall" />
+                    }
+                </div>
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="ImageDigest" Title="Digest" />
+        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="IsPublished" Title="Published" />
+        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="EnableTTY" Title="TTY" />
+        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="CreatedAt" Title="Created" />
+        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Title="Actions" Sortable="false" Filterable="false" Width="150px">
+            <Template Context="revision">
+                <div class="d-flex gap-2 justify-content-end">
+                    @if (revision.SourceRevision is not null)
+                    {
+                        <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => OnEditRevision.InvokeAsync(revision.SourceRevision))" title="Edit draft" />
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => OnCloneRevision.InvokeAsync(revision.SourceRevision))" title="Clone to new draft" />
+                    }
+                </div>
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+<div class="d-flex justify-content-end mt-3">
+    <RadzenButton Text="New Draft" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@(() => OnCreateNewDraft.InvokeAsync())" />
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<GameTypeRevisionListRow> RevisionRows { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> ValidationIssues { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> Warnings { get; set; } = [];
+
+    [Parameter]
+    public string VersionTag { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ImageReference { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ImageReferenceChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<string> VersionTagChanged { get; set; }
+
+    [Parameter]
+    public string? ImageDigest { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ImageDigestChanged { get; set; }
+
+    [Parameter]
+    public bool EnableTTY { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> EnableTTYChanged { get; set; }
+
+    [Parameter]
+    public string? Notes { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> NotesChanged { get; set; }
+
+    [Parameter]
+    public bool IsPublished { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsPublishedChanged { get; set; }
+
+    [Parameter]
+    public bool IsSavingRevision { get; set; }
+
+    [Parameter]
+    public bool CanSetCurrentRevision { get; set; }
+
+    [Parameter]
+    public EventCallback OnCreateNewDraft { get; set; }
+
+    [Parameter]
+    public EventCallback OnSetCurrentRevision { get; set; }
+
+    [Parameter]
+    public EventCallback OnPublishAndSetCurrent { get; set; }
+
+    [Parameter]
+    public EventCallback<GameTypeRevision> OnEditRevision { get; set; }
+
+    [Parameter]
+    public EventCallback<GameTypeRevision> OnCloneRevision { get; set; }
+
+    private Task OnImageReferenceChanged(string value) => ImageReferenceChanged.InvokeAsync(value);
+
+    private Task OnVersionTagChanged(string value) => VersionTagChanged.InvokeAsync(value);
+
+    private Task OnImageDigestChanged(string? value) => ImageDigestChanged.InvokeAsync(value);
+
+    private Task OnEnableTTYChanged(bool value) => EnableTTYChanged.InvokeAsync(value);
+
+    private Task OnNotesChanged(string? value) => NotesChanged.InvokeAsync(value);
+
+    private Task OnIsPublishedChanged(bool value) => IsPublishedChanged.InvokeAsync(value);
+}

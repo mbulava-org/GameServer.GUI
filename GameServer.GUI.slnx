@@ -1,9 +1,12 @@
 <Solution>
-  <Folder Name="/Solution Items/">
+  <Folder Name="/Others/">
     <File Path=".github/workflows/BuildAndPublish-Docker-Local.yaml" />
     <File Path=".github/workflows/ci.yaml" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/GameServer.DB.PostgreSql/GameServer.DB.PostgreSql.csproj">
+      <Build Project="false" />
+    </Project>
     <Project Path="src/GameServer.Docker.Agent/GameServer.Docker.Agent.csproj" />
     <Project Path="src/GameServer.Docker.Client/GameServer.Docker.Client.csproj" />
     <Project Path="src/GameServer.Docker/GameServer.Docker.csproj" />
@@ -16,3 +19,4 @@
     <Project Path="tests/GameServer.Web.Tests/GameServer.Web.Tests.csproj" />
   </Folder>
 </Solution>
+

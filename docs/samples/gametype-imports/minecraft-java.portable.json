@@ -1,0 +1,207 @@
+{
+  "formatVersion": "1.0",
+  "gameType": {
+    "key": "minecraft-java",
+    "displayName": "Minecraft Java Server",
+    "description": "Portable V2 GameType import based on itzg/minecraft-server. Uses the standard Java server port, persistent data volume, and common environment variables exposed by the image.",
+    "type": "docker",
+    "documentationUrl": "https://github.com/itzg/docker-minecraft-server",
+    "isActive": true,
+    "currentRevisionVersionTag": "latest",
+    "revisions": [
+      {
+        "versionTag": "latest",
+        "imageReference": "itzg/minecraft-server",
+        "enableTTY": true,
+        "notes": "Seeded from the upstream README and common itzg/minecraft-server usage patterns. Review the chosen TYPE, VERSION, and plugin/mod settings before publishing.",
+        "isPublished": false,
+        "ports": [
+          {
+            "containerPort": 25565,
+            "protocol": "tcp",
+            "advertisedPort": true,
+            "description": "Primary Minecraft Java server port",
+            "displayOrder": 0
+          }
+        ],
+        "volumes": [
+          {
+            "source": "/data",
+            "description": "Persistent Java server data, properties, worlds, mods, and plugins",
+            "displayOrder": 0,
+            "usage": "saves"
+          }
+        ],
+        "settingDefinitions": [
+          {
+            "settingKey": "EULA",
+            "defaultValue": "TRUE",
+            "description": "Must be TRUE to accept the Minecraft EULA.",
+            "displayOrder": 0,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Required",
+              "isRequired": true
+            }
+          },
+          {
+            "settingKey": "TYPE",
+            "defaultValue": "VANILLA",
+            "description": "Java server distribution or platform type.",
+            "displayOrder": 1,
+            "metadata": {
+              "dataType": "enum",
+              "category": "General",
+              "allowedValuesJson": "[\"VANILLA\",\"PAPER\",\"PURPUR\",\"FABRIC\",\"FORGE\",\"NEOFORGE\",\"SPIGOT\"]"
+            }
+          },
+          {
+            "settingKey": "VERSION",
+            "defaultValue": "LATEST",
+            "description": "Minecraft version selector used by the image.",
+            "displayOrder": 2,
+            "metadata": {
+              "dataType": "string",
+              "category": "General"
+            }
+          },
+          {
+            "settingKey": "SERVER_PORT",
+            "defaultValue": "25565",
+            "description": "Primary TCP server port.",
+            "displayOrder": 3,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 25565,
+                  "targetProtocol": "tcp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "MOTD",
+            "defaultValue": "A Minecraft Server",
+            "description": "Server list message of the day.",
+            "displayOrder": 4,
+            "metadata": {
+              "dataType": "string",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "DIFFICULTY",
+            "defaultValue": "normal",
+            "description": "Java server difficulty.",
+            "displayOrder": 5,
+            "metadata": {
+              "dataType": "enum",
+              "category": "Gameplay",
+              "allowedValuesJson": "[\"peaceful\",\"easy\",\"normal\",\"hard\"]"
+            }
+          },
+          {
+            "settingKey": "MODE",
+            "defaultValue": "survival",
+            "description": "Java server game mode.",
+            "displayOrder": 6,
+            "metadata": {
+              "dataType": "enum",
+              "category": "Gameplay",
+              "allowedValuesJson": "[\"survival\",\"creative\",\"adventure\",\"spectator\"]"
+            }
+          },
+          {
+            "settingKey": "MAX_PLAYERS",
+            "defaultValue": "20",
+            "description": "Maximum number of concurrent Java players.",
+            "displayOrder": 7,
+            "metadata": {
+              "dataType": "number",
+              "category": "Server"
+            }
+          },
+          {
+            "settingKey": "MEMORY",
+            "defaultValue": "4G",
+            "description": "Container-managed JVM memory allocation target.",
+            "displayOrder": 8,
+            "metadata": {
+              "dataType": "string",
+              "category": "Performance",
+              "placeholder": "2G, 4G, 8G"
+            }
+          },
+          {
+            "settingKey": "ENABLE_RCON",
+            "defaultValue": "false",
+            "description": "Enable the Java server RCON endpoint.",
+            "displayOrder": 9,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Administration"
+            }
+          },
+          {
+            "settingKey": "RCON_PORT",
+            "defaultValue": "25575",
+            "description": "Optional RCON TCP port when RCON is enabled.",
+            "displayOrder": 10,
+            "metadata": {
+              "dataType": "number",
+              "category": "Administration"
+            }
+          },
+          {
+            "settingKey": "ONLINE_MODE",
+            "defaultValue": "true",
+            "description": "Require authenticated Mojang/Microsoft accounts.",
+            "displayOrder": 11,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Security"
+            }
+          },
+          {
+            "settingKey": "ENABLE_WHITELIST",
+            "defaultValue": "false",
+            "description": "Enable Java whitelist enforcement.",
+            "displayOrder": 12,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Security"
+            }
+          },
+          {
+            "settingKey": "OPS",
+            "defaultValue": "",
+            "description": "Optional newline or comma separated operator usernames or UUIDs.",
+            "displayOrder": 13,
+            "metadata": {
+              "dataType": "string",
+              "category": "Administration"
+            }
+          },
+          {
+            "settingKey": "TZ",
+            "defaultValue": "UTC",
+            "description": "Container timezone used for logs and automation.",
+            "displayOrder": 14,
+            "metadata": {
+              "dataType": "string",
+              "category": "General"
+            }
+          }
+        ],
+        "webHosts": []
+      }
+    ]
+  }
+}

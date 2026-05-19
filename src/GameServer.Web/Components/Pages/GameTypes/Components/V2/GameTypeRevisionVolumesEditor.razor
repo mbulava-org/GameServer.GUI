@@ -1,0 +1,103 @@
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-1">Volume Definitions</h5>
+        <small class="text-muted">Describe the persisted container paths and how deployment logic should treat them.</small>
+    </div>
+    <RadzenButton Text="Add Volume" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddVolumeDraft" />
+</div>
+
+@if (!Volumes.Any())
+{
+    <p class="text-muted mb-0">No volumes in this draft.</p>
+}
+else
+{
+    @foreach (var volume in Volumes)
+    {
+        <RadzenCard class="mb-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <RadzenFormField Text="Source" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="volume.Source" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-3">
+                    <RadzenFormField Text="Usage" Variant="Variant.Outlined" class="w-100">
+                        <RadzenDropDown @bind-Value="volume.Usage" @bind-Value:after="NotifyDraftChangedAsync" Data="VolumeUsageOptions" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-4">
+                    <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="volume.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-1 text-end">
+                    <div class="d-flex justify-content-end gap-1">
+                        <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftAsync(volume, -1))" Disabled="@(Volumes.IndexOf(volume) <= 0)" />
+                        <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftAsync(volume, 1))" Disabled="@(Volumes.IndexOf(volume) >= Volumes.Count - 1)" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveVolumeDraftAsync(volume))" />
+                    </div>
+                </div>
+            </div>
+        </RadzenCard>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public List<GameTypeRevisionVolumeDraft> Volumes { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> VolumeUsageOptions { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
+    private async Task AddVolumeDraft()
+    {
+        Volumes.Add(new GameTypeRevisionVolumeDraft
+        {
+            Usage = "config"
+        });
+
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task RemoveVolumeDraftAsync(GameTypeRevisionVolumeDraft volume)
+    {
+        Volumes.Remove(volume);
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task MoveVolumeDraftAsync(GameTypeRevisionVolumeDraft volume, int delta)
+    {
+        MoveItem(Volumes, volume, delta);
+        await NotifyDraftChangedAsync();
+    }
+
+    private Task NotifyDraftChangedAsync()
+    {
+        return OnDraftChanged.InvokeAsync();
+    }
+
+    private static void MoveItem<T>(List<T> items, T item, int delta)
+    {
+        var currentIndex = items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = currentIndex + delta;
+        if (newIndex < 0 || newIndex >= items.Count)
+        {
+            return;
+        }
+
+        items.RemoveAt(currentIndex);
+        items.Insert(newIndex, item);
+    }
+}

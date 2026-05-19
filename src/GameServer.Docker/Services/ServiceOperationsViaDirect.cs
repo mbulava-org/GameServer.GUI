@@ -45,11 +45,24 @@ namespace GameServer.Docker.Services
         }
 
         public async Task<IList<SwarmService>> ListServicesAsync(
-            ServicesListParameters? parameters = null,
+            string? labelFilter = null,
+            string? serviceName = null,
             CancellationToken cancellationToken = default)
         {
             _logger.LogDebug("Listing services via direct Docker connection");
-            var services = await _dockerClient.Swarm.ListServicesAsync(parameters ?? new ServicesListParameters(), cancellationToken);
+
+            var parameters = new ServicesListParameters();
+
+            if (!string.IsNullOrWhiteSpace(labelFilter) || !string.IsNullOrWhiteSpace(serviceName))
+            {
+                parameters.Filters = new ServiceFilter
+                {
+                    Label = string.IsNullOrWhiteSpace(labelFilter) ? null : [labelFilter],
+                    Name = string.IsNullOrWhiteSpace(serviceName) ? null : [serviceName]
+                };
+            }
+
+            var services = await _dockerClient.Swarm.ListServicesAsync(parameters, cancellationToken);
             return services.ToList();
         }
 

@@ -12,6 +12,7 @@ namespace GameServer.Docker.Repositories
     /// <summary>
     /// Repository implementation using Entity Framework Core and SQLite with in-memory caching
     /// </summary>
+    [Obsolete("Use GameServer.Docker.Repositories.V2.GameTypeRepository for new persistence work.")]
     public class GameTypeRepository : IGameTypeRepository
     {
         private readonly GameServerDbContext _context;

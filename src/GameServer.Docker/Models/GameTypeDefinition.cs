@@ -1,5 +1,6 @@
 ﻿namespace GameServer.Docker.Models
 {
+    [Obsolete("Use GameServer.Docker.Models.V2.GameType and GameTypeRevision for new persistence work.")]
     public class GameTypeDefinition
     {
         public string Key { get; set; } = "";            // "minecraft", "valheim"

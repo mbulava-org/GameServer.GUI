@@ -148,7 +148,10 @@ public class MyHub : Hub
 - `Hubs/` - SignalR hubs for real-time features
   - **MUST use Node Agents for container operations**
 - `Services/` - Business logic, service orchestration
-- `Repositories/` - Data access layer
+- `Repositories/` - Legacy SQLite-backed data access layer
+- `Repositories/V2/` - New V2 persistence layer that coexists with the legacy layer
+- `Data/` - Legacy EF Core DbContext and entities
+- `Data/V2/` - V2 EF Core DbContext and entities
 
 **Key Services:**
 - `IServiceOperations` - **[NEW]** Abstraction for all Docker operations
@@ -158,17 +161,23 @@ public class MyHub : Hub
 - `AgentRegistryService` - **[NEW]** Agent registration and container→agent mappings
 - `NodeAgentDiscoveryService` - **[DEPRECATED]** Legacy Docker Swarm polling (will be removed)
 
+**Persistence:**
+- Legacy `GameServerDbContext` remains in place for the current API and automatic client generation path.
+- `GameServerV2DbContext` is a separate new implementation in the `V2` namespace.
+- V2 provider selection is configuration-driven and supports SQLite, PostgreSQL, and MySQL.
+- PostgreSQL is the default and preferred V2 datastore and is modeled through the dedicated `GameServer.DB.PostgreSql` database project plus `pgpac` deployment tooling.
+- The V2 schema is normalized around:
+  - `GameType` owning a fixed `ImageReference`
+  - `GameTypeRevision` owning version-tagged deployable templates
+  - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
+- Derived data such as `GameServerPorts`, `GameServerVolumes`, and resolved Web Host state are not persisted in V2.
+
 **✅ PHASE 5 COMPLETE:**
 - Primary Service can run **without any Docker connection** when `ServiceOperations:Mode=Agent`
 - All Docker operations (services, tasks, networks) delegated to manager agent
 - `IDockerClient` is optional and only used in Direct mode
 - Container operations always go through agents (logs, exec, stats, attach)
-- `Repositories/` - Data access layer
-
-**Key Services:**
-- `DockerServiceHelper` - Swarm **service** operations (uses `IDockerClient`)
-- `GameServerManagerService` - Server lifecycle management
-- `NodeAgentDiscoveryService` - Finds containers across nodes
+- Legacy and V2 persistence layers can evolve independently while sharing the same application host
 
 ### 2. GameServer.Docker.Agent (Node Agents)
 
@@ -200,6 +209,36 @@ public class MyHub : Hub
   - `ContainerTerminal` - Connects to terminal hub
   - `ContainerConsole` - Connects to console hub
   - `ResourceMonitor` - Connects to resource monitoring hub
+
+### Persistence Architecture
+
+The application currently has two persistence layers that must coexist safely.
+
+#### Legacy persistence
+- `Data/GameServerDbContext`
+- `Repositories/IGameTypeRepository`
+- SQLite only
+- still backs the current API surface and automatic client generation path
+
+#### V2 persistence
+- `Data/V2/GameServerV2DbContext`
+- `Repositories/V2/IGameTypeRepository`
+- `Repositories/V2/IGameServerRepository`
+- provider-aware: SQLite or MySQL based on configuration
+- follows `docs/DATABASE-REORGANIZATION-PROPOSAL.md`
+
+#### V2 schema ownership rules
+- `GameType` owns the fixed Docker image reference and catalog metadata.
+- `GameTypeRevision` owns the tagged deployable template.
+- `GameServer` stores only server-specific deployment intent and references `GameTypeRevisionId`.
+- `GameServerSettings` stores desired per-server values.
+- `GameServerPorts`, `GameServerVolumes`, and resolved Web Host state are derived and are not persisted in V2.
+- Port availability validation is a backend service responsibility, not persisted schema data.
+
+#### V2 compatibility rules
+- V2 work must remain in `Models.V2`, `Repositories.V2`, and `Data.V2`.
+- The legacy persistence path must remain intact until controllers and services are explicitly migrated.
+- The V2 DbContext and design-time factory should follow the same registration and factory pattern as the legacy DbContext so automatic client generation is not disrupted.
 
 ## Implementation Patterns
 
@@ -367,7 +406,7 @@ public SomeHub(
 ### In GameServer.Docker Services (CORRECT):
 ```csharp
 public DockerServiceHelper(
-    IDockerClient dockerClient)  // ? For Swarm service operations
+    IServiceOperations serviceOperations)  // ✅ For Swarm service operations
 {
 }
 ```

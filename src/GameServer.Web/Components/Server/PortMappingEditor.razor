@@ -1,5 +1,6 @@
 ﻿ @using Radzen
 @using Radzen.Blazor
+@attribute [Obsolete("Legacy pre-V2 port mapping editor. Migrate to the V2 server flow before removing the old repository chain.")]
 @using global::GameServer.Docker.Client
 @using System.Collections.Generic
 @using System.Linq
@@ -20,9 +21,9 @@
               <div class="d-flex align-items-start gap-2">
                   <RadzenIcon Icon="info" Style="font-size: 1.25rem;" />
                   <div>
-                      <strong>Port Configuration:</strong> Only the default connection port can be adjusted here. 
-                      Other ports are automatically calculated based on port relationships defined in the game type settings.
-                      To change the base server port, modify the port setting in the Game Settings step.
+                      <strong>Port Configuration:</strong> The default port is editable and can be changed here or via Environment Variables. 
+                      Related ports are automatically calculated based on port relationships defined in the game type.
+                      All ports (including auto-calculated ones) are validated for availability.
                   </div>
               </div>
           </RadzenAlert>
@@ -54,8 +55,8 @@
                 @foreach (var pm in Server.Ports)
                 {
                     var isDefault = IsDefaultPort(pm);
-                    var isReadOnly = !isDefault && HasDefaultPort(); // Only default port is editable when default exists
-                    
+                    var isReadOnly = !isDefault; // Only default port is editable
+
                     <RadzenCard class="port-card" Style="@(isDefault ? "border: 2px solid var(--rz-primary);" : "")">
                         <div class="row g-3 align-items-end">
                             <div class="col-md-4">
@@ -76,7 +77,11 @@
                                     Container Port: @pm.ContainerPort
                                     @if (isReadOnly)
                                     {
-                                        <span> • Auto-calculated</span>
+                                        <span> • Auto-calculated from port relationships</span>
+                                    }
+                                    else if (isDefault)
+                                    {
+                                        <span> • Primary connection port (editable)</span>
                                     }
                                 </small>
                             </div>
@@ -139,6 +144,7 @@
 
 @code {
     [Inject] public required IPortApi PortApi { get; set; }
+    [Inject] public required IGameTypeExtendedMetadataApi ExtendedMetadataApi { get; set; }
     [Parameter] public GameServer? Server { get; set; }
     [Parameter] public GameTypeDefinition? GameTypeDefinition { get; set; }
     [Parameter] public EventCallback<GameServer> OnChanged { get; set; }
@@ -147,6 +153,7 @@
     private bool parametersSet = false;
     private string defaultPortKey = "";
     private int defaultPortIndex = 0; // Track by index instead of content
+    private GameTypeExtendedMetadata? extendedMetadata;
     
     // Validation state: per-instance error message for PublishedPort
     Dictionary<PortMapping, string> publishedErrors = new();
@@ -166,6 +173,9 @@
             
             if (!parametersSet)
             {
+                // Load extended metadata for port relationships
+                _ = LoadExtendedMetadataAsync();
+
                 // First time initialization - find the default port from GameTypeDefinition
                 if (Server.Ports.Any())
                 {
@@ -281,12 +291,68 @@
             pm.PublishedPort = (int)(value > 65535 ? 65535 : value);
         }
 
+        // If this is the default port and it maps to a setting, update related ports
+        if (IsDefaultPort(pm))
+        {
+            _ = UpdateRelatedPortsAsync(pm);
+        }
+
         _ = ValidateAllPublishedAsync();
         _ = NotifyChangedAsync();
     }
 
+    private async Task UpdateRelatedPortsAsync(PortMapping defaultPort)
+    {
+        if (extendedMetadata?.SettingsMetadata == null || Server?.Ports == null)
+            return;
+
+        // Find the setting that maps to this default port
+        var portSetting = extendedMetadata.SettingsMetadata.Values
+            .FirstOrDefault(s => s.MapsToContainerPort && 
+                               s.LinkedContainerPort == defaultPort.ContainerPort &&
+                               s.PortProtocol?.Equals(defaultPort.Protocol, StringComparison.OrdinalIgnoreCase) == true);
+
+        if (portSetting?.PortRelationships?.Any() != true)
+            return;
+
+        var newPort = defaultPort.PublishedPort;
+
+        // Process port relationships
+        foreach (var relationship in portSetting.PortRelationships)
+        {
+            var relatedPort = Server.Ports.FirstOrDefault(p =>
+                p.ContainerPort == relationship.TargetContainerPort &&
+                p.Protocol.Equals(relationship.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+
+            if (relatedPort != null)
+            {
+                int calculatedPort = relationship.RelationType switch
+                {
+                    PortRelationshipType.Offset => newPort + relationship.Offset,
+                    PortRelationshipType.Fixed => (int)(relationship.FixedValue ?? relationship.TargetContainerPort),
+                    PortRelationshipType.Multiplier => newPort * relationship.Offset,
+                    _ => relatedPort.PublishedPort
+                };
+
+                if (calculatedPort > 0 && calculatedPort <= 65535)
+                {
+                    relatedPort.ContainerPort = calculatedPort;
+                    relatedPort.PublishedPort = calculatedPort;
+                }
+            }
+        }
+
+        StateHasChanged();
+    }
+
 
     // -- Validation --
+
+    public async Task RevalidateAsync()
+    {
+        await ValidateAllPublishedAsync();
+        StateHasChanged();
+    }
 
     async Task ValidateAllPublishedAsync()
     {
@@ -354,5 +420,21 @@
     {
         if (Server == null) return Task.CompletedTask;
         return OnChanged.HasDelegate ? OnChanged.InvokeAsync(Server) : Task.CompletedTask;
+    }
+
+    private async Task LoadExtendedMetadataAsync()
+    {
+        if (GameTypeDefinition == null || string.IsNullOrEmpty(GameTypeDefinition.Key))
+            return;
+
+        try
+        {
+            extendedMetadata = await ExtendedMetadataApi.GetAsync(GameTypeDefinition.Key);
+        }
+        catch
+        {
+            // Extended metadata is optional
+            extendedMetadata = null;
+        }
     }
 }

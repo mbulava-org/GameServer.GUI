@@ -8,6 +8,7 @@ namespace GameServer.Docker.Services
     /// <summary>
     /// Helper service for applying extended metadata to Docker container specifications
     /// </summary>
+    [Obsolete("Legacy pre-V2 metadata applier. Migrate to V2 revision metadata before removing the old repository chain.")]
     public class GameTypeMetadataApplier
     {
         private readonly IGameTypeRepository _repository;

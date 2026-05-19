@@ -1,5 +1,6 @@
 ﻿@using Radzen
 @using Radzen.Blazor
+@attribute [Obsolete("Legacy pre-V2 create-server wizard step. Migrate to the V2 server flow before removing the old repository chain.")]
 @using global::GameServer.Docker.Client
 @using System.Linq
 @inject NotificationService NotificationService
@@ -15,6 +16,7 @@
                                 Server="@Server" 
                                 ServerChanged="@OnServerChanged"
                                 OnValidationChanged="@OnValidationChanged"
+                                OnPortsChanged="@OnPortsChanged"
                                 @ref="environmentEditor" />
     </EditForm>
     
@@ -44,6 +46,7 @@
     [Parameter] public GameServer Server { get; set; } = new();
     [Parameter] public EventCallback OnNext { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnPortsChanged { get; set; }
 
     private ServerEnvironmentEditor? environmentEditor;
     private bool isValid = true;

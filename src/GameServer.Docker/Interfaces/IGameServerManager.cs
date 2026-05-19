@@ -2,6 +2,7 @@
 
 namespace GameServer.Docker.Interfaces
 {
+    [Obsolete("Legacy pre-V2 game server manager. Migrate to GameServer.Docker.Models.V2 and V2 orchestration services before removing the old repository chain.")]
     public interface IGameServerManager
     {
         public Task<List<Models.GameServer>> ListServersAsync();

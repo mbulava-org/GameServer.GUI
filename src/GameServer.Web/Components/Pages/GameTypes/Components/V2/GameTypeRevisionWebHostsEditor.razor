@@ -1,0 +1,321 @@
+@using System.Globalization
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-1">Web Host Rules</h5>
+        <small class="text-muted">Define the reverse-proxy endpoints that the Primary Service will derive from this revision.</small>
+    </div>
+    <RadzenButton Text="Add Web Host" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddWebHostDraft" />
+</div>
+
+<RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-3">
+    <div class="small">
+        <div class="fw-semibold mb-1">Web Host helpers</div>
+        <div>Use <strong>From Name</strong> to build a clean path segment from the Web Host name.</div>
+        <div class="mt-1">Path Segment values should stay relative, lowercase, and slash-separated. Runtime placeholders can be embedded as:
+            @foreach (var variable in GameTypeRevisionWebHostDraftRules.SupportedPathVariables)
+            {
+                <code class="me-1">@($"{{{variable}}}")</code>
+            }
+        </div>
+        <div class="mt-1">Port Variable choices come from revision settings that already have a numeric default port.</div>
+    </div>
+</RadzenAlert>
+
+@if (!WebHosts.Any())
+{
+    <p class="text-muted mb-0">No Web Host rules in this draft.</p>
+}
+else
+{
+    @foreach (var host in WebHosts)
+    {
+        <RadzenCard class="mb-3">
+            <div class="web-host-grid">
+                <div class="web-host-field">
+                    <RadzenFormField Text="Name" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.Name" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="web-host-field web-host-field-wide">
+                    <RadzenFormField Text="Path Segment" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.PathSegment" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    </RadzenFormField>
+                    <div class="web-host-helper-row">
+                        <small class="text-muted">Example: <code>admin/@($"{{serverId}}")</code></small>
+                        <RadzenButton Text="From Name"
+                                      Icon="auto_fix_high"
+                                      Size="ButtonSize.Small"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => BuildPathSegment(host))"
+                                      Disabled="@string.IsNullOrWhiteSpace(host.Name)" />
+                    </div>
+                </div>
+                <div class="web-host-field">
+                    <RadzenFormField Text="Static Port" Variant="Variant.Outlined" class="w-100">
+                        @if (HasSelectedPortVariable(host))
+                        {
+                            <RadzenTextBox Value="@GetStaticPortDisplayValue(host)" Disabled="true" class="w-100" />
+                        }
+                        else
+                        {
+                            <RadzenNumeric @bind-Value="host.ContainerPort" @bind-Value:after="NotifyDraftChangedAsync" TValue="int?" Min="1" Max="65535" class="w-100" />
+                        }
+                    </RadzenFormField>
+                    <small class="text-muted d-block web-host-helper-text">Set a fixed port unless the web host derives its port from a setting.</small>
+                </div>
+                <div class="web-host-field">
+                    <RadzenFormField Text="Port Variable" Variant="Variant.Outlined" class="w-100">
+                        <RadzenDropDown TValue="string"
+                                        Data="@GetPortVariableOptionsForDisplay()"
+                                        TextProperty="Label"
+                                        ValueProperty="SettingKey"
+                                        Value="@host.ContainerPortVariable"
+                                        Change="@(value => OnPortVariableChanged(host, value))"
+                                        AllowClear="true"
+                                        Placeholder="Select numeric setting"
+                                        class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block web-host-helper-text">@GetPortVariableHelpText(host)</small>
+                </div>
+                <div class="web-host-actions">
+                    <div class="d-flex justify-content-end gap-1">
+                        <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraftAsync(host, -1))" Disabled="@(WebHosts.IndexOf(host) <= 0)" />
+                        <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveWebHostDraftAsync(host, 1))" Disabled="@(WebHosts.IndexOf(host) >= WebHosts.Count - 1)" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveWebHostDraftAsync(host))" />
+                    </div>
+                </div>
+                <div class="web-host-field web-host-field-half">
+                    <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="web-host-field web-host-field-half">
+                    <RadzenFormField Text="Enabled When" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="host.EnabledWhen" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    </RadzenFormField>
+                </div>
+            </div>
+        </RadzenCard>
+    }
+}
+
+<style>
+    .web-host-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .web-host-field {
+        min-width: 0;
+    }
+
+    .web-host-field-wide {
+        min-width: 0;
+    }
+
+    .web-host-field-half {
+        min-width: 0;
+    }
+
+    .web-host-actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: start;
+        padding-top: 0.35rem;
+    }
+
+    .web-host-helper-row {
+        min-height: 2.25rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.35rem;
+    }
+
+    .web-host-helper-text {
+        min-height: 2.25rem;
+        margin-top: 0.35rem;
+    }
+
+    @@media (max-width: 1200px) {
+        .web-host-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .web-host-actions,
+        .web-host-field-half,
+        .web-host-field-wide {
+            grid-column: span 2;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .web-host-grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .web-host-actions,
+        .web-host-field-half,
+        .web-host-field-wide {
+            grid-column: span 1;
+        }
+
+        .web-host-helper-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public List<GameTypeRevisionWebHostDraft> WebHosts { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<WebHostPortVariableOption> PortVariableOptions { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
+    private async Task AddWebHostDraft()
+    {
+        WebHosts.Add(new GameTypeRevisionWebHostDraft());
+        await NotifyDraftChangedAsync();
+    }
+
+    private IReadOnlyList<WebHostPortVariableOption> GetPortVariableOptionsForDisplay()
+    {
+        var options = PortVariableOptions.ToList();
+        foreach (var selectedVariable in WebHosts
+                     .Select(host => host.ContainerPortVariable?.Trim())
+                     .Where(value => !string.IsNullOrWhiteSpace(value))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Cast<string>())
+        {
+            if (options.Any(option => string.Equals(option.SettingKey, selectedVariable, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            options.Add(new WebHostPortVariableOption
+            {
+                SettingKey = selectedVariable,
+                Label = $"{selectedVariable} (incompatible setting)",
+                IsCompatible = false
+            });
+        }
+
+        return options
+            .OrderBy(option => option.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void OnPortVariableChanged(GameTypeRevisionWebHostDraft host, object? value)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        host.ContainerPortVariable = value?.ToString();
+        if (!string.IsNullOrWhiteSpace(host.ContainerPortVariable))
+        {
+            host.ContainerPort = null;
+        }
+
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private void BuildPathSegment(GameTypeRevisionWebHostDraft host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        host.PathSegment = GameTypeRevisionWebHostDraftRules.BuildPathSegmentFromName(host.Name);
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private bool HasSelectedPortVariable(GameTypeRevisionWebHostDraft host)
+    {
+        return !string.IsNullOrWhiteSpace(host.ContainerPortVariable);
+    }
+
+    private string GetStaticPortDisplayValue(GameTypeRevisionWebHostDraft host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        if (!TryGetSelectedPortVariable(host, out var selectedVariable))
+        {
+            return "Set by selected variable";
+        }
+
+        return selectedVariable.DefaultPort?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable";
+    }
+
+    private string GetPortVariableHelpText(GameTypeRevisionWebHostDraft host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        if (!HasSelectedPortVariable(host))
+        {
+            return PortVariableOptions.Count == 0
+                ? "No compatible numeric settings are available yet. Add a revision setting with a numeric default port first."
+                : "Choose from revision settings that already define a numeric default port.";
+        }
+
+        if (!TryGetSelectedPortVariable(host, out var selectedVariable))
+        {
+            return "The selected setting is no longer compatible. Choose a setting with a numeric default port.";
+        }
+
+        return selectedVariable.DefaultPort.HasValue
+            ? $"Static Port preview is using '{selectedVariable.SettingKey}' = {selectedVariable.DefaultPort.Value}."
+            : $"Static Port preview is using '{selectedVariable.SettingKey}'.";
+    }
+
+    private bool TryGetSelectedPortVariable(GameTypeRevisionWebHostDraft host, out WebHostPortVariableOption? selectedVariable)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        selectedVariable = GetPortVariableOptionsForDisplay()
+            .FirstOrDefault(option => string.Equals(option.SettingKey, host.ContainerPortVariable, StringComparison.OrdinalIgnoreCase));
+
+        return selectedVariable is not null;
+    }
+
+    private async Task RemoveWebHostDraftAsync(GameTypeRevisionWebHostDraft host)
+    {
+        WebHosts.Remove(host);
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task MoveWebHostDraftAsync(GameTypeRevisionWebHostDraft host, int delta)
+    {
+        MoveItem(WebHosts, host, delta);
+        await NotifyDraftChangedAsync();
+    }
+
+    private static void MoveItem<T>(List<T> items, T item, int delta)
+    {
+        var currentIndex = items.IndexOf(item);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = currentIndex + delta;
+        if (newIndex < 0 || newIndex >= items.Count)
+        {
+            return;
+        }
+
+        items.RemoveAt(currentIndex);
+        items.Insert(newIndex, item);
+    }
+
+    private Task NotifyDraftChangedAsync()
+    {
+        return OnDraftChanged.InvokeAsync();
+    }
+}

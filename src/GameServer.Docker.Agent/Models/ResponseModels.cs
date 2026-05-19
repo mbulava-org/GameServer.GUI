@@ -109,6 +109,27 @@ namespace GameServer.Docker.Agent.Models
     }
 
     /// <summary>
+    /// Docker image inspection request model.
+    /// </summary>
+    public class InspectImageRequest
+    {
+        public string ImageReference { get; set; } = string.Empty;
+        public bool PullIfMissing { get; set; }
+    }
+
+    /// <summary>
+    /// Docker image inspection response model.
+    /// </summary>
+    public class ImageInspectResponse
+    {
+        public string ImageReference { get; set; } = string.Empty;
+        public List<string> RepoDigests { get; set; } = new();
+        public List<string> EnvironmentVariables { get; set; } = new();
+        public List<string> ExposedPorts { get; set; } = new();
+        public List<string> VolumePaths { get; set; } = new();
+    }
+
+    /// <summary>
     /// Error response model
     /// </summary>
     public class ErrorResponse
