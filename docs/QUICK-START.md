@@ -332,7 +332,7 @@ Once deployed, access:
 | `AgentRegistration__HeartbeatIntervalSeconds` | Heartbeat interval | `30` |
 | `AGENT_HOST` | Agent hostname/IP | Node hostname |
 
-**See [AGENT-QUICK-START.md](AGENT-QUICK-START.md) for detailed configuration.**
+**See [Agent-QuickStart.md](guides/Agent-QuickStart.md) for detailed configuration.**
 
 ### Scaling
 
@@ -563,7 +563,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Understand the system design
 - **[CURRENT-FEATURES.md](CURRENT-FEATURES.md)** - See all features
-- **[AGENT-QUICK-START.md](AGENT-QUICK-START.md)** - Deep dive into agent architecture
+- **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deep dive into agent architecture
 - **[GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md)** - Create custom game types
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribute to the project
 

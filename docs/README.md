@@ -59,10 +59,9 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 
 ### 🚀 Getting Started
 - **[Quick Start Guide](QUICK-START.md)** - Get up and running in 5 minutes
-- **[Agent Quick Start](AGENT-QUICK-START.md)** - ⭐ Agent-based architecture setup
+- **[Agent Quick Start](guides/Agent-QuickStart.md)** - ⭐ Agent-based architecture setup
 - **[Architecture Overview](ARCHITECTURE.md)** - **READ THIS FIRST!** System design & patterns
 - **[Current Features](CURRENT-FEATURES.md)** - Complete feature list
-- **[Installation & Deployment](AGENT-QUICK-START.md)** - Production deployment guide
 
 ### 👨‍💻 For Developers
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
@@ -76,7 +75,6 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **[GameType Editor Guide](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI
 - **[Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md)** - Port configuration
 - **[Database Guide](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
-- **[Agent Registration Migration](AGENT-REGISTRATION-MIGRATION.md)** - Migrate to push-based agents
 
 ## 📂 Projects in this Solution
 
@@ -115,9 +113,6 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 Detailed guides for specific features and subsystems:
 
 - **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deploy and configure Node Agents
-- **[AGENT-QUICK-START.md](AGENT-QUICK-START.md)** - ⭐ Agent-based architecture setup (current)
-- **[AGENT-REGISTRATION-MIGRATION.md](AGENT-REGISTRATION-MIGRATION.md)** - Migration guide
-- **[AGENT-ARCHITECTURE-TESTING.md](AGENT-ARCHITECTURE-TESTING.md)** - Testing guide
 - **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Database setup
 - **[GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata
 - **[GameType-Editor-Complete-Functionality-Guide.md](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor
@@ -151,7 +146,7 @@ Deep dives into system architecture and design:
 | **Understand the architecture** | [ARCHITECTURE.md](ARCHITECTURE.md) ⚠️ **Required** |
 | **Add a new feature** | [CONTRIBUTING.md](CONTRIBUTING.md) + [ARCHITECTURE.md](ARCHITECTURE.md) |
 | **Add a new game type** | [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md) |
-| **Deploy to production** | [Agent Quick Start](AGENT-QUICK-START.md) |
+| **Deploy to production** | [Agent Quick Start](guides/Agent-QuickStart.md) |
 | **Fix a performance issue** | [Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md) |
 | **Understand coding standards** | [Constants & Conventions](reference/CONSTANTS-AND-CONVENTIONS.md) |
 | **Set up the database** | [Database Guide](guides/DATABASE-INITIALIZATION.md) |
