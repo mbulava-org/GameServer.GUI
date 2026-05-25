@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using GameServer.Docker.Models;
-using GameServer.Web;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace GameServer.Integration.Tests.Controllers;
@@ -10,12 +9,13 @@ namespace GameServer.Integration.Tests.Controllers;
 /// Integration tests for Extended Metadata API endpoints.
 /// Tests the complete flow from HTTP request to database with DataType validation.
 /// </summary>
-public class GameTypeExtendedMetadataControllerTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("Integration Tests")]
+public class GameTypeExtendedMetadataControllerTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IntegrationTestFactory _factory;
     private readonly HttpClient _client;
 
-    public GameTypeExtendedMetadataControllerTests(WebApplicationFactory<Program> factory)
+    public GameTypeExtendedMetadataControllerTests(IntegrationTestFactory factory)
     {
         _factory = factory;
         _client = factory.CreateClient();

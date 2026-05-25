@@ -1,15 +1,15 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using GameServer.Web;
 
 namespace GameServer.Integration.Tests;
 
-public class WebApplicationFactoryTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("Integration Tests")]
+public class WebApplicationFactoryTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly IntegrationTestFactory _factory;
 
-    public WebApplicationFactoryTests(WebApplicationFactory<Program> factory)
+    public WebApplicationFactoryTests(IntegrationTestFactory factory)
     {
         _factory = factory;
     }

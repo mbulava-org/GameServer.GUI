@@ -523,8 +523,9 @@ namespace GameServer.Docker.Repositories
         }
 
         /// <summary>
-        /// Normalizes DataType values to lowercase for consistency.
-        /// No longer enforces valid types - application layer handles validation.
+        /// Normalizes DataType values to lowercase for consistency and nullifies unrecognised types.
+        /// Valid types: boolean, timezone, string, port, enum, number, list.
+        /// Empty/whitespace and unrecognised values are normalised to null.
         /// </summary>
         private static string? NormalizeDataType(string? dataType)
         {
@@ -533,7 +534,14 @@ namespace GameServer.Docker.Repositories
                 return null;
             }
 
-            return dataType.ToLowerInvariant();
+            var normalized = dataType.ToLowerInvariant();
+
+            var validDataTypes = new HashSet<string>
+            {
+                "boolean", "timezone", "string", "port", "enum", "number", "list"
+            };
+
+            return validDataTypes.Contains(normalized) ? normalized : null;
         }
 
         private GameTypeDefinition MapToModel(GameTypeEntity entity)
