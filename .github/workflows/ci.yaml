@@ -234,6 +234,42 @@ jobs:
             echo "  ⏭️  Client push skipped (no changes, not forced)"
           fi
 
+  test:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+          source-url: https://nuget.pkg.github.com/mbulava-org/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore dependencies
+        run: dotnet restore GameServer.GUI.slnx
+
+      - name: Build solution
+        run: dotnet build GameServer.GUI.slnx --no-restore --configuration Release
+
+      - name: Run tests (excluding Testcontainers/Docker-socket tests)
+        run: |
+          dotnet test GameServer.GUI.slnx \
+            --no-build --configuration Release \
+            --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests" \
+            --logger "trx;LogFileName=test-results.trx" \
+            --results-directory ./test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./test-results/*.trx
+
   backend:
     needs: [setup]
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
