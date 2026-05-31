@@ -280,6 +280,7 @@ namespace GameServer.Docker
                 if (!skipDbInit)
                 {
                     builder.Services.AddHostedService<Services.DatabaseInitializationService>();
+                    builder.Services.AddHostedService<Services.V1ToV2MigrationService>();
                 }
                 else
                 {
