@@ -1,5 +1,5 @@
 version: '3.7'
-##BETA Deployments
+##TEST Deployments — V2 Stack
 networks:
   exposed-services:
     external: true
@@ -15,27 +15,54 @@ volumes:
       type: nfs
       o: "addr=192.168.53.235,rw,nfsvers=3,soft,sync,noatime"
       device: ":/volume1/newdev-docker/gameservers"
+  postgres-data:
+    driver: local
 
 services:
-# No longer going to expose the Beta GUI since I'm really using this Stack to Test Current Changes to the GUI...  
-#  gameserver-gui:
-#    image: mbulava/gameserver-web:beta
-#    ports:
-#      - 7071:8080
-#    networks:
-#      - exposed-services
-#    environment:
-#      - GameServerDockerApi__BaseUri=http://gameserver-docker-test_gameserver-docker:8080/
-      
+  # PostgreSQL — V2 database backend
+  gameserver-postgres:
+    image: postgres:16-alpine
+    networks:
+      - gameserver-network
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=gameserver-v2
+      - POSTGRES_USER=gameserver
+      - POSTGRES_PASSWORD=gameserver
+    deploy:
+      placement:
+        constraints:
+          - "node.labels.size == small"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameserver -d gameserver-v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Blazor Web UI
+  gameserver-web:
+    image: mbulava/gameserver-web:latest
+    ports:
+      - 7071:8080
+    networks:
+      - exposed-services
+    environment:
+      - GameServerDockerApi__BaseUri=http://gameserver-docker-test_gameserver-docker:8080/
+    deploy:
+      placement:
+        constraints:
+          - "node.labels.size == small"
+
+  # REST API + Orchestration (V2)
   gameserver-docker:
-    image: mbulava/gameserver-docker:webredirects
+    image: mbulava/gameserver-docker:latest
     user: "1000:1000"
     networks:
       - gameserver-network
     ports:
       - 5163:8080
     volumes:
-      #- data:/data
       - type: volume
         source: data
         target: /data
@@ -50,16 +77,23 @@ services:
       - PortAllocation__EndPort=65535
       - ASPNETCORE_ENVIRONMENT=Development
       - Logging__LogLevel__Default=Trace
+
+      # V2 PostgreSQL database (primary)
+      - V2Database__Provider=PostgreSql
+      - V2Database__ConnectionStringName=GameServerV2PostgresDb
+      - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-docker-test_gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver
+
+      # Legacy SQLite kept for reference; V2 uses PostgreSQL above
       - ConnectionStrings__GameServerDb=Data Source=/data/test-data/gameserver-test.db
-      
+
       - VolumeDriverConfigOptions__Name=local
       - VolumeDriverConfigOptions__Options__type=nfs
       - VolumeDriverConfigOptions__Options__o=addr=192.168.53.235,rw,nfsvers=3,soft,sync,noatime
-      - VolumeDriverConfigOptions__Options__device=:{RootStoragePath}/{gameTypeKey}_{serverId}/{Source}
+      - VolumeDriverConfigOptions__Options__device=:{RootStoragePath}/{gameTypeKey}/{serverId}/{Source}
       - VolumeDriverConfigOptions__RootStoragePath=/volume1/newdev-docker/gameservers
-      - VolumeDriverConfigOptions__SubPathFormat={gameTypeKey}_{serverId}/{Source}
+      - VolumeDriverConfigOptions__SubPathFormat={gameTypeKey}/{serverId}/{Source}
       - VolumeDriverConfigOptions__LocalStoragePath=/data
-      
+
       - NetworkOptions__NetworkName=gameserver-network-test
       - NetworkOptions__LoadBalancerNetwork=external-2
       - NetworkOptions__LoadBalancerProvider=traefik
@@ -72,11 +106,12 @@ services:
       - NodeAgentOptions__EnableBackgroundDiscovery=false
       - ServiceOperations__Mode=Agent
 
+  # Node Agent — one replica per swarm node
   gameserver-agent:
-    image: mbulava/gameserver-docker-agent:webredirects
+    image: mbulava/gameserver-docker-agent:latest
     deploy:
       mode: global  # Deploy one replica per node
-    restart: unless-stopped  
+    restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -87,7 +122,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
       - Logging__LogLevel__Default=Trace
-      - Logging__LogLevel__Microsoft.AspNetCore=Information      
+      - Logging__LogLevel__Microsoft.AspNetCore=Information
       - ContainerStatsStreamOptions__MaxStreamDurationSeconds=10
       - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker-test_gameserver-docker:8080/
       - AgentRegistration__HeartbeatIntervalSeconds=30
