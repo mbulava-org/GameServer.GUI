@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h5 class="mb-1">Volume Definitions</h5>
-        <small class="text-muted">Describe the persisted container paths and how deployment logic should treat them.</small>
+        <small class="text-muted">Define the container paths that should be persisted. When a server is deployed, the binding layout (NFS/Local) is configured at the server level.</small>
     </div>
     <RadzenButton Text="Add Volume" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddVolumeDraft" />
 </div>
@@ -20,9 +20,12 @@ else
         <RadzenCard class="mb-3">
             <div class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <RadzenFormField Text="Source" Variant="Variant.Outlined" class="w-100">
-                        <RadzenTextBox @bind-Value="volume.Source" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                    <RadzenFormField Text="Container Path" Variant="Variant.Outlined" class="w-100">
+                        <ChildContent>
+                            <RadzenTextBox @bind-Value="volume.Source" @bind-Value:after="NotifyDraftChangedAsync" Placeholder="/data/worlds" class="w-100" />
+                        </ChildContent>
                     </RadzenFormField>
+                    <small class="text-muted">The path inside the container where this volume is mounted.</small>
                 </div>
                 <div class="col-md-3">
                     <RadzenFormField Text="Usage" Variant="Variant.Outlined" class="w-100">

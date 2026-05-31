@@ -147,13 +147,44 @@
                 </RadzenCard>
 
                 <RadzenCard>
-                    <h5 class="mb-3">Future Configuration Areas</h5>
-                    <p class="small text-muted mb-2">Docker volume and network options will land here as dedicated V2 rule-driven editors.</p>
-                    <ul class="small text-muted mb-0 ps-3">
-                        <li>Docker volume options placeholder</li>
-                        <li>Network options placeholder</li>
-                        <li>Configuration rule hook placeholder</li>
-                    </ul>
+                    <h5 class="mb-3">Volume Binding Layout</h5>
+                    <p class="small text-muted mb-2">Choose how persistent volumes are bound when this server is deployed. <strong>Standard</strong> uses NFS storage so data survives server restarts and stops. <strong>Local</strong> maps directly to the Docker host filesystem.</p>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Binding Layout" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="string"
+                                            @bind-Value="volumeBindingLayout"
+                                            Data="@volumeBindingLayoutOptions"
+                                            Change="@OnVolumeBindingLayoutChanged"
+                                            class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    @if (volumeBindingLayout == VolumeLayoutStandard)
+                    {
+                        <div class="mb-3">
+                            <RadzenFormField Text="NFS Server Address" Variant="Variant.Outlined" class="w-100">
+                                <RadzenTextBox @bind-Value="nfsAddress" Placeholder="e.g. 192.168.1.10 or nfs.example.com" class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted">Hostname or IP of the NFS server (used in the Docker volume driver <code>addr=</code> option).</small>
+                        </div>
+                        <div class="mb-3">
+                            <RadzenFormField Text="NFS Export Path" Variant="Variant.Outlined" class="w-100">
+                                <RadzenTextBox @bind-Value="nfsExportPath" Placeholder="e.g. /exported/gameservers" class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted">The exported path on the NFS server. A per-server sub-path will be appended automatically.</small>
+                        </div>
+                        <div class="mb-3">
+                            <RadzenFormField Text="NFS Mount Options" Variant="Variant.Outlined" class="w-100">
+                                <RadzenTextBox @bind-Value="nfsMountOptions" Placeholder="e.g. rw,nfsvers=4" class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted">Extra NFS mount options. <code>addr=&lt;host&gt;</code> is appended automatically from the address above.</small>
+                        </div>
+                    }
+                    @if (volumeBindingLayout == VolumeLayoutLocal)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mt-2 mb-0">
+                            Local binding maps volume paths directly onto the Docker host. Data may be lost if the host is replaced or the server is migrated to a different node.
+                        </RadzenAlert>
+                    }
                 </RadzenCard>
             </div>
 
@@ -240,12 +271,28 @@
                                             <h5 class="mb-3">Resolved Volumes</h5>
                                             @if (validationResult?.ResolvedVolumes.Any() == true)
                                             {
+                                                <div class="mb-2">
+                                                    <RadzenBadge BadgeStyle="@(volumeBindingLayout == VolumeLayoutStandard ? BadgeStyle.Info : BadgeStyle.Warning)"
+                                                                 Text="@volumeBindingLayout"
+                                                                 Variant="Variant.Outlined" />
+                                                </div>
                                                 <ul class="mb-0 ps-3">
                                                     @foreach (var volume in validationResult.ResolvedVolumes.OrderBy(volume => volume.DisplayOrder))
                                                     {
-                                                        <li>@volume.Source (@volume.Usage)</li>
+                                                        <li>
+                                                            <code>@volume.Source</code>
+                                                            <span class="text-muted small"> — @volume.Usage</span>
+                                                            @if (!string.IsNullOrWhiteSpace(volume.Description))
+                                                            {
+                                                                <div class="small text-muted">@volume.Description</div>
+                                                            }
+                                                        </li>
                                                     }
                                                 </ul>
+                                                @if (volumeBindingLayout == VolumeLayoutStandard && !string.IsNullOrWhiteSpace(nfsAddress))
+                                                {
+                                                    <div class="small text-muted mt-2">NFS: <code>@nfsAddress:@nfsExportPath</code></div>
+                                                }
                                             }
                                             else
                                             {
@@ -312,13 +359,25 @@
     private bool isSaving;
     private int selectedTabIndex;
 
+    // Volume binding layout
+    private const string VolumeLayoutStandard = "Standard (NFS)";
+    private const string VolumeLayoutLocal = "Local (Docker Host)";
+    private static readonly IReadOnlyList<string> volumeBindingLayoutOptions = [VolumeLayoutStandard, VolumeLayoutLocal];
+    private string volumeBindingLayout = VolumeLayoutStandard;
+    private string nfsAddress = string.Empty;
+    private string nfsExportPath = string.Empty;
+    private string nfsMountOptions = "rw";
+
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
     private IReadOnlyList<GameTypeSettingDefinition> CurrentSettingDefinitions =>
         selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.SettingDefinitions
         ?? [];
 
-    private bool CanSave => !string.IsNullOrWhiteSpace(draft.Name) && draft.GameTypeRevisionId > 0;
+    private bool CanSave =>
+        !string.IsNullOrWhiteSpace(draft.Name)
+        && draft.GameTypeRevisionId > 0
+        && (volumeBindingLayout != VolumeLayoutStandard || !string.IsNullOrWhiteSpace(nfsAddress));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -362,6 +421,8 @@
                 {
                     draft.SettingValues[setting.SettingKey] = setting.Value;
                 }
+
+                LoadVolumeBindingFromOptions(server.DockerVolumeOptions);
 
                 selectedGameTypeKey = server.GameTypeKey;
                 if (!string.IsNullOrWhiteSpace(selectedGameTypeKey))
@@ -550,9 +611,73 @@
                     Value = draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue
                 })
                 .ToList(),
-            DockerVolumeOptions = [],
+            DockerVolumeOptions = BuildDockerVolumeOptions(),
             NetworkOptions = []
         };
+    }
+
+    private List<GameServerConfigurationOption> BuildDockerVolumeOptions()
+    {
+        if (volumeBindingLayout == VolumeLayoutStandard)
+        {
+            var addr = string.IsNullOrWhiteSpace(nfsAddress) ? string.Empty : nfsAddress.Trim();
+            var device = string.IsNullOrWhiteSpace(nfsExportPath) ? string.Empty : nfsExportPath.Trim();
+            var mountOpts = string.IsNullOrWhiteSpace(nfsMountOptions) ? "rw" : nfsMountOptions.Trim();
+            var oOption = string.IsNullOrWhiteSpace(addr) ? mountOpts : $"addr={addr},{mountOpts}";
+
+            return
+            [
+                new GameServerConfigurationOption { Key = "layout", DisplayName = "Binding Layout", Value = "standard", Required = false },
+                new GameServerConfigurationOption { Key = "driver", DisplayName = "Volume Driver Name", Value = "local", Required = false },
+                new GameServerConfigurationOption { Key = "type", DisplayName = "Volume Type", Value = "nfs", Required = false },
+                new GameServerConfigurationOption { Key = "device", DisplayName = "NFS Device Path", Value = device, Required = true },
+                new GameServerConfigurationOption { Key = "o", DisplayName = "Mount Options", Value = oOption, Required = false },
+            ];
+        }
+
+        // Local layout — pass a marker key so the backend knows it's explicit local
+        return
+        [
+            new GameServerConfigurationOption { Key = "layout", DisplayName = "Binding Layout", Value = "local", Required = false }
+        ];
+    }
+
+    private Task OnVolumeBindingLayoutChanged(object? value)
+    {
+        validationResult = null;
+        return Task.CompletedTask;
+    }
+
+    private void LoadVolumeBindingFromOptions(IEnumerable<GameServerConfigurationOption> options)
+    {
+        var optionMap = options.ToDictionary(o => o.Key, o => o.Value, StringComparer.OrdinalIgnoreCase);
+        if (optionMap.TryGetValue("layout", out var layout) && string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase))
+        {
+            volumeBindingLayout = VolumeLayoutLocal;
+            return;
+        }
+
+        volumeBindingLayout = VolumeLayoutStandard;
+        if (optionMap.TryGetValue("device", out var device))
+        {
+            nfsExportPath = device ?? string.Empty;
+        }
+
+        if (optionMap.TryGetValue("o", out var oOption) && !string.IsNullOrWhiteSpace(oOption))
+        {
+            // Extract addr= from mount options
+            var parts = oOption!.Split(',');
+            var addrPart = parts.FirstOrDefault(p => p.TrimStart().StartsWith("addr=", StringComparison.OrdinalIgnoreCase));
+            if (addrPart is not null)
+            {
+                nfsAddress = addrPart.Trim()[5..]; // strip "addr="
+                nfsMountOptions = string.Join(",", parts.Where(p => !p.TrimStart().StartsWith("addr=", StringComparison.OrdinalIgnoreCase)));
+            }
+            else
+            {
+                nfsMountOptions = oOption;
+            }
+        }
     }
 
     private void GoBack()
