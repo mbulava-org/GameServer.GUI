@@ -1,8 +1,7 @@
 # Game Server Manager - Current Features & Implementation
 
-**Last Updated:** 2024  
-**Version:** v0.2.0-beta  
-**Branch:** port-mapping
+**Last Updated:** 2026  
+**Version:** v0.3.0 (V2 GameServer System)
 
 ## ?? Executive Summary
 
@@ -180,7 +179,7 @@ The application currently has **two persistence layers** for game type and serve
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
 - provider-aware configuration supporting SQLite, PostgreSQL, and MySQL
-- PostgreSQL is the default and preferred V2 path and is backed by the dedicated `src/GameServer.DB.PostgreSql` project plus `scripts/Deploy-V2PostgresDatabase.ps1`
+- **PostgreSQL is the default and preferred V2 path** and is backed by the dedicated `src/GameServer.DB.PostgreSql` project plus `scripts/Deploy-V2PostgresDatabase.ps1`
 - normalized schema with:
   - `GameType` owning a fixed `ImageReference`
   - `GameTypeRevision` owning tag-based deployable templates
@@ -271,7 +270,7 @@ The application currently has **two persistence layers** for game type and serve
        - **Relationship Types**:
          - **Offset**: Target = Source + Offset (e.g., Query Port = Game Port + 1)
          - **Fixed**: Target always has a fixed value (e.g., RCON always at 27020)
-         - **Multiplier**: Target = Source � Multiplier
+         - **Multiplier**: Target = Source � Multiplier
        - **Validation**: Checks if target port exists in port definitions
        - **Visual warnings**: Red border and alert if target port not found
        - Per relationship fields:
@@ -405,20 +404,20 @@ Example (Valheim SERVER_PORT):
 - Docker.DotNet (Docker API client)
 - Entity Framework Core
   - legacy persistence: SQLite
-  - V2 persistence: SQLite or MySQL based on configuration
+  - V2 persistence: PostgreSQL (default), SQLite, or MySQL based on configuration
 - SignalR Hubs
 
 **Infrastructure:**
 - Docker Swarm
-- SQLite database for the current legacy persistence path
-- optional MySQL support for the V2 persistence path
+- SQLite database for the legacy persistence path
+- PostgreSQL for the V2 persistence path (default and recommended)
 - Volume Drivers (local, NFS)
 
 ### Persistence Architecture
 
 #### Current state
 - The legacy repository and model set remains the active path for most existing controllers and UI flows.
-- The V2 database implementation exists in parallel and follows the latest normalized schema from `docs/DATABASE-REORGANIZATION-PROPOSAL.md`.
+- The V2 database implementation exists in parallel and follows the normalized schema documented in `docs/reference/V2-Database-Diagram.md`.
 - The application host initializes both persistence paths so migration can happen incrementally.
 
 #### V2 schema highlights
@@ -471,24 +470,116 @@ await dockerClient.Containers.ListContainersAsync(new ContainersListParameters
 
 ---
 
+## V2 GameType System
+
+### V2 GameType Manager
+
+**Location:** `/gametypes-v2`  
+**Component:** `GameTypeManagerV2.razor`
+
+- List all V2 GameTypes with edit and delete actions per row
+- Import portable GameType JSON packages (upload button)
+- Navigate to create new or edit existing V2 GameTypes
+
+### V2 GameType Editor
+
+**Location:** `/gametypes-v2/new` or `/gametypes-v2/{key}`  
+**Component:** `GameTypeDetailsV2.razor` (coordinator) + child components under `Components/Pages/GameTypes/Components/V2/`
+
+**10-tab workflow:**
+
+| Tab | Component | Purpose |
+|-----|-----------|---------|
+| Basic | `GameTypeBasicInfoV2Editor` | Key, name, type, thumbnail URL, documentation URL, active flag |
+| Revisions | `GameTypeRevisionEditor` | Draft metadata, revision list, publish and set-current actions |
+| Ports | `GameTypeRevisionPortsEditor` | Container port definitions, advertised port |
+| Volumes | `GameTypeRevisionVolumesEditor` | Volume paths, usage categories (`config`, `saves`, `backups`, `gamefiles`, `logs`) |
+| Settings | `GameTypeRevisionSettingsEditor` | Setting definitions with categories, data types, and port mapping rules |
+| Web Hosts | `GameTypeRevisionWebHostsEditor` | Web endpoint rules with static port or port variable |
+| Detection | `GameTypeRevisionDetectionEditor` | Scan Docker image metadata and compare against saved revision |
+| Review | `GameTypeRevisionReviewEditor` | Draft summary, diff vs saved revision, cross-tab validation |
+| Save | _(Save action)_ | Single top-level save: creates GameType + revision together |
+| Publish | _(Publish action)_ | Publish revision and optionally set it as current |
+
+**Draft workflow:**
+- New GameTypes start with an unsaved draft revision already selected — all tabs are editable immediately.
+- Single **Save** action persists both the parent GameType and the draft revision in one ordered flow.
+- The first saved revision is automatically set as current.
+- Cross-tab validation summaries refresh live as edits happen in any tab.
+- New settings default their category to `General` (or the last-used category).
+- Detection tab can scan Docker image metadata before the first save; comparison requires a saved revision.
+
+**V2 Portable Packages:**
+- Export a GameType as a self-contained JSON package (no integer IDs) via the editor screen.
+- Import packages from the `/gametypes-v2` list page.
+- Nested revision relationships, port mappings, volumes, settings, and web hosts are all preserved.
+- Sample presets for Minecraft Bedrock, Minecraft Java, and Palworld Dedicated Server live under `docs/samples/gametype-imports/`.
+
+### V2 GameServer Manager
+
+**Location:** `/gameservers-v2`  
+**Component:** `GameServerManagerV2.razor`
+
+- List V2 servers with resolved port information and revision details
+- Navigate to create new or view existing V2 servers
+- `?includeDeleted=false` filter (soft delete support)
+
+### V2 GameServer Detail
+
+**Location:** `/gameservers-v2/{serverId}`  
+**Component:** `GameServerDetailsV2.razor`
+
+- Server identity: name, service name, status, lifecycle timestamps
+- Selected revision info (version tag, image reference)
+- Soft-delete flag (`IsDeleted`)
+
+### V2 GameServer Editor
+
+**Location:** `/gameservers-v2/new`  
+**Component:** `GameServerEditorV2.razor`
+
+- Select a published V2 GameType revision
+- Provide per-server setting overrides via `GameServerSettingFieldV2`
+- Port mappings and volumes are derived from the selected revision at deployment time — not configured per-server
+- Validation via `POST /api/v2/gameservers/validate` before create
+
+### V2 Data Model Summary
+
+| Entity | Responsibility |
+|--------|---------------|
+| `GameType` | Catalog identity: key, name, type, thumbnail, docs, active flag, current revision pointer |
+| `GameTypeRevision` | Deployable template: image reference, version tag, digest, TTY, ports, volumes, settings, web hosts |
+| `GameServer` | Deployment intent: `GameTypeRevisionId`, name, service name, status, per-server setting overrides |
+| `GameServerSettings` | Per-server environment variable overrides only |
+| `GameTypeWebHost` | Web endpoint definitions (resolved at runtime from settings, not persisted per-server) |
+
+**Key V2 differences from V1:**
+- `ImageReference` lives on `GameTypeRevision`, not `GameType`
+- `GameServerPorts` and `GameServerVolumes` are not stored; derived from revision at deploy time
+- Port mapping rules use unified `MappingRole` + `RelationType` + `CalculationValue` model
+- New `yesno` DataType for literal `yes`/`no` environment variable values
+- Soft delete on `GameServer` via `IsDeleted` flag
+
+---
+
 ## API Endpoints
 
 ### GameServer.Docker API
 
 Base URL: Configured in `appsettings.json` under `GameServerDockerApi:BaseUri`
 
-#### Game Types
+#### V1 (Legacy) Game Types
 - `GET /api/gametypes` - List all game types
 - `GET /api/gametypes/{key}` - Get game type by key
 - `POST /api/gametypes` - Create game type
 - `PUT /api/gametypes/{key}` - Update game type
 - `DELETE /api/gametypes/{key}` - Delete game type
 
-#### Extended Metadata
+#### V1 (Legacy) Extended Metadata
 - `GET /api/gametypes/extended/{key}` - Get extended metadata
 - `PUT /api/gametypes/extended/{key}` - Update extended metadata
 
-#### Game Servers
+#### V1 (Legacy) Game Servers
 - `GET /api/gameserver` - List all servers
 - `GET /api/gameserver/{id}` - Get server by ID
 - `POST /api/gameserver` - Create server
@@ -497,8 +588,35 @@ Base URL: Configured in `appsettings.json` under `GameServerDockerApi:BaseUri`
 - `POST /api/gameserver/{id}/start` - Start server
 - `POST /api/gameserver/{id}/stop` - Stop server
 
-#### Resource Usage
+#### V1 (Legacy) Resource Usage
 - `GET /api/gameserver/{id}/usage` - Get resource usage
+
+#### V2 Game Types
+- `GET /api/v2/gametypes` - List V2 game types (`?includeInactive=false`)
+- `GET /api/v2/gametypes/{key}` - Get V2 game type detail
+- `POST /api/v2/gametypes` - Create V2 game type
+- `PUT /api/v2/gametypes/{key}` - Update V2 game type
+- `DELETE /api/v2/gametypes/{key}` - Delete V2 game type
+- `GET /api/v2/gametypes/{key}/export` - Export portable JSON package
+- `POST /api/v2/gametypes/import` - Import portable JSON package
+
+#### V2 GameType Revisions
+- `POST /api/v2/gametypes/{key}/revisions` - Add revision
+- `PUT /api/v2/gametypes/{key}/revisions/{revisionId}` - Update revision
+- `POST /api/v2/gametypes/{key}/revisions/{revisionId}/publish` - Publish revision
+- `POST /api/v2/gametypes/{key}/revisions/{revisionId}/set-current` - Set as current revision
+
+#### V2 GameType Detection
+- `POST /api/v2/gametypes/detection/scan-tag` - Scan Docker image metadata (no saved key)
+- `POST /api/v2/gametypes/{key}/detection/scan-tag` - Scan for saved key
+- `POST /api/v2/gametypes/{key}/detection/compare` - Compare detected metadata vs saved revision
+
+#### V2 Game Servers
+- `GET /api/v2/gameservers` - List V2 game servers (`?includeDeleted=false`)
+- `GET /api/v2/gameservers/{serverId}` - Get V2 game server detail
+- `POST /api/v2/gameservers/validate` - Validate a server creation request
+- `POST /api/v2/gameservers` - Create V2 game server
+- `PUT /api/v2/gameservers/{serverId}` - Update V2 game server
 
 ---
 

@@ -322,7 +322,17 @@ Once deployed, access:
 | `ServiceOperations__Mode` | Operation mode: `Agent` or `Direct` | `Agent` |
 | `PortAllocation__StartPort` | First port to allocate | `25565` |
 | `PortAllocation__EndPort` | Last port to allocate | `35565` |
-| `ConnectionStrings__GameServerDb` | SQLite database path | `Data Source=/data/gameserver.db` |
+| `ConnectionStrings__GameServerDb` | SQLite database path (V1 legacy) | `Data Source=/data/gameserver.db` |
+| `ConnectionStrings__GameServerV2Db` | PostgreSQL connection string (V2) | _(required for V2)_ |
+| `V2DatabaseProvider` | V2 DB provider: `PostgreSQL`, `SQLite`, `MySQL` | `PostgreSQL` |
+
+**V2 PostgreSQL example connection string:**
+
+```yaml
+environment:
+  - ConnectionStrings__GameServerV2Db=Host=postgres;Database=gameserver_v2;Username=gsuser;Password=gspass
+  - V2DatabaseProvider=PostgreSQL
+```
 
 **GameServer.Docker.Agent:**
 
@@ -354,7 +364,99 @@ Agents will automatically deploy to new nodes (global mode).
 
 ---
 
-## 🎮 Creating Your First Game Server
+## 🎮 V2 GameType & GameServer Workflow
+
+The V2 system adds revision-based GameType management and a more normalized server model. Use the V2 paths for all new work.
+
+### Creating a V2 GameType
+
+1. **Navigate to**: http://localhost:5102/gametypes-v2/new
+2. **Basic tab** — Set a unique key (slug), display name, type, and optional thumbnail/docs URLs.
+3. **Revisions tab** — The new draft revision is auto-selected; fill in the Docker image reference and version tag.
+4. **Ports tab** — Add the container ports your image exposes.
+5. **Volumes tab** — Define volume mounts with a usage category (`config`, `saves`, `backups`, `gamefiles`, `logs`).
+6. **Settings tab** — Add environment variable definitions with data types and optional port mapping rules.
+7. **Web Hosts tab** _(optional)_ — Add web endpoint definitions (e.g. map a setting port to a web UI path).
+8. **Detection tab** _(optional)_ — Enter the image reference and scan Docker image metadata to auto-populate ports and volumes.
+9. **Review tab** — Review cross-tab validation and the diff against the saved state.
+10. Click **Save** — persists both the GameType and the draft revision in one step.
+11. Click **Publish** on the revision to make it available for server creation.
+
+### Creating a V2 Game Server
+
+1. **Navigate to**: http://localhost:5102/gameservers-v2/new
+2. Select a V2 GameType and a published revision.
+3. Override any settings you need (ports and volumes come from the revision).
+4. Click **Create** — the server is validated then deployed.
+
+### Using the V2 API
+
+#### Create a V2 GameType
+
+```bash
+curl -X POST http://localhost:5164/api/v2/gametypes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "minecraft-java",
+    "displayName": "Minecraft Java Edition",
+    "description": "Vanilla Minecraft Java server",
+    "type": "survival",
+    "isActive": true
+  }'
+```
+
+#### Add and Publish a Revision
+
+```bash
+# Add revision
+curl -X POST http://localhost:5164/api/v2/gametypes/minecraft-java/revisions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "imageReference": "itzg/minecraft-server",
+    "versionTag": "latest",
+    "enableTTY": false,
+    "notes": "Vanilla latest"
+  }'
+
+# Publish (replace {revisionId} with the returned ID)
+curl -X POST http://localhost:5164/api/v2/gametypes/minecraft-java/revisions/{revisionId}/publish
+curl -X POST http://localhost:5164/api/v2/gametypes/minecraft-java/revisions/{revisionId}/set-current
+```
+
+#### Create a V2 Game Server
+
+```bash
+# Validate first (optional but recommended)
+curl -X POST http://localhost:5164/api/v2/gameservers/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Minecraft Server",
+    "gameTypeRevisionId": "{revisionId}",
+    "settings": { "EULA": "true", "MEMORY": "2G" }
+  }'
+
+# Create
+curl -X POST http://localhost:5164/api/v2/gameservers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Minecraft Server",
+    "gameTypeRevisionId": "{revisionId}",
+    "settings": { "EULA": "true", "MEMORY": "2G" }
+  }'
+```
+
+#### Import a Portable GameType Package
+
+```bash
+# Import the bundled Minecraft Java preset
+curl -X POST http://localhost:5164/api/v2/gametypes/import \
+  -H "Content-Type: application/json" \
+  -d @docs/samples/gametype-imports/minecraft-java.portable.json
+```
+
+---
+
+## 🎮 Creating Your First Game Server (V1 Legacy)
 
 ### Using the Web UI
 

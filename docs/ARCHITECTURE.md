@@ -224,8 +224,9 @@ The application currently has two persistence layers that must coexist safely.
 - `Data/V2/GameServerV2DbContext`
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
-- provider-aware: SQLite or MySQL based on configuration
-- follows `docs/DATABASE-REORGANIZATION-PROPOSAL.md`
+- provider-aware: **PostgreSQL (default)**, SQLite, or MySQL based on configuration
+- PostgreSQL is backed by the dedicated `GameServer.DB.PostgreSql` project and `scripts/Deploy-V2PostgresDatabase.ps1`
+- follows the normalized schema documented in `docs/reference/V2-Database-Diagram.md`
 
 #### V2 schema ownership rules
 - `GameType` owns the fixed Docker image reference and catalog metadata.
