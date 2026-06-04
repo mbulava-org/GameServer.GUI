@@ -157,7 +157,7 @@
 
   private async Task SaveFile()
   {
-    if (!hasChanges || saving)
+    if (saving)
     {
       return;
     }
