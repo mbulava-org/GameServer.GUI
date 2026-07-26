@@ -18,12 +18,12 @@
                               Icon="dns" 
                               ButtonStyle="ButtonStyle.Primary" 
                               Size="ButtonSize.Large"
-                              Click='@(() => Navigation.NavigateTo("/servers"))' />
+                              Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
                 <RadzenButton Text="Create Server" 
                               Icon="add" 
                               ButtonStyle="ButtonStyle.Success" 
                               Size="ButtonSize.Large"
-                              Click='@(() => Navigation.NavigateTo("/servers/new"))' />
+                              Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
             </div>
         </div>
     </div>
@@ -143,9 +143,8 @@
                         </div>
                         <h3>Docker Swarm Integration</h3>
                         <p>
-                            Leverages Docker Swarm for high availability and orchestration. Automatically 
-                            manages service deployments, replica management, and ensures your game servers 
-                            stay running even during host failures.
+                            Leverages Docker Swarm for orchestration. Container operations are routed through 
+                            registered Node Agents so the primary service never connects directly to the Docker daemon.
                         </p>
                     </RadzenCard>
                 </div>
@@ -183,7 +182,7 @@
                             <li><strong>Docker Swarm</strong> - Container orchestration and high availability</li>
                             <li><strong>Docker.DotNet</strong> - Direct Docker API integration</li>
                             <li><strong>ASP.NET Core Web API</strong> - RESTful API and SignalR hubs</li>
-                            <li><strong>Entity Framework Core</strong> - SQLite database for persistence</li>
+                            <li><strong>Entity Framework Core</strong> - SQLite for legacy data, PostgreSQL/SQLite/MySQL for the V2 persistence layer</li>
                             <li><strong>Docker Labels</strong> - Container discovery and management</li>
                         </ul>
                     </RadzenCard>
@@ -208,7 +207,7 @@
                                       Icon="rocket_launch" 
                                       ButtonStyle="ButtonStyle.Success" 
                                       Size="ButtonSize.Large"
-                                      Click='@(() => Navigation.NavigateTo("/servers/new"))' />
+                                      Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
                     </div>
                 </div>
             </RadzenCard>
@@ -223,14 +222,14 @@
                                               Icon="dns" 
                                               ButtonStyle="ButtonStyle.Light" 
                                               Style="width: 100%;"
-                                              Click='@(() => Navigation.NavigateTo("/servers"))' />
+                                              Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
                             </div>
                             <div class="col-md-3 mb-3">
                                 <RadzenButton Text="Manage Game Types" 
                                               Icon="sports_esports" 
                                               ButtonStyle="ButtonStyle.Light" 
                                               Style="width: 100%;"
-                                              Click='@(() => Navigation.NavigateTo("/gametypes"))' />
+                                              Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
                             </div>
                             <div class="col-md-3 mb-3">
                                 <RadzenButton Text="Documentation" 

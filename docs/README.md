@@ -14,7 +14,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - 🔧 **Game Type System** - Extensible game server templates with metadata
 - 🌐 **Port Management** - Intelligent port mapping with automatic relationships
 - 🔐 **Agent-Based Architecture** - Secure node agents for distributed operations
-- 📦 **SQLite Database** - Persistent storage for configurations
+- 📦 **Dual Persistence** - Legacy SQLite path plus a V2 layer supporting PostgreSQL (default), SQLite, or MySQL
 - 🛠️ **RESTful API** - Full API access for automation
 
 ## 🏗️ Architecture
@@ -25,7 +25,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **Frontend:** Blazor Server, Radzen UI Components
 - **Real-Time:** SignalR for live updates
 - **Container Orchestration:** Docker Swarm
-- **Database:** SQLite with Entity Framework Core
+- **Database:** SQLite for legacy data, PostgreSQL/SQLite/MySQL for V2 data via Entity Framework Core
 - **API Documentation:** OpenAPI/Swagger, Scalar
 - **Logging:** Serilog
 
@@ -75,6 +75,10 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **[GameType Editor Guide](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI
 - **[Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md)** - Port configuration
 - **[Database Guide](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
+- **[V2 GameServer Lifecycle](guides/V2-GameServer-Lifecycle.md)** - Create, edit, and view V2 servers
+- **[Terminal & Console](guides/Terminal-And-Console.md)** - Interactive terminal and TTY console
+- **[File Manager](guides/File-Manager.md)** - Browse and edit server files
+- **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - Push-based agent registration and heartbeats
 
 ## 📂 Projects in this Solution
 
@@ -152,6 +156,9 @@ Deep dives into system architecture and design:
 | **Set up the database** | [Database Guide](guides/DATABASE-INITIALIZATION.md) |
 | **Configure port mappings** | [Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md) |
 | **Write tests** | [Testing Guide](TESTING-QUICK-REFERENCE.md) |
+| **Manage V2 servers** | [V2 GameServer Lifecycle](guides/V2-GameServer-Lifecycle.md) |
+| **Use terminal/console** | [Terminal & Console](guides/Terminal-And-Console.md) |
+| **Understand agent registration** | [Agent Registration Flow](guides/Agent-Registration-Flow.md) |
 
 ## 🏗️ Key Architectural Concepts
 

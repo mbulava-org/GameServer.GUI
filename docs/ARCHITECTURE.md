@@ -205,10 +205,14 @@ public class MyHub : Hub
 
 **Components:**
 - `Components/Server/` - Server management UI components
-  - `ServerLogsViewer` - Connects to `ServerLogsHub`
-  - `ContainerTerminal` - Connects to terminal hub
-  - `ContainerConsole` - Connects to console hub
-  - `ResourceMonitor` - Connects to resource monitoring hub
+  - `ServerLogsViewer` - Connects to `{API}/hubs/serverlogs`
+  - `ContainerTerminal` - Connects to `{API}/hubs/terminal` (exec shell)
+  - `ContainerConsole` - Connects to `{API}/hubs/console` (TTY attach)
+  - `ResourceMonitor` - Connects to `{API}/hubs/resources`
+- `Components/Pages/Servers/` - V2 server pages
+  - `GameServerManagerV2` - `/gameservers-v2`
+  - `GameServerDetailsV2` - `/gameservers-v2/{serverId}`
+  - `GameServerEditorV2` - `/gameservers-v2/new` and `/gameservers-v2/{serverId}/edit`
 
 ### Persistence Architecture
 
@@ -452,10 +456,11 @@ public ContainerService(
 | List game servers | DockerServiceHelper | `IDockerClient.Swarm.ListServicesAsync()` |
 | Update server | DockerServiceHelper | `IDockerClient.Swarm.UpdateServiceAsync()` |
 | Delete server | DockerServiceHelper | `IDockerClient.Swarm.RemoveServiceAsync()` |
-| Get container logs | ServerLogsHub | Node Agent ? `StreamContainerLogs()` |
-| Attach to console | ContainerConsoleHub | Node Agent ? WebSocket |
-| Execute command | ContainerConsoleHub | Node Agent ? `/api/containers/{id}/exec` |
-| Get stats | ResourceMonitoringHub | Node Agent ? `StreamContainerStats()` |
+| Get container logs | ServerLogsHub (`/hubs/serverlogs`) | Node Agent ? `StreamContainerLogs()` |
+| Attach to console | ContainerConsoleHub (`/hubs/console`) | Node Agent ? WebSocket |
+| Execute command | ContainerConsoleHub (`/hubs/terminal`) | Node Agent ? `/api/containers/{id}/exec` |
+| Get stats | ResourceMonitoringHub (`/hubs/resources`) | Node Agent ? `StreamContainerStats()` |
+| Agent registration | AgentRegistrationHub (`/hubs/agentregistration`) | SignalR bi-directional |
 | List containers | N/A | Node Agent ? `/api/containers` |
 
 ## Testing Multi-Node Behavior

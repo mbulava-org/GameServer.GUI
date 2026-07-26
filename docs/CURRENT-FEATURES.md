@@ -74,7 +74,8 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 ### ? Server Management
 
-**Location:** `/servers` (dashboard), `/servers/{id}` (details)
+**Active V2 Location:** `/gameservers-v2` (dashboard), `/gameservers-v2/{serverId}` (details)  
+**Legacy Location:** `/servers` (dashboard), `/servers/{id}` (details) — still present but no longer linked from the main menu
 
 #### Dashboard Features
 - List all game servers
@@ -371,14 +372,15 @@ Example (Valheim SERVER_PORT):
   - Download logs
   - Connection status indicators
 
-### ? Interactive Terminal (NEW!)
+### ? Interactive Terminal (Fully Implemented)
 
-**Backend Hub:** Expected at `{API}/hubs/terminal`
-- Exec-based shell sessions
+**Backend Hub:** `ContainerConsoleHub` mapped at `{API}/hubs/terminal`
+- Exec-based shell sessions (`/bin/sh` by default, configurable)
 - Methods:
-  - `StartExecSession(containerId, shell)`
-  - `SendInput(sessionId, data)`
-  - `StopExecSession(sessionId)`
+  - `StartExecSession(containerId, shell = "/bin/sh")`
+  - `SendInput(sessionId, input)`
+  - `Disconnect()`
+- Container operations are routed through the registered Node Agent; the hub never talks directly to the Docker daemon
 
 **Frontend Component:** `ContainerTerminal.razor`
 - Full Xterm integration
@@ -428,9 +430,10 @@ Example (Valheim SERVER_PORT):
 
 ### SignalR Hubs
 
-1. **ContainerConsoleHub** (`/hubs/console`)
-   - TTY-attached console
-   - Main process stdin/stdout
+1. **ContainerConsoleHub** — mapped to both `/hubs/console` and `/hubs/terminal`
+   - `/hubs/console`: TTY-attached console (main process stdin/stdout)
+   - `/hubs/terminal`: Exec-based interactive shell (`/bin/sh`)
+   - Implementation: `src/GameServer.Docker/Hubs/ContainerConsoleHub.cs`
 
 2. **ServerLogsHub** (`/hubs/serverlogs`)
    - Container log streaming
@@ -439,9 +442,8 @@ Example (Valheim SERVER_PORT):
 3. **ResourceMonitoringHub** (`/hubs/resources`)
    - Real-time resource metrics
 
-4. **ContainerTerminalHub** (`/hubs/terminal`)
-   - Exec-based interactive shell
-   - Read-write terminal
+4. **AgentRegistrationHub** (`/hubs/agentregistration`)
+   - Push registration, heartbeats, and container/agent mapping updates from Node Agents
 
 ### Docker Label System
 
@@ -657,8 +659,8 @@ Configured per game type in DefaultSettings. Examples:
 ### Current Limitations
 1. Volume configuration is immutable after creation
 2. No multi-node swarm support yet (single-node Docker assumed)
-3. Terminal hub (`/hubs/terminal`) needs to be implemented
-4. File manager has limited features
+3. Create-server wizard Step 4 shows a read-only volume preview; per-volume source/driver selection is not yet configurable at creation time
+4. File manager supports browse, upload, download, and text editing; advanced folder operations are still limited
 
 ### Planned Features
 - [ ] Backup/restore functionality
@@ -686,7 +688,7 @@ Configured per game type in DefaultSettings. Examples:
 - [ ] Verify default port in Network section
 - [ ] Check port mappings display with star
 - [ ] Test log streaming
-- [ ] Test terminal (when hub implemented)
+- [ ] Test terminal
 - [ ] Verify resource monitoring
 
 **GameType Editor:**
