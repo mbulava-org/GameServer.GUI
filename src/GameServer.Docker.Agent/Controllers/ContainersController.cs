@@ -163,7 +163,7 @@ namespace GameServer.Docker.Agent.Controllers
                 };
 
                 var dockerClient = HttpContext.RequestServices.GetRequiredService<IDockerClient>();
-                using var stream = await dockerClient.Containers.AttachContainerAsync(id, false, parameters, CancellationToken.None);
+                using var stream = await dockerClient.Containers.AttachContainerAsync(id, parameters, CancellationToken.None);
 
                 // Start bidirectional forwarding
                 var receiveTask = ReceiveFromWebSocketAsync(webSocket, stream, id);
@@ -211,15 +211,15 @@ namespace GameServer.Docker.Agent.Controllers
                     AttachStdout = request.AttachStdout,
                     AttachStderr = request.AttachStderr,
                     AttachStdin = false,  // No stdin for non-interactive
-                    Tty = false
+                    TTY = false
                 };
 
-                var execCreateResponse = await dockerClient.Exec.ExecCreateContainerAsync(id, execCreateParams, cancellationToken);
+                var execCreateResponse = await dockerClient.Exec.CreateContainerExecAsync(id, execCreateParams, cancellationToken);
 
                 // Start exec and get output
-                using var stream = await dockerClient.Exec.StartAndAttachContainerExecAsync(
+                using var stream = await dockerClient.Exec.StartContainerExecAsync(
                     execCreateResponse.ID,
-                    false,
+                    new ContainerExecStartParameters { Detach = false, TTY = false },
                     cancellationToken);
 
                 // Read output
@@ -290,15 +290,15 @@ namespace GameServer.Docker.Agent.Controllers
                     AttachStdout = true,
                     AttachStderr = true,
                     AttachStdin = true,   // Enable stdin for interactive session
-                    Tty = tty
+                    TTY = tty
                 };
 
-                var execCreateResponse = await dockerClient.Exec.ExecCreateContainerAsync(id, execCreateParams, CancellationToken.None);
+                var execCreateResponse = await dockerClient.Exec.CreateContainerExecAsync(id, execCreateParams, CancellationToken.None);
 
                 // Start exec with multiplexed stream
-                using var stream = await dockerClient.Exec.StartAndAttachContainerExecAsync(
+                using var stream = await dockerClient.Exec.StartContainerExecAsync(
                     execCreateResponse.ID,
-                    tty,
+                    new ContainerExecStartParameters { Detach = false, TTY = tty },
                     CancellationToken.None);
 
                 // Start bidirectional forwarding (same as attach)

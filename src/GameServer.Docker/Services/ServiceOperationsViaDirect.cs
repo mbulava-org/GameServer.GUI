@@ -51,15 +51,21 @@ namespace GameServer.Docker.Services
         {
             _logger.LogDebug("Listing services via direct Docker connection");
 
-            var parameters = new ServicesListParameters();
+            var parameters = new ServiceListParameters();
 
             if (!string.IsNullOrWhiteSpace(labelFilter) || !string.IsNullOrWhiteSpace(serviceName))
             {
-                parameters.Filters = new ServiceFilter
+                parameters.Filters = new Dictionary<string, IDictionary<string, bool>>();
+
+                if (!string.IsNullOrWhiteSpace(labelFilter))
                 {
-                    Label = string.IsNullOrWhiteSpace(labelFilter) ? null : [labelFilter],
-                    Name = string.IsNullOrWhiteSpace(serviceName) ? null : [serviceName]
-                };
+                    parameters.Filters["label"] = new Dictionary<string, bool> { [labelFilter] = true };
+                }
+
+                if (!string.IsNullOrWhiteSpace(serviceName))
+                {
+                    parameters.Filters["name"] = new Dictionary<string, bool> { [serviceName] = true };
+                }
             }
 
             var services = await _dockerClient.Swarm.ListServicesAsync(parameters, cancellationToken);

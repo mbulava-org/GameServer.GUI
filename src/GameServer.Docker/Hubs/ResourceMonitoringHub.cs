@@ -11,16 +11,16 @@ namespace GameServer.Docker.Hubs
     public class ResourceMonitoringHub : Hub
     {
         private readonly ILogger<ResourceMonitoringHub> _logger;
-        private readonly IGameServerResourceMonitor _resourceMonitor;
+        private readonly IServerResourceAggregator _resourceAggregator;
         private static readonly ConcurrentDictionary<string, MonitoringSession> _activeSessions = new();
         private static readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationTokens = new();
 
         public ResourceMonitoringHub(
             ILogger<ResourceMonitoringHub> logger,
-            IGameServerResourceMonitor resourceMonitor)
+            IServerResourceAggregator resourceAggregator)
         {
             _logger = logger;
-            _resourceMonitor = resourceMonitor;
+            _resourceAggregator = resourceAggregator;
         }
 
         /// <summary>
@@ -153,7 +153,7 @@ namespace GameServer.Docker.Hubs
 
             try
             {
-                var usage = await _resourceMonitor.GetResourceUsageAsync(serverId);
+                var usage = await _resourceAggregator.GetSnapshotAsync(serverId);
                 return usage;
             }
             catch (Exception ex)
@@ -219,7 +219,7 @@ namespace GameServer.Docker.Hubs
                 var updateCounter = 0;
                 var lastSentTime = DateTime.UtcNow;
 
-                await foreach (var usage in _resourceMonitor.StreamResourceUsageAsync(session.ServerId!, cancellationToken))
+                await foreach (var usage in _resourceAggregator.StreamResourceUsageAsync(session.ServerId!, session.IntervalSeconds, cancellationToken))
                 {
                     updateCounter++;
 
@@ -301,7 +301,7 @@ namespace GameServer.Docker.Hubs
                     {
                         try
                         {
-                            await foreach (var usage in _resourceMonitor.StreamResourceUsageAsync(serverId, cancellationToken))
+                            await foreach (var usage in _resourceAggregator.StreamResourceUsageAsync(serverId, session.IntervalSeconds, cancellationToken))
                             {
                                 await updateQueue.Writer.WriteAsync(usage, cancellationToken);
                             }

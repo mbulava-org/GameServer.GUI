@@ -18,17 +18,13 @@ namespace GameServer.Integration.Tests;
 /// </summary>
 public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Program>
 {
-    // Keep open connections for the lifetime of the factory so the in-memory databases persist
-    private readonly SqliteConnection _legacyConnection;
+    // Keep open connections for the lifetime of the factory so the in-memory database persist
     private readonly SqliteConnection _v2Connection;
 
     public IntegrationTestFactory()
     {
         // Set before the host starts so Program.cs reads it during service registration
         Environment.SetEnvironmentVariable("SKIP_DB_INIT", "true");
-
-        _legacyConnection = new SqliteConnection("Data Source=:memory:");
-        _legacyConnection.Open();
 
         _v2Connection = new SqliteConnection("Data Source=:memory:");
         _v2Connection.Open();
@@ -57,13 +53,6 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
 
         builder.ConfigureServices(services =>
         {
-            // Remove ALL descriptors related to GameServerDbContext
-            var legacyDescriptors = services
-                .Where(d => d.ServiceType == typeof(DbContextOptions<GameServer.Docker.Data.GameServerDbContext>)
-                         || d.ServiceType == typeof(GameServer.Docker.Data.GameServerDbContext))
-                .ToList();
-            foreach (var d in legacyDescriptors) services.Remove(d);
-
             // Remove ALL descriptors related to GameServerV2DbContext
             var v2Descriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<GameServer.Docker.Data.V2.GameServerV2DbContext>)
@@ -72,10 +61,6 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
             foreach (var d in v2Descriptors) services.Remove(d);
 
             // Register isolated SQLite backed by an open connection (preserves in-memory schema)
-            services.AddDbContext<GameServer.Docker.Data.GameServerDbContext>(options =>
-                options.UseSqlite(_legacyConnection)
-                       .EnableServiceProviderCaching(false));
-
             services.AddDbContext<GameServer.Docker.Data.V2.GameServerV2DbContext>(options =>
                 options.UseSqlite(_v2Connection)
                        .EnableServiceProviderCaching(false));
@@ -90,8 +75,6 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
         using var scope = host.Services.CreateScope();
         var sp = scope.ServiceProvider;
 
-        sp.GetRequiredService<GameServer.Docker.Data.GameServerDbContext>()
-          .Database.EnsureCreated();
         sp.GetRequiredService<GameServer.Docker.Data.V2.GameServerV2DbContext>()
           .Database.EnsureCreated();
 
@@ -103,7 +86,6 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
         base.Dispose(disposing);
         if (disposing)
         {
-            _legacyConnection.Dispose();
             _v2Connection.Dispose();
         }
     }

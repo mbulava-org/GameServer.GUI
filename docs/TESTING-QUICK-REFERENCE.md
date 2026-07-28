@@ -1,8 +1,8 @@
-# ?? Quick Reference - What's New & How to Test
+# Quick Reference - How to Test
 
-**Branch:** port-mapping  
-**Status:** ? Ready for Testing  
-**Restart Required:** Yes (SignalR hub changes)
+**Branch:** main  
+**Status:** Release Readiness — V1 Decommission & Shared Streaming  
+**Restart Required:** Yes (SignalR hubs, V2 UI, and Docker client package changes)
 
 ---
 
@@ -18,20 +18,35 @@
 **Where:** Everywhere ports are shown  
 **Test:** Create Valheim server, verify port 2457 (not 2456) is marked as default
 
-### 3. ?? Real Log Streaming  
-**What:** Live container logs via SignalR  
-**Where:** ServerDetails ? Logs tab  
-**Test:** Open logs tab, click "Stream Logs", verify real output
+### 3. ?? Shared Log Streaming  
+**What:** Live container logs via `IServerLogAggregator` (`/hubs/serverlogs`)  
+**Where:** Server Details → Logs tab  
+**Test:** Open logs tab, click "Stream Logs", verify real output. Open a second browser and confirm both see the same stream.
 
-### 4. ?? Interactive Terminal (NEW!)  
-**What:** Web-based shell with /bin/sh exec  
-**Where:** ServerDetails ? Terminal tab  
-**Test:** Open terminal tab (will show connection error until hub implemented)
+### 4. Shared Container Attach  
+**What:** TTY attach output shared across viewers; first typist wins input control (`/hubs/attach`)  
+**Where:** Server Details → Console tab  
+**Test:** Open console tab in two browsers; both should see identical output. The first user to type should get the "Input Control" badge; the second should see "View-only".
 
-### 5. ?? Settings Auto-Display  
+### 5. Interactive Terminal (Per-User Exec)
+**What:** Web-based shell with `/bin/sh` exec via `ContainerConsoleHub` (`/hubs/terminal`)  
+**Where:** Server Details → Terminal tab  
+**Test:** Open terminal tab, type `ls`, and verify command output. A second user opening Terminal should get an independent shell.
+
+### 6. V2 GameServer Pages
+**What:** Active V2 server list, detail, and create/edit pages  
+**Where:** `/gameservers-v2`, `/gameservers-v2/new`, `/gameservers-v2/{id}`, `/gameservers-v2/{id}/edit`  
+**Test:** Create a V2 server from the list page, view details, then edit it
+
+### 7. Settings Auto-Display  
 **What:** All DefaultSettings shown even without metadata  
 **Where:** CreateServerWizard ? Game Settings step  
 **Test:** Create any server, verify all settings visible in tabs
+
+### 8. Docker.DotNet.Enhanced 4.3.3
+**What:** Agent and primary service use `Docker.DotNet.Enhanced` matching Testcontainers 4.x  
+**Where:** `src/GameServer.Docker.Agent`, `src/GameServer.Docker`  
+**Test:** Build solution in Release; run `GameServer.Docker.Agent.Tests`
 
 ---
 
@@ -40,43 +55,49 @@
 ### Quick Test (5 minutes)
 
 1. **Restart Application** (code changes applied)
-2. **Navigate to:** `/gametypes/valheim`
-3. **Expand:** SERVER_PORT setting
-4. **Click:** "Auto-Detect" in Port Relationships
+2. **Navigate to:** `/gametypes-v2`
+3. **Select/Create:** Valheim game type with a published revision
+4. **Edit revision:** Expand SERVER_PORT setting and click **Auto-Detect** in Port Relationships
 5. **Verify:** 2 relationships created (Offset +1 and +2)
-6. **Navigate to:** `/servers/new`
-7. **Create:** Valheim server
-8. **Change:** SERVER_PORT from 2456 to 30000 in Step 3
-9. **Go to:** Step 4 (Technical Details)
-10. **Verify:** Ports are 30000, 30001 ?, 30002
-11. **Go to:** Step 5 (Review)
-12. **Verify:** Connection string shows `IP:30001` (default port)
-13. **Create** server
-14. **Go to:** ServerDetails ? Logs
-15. **Click:** "Stream Logs"
-16. **Verify:** Real logs appear
+6. **Navigate to:** `/gameservers-v2/new`
+7. **Create:** Valheim V2 server
+8. **Change:** SERVER_PORT from 2456 to 30000
+9. **Verify:** Port previews update to 30000, 30001, 30002
+10. **Create** server
+11. **Go to:** Server Details → Logs
+12. **Click:** "Stream Logs"
+13. **Verify:** Real logs appear
+14. **Open a second browser/session to the same Logs tab**
+15. **Verify:** Both sessions see the same output
+16. **Go to:** Server Details → Terminal
+17. **Type:** `ls`
+18. **Verify:** Command output appears
 
 ### Full Test (15 minutes)
 
 Include Quick Test above, plus:
 
-1. **Edit** existing server
+1. **Edit** existing V2 server and change its revision
 2. **Verify:** Port relationships preserved
-3. **Test:** Terminal tab (expect connection error - hub not implemented yet)
-4. **Test:** Network section shows default port correctly
-5. **Test:** Home page - all links work
-6. **Browse:** Documentation at `docs/CURRENT-FEATURES.md`
+3. **Test:** Terminal tab and run a command
+4. **Test:** Console tab (if TTY enabled on the game type)
+5. **Open Console tab in two browsers**
+6. **Verify:** Both see the same output; first typist gets "Input Control", second gets "View-only" badge
+7. **Test:** Network section shows default port correctly
+8. **Test:** Resource monitoring shows live stats
+9. **Test:** Home page - all links work (now point to V2 paths)
+10. **Browse:** Documentation at `docs/CURRENT-FEATURES.md`
 
 ---
 
 ## ?? Key Locations
 
 ### User-Facing
-- **Home:** `/` - Updated with new features
-- **Servers:** `/servers` - Server list
-- **Create:** `/servers/new` - 5-step wizard
-- **Details:** `/servers/{id}` - Tabs: Overview, Logs, Terminal, Files, TTY Console
-- **GameTypes:** `/gametypes` - Game type management
+- **Home:** `/` - Updated with V2 navigation
+- **Servers (V2, active):** `/gameservers-v2` - V2 server list
+- **Create Server (V2):** `/gameservers-v2/new` - V2 create/edit editor
+- **Server Details (V2):** `/gameservers-v2/{id}` - V2 details
+- **GameTypes (V2):** `/gametypes-v2` - Game type management
 - **GameType Editor:** `/gametypes/{key}` - Port relationships here
 
 ### Configuration
@@ -109,11 +130,9 @@ Include Quick Test above, plus:
 - Settings display
 - All existing features
 
-### ?? Not Yet Implemented
-- Terminal hub backend (`/hubs/terminal`)
-  - Component is ready
-  - Hub needs to be created
-  - Will show connection error until implemented
+### Not Yet Implemented / Known Limitations
+- V2 server start/stop/delete actions are delegated to service operations, not explicit V2 API endpoints
+- PostgreSQL V2 support exists in code but is not fully implemented / production-ready
 
 ---
 
@@ -147,6 +166,13 @@ Auto-scrolling if enabled
 2. Verify server is running
 3. Check browser console for errors
 4. Verify SignalR hub at `{API}/hubs/serverlogs`
+5. If multiple viewers see different content, ensure they requested the same `tailLines`
+
+### Shared Console (Attach) Not Working?
+1. Confirm the client connects to `{API}/hubs/attach`, not the old `/hubs/console`
+2. Verify the container is running and the agent exposes `/containers/{id}/attach/ws`
+3. Check that `SendInput` only succeeds after a controlling user is established
+4. Verify the UI toggles the "View-only" / "Input Control" badges on `InputControlChanged`
 
 ### Default Port Wrong?
 1. Check GameType has `IsDefaultPort = true` on correct port
@@ -167,7 +193,9 @@ Auto-scrolling if enabled
 - [x] Documentation updated
 - [x] Home page updated
 - [ ] Manual testing completed
-- [ ] Logs streaming works
+- [ ] Logs streaming works (shared across multiple clients)
+- [ ] Shared container attach works (input control badge, view-only for second user)
+- [ ] Per-user terminal exec works
 - [ ] Port relationships work correctly
 - [ ] Default port displayed everywhere
 
@@ -198,13 +226,15 @@ docker inspect {container-id} --format '{{json .Config.Labels}}'
 
 ## ?? Success Criteria
 
-? Valheim server creates with 3 ports  
-? Port 2457 marked as default  
-? Changing SERVER_PORT updates all 3 ports  
-? Connection string uses default port (2457/30001)  
-? Logs stream in real-time  
-? Default port indicator shows everywhere  
-? All links on Home page work  
+- Valheim server creates with 3 ports
+- Port 2457 marked as default
+- Changing SERVER_PORT updates all 3 ports
+- Connection string uses default port (2457/30001)
+- Logs stream in real-time and are shared across viewers
+- Shared container attach streams identical output; input control badge updates correctly
+- Terminal accepts commands and returns output (per-user exec)
+- Default port indicator shows everywhere
+- All links on Home page work and point to V2 paths
 
 ---
 

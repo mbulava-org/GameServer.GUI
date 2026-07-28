@@ -5,7 +5,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/GameServer.DB.PostgreSql/GameServer.DB.PostgreSql.csproj">
-      <Build Project="false" />
+      <Build Solution="Release|*" Project="false" />
     </Project>
     <Project Path="src/GameServer.Docker.Agent/GameServer.Docker.Agent.csproj" />
     <Project Path="src/GameServer.Docker.Client/GameServer.Docker.Client.csproj" />
@@ -14,6 +14,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/GameServer.Docker.Agent.Tests/GameServer.Docker.Agent.Tests.csproj" />
+    <Project Path="tests/GameServer.Docker.Client.Tests/GameServer.Docker.Client.Tests.csproj" />
     <Project Path="tests/GameServer.Docker.Tests/GameServer.Docker.Tests.csproj" />
     <Project Path="tests/GameServer.Integration.Tests/GameServer.Integration.Tests.csproj" />
     <Project Path="tests/GameServer.Web.Tests/GameServer.Web.Tests.csproj" />

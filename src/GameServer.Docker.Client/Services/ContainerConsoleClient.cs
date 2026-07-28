@@ -1,6 +1,6 @@
 using System;
-using System.Net.WebSockets;
-using System.Text;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using GameServer.Docker.Client.Interfaces;
@@ -10,16 +10,16 @@ using Microsoft.Extensions.Logging;
 namespace GameServer.Docker.Client.Services
 {
     /// <summary>
-    /// SignalR client for real-time container console operations.
-    /// Provides bidirectional communication with container consoles through the GameServer.Docker SignalR hub.
+    /// SignalR client for a shared, multi-subscriber container attach stream.
+    /// Targets the /hubs/attach endpoint. Output is fanned out to all viewers;
+    /// input is accepted only from the current controller.
     /// </summary>
     public class ContainerConsoleClient : IContainerConsoleClient
     {
         private readonly HubConnection _hubConnection;
         private readonly ILogger<ContainerConsoleClient>? _logger;
         private string? _attachedContainerId;
-        private ClientWebSocket? _activeWebSocket; // For direct WebSocket connections (exec)
-        private readonly SemaphoreSlim _wsSendLock = new(1, 1); // Thread-safe WebSocket sends
+        private CancellationTokenSource? _streamCts;
 
         /// <inheritdoc/>
         public event EventHandler<string>? OutputReceived;
@@ -34,13 +34,16 @@ namespace GameServer.Docker.Client.Services
         public event EventHandler<string>? Disconnected;
 
         /// <inheritdoc/>
-        public event EventHandler<string>? CommandOutputReceived;
+        public event EventHandler<string>? InputControlChanged;
 
         /// <inheritdoc/>
         public bool IsConnected => _hubConnection.State == HubConnectionState.Connected;
 
         /// <inheritdoc/>
         public string? AttachedContainerId => _attachedContainerId;
+
+        /// <inheritdoc/>
+        public string? ConnectionId => _hubConnection.ConnectionId;
 
         /// <summary>
         /// Creates a new instance of ContainerConsoleClient
@@ -80,43 +83,6 @@ namespace GameServer.Docker.Client.Services
 
         private void RegisterEventHandlers()
         {
-            // Output from container
-            _hubConnection.On<string>("Output", (data) =>
-            {
-                _logger?.LogTrace("Received output: {Length} chars", data.Length);
-                OutputReceived?.Invoke(this, data);
-            });
-
-            // Error messages
-            _hubConnection.On<string>("Error", (message) =>
-            {
-                _logger?.LogWarning("Received error: {Message}", message);
-                ErrorReceived?.Invoke(this, message);
-            });
-
-            // Connected to container
-            _hubConnection.On<string>("Connected", (containerId) =>
-            {
-                _logger?.LogInformation("Connected to container: {ContainerId}", containerId);
-                _attachedContainerId = containerId;
-                Connected?.Invoke(this, containerId);
-            });
-
-            // Disconnected from container
-            _hubConnection.On<string>("Disconnected", (reason) =>
-            {
-                _logger?.LogInformation("Disconnected from container: {Reason}", reason);
-                _attachedContainerId = null;
-                Disconnected?.Invoke(this, reason);
-            });
-
-            // Command output
-            _hubConnection.On<string>("CommandOutput", (output) =>
-            {
-                _logger?.LogDebug("Received command output: {Length} chars", output.Length);
-                CommandOutputReceived?.Invoke(this, output);
-            });
-
             // Connection state changes
             _hubConnection.Closed += async (error) =>
             {
@@ -138,6 +104,40 @@ namespace GameServer.Docker.Client.Services
             };
         }
 
+        private void ProcessMessage(string message)
+        {
+            try
+            {
+                var frame = JsonSerializer.Deserialize<AttachStreamMessage>(message);
+                if (frame is null)
+                {
+                    OutputReceived?.Invoke(this, message);
+                    return;
+                }
+
+                switch (frame.Kind)
+                {
+                    case AttachFrameKind.Output:
+                        OutputReceived?.Invoke(this, frame.Payload);
+                        break;
+                    case AttachFrameKind.InputControlledBy:
+                        InputControlChanged?.Invoke(this, frame.Payload);
+                        break;
+                    case AttachFrameKind.Error:
+                        ErrorReceived?.Invoke(this, frame.Payload);
+                        break;
+                    default:
+                        OutputReceived?.Invoke(this, frame.Payload);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to parse attach stream message; forwarding raw");
+                OutputReceived?.Invoke(this, message);
+            }
+        }
+
         /// <inheritdoc/>
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
@@ -153,39 +153,62 @@ namespace GameServer.Docker.Client.Services
         }
 
         /// <inheritdoc/>
-        public async Task<bool> AttachToContainerAsync(string containerId, CancellationToken cancellationToken = default)
+        public async Task AttachToContainerAsync(string serverId, string? containerId = null, CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(containerId))
-                throw new ArgumentException("Container ID cannot be null or empty", nameof(containerId));
+            ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
             if (_hubConnection.State != HubConnectionState.Connected)
                 throw new InvalidOperationException("Not connected to hub. Call ConnectAsync first.");
 
-            _logger?.LogInformation("Attaching to container: {ContainerId}", containerId);
+            if (_attachedContainerId != null)
+                throw new InvalidOperationException($"Already attached to container {_attachedContainerId}");
 
-            try
+            _logger?.LogInformation(
+                "Subscribing to shared attach stream for server {ServerId}, container {ContainerId}",
+                serverId, containerId ?? "<resolved>");
+
+            _streamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var streamCancellation = _streamCts.Token;
+
+            _ = Task.Run(async () =>
             {
-                var result = await _hubConnection.InvokeAsync<bool>(
-                    "AttachToContainer",
-                    containerId,
-                    cancellationToken);
+                try
+                {
+                    await foreach (var message in _hubConnection.StreamAsync<string>(
+                        "SubscribeToContainer",
+                        serverId,
+                        containerId,
+                        false,
+                        streamCancellation))
+                    {
+                        ProcessMessage(message);
+                    }
 
-                if (result)
+                    Disconnected?.Invoke(this, "Attach stream ended");
+                }
+                catch (OperationCanceledException)
+                {
+                    Disconnected?.Invoke(this, "Attach stream cancelled");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Attach stream failed for server {ServerId}", serverId);
+                    ErrorReceived?.Invoke(this, $"Attach stream failed: {ex.Message}");
+                    Disconnected?.Invoke(this, ex.Message);
+                }
+                finally
                 {
                     _attachedContainerId = containerId;
-                    _logger?.LogInformation("Successfully attached to container: {ContainerId}", containerId);
                 }
-                else
-                {
-                    _logger?.LogWarning("Failed to attach to container: {ContainerId}", containerId);
-                }
+            }, CancellationToken.None);
 
-                return result;
-            }
-            catch (Exception ex)
+            // Give the stream a moment to start and resolve the container.
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(containerId))
             {
-                _logger?.LogError(ex, "Error attaching to container: {ContainerId}", containerId);
-                throw;
+                _attachedContainerId = containerId;
+                Connected?.Invoke(this, containerId);
             }
         }
 
@@ -195,261 +218,26 @@ namespace GameServer.Docker.Client.Services
             if (string.IsNullOrEmpty(input))
                 return;
 
-            _logger?.LogTrace("Sending input: {Length} chars", input.Length);
-
-            // If we have an active WebSocket connection (interactive exec), send via WebSocket
-            if (_activeWebSocket?.State == WebSocketState.Open)
-            {
-                await SendToWebSocketAsync(input, cancellationToken);
-                return;
-            }
-
-            // Otherwise, send via SignalR hub (attach mode)
-            if (_hubConnection.State != HubConnectionState.Connected)
-                throw new InvalidOperationException("Not connected to hub or WebSocket");
-
-            if (string.IsNullOrEmpty(_attachedContainerId))
-                throw new InvalidOperationException("Not attached to any container. Call AttachToContainerAsync or ExecInteractiveAsync first.");
-
-            try
-            {
-                await _hubConnection.InvokeAsync("SendInput", input, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error sending input via SignalR");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Send input to WebSocket
-        /// </summary>
-        private async Task SendToWebSocketAsync(string input, CancellationToken cancellationToken)
-        {
-            if (_activeWebSocket?.State != WebSocketState.Open)
-                return;
-
-            await _wsSendLock.WaitAsync(cancellationToken);
-            try
-            {
-                var bytes = Encoding.UTF8.GetBytes(input);
-                await _activeWebSocket.SendAsync(
-                    new ArraySegment<byte>(bytes),
-                    WebSocketMessageType.Text,
-                    true,
-                    cancellationToken);
-
-                _logger?.LogTrace("Sent {ByteCount} bytes to WebSocket", bytes.Length);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error sending to WebSocket");
-                throw;
-            }
-            finally
-            {
-                _wsSendLock.Release();
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task<string> ExecCommandAsync(
-            string containerId,
-            string command,
-            string[]? args = null,
-            CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrWhiteSpace(containerId))
-                throw new ArgumentException("Container ID cannot be null or empty", nameof(containerId));
-
-            if (string.IsNullOrWhiteSpace(command))
-                throw new ArgumentException("Command cannot be null or empty", nameof(command));
-
             if (_hubConnection.State != HubConnectionState.Connected)
                 throw new InvalidOperationException("Not connected to hub");
 
-            _logger?.LogInformation("Executing command in container {ContainerId}: {Command}", containerId, command);
+            if (string.IsNullOrEmpty(_attachedContainerId))
+                throw new InvalidOperationException("Not attached to any container.");
+
+            _logger?.LogTrace("Sending input: {Length} chars", input.Length);
 
             try
             {
-                var result = await _hubConnection.InvokeAsync<string>(
-                    "ExecCommand",
-                    containerId,
-                    command,
-                    args ?? Array.Empty<string>(),
+                await _hubConnection.InvokeAsync<bool>(
+                    "SendInput",
+                    _attachedContainerId,
+                    input,
                     cancellationToken);
-
-                _logger?.LogDebug("Command executed successfully. Output length: {Length}", result.Length);
-                return result;
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error executing command in container {ContainerId}", containerId);
+                _logger?.LogError(ex, "Error sending attach input");
                 throw;
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task ExecInteractiveAsync(
-            string agentUrl,
-            string containerId,
-            string command,
-            string[]? args = null,
-            bool tty = true,
-            CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrWhiteSpace(agentUrl))
-                throw new ArgumentException("Agent URL cannot be null or empty", nameof(agentUrl));
-
-            if (string.IsNullOrWhiteSpace(containerId))
-                throw new ArgumentException("Container ID cannot be null or empty", nameof(containerId));
-
-            if (string.IsNullOrWhiteSpace(command))
-                throw new ArgumentException("Command cannot be null or empty", nameof(command));
-
-            // Build WebSocket URL
-            var wsUrl = BuildWebSocketUrl(agentUrl, containerId, command, args, tty);
-            _logger?.LogInformation("Starting interactive exec session: {Command} in container {ContainerId}", command, containerId);
-            _logger?.LogDebug("WebSocket URL: {Url}", wsUrl);
-
-            using var ws = new ClientWebSocket();
-
-            try
-            {
-                // Connect to Agent WebSocket endpoint
-                await ws.ConnectAsync(new Uri(wsUrl), cancellationToken);
-                _logger?.LogInformation("WebSocket connected for interactive exec");
-
-                _activeWebSocket = ws; // Store for SendInputAsync
-                _attachedContainerId = containerId;
-                Connected?.Invoke(this, containerId);
-
-                // Start bidirectional communication
-                var receiveTask = ReceiveFromWebSocketAsync(ws, cancellationToken);
-                var sendTask = MonitorInputEventsAsync(ws, cancellationToken);
-
-                // Wait for either task to complete (or cancellation)
-                await Task.WhenAny(receiveTask, sendTask);
-
-                _logger?.LogInformation("Interactive exec session ended");
-            }
-            catch (OperationCanceledException)
-            {
-                _logger?.LogInformation("Interactive exec cancelled");
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error during interactive exec");
-                ErrorReceived?.Invoke(this, $"Error during exec: {ex.Message}");
-                throw;
-            }
-            finally
-            {
-                _activeWebSocket = null; // Clear WebSocket reference
-                _attachedContainerId = null;
-                Disconnected?.Invoke(this, "Exec session ended");
-
-                if (ws.State == WebSocketState.Open)
-                {
-                    try
-                    {
-                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Session ended", CancellationToken.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogWarning(ex, "Error closing WebSocket");
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Build WebSocket URL for interactive exec
-        /// </summary>
-        private string BuildWebSocketUrl(string agentUrl, string containerId, string command, string[]? args, bool tty)
-        {
-            // Convert http(s) to ws(s)
-            var baseUrl = agentUrl.TrimEnd('/');
-            if (baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                baseUrl = "wss://" + baseUrl.Substring(8);
-            else if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-                baseUrl = "ws://" + baseUrl.Substring(7);
-            else if (!baseUrl.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) &&
-                     !baseUrl.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
-                baseUrl = "ws://" + baseUrl;
-
-            // Build query string
-            var queryParams = new System.Collections.Generic.List<string>
-            {
-                $"cmd={Uri.EscapeDataString(command)}"
-            };
-
-            if (args != null)
-            {
-                foreach (var arg in args)
-                {
-                    queryParams.Add($"cmd={Uri.EscapeDataString(arg)}");
-                }
-            }
-
-            queryParams.Add($"tty={tty.ToString().ToLowerInvariant()}");
-
-            return $"{baseUrl}/containers/{containerId}/exec/ws?{string.Join("&", queryParams)}";
-        }
-
-        /// <summary>
-        /// Receive data from WebSocket and raise OutputReceived events
-        /// </summary>
-        private async Task ReceiveFromWebSocketAsync(ClientWebSocket ws, CancellationToken cancellationToken)
-        {
-            var buffer = new byte[4096];
-
-            try
-            {
-                while (ws.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
-                {
-                    var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-
-                    if (result.MessageType == WebSocketMessageType.Text)
-                    {
-                        var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                        _logger?.LogTrace("Received {ByteCount} bytes from WebSocket", result.Count);
-                        OutputReceived?.Invoke(this, message);
-                    }
-                    else if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        _logger?.LogInformation("WebSocket closed by server: {Reason}", result.CloseStatusDescription);
-                        break;
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger?.LogDebug("WebSocket receive cancelled");
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error receiving from WebSocket");
-                ErrorReceived?.Invoke(this, $"Receive error: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Monitor for input events and send to WebSocket
-        /// This is a placeholder - in practice, you'd send input via SendInputAsync which would need to be adapted for WebSocket
-        /// </summary>
-        private async Task MonitorInputEventsAsync(ClientWebSocket ws, CancellationToken cancellationToken)
-        {
-            // This task keeps the connection alive and allows SendInputAsync to work
-            // In a real implementation, you might use a Channel or similar to queue input
-            try
-            {
-                await Task.Delay(Timeout.Infinite, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger?.LogDebug("Input monitor cancelled");
             }
         }
 
@@ -462,17 +250,18 @@ namespace GameServer.Docker.Client.Services
             if (string.IsNullOrEmpty(_attachedContainerId))
                 return;
 
-            _logger?.LogInformation("Disconnecting from container: {ContainerId}", _attachedContainerId);
+            _logger?.LogInformation("Disconnecting from shared attach stream: {ContainerId}", _attachedContainerId);
 
             try
             {
-                await _hubConnection.InvokeAsync("Disconnect", cancellationToken);
+                _streamCts?.Cancel();
+                await _hubConnection.InvokeAsync("DisconnectFromContainer", _attachedContainerId, cancellationToken);
                 _attachedContainerId = null;
-                _logger?.LogInformation("Successfully disconnected from container");
+                _logger?.LogInformation("Successfully disconnected from shared attach stream");
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error disconnecting from container");
+                _logger?.LogError(ex, "Error disconnecting from shared attach stream");
                 throw;
             }
         }
@@ -487,6 +276,7 @@ namespace GameServer.Docker.Client.Services
 
             try
             {
+                _streamCts?.Cancel();
                 await _hubConnection.StopAsync(cancellationToken);
                 _attachedContainerId = null;
                 _logger?.LogInformation("SignalR connection stopped");
@@ -503,19 +293,12 @@ namespace GameServer.Docker.Client.Services
         {
             try
             {
-                // Close active WebSocket if any
-                if (_activeWebSocket?.State == WebSocketState.Open)
-                {
-                    await _activeWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disposing", CancellationToken.None);
-                }
-                _activeWebSocket?.Dispose();
-
+                _streamCts?.Cancel();
                 await DisconnectFromContainerAsync();
                 await StopAsync();
                 await _hubConnection.DisposeAsync();
-                
-                _wsSendLock.Dispose();
-                
+                _streamCts?.Dispose();
+
                 _logger?.LogInformation("ContainerConsoleClient disposed");
             }
             catch (Exception ex)
@@ -523,6 +306,15 @@ namespace GameServer.Docker.Client.Services
                 _logger?.LogError(ex, "Error disposing ContainerConsoleClient");
             }
         }
+
+        private enum AttachFrameKind
+        {
+            Output,
+            InputControlledBy,
+            Error
+        }
+
+        private sealed record AttachStreamMessage(AttachFrameKind Kind, string Payload);
 
         /// <summary>
         /// Custom retry policy for SignalR reconnection

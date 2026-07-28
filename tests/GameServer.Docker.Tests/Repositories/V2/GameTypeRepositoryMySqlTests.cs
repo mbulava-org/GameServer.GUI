@@ -56,11 +56,11 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
 
         var canConnect = await _context.Database.CanConnectAsync();
         var count = await _context.GameTypes.CountAsync();
-        var migrationCount = await _context.Database.SqlQueryRaw<string>("SELECT `MigrationId` AS `Value` FROM `__EFMigrationsHistory`").CountAsync();
+        var gameTypesTableExists = (await _context.Database.SqlQueryRaw<int>("SELECT 1 AS `Value` FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'GameTypes' LIMIT 1").ToListAsync()).Count > 0;
 
         Assert.True(canConnect);
+        Assert.True(gameTypesTableExists);
         Assert.Equal(0, count);
-        Assert.Equal(1, migrationCount);
     }
 
     [Fact]

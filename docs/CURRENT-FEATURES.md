@@ -74,8 +74,7 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 ### ? Server Management
 
-**Active V2 Location:** `/gameservers-v2` (dashboard), `/gameservers-v2/{serverId}` (details)  
-**Legacy Location:** `/servers` (dashboard), `/servers/{id}` (details) — still present but no longer linked from the main menu
+**Location:** `/gameservers-v2` (dashboard), `/gameservers-v2/{serverId}` (details)
 
 #### Dashboard Features
 - List all game servers
@@ -167,20 +166,14 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 ### Database Persistence Status
 
-The application currently has **two persistence layers** for game type and server configuration:
+The application uses a single V2 persistence layer for game type and server configuration:
 
-#### Legacy persistence (active for current API flows)
-- SQLite-backed EF Core persistence
-- `Data/GameServerDbContext`
-- `Repositories/IGameTypeRepository`
-- still used by the current controllers, extended metadata flows, and most existing UI behavior
-
-#### V2 persistence (implemented, separate from legacy, PostgreSQL-default)
+#### V2 persistence
 - `Data/V2/GameServerV2DbContext`
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
-- provider-aware configuration supporting SQLite, PostgreSQL, and MySQL
-- **PostgreSQL is the default and preferred V2 path** and is backed by the dedicated `src/GameServer.DB.PostgreSql` project plus `scripts/Deploy-V2PostgresDatabase.ps1`
+- provider-aware configuration supporting SQLite (default), MySQL (supported), and PostgreSQL (planned)
+- **SQLite is the current default; MySQL is supported.** PostgreSQL support exists in code but is not fully implemented and should be considered coming soon. The `src/GameServer.DB.PostgreSql` project and `scripts/Deploy-V2PostgresDatabase.ps1` are prepared for future completion.
 - normalized schema with:
   - `GameType` owning a fixed `ImageReference`
   - `GameTypeRevision` owning tag-based deployable templates
@@ -348,34 +341,28 @@ Example (Valheim SERVER_PORT):
 - Service status
 - Task information
 
-### ? Log Streaming (Fully Implemented)
+### ? Log Streaming (Fully Implemented — Shared)
 
 **Backend Hub:** `ServerLogsHub.cs`
 - Location: `{API}/hubs/serverlogs`
 - Container lookup: Docker labels (`gameserver.docker.Id`)
-- Streaming: Docker.DotNet direct container logs
+- Streaming: Shared `IServerLogAggregator` keeps one agent log stream per server and fans lines out to all subscribers
 - Features:
   - Follow mode
   - Tail lines configuration
   - Timestamps
   - Clean output (8-byte header removal)
+  - Multiple users viewing the same server see identical output
 
-**Frontend Component:** `ServerLogsViewer.razor`
+**Frontend Component:** `ServerLogsViewer.razor` *(legacy V1 component removed; shared logs are consumed by V2 pages)*
 - Connects to API base URI (not Navigation URL)
 - Configuration: `GameServerDockerApi:BaseUri`
-- Features:
-  - Stream/Stop buttons
-  - Refresh, Clear
-  - Auto-scroll toggle
-  - Max lines configuration
-  - Filter by text and log level
-  - Download logs
-  - Connection status indicators
 
-### ? Interactive Terminal (Fully Implemented)
+### ? Interactive Terminal (Fully Implemented — Per-User)
 
 **Backend Hub:** `ContainerConsoleHub` mapped at `{API}/hubs/terminal`
 - Exec-based shell sessions (`/bin/sh` by default, configurable)
+- One underlying agent WebSocket per SignalR connection
 - Methods:
   - `StartExecSession(containerId, shell = "/bin/sh")`
   - `SendInput(sessionId, input)`
@@ -388,6 +375,24 @@ Example (Valheim SERVER_PORT):
 - Real-time bidirectional communication
 - Auto-connect option
 - Shell: `/bin/sh` (configurable)
+
+### ? Shared Container Attach (Implemented)
+
+**Backend Hub:** `ContainerAttachHub` mapped at `{API}/hubs/attach`
+- Shared `IContainerAttachAggregator` keeps one agent attach WebSocket per container ID and fans output frames out to all subscribers
+- Input is accepted from one subscriber at a time:
+  - The first user to send input becomes the controller
+  - Late joiners receive an `InputControlledBy(connectionId)` frame and see a view-only indicator
+  - When the controller disconnects, control is released
+- Methods:
+  - `SubscribeToContainer(serverId, containerId?, timestamps = false)` — returns `IAsyncEnumerable<string>` frames
+  - `SendInput(containerId, input)` — only sent by the server when the caller is the controller
+  - `DisconnectFromContainer(containerId)`
+
+**Frontend Component:** `ContainerConsole.razor`
+- Connects to `{API}/hubs/attach`
+- Badges indicate Connected, Input Control, or View-only
+- `DisableStdin` is toggled when control changes
 
 ---
 
@@ -405,22 +410,19 @@ Example (Valheim SERVER_PORT):
 - ASP.NET Core Web API
 - Docker.DotNet (Docker API client)
 - Entity Framework Core
-  - legacy persistence: SQLite
-  - V2 persistence: PostgreSQL (default), SQLite, or MySQL based on configuration
+  - V2 persistence: SQLite (default), MySQL (supported), or PostgreSQL (coming soon) based on configuration
 - SignalR Hubs
 
 **Infrastructure:**
 - Docker Swarm
-- SQLite database for the legacy persistence path
-- PostgreSQL for the V2 persistence path (default and recommended)
+- V2 persistence: SQLite (default), MySQL (supported), PostgreSQL (coming soon)
 - Volume Drivers (local, NFS)
 
 ### Persistence Architecture
 
 #### Current state
-- The legacy repository and model set remains the active path for most existing controllers and UI flows.
-- The V2 database implementation exists in parallel and follows the normalized schema documented in `docs/reference/V2-Database-Diagram.md`.
-- The application host initializes both persistence paths so migration can happen incrementally.
+- The V2 persistence layer is the only active persistence path.
+- It follows the normalized schema documented in `docs/reference/V2-Database-Diagram.md`.
 
 #### V2 schema highlights
 - `GameType` is the catalog root and owns the fixed Docker image reference.
@@ -430,19 +432,25 @@ Example (Valheim SERVER_PORT):
 
 ### SignalR Hubs
 
-1. **ContainerConsoleHub** — mapped to both `/hubs/console` and `/hubs/terminal`
-   - `/hubs/console`: TTY-attached console (main process stdin/stdout)
-   - `/hubs/terminal`: Exec-based interactive shell (`/bin/sh`)
+1. **ContainerAttachHub** (`/hubs/attach`) — **shared multi-subscriber**
+   - TTY-attached console (main process stdin/stdout)
+   - Shared by all viewers of the same container
+   - First-typist-wins input control
+   - Implementation: `src/GameServer.Docker/Hubs/ContainerAttachHub.cs`
+
+2. **ContainerConsoleHub** (`/hubs/terminal`) — **per-user exec**
+   - Exec-based interactive shell (`/bin/sh`)
+   - One agent WebSocket per SignalR connection
    - Implementation: `src/GameServer.Docker/Hubs/ContainerConsoleHub.cs`
 
-2. **ServerLogsHub** (`/hubs/serverlogs`)
-   - Container log streaming
-   - Read-only logs
+3. **ServerLogsHub** (`/hubs/serverlogs`) — **shared multi-subscriber**
+   - Container log streaming via `IServerLogAggregator`
+   - Read-only logs; all viewers see the same lines
 
-3. **ResourceMonitoringHub** (`/hubs/resources`)
-   - Real-time resource metrics
+4. **ResourceMonitoringHub** (`/hubs/resources`) — **shared multi-subscriber**
+   - Real-time resource metrics via `IServerResourceAggregator`
 
-4. **AgentRegistrationHub** (`/hubs/agentregistration`)
+5. **AgentRegistrationHub** (`/hubs/agentregistration`)
    - Push registration, heartbeats, and container/agent mapping updates from Node Agents
 
 ### Docker Label System
@@ -570,29 +578,6 @@ await dockerClient.Containers.ListContainersAsync(new ContainersListParameters
 
 Base URL: Configured in `appsettings.json` under `GameServerDockerApi:BaseUri`
 
-#### V1 (Legacy) Game Types
-- `GET /api/gametypes` - List all game types
-- `GET /api/gametypes/{key}` - Get game type by key
-- `POST /api/gametypes` - Create game type
-- `PUT /api/gametypes/{key}` - Update game type
-- `DELETE /api/gametypes/{key}` - Delete game type
-
-#### V1 (Legacy) Extended Metadata
-- `GET /api/gametypes/extended/{key}` - Get extended metadata
-- `PUT /api/gametypes/extended/{key}` - Update extended metadata
-
-#### V1 (Legacy) Game Servers
-- `GET /api/gameserver` - List all servers
-- `GET /api/gameserver/{id}` - Get server by ID
-- `POST /api/gameserver` - Create server
-- `PUT /api/gameserver/{id}` - Update server
-- `DELETE /api/gameserver/{id}` - Delete server
-- `POST /api/gameserver/{id}/start` - Start server
-- `POST /api/gameserver/{id}/stop` - Stop server
-
-#### V1 (Legacy) Resource Usage
-- `GET /api/gameserver/{id}/usage` - Get resource usage
-
 #### V2 Game Types
 - `GET /api/v2/gametypes` - List V2 game types (`?includeInactive=false`)
 - `GET /api/v2/gametypes/{key}` - Get V2 game type detail
@@ -687,9 +672,10 @@ Configured per game type in DefaultSettings. Examples:
 **Server Details:**
 - [ ] Verify default port in Network section
 - [ ] Check port mappings display with star
-- [ ] Test log streaming
-- [ ] Test terminal
-- [ ] Verify resource monitoring
+- [ ] Test log streaming (shared across multiple clients)
+- [ ] Test terminal (/hubs/terminal, per-user exec)
+- [ ] Test container attach (/hubs/attach, shared across multiple clients)
+- [ ] Verify resource monitoring (shared across multiple clients)
 
 **GameType Editor:**
 - [ ] Create new game type with ports
@@ -707,7 +693,14 @@ Configured per game type in DefaultSettings. Examples:
 - Check API base URI configuration
 - Verify container ID lookup (check labels)
 - Check SignalR hub is running at `{API}/hubs/serverlogs`
+- If multiple viewers see different content, ensure they requested the same `tailLines` and filters
 - Look for errors in browser console
+
+### Container Attach Not Streaming
+- Confirm the container is running and the agent exposes `/containers/{id}/attach/ws`
+- Check that the client connects to `{API}/hubs/attach`, not the old `/hubs/console`
+- Verify a controlling user exists before sending input (`SendInput` returns false for non-controllers)
+- Look for `InputControlledBy` frames in the browser console
 
 ### Default Port Not Showing
 - Verify `IsDefaultPort = true` set in GameType

@@ -28,8 +28,25 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 return;
             }
 
-            var migrationsAssembly = context.GetService<IMigrationsAssembly>();
-            if (migrationsAssembly.Migrations.Any())
+            if (!await TableExistsAsync("GameTypes").ConfigureAwait(false))
+            {
+                logger.LogInformation("No V2 tables found. Ensuring the V2 database schema is created...");
+                var created = await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
+                if (created)
+                {
+                    var historyRepository = context.GetService<IHistoryRepository>();
+                    await context.Database.ExecuteSqlRawAsync(historyRepository.GetCreateIfNotExistsScript()).ConfigureAwait(false);
+                    await context.Database.ExecuteSqlRawAsync(
+                        historyRepository.GetInsertScript(new HistoryRow(InitialV2MigrationId, context.Model.GetProductVersion())))
+                        .ConfigureAwait(false);
+                    logger.LogInformation("V2 database schema created and baselined successfully");
+                }
+                else
+                {
+                    logger.LogInformation("V2 database schema already exists");
+                }
+            }
+            else
             {
                 await PrepareDatabaseForMigrationsAsync().ConfigureAwait(false);
 
@@ -43,19 +60,6 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                     logger.LogInformation("Applying V2 database migrations...");
                     await context.Database.MigrateAsync().ConfigureAwait(false);
                     logger.LogInformation("V2 database migrations applied successfully");
-                }
-            }
-            else
-            {
-                logger.LogInformation("No V2 migrations found. Ensuring the V2 database schema is created...");
-                var created = await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
-                if (created)
-                {
-                    logger.LogInformation("V2 database schema ensured successfully");
-                }
-                else
-                {
-                    logger.LogInformation("V2 database schema already exists");
                 }
             }
 
@@ -130,7 +134,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         }
 
         var gameTypesHasLegacyImageReference = await ColumnExistsAsync("GameTypes", "ImageReference").ConfigureAwait(false);
-        var gameTypesHasType = await ColumnExistsAsync("GameTypes", "Type").ConfigureAwait(false);
+        var gameTypesHasTypeColumn = await ColumnExistsAsync("GameTypes", "Type").ConfigureAwait(false);
         var revisionsHasImageReference = await ColumnExistsAsync("GameTypeRevisions", "ImageReference").ConfigureAwait(false);
 
         if (gameTypesHasLegacyImageReference && !revisionsHasImageReference)
@@ -138,7 +142,12 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             logger.LogInformation("Detected existing V2 schema created before migrations. Upgrading legacy columns before applying migrations...");
             await UpgradeLegacySchemaAsync().ConfigureAwait(false);
         }
-        else if (!gameTypesHasType || !revisionsHasImageReference)
+        else if (gameTypesHasLegacyImageReference && gameTypesHasTypeColumn)
+        {
+            logger.LogInformation("Detected stale GameTypes.ImageReference column on current schema. Removing legacy column before applying migrations...");
+            await RemoveLegacyGameTypesImageReferenceColumnAsync().ConfigureAwait(false);
+        }
+        else if (!gameTypesHasTypeColumn || !revisionsHasImageReference)
         {
             throw new InvalidOperationException("The existing V2 database schema does not match either the legacy pre-migration schema or the current migration baseline.");
         }

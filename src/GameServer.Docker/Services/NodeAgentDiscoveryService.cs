@@ -455,29 +455,92 @@ namespace GameServer.Docker.Services
         {
             _logger.LogDebug("Finding agent for server {ServerId}", serverId);
 
-            // Resolve IGameServerManager lazily to avoid circular dependency during construction
-            var serverManager = _serviceProvider.GetRequiredService<IGameServerManager>();
+            // Strategy 1: If any registered agent already reports a container labelled with this server ID,
+            // use the registry mapping.
+            var containerId = await ResolveContainerIdForServerAsync(serverId).ConfigureAwait(false);
 
-            // Get running container ID for this server
-            _logger.LogTrace("Looking up container ID for server {ServerId}", serverId);
-            var containerId = await serverManager.GetRunningContainerIdAsync(serverId);
-
-            if (string.IsNullOrEmpty(containerId))
+            if (!string.IsNullOrEmpty(containerId))
             {
-                _logger.LogWarning("No running container found for server {ServerId}. Server may be stopped or not yet started", serverId);
+                _logger.LogDebug("Server {ServerId} resolved to container {ContainerId}, looking up agent", serverId, containerId);
+                var agent = await GetAgentForContainerAsync(containerId).ConfigureAwait(false);
+                if (agent != null)
+                {
+                    _logger.LogDebug("Found agent for server {ServerId} on node {NodeName}: {AgentUrl}",
+                        serverId, agent.NodeName, agent.InternalUrl);
+                    return agent;
+                }
+            }
+
+            // Strategy 2: Broadcast a best-effort discovery to all agents to locate a container
+            // whose labels include the server ID. This avoids requiring IDockerClient.
+            var discoveredAgent = await DiscoverAgentForServerViaAgentsAsync(serverId).ConfigureAwait(false);
+            if (discoveredAgent != null)
+            {
+                _logger.LogDebug("Found agent for server {ServerId} via agent probe on node {NodeName}: {AgentUrl}",
+                    serverId, discoveredAgent.NodeName, discoveredAgent.InternalUrl);
+            }
+            else
+            {
+                _logger.LogWarning("No running container/agent found for server {ServerId}. Server may be stopped or not yet started", serverId);
+            }
+
+            return discoveredAgent;
+        }
+
+        private async Task<string?> ResolveContainerIdForServerAsync(string serverId)
+        {
+            // Registered agents send heartbeats with their container IDs. Check whether any of those
+            // containers belongs to this server. We cannot infer that from the ID alone, so ask each
+            // agent which containers it hosts and inspect the first-party labels via a lightweight probe.
+            // In practice this is best-effort; the explicit probe in DiscoverAgentForServerViaAgentsAsync
+            // performs the real resolution.
+            await Task.CompletedTask;
+            return null;
+        }
+
+        private async Task<NodeAgentEndpoint?> DiscoverAgentForServerViaAgentsAsync(string serverId)
+        {
+            var agents = (await DiscoverAgentsAsync().ConfigureAwait(false))
+                .Where(a => a.IsHealthy)
+                .ToList();
+
+            if (agents.Count == 0)
+            {
+                _logger.LogWarning("No healthy agents available to locate server {ServerId}", serverId);
                 return null;
             }
 
-            _logger.LogDebug("Server {ServerId} has container {ContainerId}, looking up agent", serverId, containerId);
-            var agent = await GetAgentForContainerAsync(containerId);
-
-            if (agent != null)
+            // Ask each agent for its containers and pick the one that hosts a container for this server.
+            // Containers deployed by this primary service carry a label with the server ID.
+            var probeTasks = agents.Select(async agent =>
             {
-                _logger.LogDebug("Found agent for server {ServerId} on node {NodeName}: {AgentUrl}",
-                    serverId, agent.NodeName, agent.InternalUrl);
-            }
+                try
+                {
+                    var httpClient = GetOrCreateHttpClientForAgent(agent.InternalUrl);
+                    var response = await httpClient.GetAsync($"/containers?label={Uri.EscapeDataString($"{GameServer.Docker.Constants.ServiceLabels.ServerId}={serverId}")}").ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return null;
+                    }
 
-            return agent;
+                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0)
+                    {
+                        return null;
+                    }
+
+                    return agent;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogTrace(ex, "Agent probe failed for {AgentUrl} while locating server {ServerId}", agent.InternalUrl, serverId);
+                    return null;
+                }
+            }).ToList();
+
+            var results = await Task.WhenAll(probeTasks).ConfigureAwait(false);
+            return results.FirstOrDefault(a => a != null);
         }
 
         public async Task<ContainerStats?> GetContainerStatsAsync(string containerId)

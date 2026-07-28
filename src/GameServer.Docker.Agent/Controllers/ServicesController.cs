@@ -76,7 +76,7 @@ namespace GameServer.Docker.Agent.Controllers
                             RestartPolicy = request.RestartPolicy != null ? new SwarmRestartPolicy
                             {
                                 Condition = request.RestartPolicy.Condition,
-                                Delay = request.RestartPolicy.Delay.HasValue ? (long)request.RestartPolicy.Delay.Value : null,
+                                Delay = request.RestartPolicy.Delay.HasValue ? TimeSpan.FromTicks((long)request.RestartPolicy.Delay.Value / 100) : null,
                                 MaxAttempts = request.RestartPolicy.MaxAttempts
                             } : null,
                             Placement = request.Placement != null ? new Placement
@@ -242,13 +242,13 @@ namespace GameServer.Docker.Agent.Controllers
             {
                 _logger.LogDebug("Listing services with filter: {Filter}", labelFilter ?? "none");
 
-                var filters = new ServicesListParameters();
+                var filters = new ServiceListParameters();
 
                 if (!string.IsNullOrEmpty(labelFilter))
                 {
-                    filters.Filters = new ServiceFilter
+                    filters.Filters = new Dictionary<string, IDictionary<string, bool>>
                     {
-                        Label = new[] { labelFilter }
+                        ["label"] = new Dictionary<string, bool> { [labelFilter] = true }
                     };
                 }
 

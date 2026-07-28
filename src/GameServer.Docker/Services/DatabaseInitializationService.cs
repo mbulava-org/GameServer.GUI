@@ -1,10 +1,9 @@
-using GameServer.Docker.Repositories;
 using V2Repositories = GameServer.Docker.Repositories.V2;
 
 namespace GameServer.Docker.Services
 {
     /// <summary>
-    /// Background service that initializes the database after the webhost has started.
+    /// Background service that initializes the V2 database after the webhost has started.
     /// This allows the webhost and SignalR hubs to be available immediately while
     /// database initialization happens in the background.
     /// </summary>
@@ -35,13 +34,11 @@ namespace GameServer.Docker.Services
             {
                 // Create a scope to resolve scoped services (DbContext is scoped)
                 using var scope = _serviceProvider.CreateScope();
-                var repository = scope.ServiceProvider.GetRequiredService<IGameTypeRepository>();
                 var v2Repository = scope.ServiceProvider.GetRequiredService<V2Repositories.IGameTypeRepository>();
 
-                await repository.InitializeDatabaseAsync();
                 await v2Repository.InitializeDatabaseAsync();
 
-                _logger.LogInformation("✅ Background database initialization complete for legacy and V2 persistence stores");
+                _logger.LogInformation("Background database initialization complete for V2 persistence store.");
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

@@ -6,7 +6,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Testcontainers.MySql;
-using LegacyRepositories = GameServer.Docker.Repositories;
 using V2Repositories = GameServer.Docker.Repositories.V2;
 
 namespace GameServer.Docker.Tests.Services;
@@ -54,9 +53,8 @@ public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
         ArgumentNullException.ThrowIfNull(_v2Repository);
         ArgumentNullException.ThrowIfNull(_context);
 
-        var legacyRepository = new Mock<LegacyRepositories.IGameTypeRepository>();
         var applicationLifetime = new Mock<IHostApplicationLifetime>();
-        var serviceProvider = CreateServiceProvider(legacyRepository.Object, _v2Repository);
+        var serviceProvider = CreateServiceProvider(_v2Repository);
         var service = new TestDatabaseInitializationService(serviceProvider, applicationLifetime.Object, Mock.Of<ILogger<DatabaseInitializationService>>());
 
         var originalExitCode = Environment.ExitCode;
@@ -65,9 +63,8 @@ public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
         {
             await service.ExecuteForTestAsync(CancellationToken.None);
 
-            legacyRepository.Verify(x => x.InitializeDatabaseAsync(), Times.Once);
             applicationLifetime.Verify(x => x.StopApplication(), Times.Never);
-            Assert.True(await _context.Database.CanConnectAsync());
+            Assert.True(await _context!.Database.CanConnectAsync());
             Assert.Equal(0, await _context.GameTypes.CountAsync());
         }
         finally
@@ -76,15 +73,13 @@ public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
         }
     }
 
-    private static IServiceProvider CreateServiceProvider(LegacyRepositories.IGameTypeRepository legacyRepository, V2Repositories.IGameTypeRepository v2Repository)
+    private static IServiceProvider CreateServiceProvider(V2Repositories.IGameTypeRepository v2Repository)
     {
         var scopeServiceProvider = new Mock<IServiceProvider>();
         scopeServiceProvider
-            .Setup(x => x.GetService(typeof(LegacyRepositories.IGameTypeRepository)))
-            .Returns(legacyRepository);
-        scopeServiceProvider
             .Setup(x => x.GetService(typeof(V2Repositories.IGameTypeRepository)))
             .Returns(v2Repository);
+        // GetRequiredService is an extension method and cannot be mocked directly.
 
         var scope = new Mock<IServiceScope>();
         scope.SetupGet(x => x.ServiceProvider).Returns(scopeServiceProvider.Object);

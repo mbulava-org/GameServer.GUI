@@ -46,7 +46,7 @@
 - **Agent**: `appsettings.json` → `AgentRegistration:PrimaryServiceUrl`
 - **Primary**: Automatic - agents connect to `/hubs/agentregistration`
 
-### Multi-Node Docker Swarm Deployment (Legacy)
+### Multi-Node Docker Swarm Deployment
 
 ```
 ???????????????????????????????????????????????????????????????
@@ -148,24 +148,22 @@ public class MyHub : Hub
 - `Hubs/` - SignalR hubs for real-time features
   - **MUST use Node Agents for container operations**
 - `Services/` - Business logic, service orchestration
-- `Repositories/` - Legacy SQLite-backed data access layer
-- `Repositories/V2/` - New V2 persistence layer that coexists with the legacy layer
-- `Data/` - Legacy EF Core DbContext and entities
+- `Repositories/V2/` - V2 persistence layer
 - `Data/V2/` - V2 EF Core DbContext and entities
 
 **Key Services:**
-- `IServiceOperations` - **[NEW]** Abstraction for all Docker operations
-  - `ServiceOperationsViaDirect` - Direct Docker client (legacy, requires Docker connection)
-  - `ServiceOperationsViaAgent` - Delegates to manager agent (no Docker connection needed!)
-- `DockerServiceHelper` - Server lifecycle management (uses `IServiceOperations`)
-- `AgentRegistryService` - **[NEW]** Agent registration and container→agent mappings
-- `NodeAgentDiscoveryService` - **[DEPRECATED]** Legacy Docker Swarm polling (will be removed)
+- `IServiceOperations` - Abstraction for all Docker operations
+  - `ServiceOperationsViaDirect` - Direct Docker client (requires Docker connection)
+  - `ServiceOperationsViaAgent` - Delegates to manager agent (no Docker connection needed)
+- `AgentRegistryService` - Agent registration and container→agent mappings
+- `NodeAgentDiscoveryService` - Agent discovery/health tracking over Swarm polling (optional fallback)
 
 **Persistence:**
-- Legacy `GameServerDbContext` remains in place for the current API and automatic client generation path.
-- `GameServerV2DbContext` is a separate new implementation in the `V2` namespace.
-- V2 provider selection is configuration-driven and supports SQLite, PostgreSQL, and MySQL.
-- PostgreSQL is the default and preferred V2 datastore and is modeled through the dedicated `GameServer.DB.PostgreSql` database project plus `pgpac` deployment tooling.
+- `GameServerV2DbContext` is the only persistence implementation.
+- V2 provider selection is configuration-driven and supports SQLite, MySQL, and PostgreSQL.
+- **SQLite is the current default for V2.** It is the best-tested local option and requires no external server.
+- **MySQL is supported and can be selected via configuration.**
+- **PostgreSQL support exists in code but is not fully implemented or production-ready.** It is planned and should be considered coming soon; the `GameServer.DB.PostgreSql` project and `pgpac` tooling are prepared for future completion.
 - The V2 schema is normalized around:
   - `GameType` owning a fixed `ImageReference`
   - `GameTypeRevision` owning version-tagged deployable templates
@@ -177,7 +175,7 @@ public class MyHub : Hub
 - All Docker operations (services, tasks, networks) delegated to manager agent
 - `IDockerClient` is optional and only used in Direct mode
 - Container operations always go through agents (logs, exec, stats, attach)
-- Legacy and V2 persistence layers can evolve independently while sharing the same application host
+- V2 persistence is the only active persistence layer
 
 ### 2. GameServer.Docker.Agent (Node Agents)
 
@@ -205,10 +203,10 @@ public class MyHub : Hub
 
 **Components:**
 - `Components/Server/` - Server management UI components
-  - `ServerLogsViewer` - Connects to `{API}/hubs/serverlogs`
-  - `ContainerTerminal` - Connects to `{API}/hubs/terminal` (exec shell)
-  - `ContainerConsole` - Connects to `{API}/hubs/console` (TTY attach)
-  - `ResourceMonitor` - Connects to `{API}/hubs/resources`
+  - `ServerLogsViewer` - Connects to `{API}/hubs/serverlogs` (shared)
+  - `ContainerTerminal` - Connects to `{API}/hubs/terminal` (exec shell, per-user)
+  - `ContainerConsole` - Connects to `{API}/hubs/attach` (shared TTY attach)
+  - `ResourceMonitor` - Connects to `{API}/hubs/resources` (shared)
 - `Components/Pages/Servers/` - V2 server pages
   - `GameServerManagerV2` - `/gameservers-v2`
   - `GameServerDetailsV2` - `/gameservers-v2/{serverId}`
@@ -216,19 +214,13 @@ public class MyHub : Hub
 
 ### Persistence Architecture
 
-The application currently has two persistence layers that must coexist safely.
-
-#### Legacy persistence
-- `Data/GameServerDbContext`
-- `Repositories/IGameTypeRepository`
-- SQLite only
-- still backs the current API surface and automatic client generation path
+The application uses a single V2 persistence layer.
 
 #### V2 persistence
 - `Data/V2/GameServerV2DbContext`
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
-- provider-aware: **PostgreSQL (default)**, SQLite, or MySQL based on configuration
+- provider-aware: **SQLite (default)**, MySQL (supported), or PostgreSQL (planned) based on configuration
 - PostgreSQL is backed by the dedicated `GameServer.DB.PostgreSql` project and `scripts/Deploy-V2PostgresDatabase.ps1`
 - follows the normalized schema documented in `docs/reference/V2-Database-Diagram.md`
 
@@ -242,52 +234,50 @@ The application currently has two persistence layers that must coexist safely.
 
 #### V2 compatibility rules
 - V2 work must remain in `Models.V2`, `Repositories.V2`, and `Data.V2`.
-- The legacy persistence path must remain intact until controllers and services are explicitly migrated.
-- The V2 DbContext and design-time factory should follow the same registration and factory pattern as the legacy DbContext so automatic client generation is not disrupted.
+- The V2 DbContext and design-time factory should follow the same registration and factory pattern used previously so automatic client generation is not disrupted.
 
 ## Implementation Patterns
 
-### Pattern 1: Streaming Container Logs (Example)
+### Pattern 1: Shared Streaming Aggregators
+
+Real-time container data should be centralized in the primary service so multiple web clients can share the same underlying agent stream. The hub is a thin wrapper around a singleton aggregator.
+
+**Shared streams (one underlying agent stream per resource, many clients):**
+- **Logs** — `IServerLogAggregator` keyed by `serverId` → `/hubs/serverlogs`
+- **Resource usage** — `IServerResourceAggregator` keyed by `serverId` → `/hubs/resources`
+- **Container attach** — `IContainerAttachAggregator` keyed by `containerId` → `/hubs/attach`
+
+**Per-user streams (one underlying agent stream per connection):**
+- **Interactive exec shell** — `/hubs/terminal` via `TerminalSessionManager`
+
+#### Example: Shared server logs
 
 **File:** `src\GameServer.Docker\Hubs\ServerLogsHub.cs`
 
 ```csharp
 public class ServerLogsHub : Hub
 {
-    private readonly INodeAgentDiscovery _nodeAgentDiscovery;
-    private readonly IHttpClientFactory _httpClientFactory;
-    
+    private readonly IServerLogAggregator _logAggregator;
+
     public async IAsyncEnumerable<string> StreamServerLogs(string serverId, ...)
     {
-        // 1. Get server info
-        var server = await _serverManager.GetServerById(serverId);
-        var containerId = server.ContainerId;
-        
-        // 2. Find which agent has this container
-        var agent = await _nodeAgentDiscovery.GetAgentForContainerAsync(containerId);
-        if (agent == null)
-        {
-            yield return "ERROR: Container not found on any node";
-            yield break;
-        }
-        
-        // 3. Connect to agent's SignalR hub
-        var hubUrl = $"{agent.InternalUrl}/hubs/nodeagent";
-        var connection = new HubConnectionBuilder()
-            .WithUrl(hubUrl)
-            .Build();
-            
-        await connection.StartAsync();
-        
-        // 4. Stream from agent
-        await foreach (var line in connection.StreamAsync<string>(
-            "StreamContainerLogs", containerId, ...))
+        // The aggregator resolves the server, finds the agent/container,
+        // opens a single shared agent stream, and fans it out to all subscribers.
+        await foreach (var line in _logAggregator.StreamLogsAsync(serverId, ...))
         {
             yield return line;
         }
     }
 }
 ```
+
+#### Shared attach semantics
+
+`ContainerAttachHub` at `/hubs/attach` streams the same container output to all subscribers:
+- The first subscriber to call `SendInput` becomes the **input controller**.
+- Late joiners receive an `InputControlledBy(connectionId)` frame so the UI can show a "view-only" indicator.
+- When the controller disconnects, control is released; the next user to type wins.
+- Viewers always see the same output frames, including input echoed by the container.
 
 ### Pattern 2: Container Operations via HTTP
 
@@ -303,27 +293,26 @@ httpClient.BaseAddress = new Uri(agent.InternalUrl);
 var response = await httpClient.GetAsync($"/api/containers/{containerId}/stats");
 ```
 
-### Pattern 3: Service Operations (Direct Docker)
+### Pattern 3: Service Operations via IServiceOperations
 
-**File:** `src\GameServer.Docker\Services\DockerServiceHelper.cs`
+**File:** `src\GameServer.Docker\Interfaces\IServiceOperations.cs`
 
 ```csharp
-public class DockerServiceHelper
+public class GameServerCommandService
 {
-    private readonly IDockerClient _dockerClient; // ? OK for service operations!
-    
-    public async Task CreateServerAsync(GameServer server)
+    private readonly IServiceOperations _serviceOperations; // OK for service operations
+
+    public async Task CreateServerAsync(SaveGameServerRequestDto server)
     {
-        // ? Creating a Swarm SERVICE - use Docker client directly
-        var serviceSpec = BuildServiceSpec(server);
-        await _dockerClient.Swarm.CreateServiceAsync(serviceSpec);
+        // Creating a Swarm SERVICE - goes through IServiceOperations
+        var parameters = BuildServiceCreateParameters(server);
+        await _serviceOperations.CreateServiceAsync(parameters);
     }
-    
-    public async Task<List<GameServer>> GetAllServersAsync()
+
+    public async Task<IReadOnlyList<GameServerListItemDto>> GetAllServersAsync()
     {
-        // ? Listing Swarm SERVICES - use Docker client directly
-        var services = await _dockerClient.Swarm.ListServicesAsync();
-        return services.Select(ConvertToGameServer).ToList();
+        var servers = await _gameServerRepository.GetAllAsync();
+        return servers.Select(MapToListItem).ToList();
     }
 }
 ```
@@ -343,10 +332,11 @@ public class SomeHub : Hub
 ```csharp
 await hubConnection.InvokeAsync("AttachToContainer", serverId); // ? Wrong!
 ```
-**Fix:** Get containerId from server first:
+**Fix:** Resolve container ID through the Node Agent that hosts the server's container:
 ```csharp
-var server = await GetServerById(serverId);
-await hubConnection.InvokeAsync("AttachToContainer", server.ContainerId); // ? Correct!
+var agent = await _nodeAgentDiscovery.GetAgentForServerAsync(serverId);
+var containerId = await ServerLogsHub.ResolveContainerIdAsync(agent, serverId);
+await hubConnection.InvokeAsync("AttachToContainer", containerId); // ? Correct!
 ```
 
 ### ? Mistake 3: Assuming Container ID is Static
@@ -372,12 +362,11 @@ try {
 src/
 ??? GameServer.Docker/              # Central API
 ?   ??? Controllers/                # REST endpoints (service CRUD)
-?   ??? Hubs/                       # SignalR (MUST use Node Agents)
+?   ??? Hubs/                       # SignalR (MUST use aggregators / Node Agents)
 ?   ??? Services/                   # Business logic
-?   ?   ??? DockerServiceHelper.cs      # Swarm service operations
-?   ?   ??? GameServerManagerService.cs # Server lifecycle
-?   ?   ??? NodeAgentDiscoveryService.cs # ? USE THIS!
-?   ??? Repositories/               # Data persistence
+?   ?   ??? V2/                       # V2 persistence-bound services
+?   ?   ??? NodeAgentDiscoveryService.cs # Agent discovery / container→agent lookup
+?   ??? Repositories/V2/            # V2 data persistence
 ?
 ??? GameServer.Docker.Agent/        # Node Agent (runs on each node)
 ?   ??? Controllers/                # Container operations REST API
@@ -401,9 +390,8 @@ src/
 ```csharp
 public SomeHub(
     ILogger<SomeHub> logger,
-    IGameServerManager serverManager,
-    INodeAgentDiscovery nodeAgentDiscovery,  // ? For container ops
-    IHttpClientFactory httpClientFactory)    // ? For HTTP calls to agents
+    IServerLogAggregator logAggregator,       // ? For shared log streaming
+    IServerResourceAggregator resourceAggregator) // ? For shared resource streaming
 {
 }
 ```

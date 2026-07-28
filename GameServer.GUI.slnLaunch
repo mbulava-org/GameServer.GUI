@@ -1,0 +1,19 @@
+[
+  {
+    "Name": "local-debug",
+    "Projects": [
+      {
+        "Path": "src\\GameServer.Docker.Agent\\GameServer.Docker.Agent.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\GameServer.Docker\\GameServer.Docker.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\GameServer.Web\\GameServer.Web.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

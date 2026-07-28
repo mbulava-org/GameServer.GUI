@@ -57,37 +57,11 @@ namespace GameServer.Web
 
                 //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
-                var consoleUri = apiBaseUrl.Replace("https://", "wss://").Replace("http://", "ws://") + "hubs/console";
-                var resourcesUri = apiBaseUrl.Replace("https://", "wss://").Replace("http://", "ws://") + "hubs/resources";
-                builder.Services.AddGameServerClients(apiBaseUrl, consoleUri, resourcesUri);
-                //builder.Services.AddHttpClient<IDashboardApi, DashboardApi>(client =>
-                //{
-                //    client.BaseAddress = new Uri(apiBaseUrl);
-                //});
-                //builder.Services.AddHttpClient<IGameTypeApi, GameTypeApi>(client =>
-                //{
-                //    client.BaseAddress = new Uri(apiBaseUrl);
-                //});
-                //builder.Services.AddHttpClient<IGameTypeExtendedMetadataApi, GameTypeExtendedMetadataApi>(client =>
-                //{
-                //    client.BaseAddress = new Uri(apiBaseUrl);
-                //});
-                //builder.Services.AddHttpClient<IPortApi, PortApi>(client =>
-                //{
-                //    client.BaseAddress = new Uri(apiBaseUrl);
-                //});
-                //builder.Services.AddHttpClient<IGameServerApi, GameServerApi>(client =>
-                //{
-                //    client.BaseAddress = new Uri(apiBaseUrl);
-                //});
-
-                //// TODO: Uncomment once GameServer.Docker.Client includes PortRelationship, PortValidationRule models
-                //// This requires the API to expose these models through controller endpoints
-                //// Register Port Mapping Service for advanced port validation and automatic updates
-                //// builder.Services.AddScoped<GameServer.Web.Services.PortMappingService>();
-
-                //// Register SignalR clients if URLs provided
-                //if (!string.IsNullOrWhiteSpace(consoleUri))
+                var wsBaseUrl = apiBaseUrl.Replace("https://", "wss://").Replace("http://", "ws://");
+                var consoleUri = wsBaseUrl + "hubs/attach";
+                var resourcesUri = wsBaseUrl + "hubs/resources";
+                var terminalUri = wsBaseUrl + "hubs/terminal";
+                builder.Services.AddGameServerClients(apiBaseUrl, consoleUri, resourcesUri, terminalUri);
                 //{
                 //    builder.Services.AddContainerConsoleClient(consoleUri);
                 //}

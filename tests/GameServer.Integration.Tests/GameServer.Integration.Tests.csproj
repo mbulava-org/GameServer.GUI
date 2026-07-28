@@ -20,6 +20,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- Override transitive vulnerabilities from referenced projects -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,6 +32,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameServer.Web\GameServer.Web.csproj" />
     <ProjectReference Include="..\..\src\GameServer.Docker\GameServer.Docker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Controllers\" />
   </ItemGroup>
 
 </Project>

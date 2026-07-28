@@ -322,16 +322,41 @@ Once deployed, access:
 | `ServiceOperations__Mode` | Operation mode: `Agent` or `Direct` | `Agent` |
 | `PortAllocation__StartPort` | First port to allocate | `25565` |
 | `PortAllocation__EndPort` | Last port to allocate | `35565` |
-| `ConnectionStrings__GameServerDb` | SQLite database path (V1 legacy) | `Data Source=/data/gameserver.db` |
-| `ConnectionStrings__GameServerV2Db` | PostgreSQL connection string (V2) | _(required for V2)_ |
-| `V2DatabaseProvider` | V2 DB provider: `PostgreSQL`, `SQLite`, `MySQL` | `PostgreSQL` |
+| `ConnectionStrings__GameServerV2Db` | SQLite V2 database path | `Data Source=/data/gameserver-v2.db` |
+| `ConnectionStrings__GameServerV2MySqlDb` | MySQL V2 connection string | _(optional)_ |
+| `ConnectionStrings__GameServerV2PostgresDb` | PostgreSQL V2 connection string | _(optional, coming soon)_ |
+| `V2Database__Provider` | V2 DB provider: `Sqlite`, `MySql`, `PostgreSql` | `Sqlite` |
+| `V2Database__ConnectionStringName` | Connection string key to use | `GameServerV2Db` |
+| `NetworkOptions__LoadBalancerNetwork` | Docker overlay network for Traefik | `traefik-public` |
+| `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
+| `VolumeDriverConfigOptions__Name` | Volume driver name | `local` |
+| `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
+| `UdpAgentDiscovery__Enabled` | Enable UDP agent announcement | `true` |
 
-**V2 PostgreSQL example connection string:**
+**V2 SQLite example:**
 
 ```yaml
 environment:
-  - ConnectionStrings__GameServerV2Db=Host=postgres;Database=gameserver_v2;Username=gsuser;Password=gspass
-  - V2DatabaseProvider=PostgreSQL
+  - ConnectionStrings__GameServerV2Db=Data Source=/data/gameserver-v2.db
+  - V2Database__Provider=Sqlite
+```
+
+**V2 MySQL example:**
+
+```yaml
+environment:
+  - ConnectionStrings__GameServerV2MySqlDb=Server=mysql;Database=gameserver-v2;Uid=gsuser;Pwd=gspass
+  - V2Database__Provider=MySql
+  - V2Database__ConnectionStringName=GameServerV2MySqlDb
+```
+
+**V2 PostgreSQL example (experimental / coming soon):**
+
+```yaml
+environment:
+  - ConnectionStrings__GameServerV2PostgresDb=Host=postgres;Database=gameserver_v2;Username=gsuser;Password=gspass
+  - V2Database__Provider=PostgreSql
+  - V2Database__ConnectionStringName=GameServerV2PostgresDb
 ```
 
 **GameServer.Docker.Agent:**
@@ -340,7 +365,19 @@ environment:
 |----------|-------------|---------|
 | `AgentRegistration__PrimaryServiceUrl` | URL of primary service | Required |
 | `AgentRegistration__HeartbeatIntervalSeconds` | Heartbeat interval | `30` |
-| `AGENT_HOST` | Agent hostname/IP | Node hostname |
+| `AgentRegistration__Enabled` | Enable push registration | `true` |
+| `AgentRegistration__Capabilities` | Comma-separated capabilities: `logs,exec,stats,attach,services` | `logs,exec,stats,attach,services` |
+| `AgentRegistration__ConnectionTimeoutSeconds` | SignalR connection timeout | `30` |
+| `UdpAgentAnnouncement__Enabled` | Enable UDP announcement listener | `true` |
+| `UdpAgentAnnouncement__MulticastGroup` | UDP multicast group | `239.1.1.1` |
+| `UdpAgentAnnouncement__Port` | UDP announcement port | `19090` |
+| `AGENT_HOST` / `NODE_NAME` | Agent hostname/IP | Node hostname |
+
+**GameServer.Web:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GameServerDockerApi__BaseUri` | Base URL of `GameServer.Docker` API | `http://localhost:5164/` |
 
 **See [Agent-QuickStart.md](guides/Agent-QuickStart.md) for detailed configuration.**
 
@@ -456,42 +493,35 @@ curl -X POST http://localhost:5164/api/v2/gametypes/import \
 
 ---
 
-## 🎮 Creating Your First Game Server (V1 Legacy)
+## 🎮 Creating Your First Game Server (V2)
 
 ### Using the Web UI
 
-1. **Navigate to**: http://localhost:5102/servers/new
-2. **Step 1: Select Game Type** - Choose "Minecraft"
-3. **Step 2: Basic Info** - Name your server
-4. **Step 3: Game Settings** - Configure:
+1. **Navigate to**: http://localhost:5102/gameservers-v2/new
+2. **Select Game Type** - Choose "Minecraft"
+3. **Select Revision** - Pick the published revision to deploy
+4. **Basic Info** - Name your server
+5. **Game Settings** - Configure:
    - `EULA`: `true` (required)
    - `VERSION`: `LATEST`
    - `MEMORY`: `2G`
-5. **Step 4: Technical Details** - Review port mappings
-6. **Step 5: Review & Create** - Click "Create Server"
+6. **Review & Create** - Click "Create Server"
 
 ### Using the API
 
 ```bash
-# Create a Minecraft server
-curl -X POST http://localhost:5164/api/gameservers \
+# Create a V2 Minecraft server
+curl -X POST http://localhost:5164/api/v2/gameservers \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Minecraft Server",
     "description": "My first game server",
-    "gameTypeId": 1,
-    "settings": {
-      "EULA": "true",
-      "VERSION": "LATEST",
-      "MEMORY": "2G",
-      "MAX_PLAYERS": "20"
-    },
-    "portMappings": [
-      {
-        "containerPort": 25565,
-        "publishedPort": 25565,
-        "protocol": "tcp"
-      }
+    "gameTypeRevisionId": 1,
+    "settings": [
+      { "settingKey": "EULA", "value": "true" },
+      { "settingKey": "VERSION", "value": "LATEST" },
+      { "settingKey": "MEMORY", "value": "2G" },
+      { "settingKey": "MAX_PLAYERS", "value": "20" }
     ]
   }'
 ```

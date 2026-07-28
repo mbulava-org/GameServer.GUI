@@ -80,33 +80,21 @@ dotnet run --no-db-init
 ### InitializeDatabaseAsync
 
 ```csharp
-private static async Task InitializeDatabaseAsync(IServiceProvider services)
+private static async Task InitializeV2DatabaseAsync(IServiceProvider services)
 {
     using var scope = services.CreateScope();
-    var context = scope.ServiceProvider.GetRequiredService<Data.GameServerDbContext>();
+    var repository = scope.ServiceProvider.GetRequiredService<Repositories.V2.IGameTypeRepository>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     try
     {
-        // 1. Ensure database is created
-        logger.LogInformation("Initializing database...");
-        await context.Database.EnsureCreatedAsync();
-        
-        // 2. Check if we need to migrate from JSON files
-        var gameTypesCount = await context.GameTypes.CountAsync();
-        if (gameTypesCount == 0)
-        {
-            logger.LogInformation("Database is empty. Checking for existing JSON files to migrate...");
-            await MigrateFromJsonIfExistsAsync(scope.ServiceProvider, logger);
-        }
-        else
-        {
-            logger.LogInformation("Database initialized. Found {Count} game types.", gameTypesCount);
-        }
+        logger.LogInformation("Initializing V2 database...");
+        await repository.InitializeDatabaseAsync();
+        logger.LogInformation("V2 database initialization complete.");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error initializing database");
+        logger.LogError(ex, "Error initializing V2 database");
         throw;
     }
 }
@@ -192,38 +180,27 @@ No changes needed. The Dockerfile runs the application normally, so database ini
 
 ## Database Location
 
-### Legacy persistence
-
-**Default:** `./data/gameserver.db`
-
-**Configured in:** `appsettings.json`
-
-```json
-{
-  "ConnectionStrings": {
-    "GameServerDb": "Data Source=./data/gameserver.db"
-  }
-}
-```
-
 ### V2 persistence
 
-V2 is provider-driven through `V2Database` settings. The base application configuration now defaults V2 to PostgreSQL, while SQLite and MySQL remain available for explicit alternate configurations.
+V2 is the only persistence layer. It is provider-driven through `V2Database` settings. **SQLite is the current default.** MySQL is supported. PostgreSQL is prepared in code but not fully implemented.
 
 ```json
 {
   "ConnectionStrings": {
     "GameServerV2Db": "Data Source=./data/gameserver-v2.db",
+    "GameServerV2MySqlDb": "Server=localhost;Database=gameserver-v2;Uid=root;Pwd=password;",
     "GameServerV2PostgresDb": "Host=localhost;Database=gameserver-v2;Username=postgres;Password=postgres"
   },
   "V2Database": {
-    "Provider": "PostgreSql",
-    "ConnectionStringName": "GameServerV2PostgresDb"
+    "Provider": "Sqlite",
+    "ConnectionStringName": "GameServerV2Db"
   }
 }
 ```
 
-When using PostgreSQL, deploy the schema first:
+Valid values for `V2Database:Provider` are `Sqlite`, `MySql`, and `PostgreSql` (experimental).
+
+When PostgreSQL becomes fully supported, deploy its schema with:
 
 ```powershell
 .\scripts\Deploy-V2PostgresDatabase.ps1 -TargetConnectionString "Host=localhost;Database=gameserver-v2;Username=postgres;Password=postgres"

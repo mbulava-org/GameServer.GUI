@@ -1,4 +1,3 @@
-using GameServer.Docker.Repositories;
 using GameServer.Docker.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,20 +10,18 @@ namespace GameServer.Docker.Tests.Services;
 public class DatabaseInitializationServiceTests
 {
     [Fact]
-    public async Task ExecuteAsync_WhenInitializationSucceeds_ShouldInitializeBothRepositories()
+    public async Task ExecuteAsync_WhenInitializationSucceeds_ShouldInitializeV2Repository()
     {
         // Arrange
-        var legacyRepository = new Mock<IGameTypeRepository>();
         var v2Repository = new Mock<V2Repositories.IGameTypeRepository>();
         var applicationLifetime = new Mock<IHostApplicationLifetime>();
-        var serviceProvider = CreateServiceProvider(legacyRepository.Object, v2Repository.Object);
+        var serviceProvider = CreateServiceProvider(v2Repository.Object);
         var service = new TestDatabaseInitializationService(serviceProvider, applicationLifetime.Object, Mock.Of<ILogger<DatabaseInitializationService>>());
 
         // Act
         await service.ExecuteForTestAsync(CancellationToken.None);
 
         // Assert
-        legacyRepository.Verify(x => x.InitializeDatabaseAsync(), Times.Once);
         v2Repository.Verify(x => x.InitializeDatabaseAsync(), Times.Once);
         applicationLifetime.Verify(x => x.StopApplication(), Times.Never);
     }
@@ -33,14 +30,13 @@ public class DatabaseInitializationServiceTests
     public async Task ExecuteAsync_WhenV2InitializationFails_ShouldStopApplication()
     {
         // Arrange
-        var legacyRepository = new Mock<IGameTypeRepository>();
         var v2Repository = new Mock<V2Repositories.IGameTypeRepository>();
         v2Repository
             .Setup(x => x.InitializeDatabaseAsync())
             .ThrowsAsync(new InvalidOperationException("V2 init failed"));
 
         var applicationLifetime = new Mock<IHostApplicationLifetime>();
-        var serviceProvider = CreateServiceProvider(legacyRepository.Object, v2Repository.Object);
+        var serviceProvider = CreateServiceProvider(v2Repository.Object);
         var service = new TestDatabaseInitializationService(serviceProvider, applicationLifetime.Object, Mock.Of<ILogger<DatabaseInitializationService>>());
 
         var originalExitCode = Environment.ExitCode;
@@ -60,15 +56,14 @@ public class DatabaseInitializationServiceTests
         }
     }
 
-    private static IServiceProvider CreateServiceProvider(IGameTypeRepository legacyRepository, V2Repositories.IGameTypeRepository v2Repository)
+    private static IServiceProvider CreateServiceProvider(V2Repositories.IGameTypeRepository v2Repository)
     {
         var scopeServiceProvider = new Mock<IServiceProvider>();
         scopeServiceProvider
-            .Setup(x => x.GetService(typeof(IGameTypeRepository)))
-            .Returns(legacyRepository);
-        scopeServiceProvider
             .Setup(x => x.GetService(typeof(V2Repositories.IGameTypeRepository)))
             .Returns(v2Repository);
+        // GetRequiredService is an extension method and cannot be mocked directly; the service
+        // calls the extension which internally uses GetService, so GetService is sufficient.
 
         var scope = new Mock<IServiceScope>();
         scope.SetupGet(x => x.ServiceProvider).Returns(scopeServiceProvider.Object);

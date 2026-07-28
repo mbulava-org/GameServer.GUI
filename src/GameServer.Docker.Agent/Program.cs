@@ -40,8 +40,9 @@ builder.Services.AddSingleton<IDockerClient>(sp =>
     
     try
     {
-        var config = new DockerClientConfiguration(new Uri(dockerUri));
-        var client = config.CreateClient();
+        var client = new DockerClientBuilder()
+            .WithEndpoint(new Uri(dockerUri))
+            .Build();
         
         // Test connection on startup
         try

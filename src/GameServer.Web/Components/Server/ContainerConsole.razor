@@ -11,6 +11,9 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
+@* Shared container attach viewer. Multiple users of the same container see the same output.
+   The first user to type becomes the input controller; others see a read-only indicator. *@
+
 <div class="console-container">
     <div class="console-header">
         <div class="console-title">
@@ -21,6 +24,14 @@
             @if (isConnected)
             {
                 <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                @if (_inputControllerId != null && _inputControllerId != consoleClient?.ConnectionId)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="View-only" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                }
+                else if (_inputControllerId == consoleClient?.ConnectionId)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Input Control" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                }
                 <RadzenButton Icon="refresh" 
                              Size="ButtonSize.Small" 
                              ButtonStyle="ButtonStyle.Light"
@@ -133,8 +144,7 @@
 @code {
 [Parameter] public string? ServerId { get; set; }
 [Parameter] public bool AutoConnect { get; set; } = false;
-[Parameter] public bool EnableTTY { get; set; } = true; // Enable TTY by default for interactive consoles
-[Parameter] public string? AgentUrl { get; set; } // Optional: URL of the Docker agent for direct exec
+[Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
 
     private Xterm? terminal;
     private TerminalOptions terminalOptions = new()
@@ -243,11 +253,11 @@
         {
             // Build hub URL from configuration
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
-            var hubUrl = $"{baseUri}/hubs/console";
+            var hubUrl = $"{baseUri}/hubs/attach";
 
             await WriteSystemMessage($"Hub URL: {hubUrl}");
 
-            // Create the console client using the actual ContainerConsoleClient from GameServer.Docker.Client
+            // Create the console client using the shared attach client
             consoleClient = new ContainerConsoleClient(hubUrl);
 
             // Subscribe to events
@@ -255,41 +265,30 @@
             consoleClient.ErrorReceived += OnErrorReceived;
             consoleClient.Connected += OnConsoleConnected;
             consoleClient.Disconnected += OnConsoleDisconnected;
+            consoleClient.InputControlChanged += OnInputControlChanged;
 
             // Connect to the SignalR hub
             connectionCts = new CancellationTokenSource();
             await consoleClient.ConnectAsync(connectionCts.Token);
 
-            // Attach to the specific container
-            var attached = await consoleClient.AttachToContainerAsync(ServerId, connectionCts.Token);
+            // Subscribe to the shared attach stream for this server/container
+            await consoleClient.AttachToContainerAsync(ServerId, ContainerId, connectionCts.Token);
 
-            if (attached)
+            isConnected = true;
+            isConnecting = false;
+
+            await WriteSystemMessage($"Connected to {ServerId} console (shared attach)");
+            await WriteSystemMessage("Click the terminal and start typing. Output is shared with other viewers.");
+
+            NotificationService.Notify(new NotificationMessage
             {
-                isConnected = true;
-                isConnecting = false;
+                Severity = NotificationSeverity.Success,
+                Summary = "Console Connected",
+                Detail = $"Connected to {ServerId} console. Click the terminal to focus and type.",
+                Duration = 4000
+            });
 
-                await WriteSystemMessage($"Connected to {ServerId} console");
-                await WriteSystemMessage("Click the terminal and start typing. Output will stream here in real-time.");
-
-                if (terminal != null && isJavaScriptAvailable)
-                {
-                   
-                }
-
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Console Connected",
-                    Detail = $"Connected to {ServerId} console. Click the terminal to focus and type.",
-                    Duration = 4000
-                });
-
-                StateHasChanged();
-            }
-            else
-            {
-                throw new Exception("Failed to attach to container");
-            }
+            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -320,8 +319,9 @@
                 consoleClient.ErrorReceived -= OnErrorReceived;
                 consoleClient.Connected -= OnConsoleConnected;
                 consoleClient.Disconnected -= OnConsoleDisconnected;
+                consoleClient.InputControlChanged -= OnInputControlChanged;
 
-                // Disconnect from container
+                // Disconnect from shared attach stream
                 await consoleClient.DisconnectFromContainerAsync(CancellationToken.None);
 
                 // Dispose the client if it implements IDisposable/IAsyncDisposable
@@ -410,6 +410,33 @@
         });
     }
 
+    private string? _inputControllerId;
+
+    private void OnInputControlChanged(object? sender, string controllerId)
+    {
+        InvokeAsync(async () =>
+        {
+            _inputControllerId = string.IsNullOrWhiteSpace(controllerId) ? null : controllerId;
+            var isController = _inputControllerId == consoleClient?.ConnectionId;
+
+            if (terminal != null && isJavaScriptAvailable)
+            {
+                terminal.Options.DisableStdin = !isController;
+            }
+
+            if (!isController && !string.IsNullOrWhiteSpace(controllerId))
+            {
+                await WriteSystemMessage($"Another user has input control ({controllerId.Substring(0, Math.Min(controllerId.Length, 8))}...). View-only mode.");
+            }
+            else if (isController)
+            {
+                await WriteSystemMessage("You have input control.");
+            }
+
+            StateHasChanged();
+        });
+    }
+
     private async Task WriteSystemMessage(string message, bool isError = false)
     {
         // Only attempt JavaScript interop if it's available (after OnAfterRenderAsync firstRender)
@@ -441,6 +468,7 @@
                 consoleClient.ErrorReceived -= OnErrorReceived;
                 consoleClient.Connected -= OnConsoleConnected;
                 consoleClient.Disconnected -= OnConsoleDisconnected;
+                consoleClient.InputControlChanged -= OnInputControlChanged;
 
                 await consoleClient.DisconnectFromContainerAsync(CancellationToken.None);
 

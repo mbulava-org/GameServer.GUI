@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using GameServer.Docker.Client.Interfaces;
+using GameServer.Docker.Client.Models;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 
@@ -88,67 +89,50 @@ namespace GameServer.Docker.Client.Services
             RegisterEventHandlers();
         }
 
+        private static Interfaces.ServerResourceUsage ToInterfaceModel(HubResourceUsage usage)
+        {
+            return new Interfaces.ServerResourceUsage
+            {
+                ServerId = usage.ServerId,
+                ServerName = usage.ServerId,
+                GameType = string.Empty,
+                IsRunning = usage.ServiceStatus == "Running",
+                Status = usage.ServiceStatus,
+                Timestamp = usage.Timestamp,
+                CpuUsagePercent = usage.RealTimeStats?.CpuUsagePercent,
+                MemoryUsageBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryUsageBytes : null,
+                MemoryLimitBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryLimitBytes : null,
+                MemoryUsagePercent = usage.RealTimeStats?.MemoryUsagePercent,
+                NetworkRxBytes = usage.RealTimeStats?.NetworkRxBytes,
+                NetworkTxBytes = usage.RealTimeStats?.NetworkTxBytes,
+                BlockReadBytes = usage.RealTimeStats?.BlockReadBytes,
+                BlockWriteBytes = usage.RealTimeStats?.BlockWriteBytes,
+                Replicas = usage.DesiredReplicas,
+                HealthyReplicas = usage.RunningReplicas,
+                ContainerId = usage.ContainerIds?.FirstOrDefault(),
+                NodeName = null
+            };
+        }
+
         private void RegisterEventHandlers()
         {
             // Single resource update - Use the auto-generated model from NSwag
-            _hubConnection.On<ServerResourceUsage>("ResourceUpdate", (usage) =>
+            _hubConnection.On<HubResourceUsage>("ResourceUpdate", (usage) =>
             {
                 _logger?.LogTrace("Received resource update for server {ServerId}", usage.ServerId);
-                
-                // Convert to interface model for backward compatibility
-                var interfaceModel = new Interfaces.ServerResourceUsage
-                {
-                    ServerId = usage.ServerId,
-                    ServerName = usage.ServerId, // Backend doesn't have ServerName
-                    GameType = "", // Not in backend model
-                    IsRunning = usage.ServiceStatus == "Running",
-                    Status = usage.ServiceStatus,
-                    Timestamp = usage.Timestamp.DateTime,
-                    CpuUsagePercent = usage.RealTimeStats?.CpuUsagePercent,
-                    MemoryUsageBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryUsageBytes : null,
-                    MemoryLimitBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryLimitBytes : null,
-                    MemoryUsagePercent = usage.RealTimeStats?.MemoryUsagePercent,
-                    NetworkRxBytes = usage.RealTimeStats?.NetworkRxBytes,
-                    NetworkTxBytes = usage.RealTimeStats?.NetworkTxBytes,
-                    BlockReadBytes = usage.RealTimeStats?.BlockReadBytes,
-                    BlockWriteBytes = usage.RealTimeStats?.BlockWriteBytes,
-                    Replicas = usage.DesiredReplicas,
-                    HealthyReplicas = usage.RunningReplicas,
-                    ContainerId = usage.ContainerIds?.FirstOrDefault(),
-                    NodeName = null // Not in backend model
-                };
-                
+
+                var interfaceModel = ToInterfaceModel(usage);
+
                 ResourceUpdateReceived?.Invoke(this, interfaceModel);
             });
 
             // Batch of resource updates
-            _hubConnection.On<IEnumerable<ServerResourceUsage>>("ResourceUpdateBatch", (updates) =>
+            _hubConnection.On<IEnumerable<HubResourceUsage>>("ResourceUpdateBatch", (updates) =>
             {
                 _logger?.LogTrace("Received resource update batch: {Count} servers", updates.Count());
-                
-                // Convert to interface models
-                var interfaceModels = updates.Select(usage => new Interfaces.ServerResourceUsage
-                {
-                    ServerId = usage.ServerId,
-                    ServerName = usage.ServerId,
-                    GameType = "",
-                    IsRunning = usage.ServiceStatus == "Running",
-                    Status = usage.ServiceStatus,
-                    Timestamp = usage.Timestamp.DateTime,
-                    CpuUsagePercent = usage.RealTimeStats?.CpuUsagePercent,
-                    MemoryUsageBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryUsageBytes : null,
-                    MemoryLimitBytes = usage.RealTimeStats != null ? (long?)usage.RealTimeStats.MemoryLimitBytes : null,
-                    MemoryUsagePercent = usage.RealTimeStats?.MemoryUsagePercent,
-                    NetworkRxBytes = usage.RealTimeStats?.NetworkRxBytes,
-                    NetworkTxBytes = usage.RealTimeStats?.NetworkTxBytes,
-                    BlockReadBytes = usage.RealTimeStats?.BlockReadBytes,
-                    BlockWriteBytes = usage.RealTimeStats?.BlockWriteBytes,
-                    Replicas = usage.DesiredReplicas,
-                    HealthyReplicas = usage.RunningReplicas,
-                    ContainerId = usage.ContainerIds?.FirstOrDefault(),
-                    NodeName = null
-                }).ToList();
-                
+
+                var interfaceModels = updates.Select(ToInterfaceModel).ToList();
+
                 ResourceUpdateBatchReceived?.Invoke(this, interfaceModels);
             });
 
@@ -302,8 +286,8 @@ namespace GameServer.Docker.Client.Services
 
             try
             {
-                // Call hub and get the NSwag model (backend model)
-                var result = await _hubConnection.InvokeAsync<ServerResourceUsage?>(
+                // Call hub and get the hub payload model
+                var result = await _hubConnection.InvokeAsync<HubResourceUsage?>(
                     "GetSnapshot",
                     serverId,
                     cancellationToken);
@@ -314,30 +298,7 @@ namespace GameServer.Docker.Client.Services
                     return null;
                 }
 
-                // Convert to interface model
-                var interfaceModel = new Interfaces.ServerResourceUsage
-                {
-                    ServerId = result.ServerId,
-                    ServerName = result.ServerId,
-                    GameType = "",
-                    IsRunning = result.ServiceStatus == "Running",
-                    Status = result.ServiceStatus,
-                    Timestamp = result.Timestamp.DateTime,
-                    CpuUsagePercent = result.RealTimeStats?.CpuUsagePercent,
-                    MemoryUsageBytes = result.RealTimeStats != null ? (long?)result.RealTimeStats.MemoryUsageBytes : null,
-                    MemoryLimitBytes = result.RealTimeStats != null ? (long?)result.RealTimeStats.MemoryLimitBytes : null,
-                    MemoryUsagePercent = result.RealTimeStats?.MemoryUsagePercent,
-                    NetworkRxBytes = result.RealTimeStats?.NetworkRxBytes,
-                    NetworkTxBytes = result.RealTimeStats?.NetworkTxBytes,
-                    BlockReadBytes = result.RealTimeStats?.BlockReadBytes,
-                    BlockWriteBytes = result.RealTimeStats?.BlockWriteBytes,
-                    Replicas = result.DesiredReplicas,
-                    HealthyReplicas = result.RunningReplicas,
-                    ContainerId = result.ContainerIds?.FirstOrDefault(),
-                    NodeName = null
-                };
-
-                return interfaceModel;
+                return ToInterfaceModel(result);
             }
             catch (Exception ex)
             {

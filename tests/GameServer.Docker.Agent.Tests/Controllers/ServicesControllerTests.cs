@@ -65,7 +65,7 @@ public class ServicesControllerTests
             }
         };
 
-        _mockSwarmOperations.Setup(x => x.ListServicesAsync(It.IsAny<ServicesListParameters>(), It.IsAny<CancellationToken>()))
+        _mockSwarmOperations.Setup(x => x.ListServicesAsync(It.IsAny<ServiceListParameters>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(testServices);
 
         // Act
@@ -161,10 +161,10 @@ public class ServicesControllerTests
         var controller = CreateController();
         
         _mockSwarmOperations.Setup(x => x.ListServicesAsync(
-                It.Is<ServicesListParameters>(p => 
-                    p.Filters != null && 
-                    p.Filters.Label != null && 
-                    p.Filters.Label.Contains("gameserver.docker.managed=true")),
+                It.Is<ServiceListParameters>(p =>
+                    p.Filters != null &&
+                    p.Filters.ContainsKey("label") &&
+                    p.Filters["label"].ContainsKey("gameserver.docker.managed=true")),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SwarmService>());
 
@@ -174,8 +174,10 @@ public class ServicesControllerTests
         // Assert
         _mockSwarmOperations.Verify(
             x => x.ListServicesAsync(
-                It.Is<ServicesListParameters>(p => 
-                    p.Filters!.Label!.Contains("gameserver.docker.managed=true")),
+                It.Is<ServiceListParameters>(p =>
+                    p.Filters != null &&
+                    p.Filters.ContainsKey("label") &&
+                    p.Filters["label"].ContainsKey("gameserver.docker.managed=true")),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }

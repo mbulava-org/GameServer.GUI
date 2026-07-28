@@ -14,7 +14,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - 🔧 **Game Type System** - Extensible game server templates with metadata
 - 🌐 **Port Management** - Intelligent port mapping with automatic relationships
 - 🔐 **Agent-Based Architecture** - Secure node agents for distributed operations
-- 📦 **Dual Persistence** - Legacy SQLite path plus a V2 layer supporting PostgreSQL (default), SQLite, or MySQL
+- 📦 **V2 Persistence** - SQLite (default), MySQL (supported), PostgreSQL (coming soon)
 - 🛠️ **RESTful API** - Full API access for automation
 
 ## 🏗️ Architecture
@@ -25,7 +25,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **Frontend:** Blazor Server, Radzen UI Components
 - **Real-Time:** SignalR for live updates
 - **Container Orchestration:** Docker Swarm
-- **Database:** SQLite for legacy data, PostgreSQL/SQLite/MySQL for V2 data via Entity Framework Core
+- **Database:** V2 SQLite (default), MySQL (supported), or PostgreSQL (coming soon) via Entity Framework Core
 - **API Documentation:** OpenAPI/Swagger, Scalar
 - **Logging:** Serilog
 
@@ -76,6 +76,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **[Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md)** - Port configuration
 - **[Database Guide](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
 - **[V2 GameServer Lifecycle](guides/V2-GameServer-Lifecycle.md)** - Create, edit, and view V2 servers
+- **[V2 Ports & Web Hosts](guides/V2-Ports-And-WebHosts.md)** - Configure revision ports, port mappings, and web hosts
 - **[Terminal & Console](guides/Terminal-And-Console.md)** - Interactive terminal and TTY console
 - **[File Manager](guides/File-Manager.md)** - Browse and edit server files
 - **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - Push-based agent registration and heartbeats
@@ -341,6 +342,18 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **Target Framework:** .NET 10  
 **Status:** Active Development  
 **Last Updated:** March 2026
+
+### Recently Completed
+
+- ✅ Legacy V1 persistence fully removed
+- ✅ `Docker.DotNet.Enhanced` 4.3.3 adopted across agent and primary service
+- ✅ Shared multi-subscriber streaming aggregators for:
+  - Resource monitoring (`/hubs/resources`)
+  - Server logs (`/hubs/serverlogs`)
+  - Container attach (`/hubs/attach`)
+- ✅ Per-user interactive exec shell preserved at `/hubs/terminal`
+- ✅ NSwag-generated REST client aligned with current V2 API surface
+- ✅ V2 repository initialization handles SQLite/MySQL legacy-schema repair
 
 ### Roadmap
 

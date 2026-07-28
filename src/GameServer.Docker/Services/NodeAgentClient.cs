@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace GameServer.Docker.Services
 {
     /// <summary>
-    /// SignalR client for connecting to Node Agent hubs for real-time container data.
-    /// Manages persistent connections and provides streaming methods for logs and stats.
+    /// SignalR and WebSocket client for connecting to Node Agents for real-time container data.
+    /// Manages persistent SignalR connections and provides streaming methods for logs, stats,
+    /// and direct WebSocket attach streams.
     /// </summary>
     public class NodeAgentClient : IAsyncDisposable
     {
@@ -230,6 +233,105 @@ namespace GameServer.Docker.Services
                 containerId,
                 tailLines,
                 cancellationToken);
+        }
+
+        /// <summary>
+        /// Establishes a direct WebSocket connection to the agent's container attach endpoint
+        /// and yields text frames received from the container's stdout/stderr.
+        /// </summary>
+        /// <param name="agentUrl">Agent base URL (e.g. http://agent:8080)</param>
+        /// <param name="containerId">Container ID</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Async enumerable of text frames from the attach stream</returns>
+        public async IAsyncEnumerable<string> StreamContainerAttachAsync(
+            string agentUrl,
+            string containerId,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(agentUrl);
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+
+            var wsUrl = BuildAgentWebSocketUrl(agentUrl, $"/containers/{containerId}/attach/ws");
+            _logger.LogInformation(
+                "Opening attach WebSocket to {AgentUrl} for container {ContainerId}",
+                wsUrl, containerId);
+
+            using var webSocket = new ClientWebSocket();
+            await webSocket.ConnectAsync(new Uri(wsUrl), cancellationToken).ConfigureAwait(false);
+
+            var buffer = new byte[8192];
+            try
+            {
+                while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+                {
+                    var result = await webSocket.ReceiveAsync(
+                        new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
+
+                    if (result.MessageType == WebSocketMessageType.Text)
+                    {
+                        var text = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                        yield return text;
+                    }
+                    else if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        _logger.LogDebug("Agent closed attach WebSocket for container {ContainerId}", containerId);
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                if (webSocket.State == WebSocketState.Open)
+                {
+                    try
+                    {
+                        await webSocket.CloseAsync(
+                            WebSocketCloseStatus.NormalClosure,
+                            "Client disconnecting",
+                            CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error closing attach WebSocket for container {ContainerId}", containerId);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sends input over a provided attach WebSocket. The caller owns the WebSocket lifecycle.
+        /// </summary>
+        public static async Task SendAttachInputAsync(
+            ClientWebSocket webSocket,
+            string input,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(webSocket);
+            ArgumentException.ThrowIfNullOrWhiteSpace(input);
+
+            if (webSocket.State != WebSocketState.Open)
+                throw new InvalidOperationException("Attach WebSocket is not open");
+
+            var bytes = Encoding.UTF8.GetBytes(input);
+            await webSocket.SendAsync(
+                new ArraySegment<byte>(bytes),
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private static string BuildAgentWebSocketUrl(string agentUrl, string path)
+        {
+            var baseUrl = agentUrl.TrimEnd('/');
+            if (baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                baseUrl = "wss://" + baseUrl.Substring(8);
+            else if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                baseUrl = "ws://" + baseUrl.Substring(7);
+            else if (!baseUrl.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) &&
+                     !baseUrl.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+                baseUrl = "ws://" + baseUrl;
+
+            return $"{baseUrl}{path}";
         }
 
         /// <summary>

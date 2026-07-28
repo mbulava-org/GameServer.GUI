@@ -93,9 +93,9 @@ namespace GameServer.Docker.Agent.Controllers
 
             var progress = new Progress<DockerModels.JSONMessage>(message =>
             {
-                if (!string.IsNullOrWhiteSpace(message.ErrorMessage))
+                if (message.Error is not null && !string.IsNullOrWhiteSpace(message.Error.Message))
                 {
-                    _logger.LogWarning("Image pull warning for {ImageReference}: {Message}", imageReference, message.ErrorMessage);
+                    _logger.LogWarning("Image pull warning for {ImageReference}: {Message}", imageReference, message.Error.Message);
                 }
             });
 

@@ -50,7 +50,9 @@ GameServer.GUI/
 | Agent heartbeats (30s interval) | ✅ Done | Real-time health tracking |
 | Agent capability filtering | ✅ Done | Agents report capabilities; orchestrator routes accordingly |
 | SQLite persistent storage | ✅ Done | Auto-created on first run; `--seed-database` flag |
-| PostgreSQL support | ✅ Done | `GameServer.DB.PostgreSql` project |
+| SQLite V2 support | ✅ Done | Default V2 provider |
+| MySQL V2 support | ✅ Done | Configuration-driven |
+| PostgreSQL V2 support | 🔲 Planned | `GameServer.DB.PostgreSql` project exists but not fully implemented |
 | Background DB initialization | ✅ Done | Non-blocking startup |
 | OpenAPI / Swagger / Scalar docs | ✅ Done | Available at `/swagger` |
 | Serilog structured logging | ✅ Done | |
@@ -159,12 +161,17 @@ GameServer.GUI/
 | File | Purpose |
 |---|---|
 | [Agent-QuickStart.md](docs/guides/Agent-QuickStart.md) | Deploy a node agent |
+| [Agent-Registration-Flow.md](docs/guides/Agent-Registration-Flow.md) | Push-based agent registration and heartbeats |
 | [DATABASE-INITIALIZATION.md](docs/guides/DATABASE-INITIALIZATION.md) | DB setup & seeding |
+| [File-Manager.md](docs/guides/File-Manager.md) | Browse and edit server files |
 | [GameType-Editor-Complete-Functionality-Guide.md](docs/guides/GameType-Editor-Complete-Functionality-Guide.md) | Using the GameType editor |
 | [GameType-Metadata-Complete-Guide.md](docs/guides/GameType-Metadata-Complete-Guide.md) | Extended metadata system |
 | [Port-Mapping-Integration-Guide.md](docs/guides/Port-Mapping-Integration-Guide.md) | Port relationships & configuration |
+| [Terminal-And-Console.md](docs/guides/Terminal-And-Console.md) | Interactive terminal and TTY console usage |
+| [V2-GameServer-Lifecycle.md](docs/guides/V2-GameServer-Lifecycle.md) | Create, edit, and view V2 game servers |
 | [V2-GameType-Assembly-Instructions.md](docs/guides/V2-GameType-Assembly-Instructions.md) | Building V2 game type packages |
 | [V2-GameType-Editor-Components.md](docs/guides/V2-GameType-Editor-Components.md) | V2 editor component reference |
+| [V2-Ports-And-WebHosts.md](docs/guides/V2-Ports-And-WebHosts.md) | Configure revision ports, port mappings, and web hosts |
 
 ### Reference (`docs/reference/`)
 | File | Purpose |

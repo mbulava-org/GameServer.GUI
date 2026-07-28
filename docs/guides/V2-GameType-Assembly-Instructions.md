@@ -123,6 +123,8 @@ In the `Web Hosts` tab:
   - `ContainerPortVariable`
 - name and path segment should remain human-readable and predictable
 
+See [V2 Ports & Web Hosts](V2-Ports-And-WebHosts.md) for a detailed walkthrough of the Ports, Settings Port Mappings, and Web Hosts tabs.
+
 ## 7. Use detection when available
 In the `Detection` tab:
 - this tab appears before `Basic` and is only enabled when the GameType `Type` is `docker`

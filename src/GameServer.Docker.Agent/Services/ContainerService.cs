@@ -78,17 +78,17 @@ namespace GameServer.Docker.Agent.Services
                 var stats = response;
 
                 // Parse and return formatted stats
-                var cpuDelta = stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage;
-                var systemDelta = stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage;
+                var cpuDelta = (stats.CPUStats.CPUUsage.TotalUsage) - (stats.PreCPUStats.CPUUsage.TotalUsage);
+                var systemDelta = (stats.CPUStats.SystemUsage ?? 0) - (stats.PreCPUStats.SystemUsage ?? 0);
                 var cpuPercent = 0.0;
 
                 if (systemDelta > 0 && cpuDelta > 0)
                 {
-                    cpuPercent = (double)cpuDelta / systemDelta * (stats.CPUStats.CPUUsage.PercpuUsage?.Count?? 1) * 100.0;
+                    cpuPercent = (double)cpuDelta / systemDelta * (stats.CPUStats.CPUUsage.PercpuUsage?.Count ?? 1) * 100.0;
                 }
 
-                var memoryUsage = stats.MemoryStats.Usage;
-                var memoryLimit = stats.MemoryStats.Limit;
+                var memoryUsage = stats.MemoryStats.Usage ?? 0;
+                var memoryLimit = stats.MemoryStats.Limit ?? 0;
                 var memoryPercent = memoryLimit > 0 ? (double)memoryUsage / memoryLimit * 100.0 : 0.0;
 
                 // Network I/O
@@ -114,15 +114,15 @@ namespace GameServer.Docker.Agent.Services
                     {
                         UsagePercent = Math.Round(cpuPercent, 2),
                         TotalUsage = stats.CPUStats.CPUUsage.TotalUsage,
-                        SystemUsage = stats.CPUStats.SystemUsage,
-                        OnlineCpus = stats.CPUStats.OnlineCPUs
+                        SystemUsage = stats.CPUStats.SystemUsage ?? 0,
+                        OnlineCpus = stats.CPUStats.OnlineCPUs ?? 0
                     },
                     Memory = new Models.MemoryStats
                     {
                         UsageBytes = memoryUsage,
                         LimitBytes = memoryLimit,
                         UsagePercent = Math.Round(memoryPercent, 2),
-                        MaxUsageBytes = stats.MemoryStats.MaxUsage
+                        MaxUsageBytes = stats.MemoryStats.MaxUsage ?? 0
                     },
                     Network = new Models.NetworkStats
                     {
@@ -166,7 +166,7 @@ namespace GameServer.Docker.Agent.Services
                     {
                         // Calculate CPU percentage
                         var cpuDelta = stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage;
-                        var systemDelta = stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage;
+                        var systemDelta = (stats.CPUStats.SystemUsage ?? 0) - (stats.PreCPUStats.SystemUsage ?? 0);
                         var cpuPercent = 0.0;
 
                         if (systemDelta > 0 && cpuDelta > 0)
@@ -174,8 +174,8 @@ namespace GameServer.Docker.Agent.Services
                             cpuPercent = (double)cpuDelta / systemDelta * (stats.CPUStats.CPUUsage.PercpuUsage?.Count ?? 1) * 100.0;
                         }
 
-                        var memoryUsage = stats.MemoryStats.Usage;
-                        var memoryLimit = stats.MemoryStats.Limit;
+                        var memoryUsage = stats.MemoryStats.Usage ?? 0;
+                        var memoryLimit = stats.MemoryStats.Limit ?? 0;
                         var memoryPercent = memoryLimit > 0 ? (double)memoryUsage / memoryLimit * 100.0 : 0.0;
 
                         // Network I/O
@@ -198,15 +198,15 @@ namespace GameServer.Docker.Agent.Services
                             {
                                 UsagePercent = Math.Round(cpuPercent, 2),
                                 TotalUsage = stats.CPUStats.CPUUsage.TotalUsage,
-                                SystemUsage = stats.CPUStats.SystemUsage,
-                                OnlineCpus = stats.CPUStats.OnlineCPUs
+                                SystemUsage = stats.CPUStats.SystemUsage ?? 0,
+                                OnlineCpus = stats.CPUStats.OnlineCPUs ?? 0
                             },
                             Memory = new Models.MemoryStats
                             {
                                 UsageBytes = memoryUsage,
                                 LimitBytes = memoryLimit,
                                 UsagePercent = Math.Round(memoryPercent, 2),
-                                MaxUsageBytes = stats.MemoryStats.MaxUsage
+                                MaxUsageBytes = stats.MemoryStats.MaxUsage ?? 0
                             },
                             Network = new Models.NetworkStats
                             {
@@ -290,8 +290,8 @@ namespace GameServer.Docker.Agent.Services
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(10));
 
-            // Use the new API that properly handles TTY demultiplexing
-            var logsStream = await _dockerClient.Containers.GetContainerLogsAsync(containerId, false, logsParams, cts.Token);
+            // Use the Enhanced API that returns a MultiplexedStream directly
+            var logsStream = await _dockerClient.Containers.GetContainerLogsAsync(containerId, logsParams, cts.Token);
 
             // The new API returns MultiplexedStream directly
             using var stdoutStream = new MemoryStream();
@@ -354,9 +354,8 @@ namespace GameServer.Docker.Agent.Services
                 
                 // Get the multiplexed log stream from Docker
                 logsStream = await _dockerClient.Containers.GetContainerLogsAsync(
-                    containerId, 
-                    false, // tty = false for proper demultiplexing
-                    logsParams, 
+                    containerId,
+                    logsParams,
                     cancellationToken);
 
                 _logger.LogDebug("Successfully got log stream from Docker, starting to read");

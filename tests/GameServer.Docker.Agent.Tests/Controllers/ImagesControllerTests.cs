@@ -37,7 +37,7 @@ public class ImagesControllerTests
             .ReturnsAsync(new DockerModels.ImageInspectResponse
             {
                 RepoDigests = ["itzg/minecraft-server@sha256:test"],
-                Config = new DockerModels.Config
+                Config = new DockerModels.DockerOCIImageConfig
                 {
                     Env = ["EULA=TRUE"],
                     ExposedPorts = new Dictionary<string, DockerModels.EmptyStruct>
@@ -82,7 +82,7 @@ public class ImagesControllerTests
             .ReturnsAsync(new DockerModels.ImageInspectResponse
             {
                 RepoDigests = ["itzg/minecraft-server@sha256:test"],
-                Config = new DockerModels.Config
+                Config = new DockerModels.DockerOCIImageConfig
                 {
                     Env = ["EULA=TRUE"],
                     ExposedPorts = new Dictionary<string, DockerModels.EmptyStruct>

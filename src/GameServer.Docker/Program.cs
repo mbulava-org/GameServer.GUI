@@ -111,16 +111,6 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<ServiceOperationsViaDirect>();
                 builder.Services.AddSingleton<ServiceOperationsViaAgent>();
 
-                // DockerServiceHelper - Changed to Scoped because it depends on IGameTypeRepository (Scoped)
-                builder.Services.AddScoped<DockerServiceHelper>();
-                builder.Services.AddSingleton<WebHostResolver>();
-
-                // File Management - Changed to Scoped because it depends on DockerServiceHelper
-                builder.Services.AddScoped<IGameServerFileManager, GameServerFileManagerService>();
-
-                // Server Management - Changed to Scoped because it depends on DockerServiceHelper
-                builder.Services.AddScoped<IGameServerManager, GameServerManagerService>();
-
                 // Node Agent Discovery (for real-time container stats)
                 // Registered as both singleton and hosted service for background discovery
                 // HttpClient instances are created per node agent for optimal connection pooling
@@ -159,9 +149,6 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<NodeAgentClient>();
                 builder.Services.AddHostedService<Services.AgentShutdownNotificationService>();
 
-                // Add Resource Monitoring - Changed to Scoped because it depends on DockerServiceHelper
-                builder.Services.AddScoped<IGameServerResourceMonitor, GameServerResourceMonitorService>();
-
                 // PortAllocator - Conditionally provide IDockerClient
                 builder.Services.AddSingleton<PortAllocator>();/* sp =>
                 {
@@ -174,40 +161,7 @@ namespace GameServer.Docker
                     return new PortAllocator(dockerClient, portOptions);
                 });*/
 
-                // Add legacy SQLite database for the current GameType management implementation
-                var connectionString = builder.Configuration.GetConnectionString("GameServerDb") 
-                    ?? "Data Source=./data/gameserver.db";//let this default to a sub path to avoid NSwag build errors.
-                
-                // Optimize SQLite connection string for performance
-                var optimizedConnectionString = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString)
-                {
-                    Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
-                    Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared,
-                    Pooling = true
-                }.ToString();
-                
-                builder.Services.AddDbContext<Data.GameServerDbContext>(options =>
-                {
-                    options.UseSqlite(optimizedConnectionString, sqliteOptions =>
-                    {
-                        sqliteOptions.CommandTimeout(30); // 30 second timeout
-
-                        // Use SplitQuery to prevent cartesian explosion with multiple collections
-                        // This fixes the EF Core warning about QuerySplittingBehavior
-                        sqliteOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
-                    });
-
-                    // Disable sensitive data logging in production for performance
-                    if (builder.Environment.IsDevelopment())
-                    {
-                        options.EnableSensitiveDataLogging();
-                    }
-
-                    // Lazy initialization - don't validate connections during service registration
-                    options.EnableServiceProviderCaching(false);
-                });
-
-                // Add separate V2 database context for the new persistence implementation.
+                // Add V2 database context for the persistence implementation.
                 // Provider selection is isolated from the legacy DbContext so both paths can coexist.
                 builder.Services.AddDbContext<DataV2.GameServerV2DbContext>((serviceProvider, options) =>
                 {
@@ -241,10 +195,9 @@ namespace GameServer.Docker
                     options.EnableServiceProviderCaching(false);
                 });
 
-                // Add GameType Repository (database-backed) - This replaces file-based registries
+                // Add V2 repositories
                 // Register IMemoryCache for GameType caching
                 builder.Services.AddMemoryCache();
-                builder.Services.AddScoped<Repositories.IGameTypeRepository, Repositories.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
                 builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
@@ -259,12 +212,11 @@ namespace GameServer.Docker
                         sp.GetRequiredService<IHttpClientFactory>(),
                         sp.GetRequiredService<ILogger<ServicesV2Detection.GameTypeSetupDetectionService>>()));
 
-                // Keep file-based registries as fallback/migration helpers (optional)
-                // builder.Services.AddSingleton<IGameTypeRegistry, GaneTypeRegistryFile>();
-                // builder.Services.AddSingleton<IGameTypeExtendedMetadataRegistry, GameTypeExtendedMetadataRegistryFile>();
-
-                // GameTypeMetadataApplier - Changed to Scoped because it depends on IGameTypeRepository (Scoped)
-                builder.Services.AddScoped<GameTypeMetadataApplier>();
+                // V2-compatible resource monitor/aggregator for SignalR streaming hubs
+                builder.Services.AddScoped<Interfaces.IServerResourceMonitor, ServicesV2.ServerResourceMonitor>();
+                builder.Services.AddSingleton<Interfaces.IServerResourceAggregator, ServicesV2.ServerResourceAggregator>();
+                builder.Services.AddSingleton<Interfaces.IServerLogAggregator, ServicesV2.ServerLogAggregator>();
+                builder.Services.AddSingleton<Interfaces.IContainerAttachAggregator, ServicesV2.ContainerAttachAggregator>();
 
                 // Database Initialization - Runs in background after webhost starts
                 // This allows the webhost and SignalR hubs to be available immediately
@@ -280,7 +232,6 @@ namespace GameServer.Docker
                 if (!skipDbInit)
                 {
                     builder.Services.AddHostedService<Services.DatabaseInitializationService>();
-                    builder.Services.AddHostedService<Services.V1ToV2MigrationService>();
                 }
                 else
                 {
@@ -392,8 +343,8 @@ namespace GameServer.Docker
                 app.UseAuthorization();
 
                 // Map SignalR hubs
-                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");   // TTY attach (read-only)
-                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell
+                app.MapHub<Hubs.ContainerAttachHub>("/hubs/attach");      // Shared multi-subscriber container attach
+                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell (per-user)
                 app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
                 app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
                 app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration"); // Agent registration

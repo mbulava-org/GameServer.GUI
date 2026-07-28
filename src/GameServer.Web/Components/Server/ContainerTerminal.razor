@@ -1,10 +1,11 @@
-@using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
 @using GameServer.Web.Configurations
+@using GameServer.Docker.Client.Interfaces
 @using XtermBlazor
 @using Radzen
 @inject IOptions<GameServerDockerApi> ApiConfig
+@inject IContainerTerminalClient TerminalClient
 @inject NotificationService NotificationService
 @inject ILogger<ContainerTerminal> Logger
 @implements IAsyncDisposable
@@ -156,7 +157,6 @@
         AllowTransparency = false,
     };
 
-    private HubConnection? hubConnection;
     private bool isConnected = false;
     private bool isConnecting = false;
     private string? sessionId;
@@ -201,49 +201,26 @@
 
         try
         {
-            // Build hub URL
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
             var hubUrl = $"{baseUri}/hubs/terminal";
 
             Logger.LogInformation("Connecting to terminal hub at {HubUrl} for container {ContainerId}", hubUrl, ContainerId);
 
-            // Create SignalR connection
-            hubConnection = new HubConnectionBuilder()
-                .WithUrl(hubUrl)
-                .WithAutomaticReconnect()
-                .Build();
-
-            // Handle incoming data from container
-            hubConnection.On<string>("Output", async (data) =>
-            {
-                if (terminal != null)
-                {
-                    await terminal.Write(data);
-                }
-            });
-
-            // Handle session started
-            hubConnection.On<string>("SessionStarted", (sid) =>
-            {
-                sessionId = sid;
-                Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
-            });
-
-            // Handle errors
-            hubConnection.On<string>("Error", async (error) =>
-            {
-                await WriteError($"Error: {error}");
-            });
-
-            // Connect to hub
             cts = new CancellationTokenSource();
-            await hubConnection.StartAsync(cts.Token);
 
-            // Start exec session
-            await hubConnection.InvokeAsync("StartExecSession", ContainerId, Shell, cts.Token);
+            WireTerminalEvents();
+
+            await TerminalClient.ConnectAsync(cts.Token);
+            var sessionStarted = await TerminalClient.StartExecSessionAsync(ContainerId, Shell, cts.Token);
+
+            if (!sessionStarted)
+            {
+                throw new InvalidOperationException("Server declined to start exec session");
+            }
 
             isConnected = true;
             isConnecting = false;
+            sessionId = TerminalClient.ConnectionId;
 
             await WriteSuccess($"Connected! Shell session active.\n");
 
@@ -278,13 +255,12 @@
 
     private async Task OnTerminalData(string data)
     {
-        if (!isConnected || hubConnection == null || string.IsNullOrEmpty(sessionId))
+        if (!isConnected || !TerminalClient.IsConnected)
             return;
 
         try
         {
-            // Send input to container
-            await hubConnection.InvokeAsync("SendInput", sessionId, data);
+            await TerminalClient.SendInputAsync(data);
         }
         catch (Exception ex)
         {
@@ -294,26 +270,59 @@
 
     private async Task DisconnectAsync()
     {
-        if (hubConnection != null && !string.IsNullOrEmpty(sessionId))
+        try
         {
-            try
-            {
-                await hubConnection.InvokeAsync("StopExecSession", sessionId);
-            }
-            catch { }
+            await TerminalClient.DisconnectAsync();
         }
+        catch { }
 
         isConnected = false;
         cts?.Cancel();
-
-        if (hubConnection != null)
-        {
-            await hubConnection.DisposeAsync();
-            hubConnection = null;
-        }
+        sessionId = null;
 
         await WriteInfo("Disconnected from terminal");
         StateHasChanged();
+    }
+
+    private void WireTerminalEvents()
+    {
+        TerminalClient.OutputReceived -= OnTerminalOutput;
+        TerminalClient.OutputReceived += OnTerminalOutput;
+
+        TerminalClient.ErrorReceived -= OnTerminalError;
+        TerminalClient.ErrorReceived += OnTerminalError;
+
+        TerminalClient.SessionStarted -= OnTerminalSessionStarted;
+        TerminalClient.SessionStarted += OnTerminalSessionStarted;
+
+        TerminalClient.Disconnected -= OnTerminalDisconnected;
+        TerminalClient.Disconnected += OnTerminalDisconnected;
+    }
+
+    private async void OnTerminalOutput(object? sender, string data)
+    {
+        if (terminal != null)
+        {
+            await terminal.Write(data);
+        }
+    }
+
+    private async void OnTerminalError(object? sender, string error)
+    {
+        await WriteError($"Error: {error}");
+    }
+
+    private void OnTerminalSessionStarted(object? sender, string sid)
+    {
+        sessionId = sid;
+        Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
+    }
+
+    private async void OnTerminalDisconnected(object? sender, string message)
+    {
+        isConnected = false;
+        await WriteInfo($"Disconnected: {message}");
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ClearTerminal()
@@ -348,9 +357,14 @@
         cts?.Cancel();
         cts?.Dispose();
 
-        if (hubConnection != null)
+        TerminalClient.OutputReceived -= OnTerminalOutput;
+        TerminalClient.ErrorReceived -= OnTerminalError;
+        TerminalClient.SessionStarted -= OnTerminalSessionStarted;
+        TerminalClient.Disconnected -= OnTerminalDisconnected;
+
+        if (TerminalClient is IAsyncDisposable disposable)
         {
-            await hubConnection.DisposeAsync();
+            await disposable.DisposeAsync();
         }
     }
 }

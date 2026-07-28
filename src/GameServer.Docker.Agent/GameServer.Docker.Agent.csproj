@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+    <PackageReference Include="Docker.DotNet.Enhanced" Version="4.3.3" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>

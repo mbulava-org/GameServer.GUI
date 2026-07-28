@@ -8,9 +8,9 @@ namespace GameServer.Docker.Services
         public DockerClient Create()
         {
             logger.LogInformation("Creating DockerClient Instance.");
-            return new DockerClientConfiguration(
-                new Uri(dockerConnectionOptions.Value.Uri)
-            ).CreateClient();
+            return new DockerClientBuilder()
+                .WithEndpoint(new Uri(dockerConnectionOptions.Value.Uri))
+                .Build();
         }
     }
 
