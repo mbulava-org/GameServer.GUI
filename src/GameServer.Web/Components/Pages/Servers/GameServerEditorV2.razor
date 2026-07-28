@@ -148,7 +148,7 @@
 
                 <RadzenCard>
                     <h5 class="mb-3">Volume Binding Layout</h5>
-                    <p class="small text-muted mb-2">Choose how persistent volumes are bound when this server is deployed. <strong>Standard</strong> uses NFS storage so data survives server restarts and stops. <strong>Local</strong> maps directly to the Docker host filesystem.</p>
+                    <p class="small text-muted mb-2">Choose how persistent volumes are bound when this server is deployed. <strong>Standard</strong> uses NFS storage so data survives server restarts and stops. <strong>Local</strong> maps directly to the Docker host filesystem. Volume setup details are defined on the GameType revision; this page only selects the layout.</p>
                     <div class="mb-3">
                         <RadzenFormField Text="Binding Layout" Variant="Variant.Outlined" class="w-100">
                             <RadzenDropDown TValue="string"
@@ -182,8 +182,34 @@
                     @if (volumeBindingLayout == VolumeLayoutLocal)
                     {
                         <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mt-2 mb-0">
-                            Local binding maps volume paths directly onto the Docker host. Data may be lost if the host is replaced or the server is migrated to a different node.
+                            Local binding maps volume paths directly onto the Docker host. Ownership and permissions can be enforced, but data may be lost if the host is replaced or the server is migrated to a different node.
                         </RadzenAlert>
+                    }
+
+                    @if (validationResult?.ResolvedVolumes.Any() == true)
+                    {
+                        <h6 class="mt-3 mb-2">Resolved Mounts</h6>
+                        <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-2">
+                            These mounts are calculated from the GameType revision volume setup and your selected layout. Changing layout here does not modify already-deployed volumes.
+                        </RadzenAlert>
+                        @foreach (var volume in validationResult.ResolvedVolumes)
+                        {
+                            <div class="small border rounded p-2 mb-2">
+                                <div><strong>Container:</strong> <code>@volume.ContainerPath</code></div>
+                                <div><strong>Host/Source:</strong> <code>@volume.Source</code></div>
+                                <div>
+                                    <span class="text-muted">@volume.MountType · @(volume.ReadOnly ? "read-only" : "read/write")</span>
+                                    @if (!string.IsNullOrWhiteSpace(volume.Permissions))
+                                    {
+                                        <span class="text-muted"> · @volume.Permissions</span>
+                                    }
+                                    @if (volume.OwnerUid.HasValue || volume.OwnerGid.HasValue)
+                                    {
+                                        <span class="text-muted"> · uid:@(volume.OwnerUid?.ToString() ?? "-") gid:@(volume.OwnerGid?.ToString() ?? "-")</span>
+                                    }
+                                </div>
+                            </div>
+                        }
                     }
                 </RadzenCard>
             </div>
@@ -277,15 +303,11 @@
                                                                  Variant="Variant.Outlined" />
                                                 </div>
                                                 <ul class="mb-0 ps-3">
-                                                    @foreach (var volume in validationResult.ResolvedVolumes.OrderBy(volume => volume.DisplayOrder))
+                                                    @foreach (var volume in validationResult.ResolvedVolumes)
                                                     {
                                                         <li>
-                                                            <code>@volume.Source</code>
+                                                            <code>@volume.ContainerPath</code> &rarr; <code>@volume.Source</code>
                                                             <span class="text-muted small"> — @volume.Usage</span>
-                                                            @if (!string.IsNullOrWhiteSpace(volume.Description))
-                                                            {
-                                                                <div class="small text-muted">@volume.Description</div>
-                                                            }
                                                         </li>
                                                     }
                                                 </ul>
@@ -611,36 +633,13 @@
                     Value = draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue
                 })
                 .ToList(),
-            DockerVolumeOptions = BuildDockerVolumeOptions(),
+            VolumeBindingLayout = NormalizeVolumeLayout(volumeBindingLayout),
             NetworkOptions = []
         };
     }
 
-    private List<GameServerConfigurationOption> BuildDockerVolumeOptions()
-    {
-        if (volumeBindingLayout == VolumeLayoutStandard)
-        {
-            var addr = string.IsNullOrWhiteSpace(nfsAddress) ? string.Empty : nfsAddress.Trim();
-            var device = string.IsNullOrWhiteSpace(nfsExportPath) ? string.Empty : nfsExportPath.Trim();
-            var mountOpts = string.IsNullOrWhiteSpace(nfsMountOptions) ? "rw" : nfsMountOptions.Trim();
-            var oOption = string.IsNullOrWhiteSpace(addr) ? mountOpts : $"addr={addr},{mountOpts}";
-
-            return
-            [
-                new GameServerConfigurationOption { Key = "layout", DisplayName = "Binding Layout", Value = "standard", Required = false },
-                new GameServerConfigurationOption { Key = "driver", DisplayName = "Volume Driver Name", Value = "local", Required = false },
-                new GameServerConfigurationOption { Key = "type", DisplayName = "Volume Type", Value = "nfs", Required = false },
-                new GameServerConfigurationOption { Key = "device", DisplayName = "NFS Device Path", Value = device, Required = true },
-                new GameServerConfigurationOption { Key = "o", DisplayName = "Mount Options", Value = oOption, Required = false },
-            ];
-        }
-
-        // Local layout — pass a marker key so the backend knows it's explicit local
-        return
-        [
-            new GameServerConfigurationOption { Key = "layout", DisplayName = "Binding Layout", Value = "local", Required = false }
-        ];
-    }
+    private static string NormalizeVolumeLayout(string layout) =>
+        string.Equals(layout, VolumeLayoutLocal, StringComparison.OrdinalIgnoreCase) ? "local" : "standard";
 
     private Task OnVolumeBindingLayoutChanged(object? value)
     {
@@ -650,33 +649,12 @@
 
     private void LoadVolumeBindingFromOptions(IEnumerable<GameServerConfigurationOption> options)
     {
+        // Legacy key/value volume options are no longer the source of truth.
+        // Volume layout is now derived from the dedicated VolumeBindingLayout field when available.
         var optionMap = options.ToDictionary(o => o.Key, o => o.Value, StringComparer.OrdinalIgnoreCase);
         if (optionMap.TryGetValue("layout", out var layout) && string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase))
         {
             volumeBindingLayout = VolumeLayoutLocal;
-            return;
-        }
-
-        volumeBindingLayout = VolumeLayoutStandard;
-        if (optionMap.TryGetValue("device", out var device))
-        {
-            nfsExportPath = device ?? string.Empty;
-        }
-
-        if (optionMap.TryGetValue("o", out var oOption) && !string.IsNullOrWhiteSpace(oOption))
-        {
-            // Extract addr= from mount options
-            var parts = oOption!.Split(',');
-            var addrPart = parts.FirstOrDefault(p => p.TrimStart().StartsWith("addr=", StringComparison.OrdinalIgnoreCase));
-            if (addrPart is not null)
-            {
-                nfsAddress = addrPart.Trim()[5..]; // strip "addr="
-                nfsMountOptions = string.Join(",", parts.Where(p => !p.TrimStart().StartsWith("addr=", StringComparison.OrdinalIgnoreCase)));
-            }
-            else
-            {
-                nfsMountOptions = oOption;
-            }
         }
     }
 

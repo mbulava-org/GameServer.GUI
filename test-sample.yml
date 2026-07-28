@@ -86,13 +86,11 @@ services:
       # Legacy SQLite kept for reference; V2 uses PostgreSQL above
       - ConnectionStrings__GameServerDb=Data Source=/data/test-data/gameserver-test.db
 
-      - VolumeDriverConfigOptions__Name=local
-      - VolumeDriverConfigOptions__Options__type=nfs
-      - VolumeDriverConfigOptions__Options__o=addr=192.168.53.235,rw,nfsvers=3,soft,sync,noatime
-      - VolumeDriverConfigOptions__Options__device=:{RootStoragePath}/{gameTypeKey}/{serverId}/{Source}
-      - VolumeDriverConfigOptions__RootStoragePath=/volume1/newdev-docker/gameservers
-      - VolumeDriverConfigOptions__SubPathFormat={gameTypeKey}/{serverId}/{Source}
-      - VolumeDriverConfigOptions__LocalStoragePath=/data
+      # Mount type configuration now lives in the V2 database (MountTypeConfigs table).
+      # Seed defaults exist for volume/bind/tmpfs/nfs; configure or extend them through
+      # the /settings/mount-types UI or the api/v2/mounttypeconfigs endpoints instead of
+      # environment variables.
+      # - VolumeDriverConfigOptions__Name=local      # removed
 
       - NetworkOptions__NetworkName=gameserver-network-test
       - NetworkOptions__LoadBalancerNetwork=external-2

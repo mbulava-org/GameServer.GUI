@@ -5,7 +5,6 @@ using System.Text.Json;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services.V2;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace GameServer.Web.Tests.Services.V2;
@@ -128,10 +127,10 @@ public class GameServerV2ApiServiceTests
                 BaseAddress = new Uri("http://localhost/")
             });
 
-        var options = Options.Create(new GameServerDockerApi
+        var options = new GameServerDockerApi
         {
             BaseUri = "http://localhost/"
-        });
+        };
 
         return new GameServerV2ApiService(httpClientFactory.Object, options);
     }

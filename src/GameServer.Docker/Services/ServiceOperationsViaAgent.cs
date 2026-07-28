@@ -101,6 +101,7 @@ namespace GameServer.Docker.Services
                 Env = parameters.Service.TaskTemplate?.ContainerSpec?.Env != null
                     ? ParseEnvironmentVariables(parameters.Service.TaskTemplate.ContainerSpec.Env)
                     : null,
+                Mounts = ConvertMounts(parameters.Service.TaskTemplate?.ContainerSpec?.Mounts),
                 Resources = ConvertResources(parameters.Service.TaskTemplate?.Resources),
                 ForceUpdate = parameters.Service.TaskTemplate?.ForceUpdate > 0
             };
@@ -493,13 +494,15 @@ namespace GameServer.Docker.Services
                 Source = m.Source,
                 Target = m.Target,
                 ReadOnly = m.ReadOnly,
-                VolumeOptions = m.VolumeOptions != null
-                    ? new Dictionary<string, string>
-                    {
-                        ["driver"] = m.VolumeOptions.DriverConfig?.Name ?? "local"
-                    }.Concat(m.VolumeOptions.DriverConfig?.Options ?? new Dictionary<string, string>())
-                        .ToDictionary(kv => kv.Key, kv => kv.Value)
-                    : null
+                DriverName = m.VolumeOptions?.DriverConfig?.Name,
+                VolumeOptions = m.VolumeOptions?.DriverConfig?.Options != null
+                    ? new Dictionary<string, string>(m.VolumeOptions.DriverConfig.Options)
+                    : null,
+                m.VolumeOptions?.Labels,
+                OwnerUid = (int?)null,
+                OwnerGid = (int?)null,
+                Permissions = (string?)null,
+                InitMode = "none"
             }).Cast<object>().ToList();
         }
 

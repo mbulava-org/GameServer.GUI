@@ -39,7 +39,11 @@ public class GameServerV2DbContext : DbContext
 
     public DbSet<GameServerEntity> GameServers { get; set; }
 
+    public DbSet<GameServerVolumeEntity> GameServerVolumes { get; set; }
+
     public DbSet<GameServerSettingEntity> GameServerSettings { get; set; }
+
+    public DbSet<MountTypeConfigEntity> MountTypeConfigs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -128,6 +132,37 @@ public class GameServerV2DbContext : DbContext
             entity.HasIndex(e => e.GameTypeRevisionId);
             entity.Property(e => e.Source).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Usage).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.MountType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Permissions).HasMaxLength(10);
+
+            // Soft FK to MountTypeConfigs; keep optional so existing data loads.
+            entity.HasOne<MountTypeConfigEntity>()
+                .WithMany()
+                .HasForeignKey(e => e.MountType)
+                .HasConstraintName("FK_GameTypeVolumes_MountTypeConfigs_MountType")
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<GameServerVolumeEntity>(entity =>
+        {
+            entity.ToTable("GameServerVolumes");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.GameServerId);
+            entity.HasIndex(e => new { e.GameServerId, e.ContainerPath }).IsUnique();
+            entity.Property(e => e.Usage).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.ContainerPath).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.MountType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Driver).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Permissions).HasMaxLength(10);
+            entity.Property(e => e.InitMode).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.SeedSourcePath).HasMaxLength(500);
+
+            entity.HasOne(e => e.GameServer)
+                .WithMany(e => e.Volumes)
+                .HasForeignKey(e => e.GameServerId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<GameTypeSettingDefinitionEntity>(entity =>
@@ -208,6 +243,73 @@ public class GameServerV2DbContext : DbContext
             entity.HasIndex(e => new { e.GameServerId, e.SettingKey }).IsUnique();
             entity.Property(e => e.SettingKey).IsRequired().HasMaxLength(200);
         });
+
+        modelBuilder.Entity<MountTypeConfigEntity>(entity =>
+        {
+            entity.ToTable("MountTypeConfigs");
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Driver).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.SourcePathTemplate).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ContainerPathTemplate).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.DefaultInitMode).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.DefaultPermissions).HasMaxLength(10);
+            entity.Property(e => e.DefaultOwnerUid);
+            entity.Property(e => e.DefaultOwnerGid);
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+            ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
+
+            entity.HasData(
+                new MountTypeConfigEntity
+                {
+                    Key = "volume",
+                    DisplayName = "Docker volume",
+                    Driver = "local",
+                    DriverOptionsJson = null,
+                    SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
+                    ContainerPathTemplate = "{Source}",
+                    DefaultReadOnly = false,
+                    DefaultInitMode = "none",
+                    IsActive = true
+                },
+                new MountTypeConfigEntity
+                {
+                    Key = "bind",
+                    DisplayName = "Bind mount",
+                    Driver = "local",
+                    DriverOptionsJson = null,
+                    SourcePathTemplate = "/host/gameservers/{gameTypeKey}/{serverId}/{Source}",
+                    ContainerPathTemplate = "{Source}",
+                    DefaultReadOnly = false,
+                    DefaultInitMode = "none",
+                    IsActive = true
+                },
+                new MountTypeConfigEntity
+                {
+                    Key = "tmpfs",
+                    DisplayName = "tmpfs",
+                    Driver = "local",
+                    DriverOptionsJson = null,
+                    SourcePathTemplate = string.Empty,
+                    ContainerPathTemplate = "{Source}",
+                    DefaultReadOnly = false,
+                    DefaultInitMode = "none",
+                    IsActive = true
+                },
+                new MountTypeConfigEntity
+                {
+                    Key = "nfs",
+                    DisplayName = "NFS volume",
+                    Driver = "vieux/sshfs",
+                    DriverOptionsJson = "{\"type\":\"nfs\",\"device\":\":/exported/path\",\"o\":\"addr=host.docker.internal,rw\"}",
+                    SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
+                    ContainerPathTemplate = "{Source}",
+                    DefaultReadOnly = false,
+                    DefaultInitMode = "none",
+                    IsActive = true
+                });
+        });
     }
 
     public override int SaveChanges()
@@ -233,6 +335,10 @@ public class GameServerV2DbContext : DbContext
             else if (entry.Entity is GameServerEntity gameServer)
             {
                 gameServer.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is MountTypeConfigEntity mountTypeConfig)
+            {
+                mountTypeConfig.UpdatedAt = DateTime.UtcNow;
             }
         }
     }

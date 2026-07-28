@@ -1,5 +1,6 @@
 using GameServerModel = GameServer.Docker.Models.V2.GameServer;
 using GameServerSettingModel = GameServer.Docker.Models.V2.GameServerSetting;
+using GameServerVolumeModel = GameServer.Docker.Models.V2.GameServerVolume;
 using Microsoft.EntityFrameworkCore;
 using DataV2 = GameServer.Docker.Data.V2;
 
@@ -53,7 +54,8 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             {
                 SettingKey = x.SettingKey,
                 Value = x.Value
-            }).ToList()
+            }).ToList(),
+            Volumes = server.Volumes.Select(MapVolumeToEntity).ToList()
         };
 
         context.GameServers.Add(entity);
@@ -96,6 +98,18 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             });
         }
 
+        // Preserve existing volume snapshots; merge new ContainerPaths only.
+        var existingVolumes = entity.Volumes.ToList();
+        foreach (var incoming in server.Volumes)
+        {
+            var existing = existingVolumes.FirstOrDefault(v =>
+                string.Equals(v.ContainerPath, incoming.ContainerPath, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+            {
+                entity.Volumes.Add(MapVolumeToEntity(incoming, entity.Id));
+            }
+        }
+
         await context.SaveChangesAsync();
 
         logger.LogInformation("Updated V2 GameServer {ServerId}", entity.ServerId);
@@ -127,7 +141,55 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
     {
         return context.GameServers
             .Include(x => x.Settings)
+            .Include(x => x.Volumes)
             .AsQueryable();
+    }
+
+    private static DataV2.GameServerVolumeEntity MapVolumeToEntity(GameServerVolumeModel model, int gameServerId = 0)
+    {
+        return new DataV2.GameServerVolumeEntity
+        {
+            GameServerId = gameServerId,
+            Usage = model.Usage,
+            ContainerPath = model.ContainerPath,
+            Source = model.Source,
+            MountType = model.MountType.ToString().ToLowerInvariant(),
+            ReadOnly = model.ReadOnly,
+            Driver = model.Driver,
+            DriverOptionsJson = model.DriverOptionsJson,
+            OwnerUid = model.OwnerUid,
+            OwnerGid = model.OwnerGid,
+            Permissions = model.Permissions,
+            InitMode = model.InitMode.ToString().ToLowerInvariant(),
+            SeedSourcePath = model.SeedSourcePath,
+            IsProvisioned = model.IsProvisioned,
+            CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt
+        };
+    }
+
+    private static GameServerVolumeModel MapVolumeToModel(DataV2.GameServerVolumeEntity entity)
+    {
+        return new GameServerVolumeModel
+        {
+            Id = entity.Id,
+            GameServerId = entity.GameServerId,
+            Usage = entity.Usage,
+            ContainerPath = entity.ContainerPath,
+            Source = entity.Source,
+            MountType = entity.MountType,
+            ReadOnly = entity.ReadOnly,
+            Driver = entity.Driver,
+            DriverOptionsJson = entity.DriverOptionsJson,
+            OwnerUid = entity.OwnerUid,
+            OwnerGid = entity.OwnerGid,
+            Permissions = entity.Permissions,
+            InitMode = Enum.TryParse<Models.V2.VolumeInitMode>(entity.InitMode, true, out var initMode)
+                ? initMode
+                : Models.V2.VolumeInitMode.None,
+            SeedSourcePath = entity.SeedSourcePath,
+            IsProvisioned = entity.IsProvisioned,
+            CreatedAt = entity.CreatedAt
+        };
     }
 
     private static void Validate(GameServerModel server)
@@ -174,7 +236,8 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 Id = x.Id,
                 SettingKey = x.SettingKey,
                 Value = x.Value
-            }).ToList()
+            }).ToList(),
+            Volumes = entity.Volumes.OrderBy(x => x.CreatedAt).Select(MapVolumeToModel).ToList()
         };
     }
 }

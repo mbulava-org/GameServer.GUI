@@ -6,7 +6,7 @@ using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace GameServer.Docker.Tests.Services.V2;
@@ -102,7 +102,8 @@ public class GameServerValidationServiceTests
         return new GameServerValidationService(
             gameTypeRepository.Object,
             serviceOperations.Object,
-            Options.Create(new PortAllocation { StartPort = 2000, EndPort = 100000 }));
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), NullLogger<VolumeSetupResolver>.Instance));
     }
 
     private static GameType CreateRevision()

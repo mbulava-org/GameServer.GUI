@@ -40,6 +40,18 @@ public sealed class GameTypeRevisionVolumeDraft
     public string? Description { get; set; }
 
     public string Usage { get; set; } = "config";
+
+    public string MountType { get; set; } = "volume";
+
+    public bool ReadOnly { get; set; }
+
+    public int? OwnerUid { get; set; }
+
+    public int? OwnerGid { get; set; }
+
+    public string? Permissions { get; set; }
+
+    public bool Required { get; set; } = true;
 }
 
 public sealed class GameTypeRevisionSettingDraft

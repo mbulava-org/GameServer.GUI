@@ -1,10 +1,9 @@
 using System.Net.Http.Json;
 using GameServer.Web.Models.V2;
-using Microsoft.Extensions.Options;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory, IOptions<Configurations.GameServerDockerApi> apiOptions)
+public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions)
 {
     /// <summary>
     /// Gets the V2 GameServer list.
@@ -85,14 +84,14 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
 
     private HttpClient CreateClient()
     {
-        var baseUri = apiOptions.Value.BaseUri;
+        var baseUri = apiOptions.BaseUri;
         if (string.IsNullOrWhiteSpace(baseUri))
         {
             throw new InvalidOperationException("GameServerDockerApi:BaseUri must be configured.");
         }
 
         var client = httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(baseUri, UriKind.Absolute);
+        client.BaseAddress = new Uri(baseUri);
         return client;
     }
 }

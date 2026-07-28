@@ -7,7 +7,6 @@ using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Moq;
 using Radzen;
 
@@ -191,12 +190,12 @@ public sealed class GameServerPagesV2Tests : BunitContext
         return new GameTypeV2ApiService(httpClientFactory.Object, CreateOptions());
     }
 
-    private static IOptions<GameServerDockerApi> CreateOptions()
+    private static GameServerDockerApi CreateOptions()
     {
-        return Options.Create(new GameServerDockerApi
+        return new GameServerDockerApi
         {
             BaseUri = "http://localhost/"
-        });
+        };
     }
 
     private static HttpResponseMessage CreateJsonResponse<T>(T payload)

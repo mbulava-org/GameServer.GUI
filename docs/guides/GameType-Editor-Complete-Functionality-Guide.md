@@ -4,6 +4,8 @@
 **Status:** ? **BUILD SUCCESSFUL - ALL ERRORS RESOLVED**  
 **Component:** GameServer.Web GameType Editor  
 
+> **Note:** This document describes the original (V1) GameType editor. The project now uses the **V2 GameType editor** (`/gametypes/v2`) and the V2 database schema. Some tables and APIs mentioned here (`DefaultSettings`, `ExtendedMetadata`, `PortValidation`, `PortRelationships`, `SettingMetadata`) have been removed from the primary API and replaced by V2 revision-based models.
+
 ---
 
 ## ? Build Status: SUCCESS
@@ -13,7 +15,7 @@ After regenerating the Docker.Client with the server running, all build errors h
 ```
 ? GameTypeEditorDialog.razor - WORKING
 ? GameTypeManager.razor - WORKING  
-? ExtendedMetadataEditor.razor - WORKING
+? V2 GameType Editor pages - WORKING (replaces legacy ExtendedMetadataEditor.razor)
 ? All client API methods available
 ```
 
@@ -55,16 +57,25 @@ Port: 25565, Protocol: udp, IsDefaultPort: false (query port)
 ```
 
 ### Tab 3: Volumes ?
-**What it does:** Configure persistent data storage
+**What it does:** Declare which persistent data paths the revision exposes and how each should be mounted.
+
+> This guide describes the V1 editor tab. The V2 game type editor edits revision-level **volume templates** (container source path, mount type code, read-only flag, optional ownership/permissions). The actual storage driver, path templates, and driver options are now configured separately in the [Mount Type Config Guide](Volume-Setup-Configuration.md).
 
 **Fields:**
-- **Source** - Host path or volume name
-- **Target** - Container path where volume is mounted
+- **Source** - Container path where the mount is attached (also used as the `{Source}` template token).
+- **Usage** - Logical label such as `worlds`, `config`, or `mods`.
+- **MountType** - Code referencing a row in the V2 `MountTypeConfigs` table (e.g. `volume`, `bind`, `tmpfs`, `nfs`).
+- **ReadOnly** - Whether the container cannot write to the mount.
+- **OwnerUid / OwnerGid / Permissions** - Optional ownership/permissions override for bind-mounts.
+- **Required** - Whether every server using this revision must define this volume.
 
 **Example:**
 ```
-Source: /data/servers/{serverId}/world
-Target: /data
+Source: /data/worlds
+Usage: worlds
+MountType: volume
+ReadOnly: false
+Required: true
 ```
 
 ### Tab 4: Default Settings ?

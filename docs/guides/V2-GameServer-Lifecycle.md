@@ -53,7 +53,7 @@ From the list or details page you can navigate to the editor. The editor lets yo
 - Selected published revision
 - Per-server setting overrides
 
-Port and volume configuration remains derived from the selected revision. If you change the revision, ports and volumes are recalculated on the next deployment.
+Port configuration is derived from the selected revision. Volumes are resolved from the revision's volume templates plus the matching `MountTypeConfig` entry at create/update time. If you change the revision, ports are recalculated and any new volumes are resolved on the next deployment; existing `GameServerVolume` snapshots remain unchanged.
 
 ## Deleting a Server
 
@@ -71,7 +71,7 @@ V2 servers use soft delete. After deletion, the server remains in the database w
 
 ## Known Limitations
 
-- Volumes are derived from the revision; per-server volume source or driver overrides are not yet available in the create/edit flow.
+- Volumes are resolved from revision templates plus `MountTypeConfig`; per-server snapshot overrides are not available in the create/edit flow.
 - Soft delete is used; there is no V2 hard-delete endpoint yet.
 - Server start/stop actions are currently surfaced through service-level operations in the background, not as explicit V2 endpoints.
 

@@ -135,17 +135,10 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
                 .Select(MapResolvedPort)
                 .ToList()
                 ?? [],
-            ResolvedVolumes = revisionContext?.Revision.Volumes
-                .OrderBy(volume => volume.DisplayOrder)
-                .Select(volume => new GameServerResolvedVolumeDto
-                {
-                    Source = volume.Source,
-                    Description = volume.Description,
-                    DisplayOrder = volume.DisplayOrder,
-                    Usage = volume.Usage
-                })
-                .ToList()
-                ?? [],
+            ResolvedVolumes = server.Volumes
+                .OrderBy(volume => volume.CreatedAt)
+                .Select(MapServerVolume)
+                .ToList(),
             ResolvedWebHosts = revisionContext?.Revision.WebHosts
                 .OrderBy(webHost => webHost.DisplayOrder)
                 .Select(webHost => new GameServerResolvedWebHostDto
@@ -177,6 +170,29 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
             AdvertisedPort = port.AdvertisedPort,
             Description = port.Description,
             DisplayOrder = port.DisplayOrder
+        };
+    }
+
+    private static GameServerResolvedVolumeDto MapServerVolume(GameServer.Docker.Models.V2.GameServerVolume volume)
+    {
+        ArgumentNullException.ThrowIfNull(volume);
+
+        return new GameServerResolvedVolumeDto
+        {
+            Usage = volume.Usage,
+            ContainerPath = volume.ContainerPath,
+            Source = volume.Source,
+            MountType = volume.MountType.ToString().ToLowerInvariant(),
+            ReadOnly = volume.ReadOnly,
+            Driver = volume.Driver,
+            DriverOptionsJson = volume.DriverOptionsJson,
+            OwnerUid = volume.OwnerUid,
+            OwnerGid = volume.OwnerGid,
+            Permissions = volume.Permissions,
+            InitMode = volume.InitMode.ToString().ToLowerInvariant(),
+            SeedSourcePath = volume.SeedSourcePath,
+            IsProvisioned = volume.IsProvisioned,
+            CreatedAt = volume.CreatedAt
         };
     }
 

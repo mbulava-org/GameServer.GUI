@@ -174,15 +174,15 @@ Auto-scrolling if enabled
 3. Check that `SendInput` only succeeds after a controlling user is established
 4. Verify the UI toggles the "View-only" / "Input Control" badges on `InputControlChanged`
 
-### Default Port Wrong?
-1. Check GameType has `IsDefaultPort = true` on correct port
-2. Verify port order matches GameType definition
-3. Check GameTypeDefinition passed to PortMappingEditor
+### Default/Advertised Port Wrong?
+1. Check the active `GameTypeRevision` has `IsAdvertised = true` on the correct port
+2. Verify port order matches the revision definition
+3. Check the revision is passed to the port mapping editor
 
-### Port Relationships Not Working?
-1. Check metadata has `MapsToContainerPort = true`
-2. Verify `LinkedContainerPort` matches port in Ports list
-3. Check `PortRelationships` array populated
+### Port Mappings Not Working?
+1. Check the setting metadata `DataType` is `"port"`
+2. Verify the primary direct mapping targets a port in the revision's `Ports` list
+3. Check related offset/multiplier mappings derive from the primary mapping
 4. Run "Auto-Detect" to regenerate
 
 ---
@@ -196,8 +196,8 @@ Auto-scrolling if enabled
 - [ ] Logs streaming works (shared across multiple clients)
 - [ ] Shared container attach works (input control badge, view-only for second user)
 - [ ] Per-user terminal exec works
-- [ ] Port relationships work correctly
-- [ ] Default port displayed everywhere
+- [ ] Port mappings work correctly
+- [ ] Advertised port displayed everywhere
 
 ---
 

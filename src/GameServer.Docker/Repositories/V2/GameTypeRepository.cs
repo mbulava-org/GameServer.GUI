@@ -743,11 +743,11 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             CurrentRevisionId = entity.CurrentRevisionId,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
-            Revisions = entity.Revisions.OrderBy(x => x.CreatedAt).ThenBy(x => x.VersionTag).Select(MapToModel).ToList()
+            Revisions = entity.Revisions.OrderBy(x => x.CreatedAt).ThenBy(x => x.VersionTag).Select(revision => MapToModel(revision, MapToModel(entity))).ToList()
         };
     }
 
-    private static GameTypeRevision MapToModel(DataV2.GameTypeRevisionEntity entity)
+    private static GameTypeRevision MapToModel(DataV2.GameTypeRevisionEntity entity, GameType? gameType = null)
     {
         return new GameTypeRevision
         {
@@ -759,6 +759,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Notes = entity.Notes,
             IsPublished = entity.IsPublished,
             CreatedAt = entity.CreatedAt,
+            GameType = gameType,
             Ports = entity.Ports.OrderBy(x => x.DisplayOrder).Select(x => new GameTypePort
             {
                 Id = x.Id,
@@ -774,7 +775,13 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 Source = x.Source,
                 Description = x.Description,
                 DisplayOrder = x.DisplayOrder,
-                Usage = x.Usage
+                Usage = x.Usage,
+                MountType = x.MountType,
+                ReadOnly = x.ReadOnly,
+                OwnerUid = x.OwnerUid,
+                OwnerGid = x.OwnerGid,
+                Permissions = x.Permissions,
+                Required = x.Required
             }).ToList(),
             SettingDefinitions = entity.SettingDefinitions.OrderBy(x => x.DisplayOrder).Select(x => new GameTypeSettingDefinition
             {
@@ -848,7 +855,13 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 Source = x.Source,
                 Description = x.Description,
                 DisplayOrder = x.DisplayOrder,
-                Usage = x.Usage
+                Usage = x.Usage,
+                MountType = x.MountType,
+                ReadOnly = x.ReadOnly,
+                OwnerUid = x.OwnerUid,
+                OwnerGid = x.OwnerGid,
+                Permissions = x.Permissions,
+                Required = x.Required
             }).ToList(),
             SettingDefinitions = model.SettingDefinitions.Select(x => new DataV2.GameTypeSettingDefinitionEntity
             {

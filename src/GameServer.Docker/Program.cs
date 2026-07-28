@@ -1,4 +1,3 @@
-using Docker.DotNet;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Services;
 using Microsoft.EntityFrameworkCore;
@@ -44,42 +43,12 @@ namespace GameServer.Docker
                         .Enrich.WithProperty("ApplicationName", "GameServer.Docker"));
                         // Console sink is configured in appsettings.json - don't add it here!
 
-                //Add configuration sources
-                builder.Services.Configure<Configurations.DockerConnection>(builder.Configuration.GetSection("DockerConnection"));
-                builder.Services.Configure<Configurations.PortAllocation>(builder.Configuration.GetSection("PortAllocation"));
-                builder.Services.Configure<Configurations.GameTypeRegistryData>(builder.Configuration.GetSection("GameTypeRegistryData"));
-                builder.Services.Configure<Configurations.GameTypeExtendedMetadataRegistryData>(builder.Configuration.GetSection("GameTypeExtendedMetadataRegistryData"));
-                builder.Services.Configure<Configurations.VolumeDriverConfigOptions>(builder.Configuration.GetSection("VolumeDriverConfigOptions"));
-                builder.Services.Configure<Configurations.NetworkOptions>(builder.Configuration.GetSection("NetworkOptions"));
-                builder.Services.Configure<Configurations.NodeAgentOptions>(builder.Configuration.GetSection("NodeAgentOptions"));
-                builder.Services.Configure<Configurations.UdpAgentDiscoveryOptions>(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName));
-                builder.Services.Configure<Configurations.ServiceOperationsOptions>(builder.Configuration.GetSection("ServiceOperations"));
-                builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
-
-                // Docker Client - Only needed for Direct mode
-                // In Agent mode, all Docker operations are delegated to manager agents
-                var serviceOpsMode = builder.Configuration.GetValue<string>("ServiceOperations:Mode") ?? "Agent";
-
-                if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                {
-                    builder.Services.AddSingleton<DockerClientFactory>();   
-                    builder.Services.AddSingleton<IDockerClient>(sp =>
-                    {
-                        var dockerClientFactory = sp.GetRequiredService<DockerClientFactory>();
-                        return dockerClientFactory.Create();
-                    });
-                }
-                else
-                {
-                    // In Agent mode, we don't need IDockerClient
-                    // Provide a null implementation to satisfy any remaining dependencies
-                    builder.Services.AddSingleton<IDockerClient>(sp =>
-                    {
-                        throw new InvalidOperationException(
-                            "IDockerClient is not available when ServiceOperations:Mode=Agent. " +
-                            "All Docker operations should go through IServiceOperations.");
-                    });
-                }
+                // Bind configuration classes directly from appsettings.json.
+                builder.Services.AddSingleton(builder.Configuration.GetSection("PortAllocation").Get<Configurations.PortAllocation>() ?? new Configurations.PortAllocation());
+                builder.Services.AddSingleton(builder.Configuration.GetSection("NetworkOptions").Get<Configurations.NetworkOptions>() ?? new Configurations.NetworkOptions());
+                builder.Services.AddSingleton(builder.Configuration.GetSection("NodeAgentOptions").Get<Configurations.NodeAgentOptions>() ?? new Configurations.NodeAgentOptions());
+                builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName).Get<Configurations.UdpAgentDiscoveryOptions>() ?? new Configurations.UdpAgentDiscoveryOptions());
+                builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName).Get<Configurations.V2DatabaseOptions>() ?? new Configurations.V2DatabaseOptions());
 
                 // Agent Registry (new registration-based system) - MUST BE BEFORE ServiceOperations and NodeAgentDiscovery
                 // Agents connect to the Primary Service and push their state
@@ -88,50 +57,21 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<IUdpAgentRegistry, UdpAgentRegistryService>();
                 builder.Services.AddHostedService<UdpAgentAnnouncementListenerService>();
 
-                // Service Operations - Choose implementation based on configuration
-                builder.Services.AddSingleton<IServiceOperations>(sp =>
-                {
-                    var config = sp.GetRequiredService<IConfiguration>();
-                    var mode = config.GetValue<string>("ServiceOperations:Mode") ?? "Direct";
-                    var logger = sp.GetRequiredService<ILogger<Program>>();
-
-                    if (mode.Equals("Agent", StringComparison.OrdinalIgnoreCase))
-                    {
-                        logger.LogInformation("🔄 Service operations mode: AGENT (via manager node agent)");
-                        return sp.GetRequiredService<ServiceOperationsViaAgent>();
-                    }
-                    else
-                    {
-                        logger.LogInformation("🔄 Service operations mode: DIRECT (via Docker client)");
-                        return sp.GetRequiredService<ServiceOperationsViaDirect>();
-                    }
-                });
-
-                // Register both implementations
-                builder.Services.AddSingleton<ServiceOperationsViaDirect>();
-                builder.Services.AddSingleton<ServiceOperationsViaAgent>();
+                // Service Operations - Always use agent-based implementation
+                builder.Services.AddSingleton<IServiceOperations, ServiceOperationsViaAgent>();
 
                 // Node Agent Discovery (for real-time container stats)
                 // Registered as both singleton and hosted service for background discovery
                 // HttpClient instances are created per node agent for optimal connection pooling
                 // Timeout is configured per-client via NodeAgentOptions in the service
-                // NOTE: In Agent mode, IDockerClient is not available, so discovery service
-                // will skip Docker Swarm polling and rely solely on agent registration
                 builder.Services.AddHttpClient(); // Default factory for creating per-node clients
                 builder.Services.AddSingleton<NodeAgentDiscoveryService>(sp =>
                 {
                     var logger = sp.GetRequiredService<ILogger<NodeAgentDiscoveryService>>();
                     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-                    var agentOptions = sp.GetRequiredService<IOptions<Configurations.NodeAgentOptions>>();
+                    var agentOptions = sp.GetRequiredService<Configurations.NodeAgentOptions>();
                     var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
                     var udpAgentRegistry = sp.GetRequiredService<IUdpAgentRegistry>();
-
-                    // Try to get IDockerClient, but don't fail if unavailable (Agent mode)
-                    IDockerClient? dockerClient = null;
-                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                    {
-                        dockerClient = sp.GetRequiredService<IDockerClient>();
-                    }
 
                     return new NodeAgentDiscoveryService(
                         logger,
@@ -139,8 +79,7 @@ namespace GameServer.Docker
                         sp, // Pass IServiceProvider to avoid circular dependency
                         agentOptions,
                         agentRegistry,
-                        udpAgentRegistry,
-                        dockerClient);
+                        udpAgentRegistry);
                 });
                 builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
@@ -149,17 +88,8 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton<NodeAgentClient>();
                 builder.Services.AddHostedService<Services.AgentShutdownNotificationService>();
 
-                // PortAllocator - Conditionally provide IDockerClient
-                builder.Services.AddSingleton<PortAllocator>();/* sp =>
-                {
-                    var portOptions = sp.GetRequiredService<IOptions<PortAllocation>>();
-                    IDockerClient? dockerClient = null;
-                    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                    {
-                        dockerClient = sp.GetRequiredService<IDockerClient>();
-                    }
-                    return new PortAllocator(dockerClient, portOptions);
-                });*/
+                // PortAllocator
+                builder.Services.AddSingleton<PortAllocator>();
 
                 // Add V2 database context for the persistence implementation.
                 // Provider selection is isolated from the legacy DbContext so both paths can coexist.
@@ -200,11 +130,13 @@ namespace GameServer.Docker
                 builder.Services.AddMemoryCache();
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IMountTypeConfigRepository, RepositoriesV2.MountTypeConfigRepository>();
                 builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameServerValidationService>();
                 builder.Services.AddScoped<ServicesV2.GameServerCommandService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
+                builder.Services.AddScoped<ServicesV2.IVolumeSetupResolver, ServicesV2.VolumeSetupResolver>();
                 builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
                     new ServicesV2Detection.GameTypeSetupDetectionService(
                         sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),
@@ -237,18 +169,6 @@ namespace GameServer.Docker
                 {
                     Log.Debug("Database initialization will be skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
                 }
-
-                //// ServerLifecycleService - Conditionally provide IDockerClient
-                //// NOTE: This service is deprecated and should be refactored to use IServiceOperations
-                //builder.Services.AddScoped<ServerLifecycleService>(sp =>
-                //{
-                //    IDockerClient? dockerClient = null;
-                //    if (serviceOpsMode.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                //    {
-                //        dockerClient = sp.GetRequiredService<IDockerClient>();
-                //    }
-                //    return new ServerLifecycleService(dockerClient);
-                //});
 
                 builder.Services.AddControllers();
                 

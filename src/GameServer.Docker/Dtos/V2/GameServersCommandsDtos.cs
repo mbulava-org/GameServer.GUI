@@ -16,7 +16,10 @@ public sealed record SaveGameServerRequestDto
 
     public List<GameServerSettingDto> Settings { get; init; } = [];
 
+    [Obsolete("Use VolumeBindingLayout instead.")]
     public List<GameServerConfigurationOptionDto> DockerVolumeOptions { get; init; } = [];
+
+    public string VolumeBindingLayout { get; init; } = "standard";
 
     public List<GameServerConfigurationOptionDto> NetworkOptions { get; init; } = [];
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using GameServer.Docker.Configurations;
 using GameServer.Docker.Constants;
 using GameServer.Docker.Dtos.V2;
 using GameServer.Docker.Interfaces;
@@ -10,20 +11,32 @@ using GameTypeRevisionModel = GameServer.Docker.Models.V2.GameTypeRevision;
 using GameTypeSettingDefinitionModel = GameServer.Docker.Models.V2.GameTypeSettingDefinition;
 using GameTypeSettingMetadataModel = GameServer.Docker.Models.V2.GameTypeSettingMetadata;
 using GameTypeSettingPortMappingModel = GameServer.Docker.Models.V2.GameTypeSettingPortMapping;
+using GameTypeVolumeModel = GameServer.Docker.Models.V2.GameTypeVolume;
 using GameTypeWebHostModel = GameServer.Docker.Models.V2.GameTypeWebHost;
-using Microsoft.Extensions.Options;
 
 namespace GameServer.Docker.Services.V2;
 
 /// <summary>
 /// Validates V2 GameServer save requests and derives effective runtime configuration.
 /// </summary>
-public sealed class GameServerValidationService(
-    IGameTypeRepository gameTypeRepository,
-    IServiceOperations serviceOperations,
-    IOptions<GameServer.Docker.Configurations.PortAllocation> portAllocationOptions)
+public sealed class GameServerValidationService
 {
-    private readonly GameServer.Docker.Configurations.PortAllocation portAllocation = portAllocationOptions.Value;
+    private readonly IGameTypeRepository gameTypeRepository;
+    private readonly IServiceOperations serviceOperations;
+    private readonly IVolumeSetupResolver volumeSetupResolver;
+    private readonly GameServer.Docker.Configurations.PortAllocation portAllocation;
+
+    public GameServerValidationService(
+        IGameTypeRepository gameTypeRepository,
+        IServiceOperations serviceOperations,
+        PortAllocation portAllocation,
+        IVolumeSetupResolver volumeSetupResolver)
+    {
+        this.gameTypeRepository = gameTypeRepository;
+        this.serviceOperations = serviceOperations;
+        this.volumeSetupResolver = volumeSetupResolver;
+        this.portAllocation = portAllocation;
+    }
 
     /// <summary>
     /// Validates a V2 GameServer request and returns effective derived configuration.
@@ -35,6 +48,7 @@ public sealed class GameServerValidationService(
 
         var issues = new List<GameServerValidationIssueDto>();
         ValidateCoreFields(request, issues);
+        ValidateVolumeLayout(request.VolumeBindingLayout, issues);
         ValidateConfigurationOptions(request.DockerVolumeOptions, "docker-volume-options", issues);
         ValidateConfigurationOptions(request.NetworkOptions, "network-options", issues);
 
@@ -48,10 +62,13 @@ public sealed class GameServerValidationService(
             return CreateResult(issues, request.DockerVolumeOptions, request.NetworkOptions);
         }
 
-        var effectiveSettings = BuildEffectiveSettings(request, revisionContext.Revision, issues);
-        var resolvedPorts = ResolvePorts(revisionContext.Revision, effectiveSettings, issues);
+        var revision = revisionContext.Revision;
+        revision.GameType = revisionContext.GameType;
+
+        var effectiveSettings = BuildEffectiveSettings(request, revision, issues);
+        var resolvedPorts = ResolvePorts(revision, effectiveSettings, issues);
         ValidateResolvedPorts(resolvedPorts, request.ServerId, issues, cancellationToken);
-        var resolvedVolumes = ResolveVolumes(revisionContext.Revision);
+        var resolvedVolumes = ResolveVolumes(revision, request.ServerId, request.VolumeBindingLayout, issues);
         var resolvedWebHosts = ResolveWebHosts(revisionContext.Revision.WebHosts, effectiveSettings, issues);
 
         await ValidateResolvedPortsAsync(resolvedPorts, request.ServerId, issues, cancellationToken).ConfigureAwait(false);
@@ -66,6 +83,17 @@ public sealed class GameServerValidationService(
             DockerVolumeOptions = request.DockerVolumeOptions,
             NetworkOptions = request.NetworkOptions
         };
+    }
+
+    private static void ValidateVolumeLayout(string layout, List<GameServerValidationIssueDto> issues)
+    {
+        ArgumentNullException.ThrowIfNull(issues);
+
+        if (!string.Equals(layout, "standard", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add(CreateIssue("VolumeLayoutInvalid", "Volume binding layout must be 'standard' or 'local'.", "volumeBindingLayout"));
+        }
     }
 
     private static void ValidateCoreFields(SaveGameServerRequestDto request, List<GameServerValidationIssueDto> issues)
@@ -472,20 +500,99 @@ public sealed class GameServerValidationService(
         }
     }
 
-    private static List<GameServerResolvedVolumeDto> ResolveVolumes(GameTypeRevisionModel revision)
+    private List<GameServerResolvedVolumeDto> ResolveVolumes(
+        GameTypeRevisionModel revision,
+        string? serverId,
+        string layout,
+        List<GameServerValidationIssueDto> issues)
     {
         ArgumentNullException.ThrowIfNull(revision);
+        ArgumentNullException.ThrowIfNull(issues);
 
-        return revision.Volumes
-            .OrderBy(volume => volume.DisplayOrder)
-            .Select(volume => new GameServerResolvedVolumeDto
+        var result = new List<GameServerResolvedVolumeDto>();
+        var containerPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in revision.Volumes)
+        {
+            ValidateVolumeDefinition(definition, revision.Volumes, layout, issues);
+        }
+
+        foreach (var volume in volumeSetupResolver.ResolveForCreate(
+            serverId ?? Guid.NewGuid().ToString("N"),
+            revision.GameType?.Key ?? "unknown",
+            revision.Volumes,
+            layout))
+        {
+            if (!containerPaths.Add(volume.ContainerPath))
             {
+                issues.Add(CreateIssue(
+                    "VolumeContainerPathDuplicate",
+                    $"Container path '{volume.ContainerPath}' is defined more than once.",
+                    $"volumes:{volume.ContainerPath}"));
+                continue;
+            }
+
+            result.Add(new GameServerResolvedVolumeDto
+            {
+                Usage = volume.Usage,
+                ContainerPath = volume.ContainerPath,
                 Source = volume.Source,
-                Description = volume.Description,
-                DisplayOrder = volume.DisplayOrder,
-                Usage = volume.Usage
-            })
-            .ToList();
+                MountType = volume.MountType.ToString().ToLowerInvariant(),
+                ReadOnly = volume.ReadOnly,
+                Driver = volume.Driver,
+                DriverOptionsJson = volume.DriverOptionsJson,
+                OwnerUid = volume.OwnerUid,
+                OwnerGid = volume.OwnerGid,
+                Permissions = volume.Permissions,
+                InitMode = volume.InitMode.ToString().ToLowerInvariant(),
+                SeedSourcePath = volume.SeedSourcePath,
+                IsProvisioned = volume.IsProvisioned,
+                CreatedAt = volume.CreatedAt
+            });
+        }
+
+        return result;
+    }
+
+    private static void ValidateVolumeDefinition(
+        GameTypeVolumeModel definition,
+        IReadOnlyList<GameTypeVolumeModel> allDefinitions,
+        string layout,
+        List<GameServerValidationIssueDto> issues)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(allDefinitions);
+        ArgumentNullException.ThrowIfNull(issues);
+
+        var scope = $"volumes:{definition.Source}";
+
+        if (string.IsNullOrWhiteSpace(definition.Source))
+        {
+            issues.Add(CreateIssue("VolumeSourceRequired", "Volume container path is required.", scope));
+            return;
+        }
+
+        var knownMountTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "volume", "bind", "tmpfs"
+        };
+
+        if (!knownMountTypes.Contains(definition.MountType))
+        {
+            issues.Add(CreateIssue("VolumeMountTypeInvalid", $"Mount type '{definition.MountType}' is not supported.", $"{scope}:mountType", isBlocking: false));
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.Permissions)
+            && !Regex.IsMatch(definition.Permissions, "^[0-7]{3,4}$"))
+        {
+            issues.Add(CreateIssue("VolumePermissionsInvalid", "Permissions must be a 3 or 4 digit octal value (e.g. 0755).", scope, isBlocking: false));
+        }
+
+        if (!definition.Required && allDefinitions.Count(v => v.Required) == 0 && allDefinitions.Count == 1)
+        {
+            // Edge guard: if the only volume is optional, treat it as a warning; likely misconfiguration.
+            issues.Add(CreateIssue("VolumeOptionalOnly", "At least one volume should be required for the server to persist state.", scope, isBlocking: false));
+        }
     }
 
     private static List<GameServerResolvedWebHostDto> ResolveWebHosts(

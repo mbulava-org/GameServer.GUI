@@ -148,7 +148,13 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
                     Source = x.Source,
                     Description = x.Description,
                     DisplayOrder = x.DisplayOrder,
-                    Usage = x.Usage
+                    Usage = x.Usage,
+                    MountType = x.MountType,
+                    ReadOnly = x.ReadOnly,
+                    OwnerUid = x.OwnerUid,
+                    OwnerGid = x.OwnerGid,
+                    Permissions = x.Permissions,
+                    Required = x.Required
                 })
                 .ToList(),
             SettingDefinitions = revision.SettingDefinitions
@@ -262,7 +268,13 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
                     Source = volume.Source,
                     Description = volume.Description,
                     DisplayOrder = volume.DisplayOrder,
-                    Usage = volume.Usage
+                    Usage = volume.Usage,
+                    MountType = volume.MountType,
+                    ReadOnly = volume.ReadOnly,
+                    OwnerUid = volume.OwnerUid,
+                    OwnerGid = volume.OwnerGid,
+                    Permissions = volume.Permissions,
+                    Required = volume.Required
                 })
                 .ToList(),
             SettingDefinitions = revision.SettingDefinitions

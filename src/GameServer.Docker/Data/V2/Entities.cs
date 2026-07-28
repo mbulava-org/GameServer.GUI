@@ -118,6 +118,25 @@ public class GameTypeVolumeEntity
     [MaxLength(100)]
     public string Usage { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Mount-type code referencing MountTypeConfig.Key.
+    /// Not enforced as a database FK so existing data continues to load.
+    /// </summary>
+    [Required]
+    [MaxLength(50)]
+    public string MountType { get; set; } = "volume";
+
+    public bool ReadOnly { get; set; }
+
+    public int? OwnerUid { get; set; }
+
+    public int? OwnerGid { get; set; }
+
+    [MaxLength(10)]
+    public string? Permissions { get; set; }
+
+    public bool Required { get; set; } = true;
+
     [ForeignKey(nameof(GameTypeRevisionId))]
     public virtual GameTypeRevisionEntity GameTypeRevision { get; set; } = null!;
 }
@@ -273,6 +292,60 @@ public class GameServerEntity
     public virtual GameTypeRevisionEntity GameTypeRevision { get; set; } = null!;
 
     public virtual ICollection<GameServerSettingEntity> Settings { get; set; } = new List<GameServerSettingEntity>();
+
+    public virtual ICollection<GameServerVolumeEntity> Volumes { get; set; } = new List<GameServerVolumeEntity>();
+}
+
+public class GameServerVolumeEntity
+{
+    public int Id { get; set; }
+
+    public int GameServerId { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Usage { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(500)]
+    public string ContainerPath { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(500)]
+    public string Source { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(50)]
+    public string MountType { get; set; } = "volume";
+
+    public bool ReadOnly { get; set; }
+
+    [Required]
+    [MaxLength(200)]
+    public string Driver { get; set; } = "local";
+
+    public string? DriverOptionsJson { get; set; }
+
+    public int? OwnerUid { get; set; }
+
+    public int? OwnerGid { get; set; }
+
+    [MaxLength(10)]
+    public string? Permissions { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    public string InitMode { get; set; } = "none";
+
+    [MaxLength(500)]
+    public string? SeedSourcePath { get; set; }
+
+    public bool IsProvisioned { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [ForeignKey(nameof(GameServerId))]
+    public virtual GameServerEntity GameServer { get; set; } = null!;
 }
 
 public class GameServerSettingEntity
@@ -289,4 +362,50 @@ public class GameServerSettingEntity
 
     [ForeignKey(nameof(GameServerId))]
     public virtual GameServerEntity GameServer { get; set; } = null!;
+}
+
+public class MountTypeConfigEntity
+{
+    [Key]
+    [MaxLength(50)]
+    public string Key { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(200)]
+    public string DisplayName { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    [Required]
+    [MaxLength(200)]
+    public string Driver { get; set; } = string.Empty;
+
+    public string? DriverOptionsJson { get; set; }
+
+    [Required]
+    [MaxLength(500)]
+    public string SourcePathTemplate { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(500)]
+    public string ContainerPathTemplate { get; set; } = "{Source}";
+
+    public bool DefaultReadOnly { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    public string DefaultInitMode { get; set; } = "none";
+
+    public int? DefaultOwnerUid { get; set; }
+
+    public int? DefaultOwnerGid { get; set; }
+
+    [MaxLength(10)]
+    public string? DefaultPermissions { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -184,9 +184,8 @@ services:
       - "5164:8080"  # API port
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ServiceOperations__Mode=Agent
       - NodeAgentOptions__EnableBackgroundDiscovery=false
-      - ConnectionStrings__GameServerDb=Data Source=/data/gameserver.db
+      - ConnectionStrings__GameServerV2Db=Data Source=/data/gameserver-v2.db
       - PortAllocation__StartPort=25565
       - PortAllocation__EndPort=35565
     volumes:
@@ -319,7 +318,6 @@ Once deployed, access:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ServiceOperations__Mode` | Operation mode: `Agent` or `Direct` | `Agent` |
 | `PortAllocation__StartPort` | First port to allocate | `25565` |
 | `PortAllocation__EndPort` | Last port to allocate | `35565` |
 | `ConnectionStrings__GameServerV2Db` | SQLite V2 database path | `Data Source=/data/gameserver-v2.db` |
@@ -329,7 +327,7 @@ Once deployed, access:
 | `V2Database__ConnectionStringName` | Connection string key to use | `GameServerV2Db` |
 | `NetworkOptions__LoadBalancerNetwork` | Docker overlay network for Traefik | `traefik-public` |
 | `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
-| `VolumeDriverConfigOptions__Name` | Volume driver name | `local` |
+| `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | — |
 | `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
 | `UdpAgentDiscovery__Enabled` | Enable UDP agent announcement | `true` |
 
@@ -753,15 +751,16 @@ For issues or questions, see [CONTRIBUTING.md](CONTRIBUTING.md) or open a GitHub
 
 ## Step 1: Verify Configuration
 
-Ensure your `appsettings.Development.json` (or `appsettings.json`) contains:
+Game types and extended metadata are now stored in the V2 database. Ensure your `appsettings.Development.json` (or `appsettings.json`) points to the desired V2 provider:
 
 ```json
 {
-  "GameTypeRegistryData": {
-    "FilePath": "/data/game-types.json"
+  "ConnectionStrings": {
+    "GameServerV2Db": "Data Source=./data/gameserver-v2.db"
   },
-  "GameTypeExtendedMetadataRegistryData": {
-    "FilePath": "/data/game-types-extended.json"
+  "V2Database": {
+    "Provider": "Sqlite",
+    "ConnectionStringName": "GameServerV2Db"
   }
 }
 ```
@@ -776,7 +775,7 @@ Run your application:
 dotnet run --project src/GameServer.Docker
 ```
 
-On first startup, both files will be created with built-in defaults.
+On first startup the V2 database is initialized and any built-in seed data is applied through `DatabaseInitializationService`.
 
 ---
 
@@ -899,23 +898,27 @@ public class GameServerController : ControllerBase
 ### Apply Metadata to Container
 
 ```csharp
-// In your DockerServiceHelper or similar service
-private async Task<ServiceSpec> BuildServiceSpec(GameServer server, GameTypeDefinition definition)
+// In your deployment service using V2 models
+private async Task<ServiceSpec> BuildServiceSpecAsync(
+    GameServerDetailDto server,
+    GameTypeRevisionDetailDto revision)
 {
     var containerSpec = new ContainerSpec
     {
-        Image = definition.Image,
-        Env = BuildEnvironmentVariables(server, definition),
+        Image = revision.ImageReference,
+        Env = BuildEnvironmentVariables(server, revision),
         // ... other properties
     };
-    
-    // Apply extended metadata (TTY, stdin)
-    containerSpec = await _metadataApplier.ApplyMetadata(containerSpec, server.GameType);
-    
-    // Get dynamic ports from settings
-    var dynamicPorts = await _metadataApplier.GetDynamicPorts(server, server.GameType);
-    var allPorts = definition.Ports.Concat(dynamicPorts).ToList();
-    
+
+    var ports = revision.Ports
+        .Select(p => new PortConfig
+        {
+            TargetPort = p.ContainerPort,
+            PublishedPort = p.PublishedPort,
+            Protocol = p.Protocol
+        })
+        .ToList();
+
     // Continue building...
 }
 ```
@@ -1125,20 +1128,21 @@ containerSpec = await _metadataApplier.ApplyMetadata(containerSpec, server.GameT
 ## Quick Reference
 
 ### File Locations
-- Code: `src/GameServer.Docker/Services/GameTypeExtendedMetadataRegistryFile.cs`
-- Data: `/data/game-types-extended.json`
+- V2 Repository: `src/GameServer.Docker/Repositories/V2/GameTypeRepository.cs`
+- V2 Service: `src/GameServer.Docker/Services/V2/GameTypeCommandService.cs`
 - Docs: `docs/GameType-Extended-Metadata.md`
 
 ### Key Services
-- `IGameTypeExtendedMetadataRegistry` - CRUD operations
-- `GameTypeMetadataApplier` - Apply metadata and validate
+- `IGameTypeRepository` (V2) - CRUD operations for game types, revisions, and metadata
+- `GameTypeCommandService` - Create/update revisions and metadata
 
-### API Endpoints
-- `GET /api/gametypes/extended` - List all
-- `GET /api/gametypes/extended/{key}` - Get one
-- `POST /api/gametypes/extended` - Create/update
-- `DELETE /api/gametypes/extended/{key}` - Delete
-- `PUT /api/gametypes/extended/{key}/settings/{settingKey}` - Update setting
+### API Endpoints (V2)
+- `GET /api/v2/gametypes` - List all
+- `GET /api/v2/gametypes/{key}` - Get one
+- `POST /api/v2/gametypes` - Create
+- `PUT /api/v2/gametypes/{key}` - Update
+- `DELETE /api/v2/gametypes/{key}` - Delete
+- `POST /api/v2/gametypes/{key}/revisions` - Add revision
 
 ---
 

@@ -114,3 +114,9 @@
 
 ### Editable Data Packages
 - For editable data packages like GameTypes and Revisions, prefer concrete observable list types such as `List<T>` over `IEnumerable<T>` so nested collections can be observed and edited reliably in the UI.
+
+### Mount Type Configuration
+- Use `MountTypeConfig` as a keyed string-code config table.
+- `GameTypeVolume.MountType` is a soft foreign key (string) to `MountTypeConfig.Key`; existing data is not enforced by DB foreign key.
+- `GameServerVolume` stores immutable resolved snapshot values including driver/options.
+- Known mount-type defaults should be seeded in the data layer.

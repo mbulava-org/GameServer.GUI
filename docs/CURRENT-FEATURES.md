@@ -181,7 +181,8 @@ The application uses a single V2 persistence layer for game type and server conf
   - derived Web Host state resolved from revision Web Host definitions + server settings instead of being stored
 
 #### Current V2 schema direction
-- `GameServerPorts` and `GameServerVolumes` are not stored in V2 and are expected to be derived from the selected revision.
+- `GameServerPorts` and resolved Web Host state are not stored in V2 and are expected to be derived from revision templates + server settings.
+- `GameServerVolumes` are persisted as immutable per-server snapshots resolved from `GameTypeVolume` templates and keyed `MountTypeConfig` rows.
 - Port availability validation is handled by backend services at deployment/update time, not persisted in V2 metadata.
 - Setting-to-port relationships are modeled through unified port mapping rules rather than duplicated link fields.
 - V2 revision volume usage categories now use `config`, `saves`, `backups`, `gamefiles`, and `logs`.
@@ -280,22 +281,22 @@ The application uses a single V2 persistence layer for game type and server conf
 
 ### ?? Complete Port Management System
 
-#### Port Definition (GameType Level)
-- Define ports in `GameTypeDefinition.Ports`
-- Mark default port with `IsDefaultPort = true`
+#### Port Definition (GameTypeRevision Level)
+- Define ports in `GameTypeRevision.Ports`
+- Mark the advertised/default port with `IsAdvertised = true`
 - Example (Valheim):
   ```
   Port 2456 (udp) - Server Port
-  Port 2457 (udp) - Connection Port [IsDefaultPort: true] ?
+  Port 2457 (udp) - Connection Port [IsAdvertised: true] ?
   Port 2458 (udp) - Steam List Port
   ```
 
-#### Port Relationships
-**Defined in Extended Metadata for port-type settings**
+#### Port Mappings
+**Defined in setting metadata for port-type settings**
 
-Example (Valheim SERVER_PORT):
-- Links to Container Port: 2456 (udp)
-- Relationships:
+Example (Valheim `SERVER_PORT`):
+- Primary direct mapping to Container Port: 2456 (udp)
+- Related mappings:
   1. Offset +1 ? Port 2457 (Connection Port) - Required
   2. Offset +2 ? Port 2458 (Steam List Port) - Required
 
@@ -565,7 +566,8 @@ await dockerClient.Containers.ListContainersAsync(new ContainersListParameters
 
 **Key V2 differences from V1:**
 - `ImageReference` lives on `GameTypeRevision`, not `GameType`
-- `GameServerPorts` and `GameServerVolumes` are not stored; derived from revision at deploy time
+- `GameServerPorts` are not stored; derived from revision at deploy time
+- `GameServerVolumes` are stored as immutable per-server snapshots resolved from revision volume templates + `MountTypeConfig`
 - Port mapping rules use unified `MappingRole` + `RelationType` + `CalculationValue` model
 - New `yesno` DataType for literal `yes`/`no` environment variable values
 - Soft delete on `GameServer` via `IsDeleted` flag
@@ -642,17 +644,18 @@ Configured per game type in DefaultSettings. Examples:
 ## Known Limitations & Future Work
 
 ### Current Limitations
-1. Volume configuration is immutable after creation
-2. No multi-node swarm support yet (single-node Docker assumed)
-3. Create-server wizard Step 4 shows a read-only volume preview; per-volume source/driver selection is not yet configurable at creation time
-4. File manager supports browse, upload, download, and text editing; advanced folder operations are still limited
+1. `GameServerVolume` snapshots are immutable after creation
+2. Create-server wizard Step 4 shows a read-only volume preview; per-volume source/driver selection is not configurable at creation time because values are resolved from `MountTypeConfig` templates
+3. File manager supports browse, upload, download, and text editing; advanced folder operations are still limited
+
+### Implemented but not battle-tested
+- Multi-node Docker Swarm support with Node Agent auto-discovery is implemented (see [Agent Quick Start](guides/Agent-QuickStart.md)). It requires at least one manager Node Agent with the `services`/`tasks`/`nodes`/`swarm` capabilities and an overlay network shared by Primary Service and agents. Manual test plans are available in `docs/testing/Manual-MultiNode-Swarm-Test-Plan.md`.
 
 ### Planned Features
 - [ ] Backup/restore functionality
 - [ ] Scheduled tasks and automated restarts
 - [ ] Plugin/mod management
 - [ ] User authentication and permissions
-- [ ] Multi-node swarm support
 - [ ] Database backups
 - [ ] Notification system
 
@@ -703,15 +706,15 @@ Configured per game type in DefaultSettings. Examples:
 - Look for `InputControlledBy` frames in the browser console
 
 ### Default Port Not Showing
-- Verify `IsDefaultPort = true` set in GameType
-- Check port order matches between definition and server
-- Verify GameTypeDefinition passed to components
+- Verify `IsAdvertised = true` is set on one port in the revision's `Ports` list
+- Check port order matches between the revision and the server
+- Verify the `GameTypeRevisionDetailDto` is passed to components
 
-### Port Relationships Not Working
-- Verify metadata has `MapsToContainerPort = true`
-- Check `LinkedContainerPort` matches port in Ports list
-- Verify `PortRelationships` array is populated
-- Check target ports exist in port definitions
+### Port Mappings Not Working
+- Verify the setting's metadata `DataType` is `"port"`
+- Check the primary direct mapping targets an existing revision port
+- Verify related offset/multiplier mappings derive from the primary mapping
+- Check target ports exist in the revision's port definitions
 
 ---
 

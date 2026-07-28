@@ -8,12 +8,12 @@ This diagram reflects the current V2 persistence structures implemented in `src/
 erDiagram
     GameTypes {
         int Id PK
-        string Key UK
-        string DisplayName
+        string(100) Key UK
+        string(200) DisplayName
         string Description
-        string Type
-        string ThumbnailUrl
-        string DocumentationUrl
+        string(50) Type
+        string(500) ThumbnailUrl
+        string(500) DocumentationUrl
         bool IsActive
         int CurrentRevisionId FK
         datetime CreatedAt
@@ -23,9 +23,9 @@ erDiagram
     GameTypeRevisions {
         int Id PK
         int GameTypeId FK
-        string VersionTag
-        string ImageReference
-        string ImageDigest
+        string(100) VersionTag
+        string(500) ImageReference
+        string(250) ImageDigest
         bool EnableTTY
         string Notes
         bool IsPublished
@@ -36,25 +36,49 @@ erDiagram
         int Id PK
         int GameTypeRevisionId FK
         int ContainerPort
-        string Protocol
+        string(10) Protocol
         bool AdvertisedPort
         string Description
         int DisplayOrder
     }
 
+    MountTypeConfigs {
+        string(50) Key PK
+        string(200) DisplayName
+        string Description
+        string(200) Driver
+        string DriverOptionsJson
+        string(500) SourcePathTemplate
+        string(500) ContainerPathTemplate
+        bool DefaultReadOnly
+        string(50) DefaultInitMode
+        int DefaultOwnerUid
+        int DefaultOwnerGid
+        string(10) DefaultPermissions
+        bool IsActive
+        datetime CreatedAt
+        datetime UpdatedAt
+    }
+
     GameTypeVolumes {
         int Id PK
         int GameTypeRevisionId FK
-        string Source
+        string(500) Source
         string Description
         int DisplayOrder
-        string Usage
+        string(100) Usage
+        string(50) MountType FK
+        bool ReadOnly
+        int OwnerUid
+        int OwnerGid
+        string(10) Permissions
+        bool Required
     }
 
     GameTypeSettingDefinitions {
         int Id PK
         int GameTypeRevisionId FK
-        string SettingKey
+        string(200) SettingKey
         string DefaultValue
         string Description
         int DisplayOrder
@@ -63,8 +87,8 @@ erDiagram
     GameTypeSettingMetadata {
         int Id PK
         int GameTypeSettingDefinitionId FK
-        string DataType
-        string Category
+        string(50) DataType
+        string(100) Category
         bool IsRequired
         bool CannotBeEmpty
         string Placeholder
@@ -82,7 +106,7 @@ erDiagram
         int MappingRole
         int RelationType
         int TargetContainerPort
-        string TargetProtocol
+        string(10) TargetProtocol
         int CalculationValue
         bool IsRequired
         int DisplayOrder
@@ -91,23 +115,23 @@ erDiagram
     GameTypeWebHosts {
         int Id PK
         int GameTypeRevisionId FK
-        string Name
+        string(200) Name
         string Description
-        string PathSegment
+        string(200) PathSegment
         int ContainerPort
-        string ContainerPortVariable
-        string EnabledWhen
+        string(200) ContainerPortVariable
+        string(500) EnabledWhen
         int DisplayOrder
     }
 
     GameServers {
         int Id PK
-        string ServerId UK
-        string Name
+        string(100) ServerId UK
+        string(200) Name
         string Description
         int GameTypeRevisionId FK
-        string ServiceName
-        string Status
+        string(200) ServiceName
+        string(50) Status
         datetime CreatedAt
         datetime UpdatedAt
         datetime LastDeployedAt
@@ -118,9 +142,31 @@ erDiagram
     GameServerSettings {
         int Id PK
         int GameServerId FK
-        string SettingKey
+        string(200) SettingKey
         string Value
     }
+
+    GameServerVolumes {
+        int Id PK
+        int GameServerId FK
+        string(100) Usage
+        string(500) ContainerPath
+        string(500) Source
+        string(50) MountType
+        bool ReadOnly
+        string(200) Driver
+        string DriverOptionsJson
+        int OwnerUid
+        int OwnerGid
+        string(10) Permissions
+        string(50) InitMode
+        string(500) SeedSourcePath
+        bool IsProvisioned
+        datetime CreatedAt
+    }
+
+    MountTypeConfigs ||--o{ GameTypeVolumes : describes
+    MountTypeConfigs ||--o{ GameServerVolumes : resolves
 
     GameTypes ||--o{ GameTypeRevisions : has
     GameTypeRevisions ||--o{ GameTypePorts : defines
@@ -133,8 +179,10 @@ erDiagram
     GameTypeSettingMetadata ||--o{ GameTypeSettingPortMappings : maps
 
     GameServers ||--o{ GameServerSettings : configures
-    
+    GameServers ||--o{ GameServerVolumes : mounts
 ```
+
+The `VolumeSetupConfig` and `VolumeDriverConfigOptions` types have been removed. Storage paths and driver options now live in the keyed `MountTypeConfigs` table, referenced loosely by `GameTypeVolumes.MountType`.
 
 ## V2 Deployment Flow Diagram
 
@@ -153,10 +201,13 @@ flowchart TD
     REV --> GS[GameServer<br/>Deployment intent<br/>References GameTypeRevisionId]
     GS --> GSS[GameServerSettings<br/>Per-server overrides]
 
+    MTC[MountTypeConfigs<br/>Keyed mount type config] --> VOLUMES
+
     PORTS -. derived at deployment .-> RESOLVEDPORTS[Resolved published ports<br/>Not persisted in V2]
-    VOLUMES -. derived at deployment .-> RESOLVEDVOLUMES[Resolved volume mounts<br/>Not persisted in V2]
+    VOLUMES -. derived at deployment .-> RESOLVEDVOLUMES[Resolved GameServerVolume snapshots<br/>Derived at save/deploy]
     WEBHOSTS -. resolved with settings .-> RESOLVEDWEB[Resolved web hosts<br/>Not persisted in V2]
     GSS -. influences .-> RESOLVEDPORTS
+    GSS -. influences .-> RESOLVEDVOLUMES
     GSS -. influences .-> RESOLVEDWEB
     PMAPS -. drives .-> RESOLVEDPORTS
 
@@ -164,7 +215,7 @@ flowchart TD
     RESOLVEDVOLUMES --> SWARM
     RESOLVEDWEB --> SWARM
 
-    class GT,REV,PORTS,VOLUMES,SETTINGS,WEBHOSTS,META,PMAPS,GS,GSS persisted
+    class GT,REV,PORTS,VOLUMES,SETTINGS,WEBHOSTS,META,PMAPS,GS,GSS,VOLUMECONFIG persisted
     class RESOLVEDPORTS,RESOLVEDVOLUMES,RESOLVEDWEB derived
     class SWARM deployment
 
@@ -175,7 +226,7 @@ flowchart TD
 
 Legend:
 - Blue = persisted V2 tables
-- Green = deployment-time derived state
+- Green = deployment-time derived state or per-server resolved snapshots
 - Amber = deployment output / orchestration target
 
 ## Table Definitions
@@ -222,16 +273,42 @@ Legend:
 | `Description` | `string` | Nullable |  | Human-readable purpose of the port such as game, query, or admin access. |
 | `DisplayOrder` | `int` | Not Null |  | UI ordering for port presentation and generated summaries. |
 
+### `MountTypeConfigs`
+
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Key` | `string(50)` | Not Null | Primary Key | String code for the mount type (`volume`, `bind`, `tmpfs`, `nfs`). Referenced loosely by `GameTypeVolumes.MountType`. |
+| `DisplayName` | `string(200)` | Not Null |  | Human-readable label shown in the UI. |
+| `Description` | `string` | Nullable |  | Optional explanation of when to use this mount type. |
+| `Driver` | `string(200)` | Nullable |  | Docker named-volume driver used for `volume`-style mounts. |
+| `DriverOptionsJson` | `string` | Nullable |  | Optional default driver options serialized as JSON. |
+| `SourcePathTemplate` | `string(500)` | Nullable |  | Template used to build the host source path or volume name. Tokens: `{gameTypeKey}`, `{serverId}`, `{Source}`. |
+| `ContainerPathTemplate` | `string(500)` | Nullable |  | Template used to build the container target path. Token: `{Source}`. |
+| `DefaultReadOnly` | `bool` | Not Null | Default `false` | Default read-only flag applied when resolving volumes of this type. |
+| `DefaultInitMode` | `string(50)` | Not Null | Default `none` | Default initialization behavior for resolved snapshots. |
+| `DefaultOwnerUid` | `int` | Nullable |  | Default UID applied when no revision override is present. |
+| `DefaultOwnerGid` | `int` | Nullable |  | Default GID applied when no revision override is present. |
+| `DefaultPermissions` | `string(10)` | Nullable |  | Default permissions string applied when no revision override is present. |
+| `IsActive` | `bool` | Not Null | Default `true` | Whether this mount type is available for use. |
+| `CreatedAt` | `datetime` | Not Null |  | Audit timestamp for when the config row was created. |
+| `UpdatedAt` | `datetime` | Not Null |  | Audit timestamp for the last config change. |
+
 ### `GameTypeVolumes`
 
 | Column | Data Type | Nullability | Key / Constraint | Description |
 |---|---|---|---|---|
 | `Id` | `int` | Not Null | Primary Key | Internal identifier for the revisioned volume definition. |
 | `GameTypeRevisionId` | `int` | Not Null | Foreign Key -> `GameTypeRevisions.Id` | Associates the volume with the revision that defines it. |
-| `Source` | `string` | Not Null |  | Logical or authored source key used by the Primary Service to resolve storage bindings. |
+| `Source` | `string(500)` | Not Null |  | Container path where the mount is attached; also provides the `{Source}` token value. |
 | `Description` | `string` | Nullable |  | Human-readable purpose of the volume such as config, world, or mods. |
 | `DisplayOrder` | `int` | Not Null |  | UI ordering for volume presentation. |
-| `Usage` | `string` | Not Null |  | Semantic classification used by deployment logic to determine how the binding should be generated. |
+| `Usage` | `string(100)` | Not Null |  | Semantic classification used by deployment logic to determine how the binding should be generated. |
+| `MountType` | `string(50)` | Not Null | Foreign Key -> `MountTypeConfigs.Key` (soft, not enforced on existing data) | Mount type code used to look up templates and defaults at resolution time. |
+| `ReadOnly` | `bool` | Not Null | Default `false` | Whether the mount is read-only at runtime. |
+| `OwnerUid` | `int` | Nullable |  | Optional UID override applied to the resolved mount. |
+| `OwnerGid` | `int` | Nullable |  | Optional GID override applied to the resolved mount. |
+| `Permissions` | `string(10)` | Nullable |  | Optional permissions string override applied to the resolved mount. |
+| `Required` | `bool` | Not Null | Default `true` | Whether the volume must exist for the server to be deployable. |
 
 ### `GameTypeSettingDefinitions`
 
@@ -316,6 +393,27 @@ Legend:
 | `SettingKey` | `string` | Not Null | Unique with `GameServerId` | Setting or environment variable key being overridden for this server. |
 | `Value` | `string` | Nullable |  | Desired value supplied for deployment; list-like values may remain newline-separated when required by existing behavior. |
 
+### `GameServerVolumes`
+
+| Column | Data Type | Nullability | Key / Constraint | Description |
+|---|---|---|---|---|
+| `Id` | `int` | Not Null | Primary Key | Internal identifier for the resolved per-server volume snapshot. |
+| `GameServerId` | `int` | Not Null | Foreign Key -> `GameServers.Id` | Associates the resolved mount with the server instance. |
+| `Usage` | `string(100)` | Not Null |  | Semantic classification copied from the source volume definition. |
+| `ContainerPath` | `string(500)` | Not Null |  | Target path inside the container. |
+| `Source` | `string(500)` | Not Null |  | Resolved host- or driver-specific source for the mount. |
+| `MountType` | `string(50)` | Not Null | Default `volume` | How the mount is materialized (`volume`, `bind`, `tmpfs`, `nfs`). |
+| `ReadOnly` | `bool` | Not Null | Default `false` | Whether the mount is read-only at runtime. |
+| `Driver` | `string(200)` | Not Null | Default `local` | Volume driver snapshot from the resolved mount type config. |
+| `DriverOptionsJson` | `string` | Nullable |  | Snapshot of driver options from the resolved mount type config. |
+| `OwnerUid` | `int` | Nullable |  | UID applied to the mounted path. |
+| `OwnerGid` | `int` | Nullable |  | GID applied to the mounted path. |
+| `Permissions` | `string(10)` | Nullable |  | Permissions string applied to the mounted path. |
+| `InitMode` | `string(50)` | Not Null | Default `none` | How the volume should be initialized. |
+| `SeedSourcePath` | `string(500)` | Nullable |  | Optional source path used when initializing volume contents. |
+| `IsProvisioned` | `bool` | Not Null | Default `false` | Whether the volume has been provisioned on the underlying host. |
+| `CreatedAt` | `datetime` | Not Null |  | Audit timestamp for when the snapshot was created. |
+
 ## Notes
 
 - `GameTypes` is the logical catalog root.
@@ -328,7 +426,10 @@ Legend:
 - Primary port mappings are direct mappings to declared `GameTypePorts`; related mappings represent default related port/protocol combinations plus a relation calculation.
 - Port mapping descriptions are not persisted in V2; the UI should display the linked `GameTypePorts.Description` instead.
 - `CalculationValue` is interpreted according to `RelationType`, instead of using separate offset/fixed/multiplier columns.
-- `GameServerPorts`, `GameServerVolumes`, and runtime snapshot tables are intentionally excluded from V2.
+- `GameServerPorts` and resolved web host snapshots are intentionally excluded from V2.
+- `GameServerVolumes` are persisted as per-server resolved snapshots so that deployment and agents have a stable source of truth for volume mounts.
+- `MountTypeConfigs` is a keyed table that supplies the templates, driver, driver options, and defaults used when resolving `GameTypeVolumes` into `GameServerVolumes`.
+- `VolumeSetupConfig` and `VolumeDriverConfigOptions` have been removed; storage paths and driver options now live in `MountTypeConfigs.Key`-specific rows.
 - `CurrentRevisionId` is an optional selector on `GameTypes` and is not currently expressed as a physical foreign key in the PostgreSQL project.
 - Runtime deployment state such as resolved ports, resolved volume bindings, and resolved web hosts is computed from revision definitions plus `GameServerSettings` instead of being persisted in dedicated V2 tables.
 

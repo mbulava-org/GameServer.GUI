@@ -1,7 +1,6 @@
 using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models;
-using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -23,11 +22,11 @@ namespace GameServer.Docker.Services
         public UdpAgentAnnouncementListenerService(
             ILogger<UdpAgentAnnouncementListenerService> logger,
             IUdpAgentRegistry udpAgentRegistry,
-            IOptions<UdpAgentDiscoveryOptions> options)
+            UdpAgentDiscoveryOptions options)
         {
             _logger = logger;
             _udpAgentRegistry = udpAgentRegistry;
-            _options = options.Value;
+            _options = options;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

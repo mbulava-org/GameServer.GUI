@@ -48,22 +48,7 @@ namespace GameServer.Docker.Agent.Controllers
                                 Image = request.Image,
                                 Labels = request.Labels,
                                 Env = request.Env.Select(kv => $"{kv.Key}={kv.Value}").ToList(),
-                                Mounts = request.Mounts.Select(m => new Mount
-                                {
-                                    Type = m.Type,
-                                    Source = m.Source,
-                                    Target = m.Target,
-                                    ReadOnly = m.ReadOnly,
-                                    VolumeOptions = m.VolumeOptions != null ? new VolumeOptions
-                                    {
-                                        DriverConfig = new Driver
-                                        {
-                                            Name = m.VolumeOptions.GetValueOrDefault("driver", "local"),
-                                            Options = m.VolumeOptions.Where(kv => kv.Key != "driver")
-                                                .ToDictionary(kv => kv.Key, kv => kv.Value)
-                                        }
-                                    } : null
-                                }).ToList()
+                                Mounts = request.Mounts.Select(MapMountConfig).ToList()
                             },
                             Resources = request.Resources != null ? new ResourceRequirements
                             {
@@ -153,6 +138,14 @@ namespace GameServer.Docker.Agent.Controllers
                 {
                     currentSpec.TaskTemplate.ContainerSpec.Env = request.Env
                         .Select(kv => $"{kv.Key}={kv.Value}")
+                        .ToList();
+                }
+
+                if (request.Mounts != null)
+                {
+                    await PrepareMountsAsync(request.Mounts).ConfigureAwait(false);
+                    currentSpec.TaskTemplate.ContainerSpec.Mounts = request.Mounts
+                        .Select(MapMountConfig)
                         .ToList();
                 }
 
@@ -406,5 +399,171 @@ namespace GameServer.Docker.Agent.Controllers
                 });
             }
         }
+
+        /// <summary>
+        /// Creates host paths and applies ownership/permissions for bind-mount volumes before the
+        /// container starts. Named volumes rely on the Docker volume driver options.
+        /// </summary>
+        private async Task PrepareMountsAsync(IEnumerable<MountConfig> mounts)
+        {
+            foreach (var mount in mounts.Where(m =>
+                string.Equals(m.Type, "bind", StringComparison.OrdinalIgnoreCase)
+                && m.InitMode != "none"))
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(mount.Source) && !Directory.Exists(mount.Source))
+                    {
+                        Directory.CreateDirectory(mount.Source);
+                        _logger.LogInformation("Created bind mount host directory: {Path}", mount.Source);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Unable to create directory for bind mount: {Path}", mount.Source);
+                }
+
+                await ApplyOwnershipAndPermissionsAsync(mount).ConfigureAwait(false);
+            }
+
+            // Named volumes with explicit labels are handled through the Swarm volume driver.
+            await Task.CompletedTask;
+        }
+
+        private async Task ApplyOwnershipAndPermissionsAsync(MountConfig mount)
+        {
+            if (string.IsNullOrWhiteSpace(mount.Source) || !Directory.Exists(mount.Source))
+            {
+                return;
+            }
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(mount.Permissions)
+                    && TryParseOctal(mount.Permissions, out var mode))
+                {
+                    if (OperatingSystem.IsLinux())
+                    {
+                        await ChmodAsync(mount.Source, mode).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Skipping chmod on non-Linux host for {Path}", mount.Source);
+                    }
+                }
+
+                if ((mount.OwnerUid.HasValue || mount.OwnerGid.HasValue) && OperatingSystem.IsLinux())
+                {
+                    await ChownAsync(mount.Source, mount.OwnerUid, mount.OwnerGid).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to apply ownership/permissions to {Path}", mount.Source);
+            }
+        }
+
+        private static bool TryParseOctal(string text, out int value)
+        {
+            value = 0;
+            foreach (var c in text)
+            {
+                if (c < '0' || c > '7')
+                {
+                    value = 0;
+                    return false;
+                }
+
+                value = (value << 3) | (c - '0');
+            }
+
+            return true;
+        }
+
+        private async Task ChmodAsync(string path, int mode)
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "chmod",
+                Arguments = $"{Convert.ToString(mode, 8)} {path}",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start chmod process.");
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                var error = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                throw new InvalidOperationException($"chmod failed: {error}");
+            }
+        }
+
+        private async Task ChownAsync(string path, int? uid, int? gid)
+        {
+            var owner = uid.HasValue ? uid.Value.ToStringInvariant() : string.Empty;
+            if (gid.HasValue)
+            {
+                owner += $":{gid.Value.ToStringInvariant()}";
+            }
+
+            if (string.IsNullOrEmpty(owner))
+            {
+                return;
+            }
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "chown",
+                Arguments = $"{owner} {path}",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start chown process.");
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                var error = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                throw new InvalidOperationException($"chown failed: {error}");
+            }
+        }
+
+        private static Mount MapMountConfig(MountConfig m)
+        {
+            return new Mount
+            {
+                Type = m.Type,
+                Source = m.Source,
+                Target = m.Target,
+                ReadOnly = m.ReadOnly,
+                VolumeOptions = m.VolumeOptions != null || !string.IsNullOrWhiteSpace(m.DriverName)
+                    ? new VolumeOptions
+                    {
+                        DriverConfig = new Driver
+                        {
+                            Name = m.DriverName.NullIfEmpty()
+                                ?? m.VolumeOptions?.GetValueOrDefault("driver", "local")
+                                ?? "local",
+                            Options = m.VolumeOptions?.Where(kv => kv.Key != "driver")
+                                .ToDictionary(kv => kv.Key, kv => kv.Value)
+                                ?? new Dictionary<string, string>()
+                        }
+                    }
+                    : null
+            };
+        }
+    }
+
+    internal static class StringExtensions
+    {
+        public static string? NullIfEmpty(this string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value;
+
+        public static string ToStringInvariant(this int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 }

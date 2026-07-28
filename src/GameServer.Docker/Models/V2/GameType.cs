@@ -45,6 +45,8 @@ public sealed record GameTypeRevision
 
     public DateTime CreatedAt { get; init; }
 
+    public GameType? GameType { get; set; }
+
     public List<GameTypePort> Ports { get; init; } = [];
 
     public List<GameTypeVolume> Volumes { get; init; } = [];
@@ -80,6 +82,60 @@ public sealed record GameTypeVolume
     public int DisplayOrder { get; init; }
 
     public string Usage { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Mount-type code matching <see cref="MountTypeConfig.Key"/>.
+    /// </summary>
+    public string MountType { get; init; } = "volume";
+
+    public bool ReadOnly { get; init; }
+
+    public int? OwnerUid { get; init; }
+
+    public int? OwnerGid { get; init; }
+
+    public string? Permissions { get; init; }
+
+    public bool Required { get; init; } = true;
+}
+
+public sealed record GameServerVolume
+{
+    public int Id { get; init; }
+
+    public int GameServerId { get; init; }
+
+    public string Usage { get; init; } = string.Empty;
+
+    public string ContainerPath { get; init; } = string.Empty;
+
+    public string Source { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Concrete mount-type code used when the volume was created. Stored as a snapshot
+    /// so the exact configuration can be reconstructed even if the mount-type template changes.
+    /// </summary>
+    public string MountType { get; init; } = "volume";
+
+    public bool ReadOnly { get; init; }
+
+    public string Driver { get; init; } = "local";
+
+    public string? DriverOptionsJson { get; init; }
+
+    public int? OwnerUid { get; init; }
+
+    public int? OwnerGid { get; init; }
+
+    public string? Permissions { get; init; }
+
+    public VolumeInitMode InitMode { get; init; } = VolumeInitMode.None;
+
+    public string? SeedSourcePath { get; init; }
+
+    public bool IsProvisioned { get; init; }
+
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }
 
 public sealed record GameTypeSettingDefinition
@@ -176,4 +232,19 @@ public enum GameTypeSettingPortRelationType
     Offset = 1,
     Fixed = 2,
     Multiplier = 3
+}
+
+public enum VolumeMountType
+{
+    Volume = 0,
+    Bind = 1,
+    Tmpfs = 2
+}
+
+public enum VolumeInitMode
+{
+    None = 0,
+    Create = 1,
+    SeedFromImage = 2,
+    CopyOnFirstRun = 3
 }

@@ -27,6 +27,8 @@ public sealed record GameServer
     public bool IsDeleted { get; init; }
 
     public List<GameServerSetting> Settings { get; init; } = [];
+
+    public List<GameServerVolume> Volumes { get; init; } = [];
 }
 
 public sealed record GameServerSetting

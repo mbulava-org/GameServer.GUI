@@ -39,8 +39,8 @@ namespace GameServer.Web
                             outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
 
 
-                builder.Services.Configure<Configurations.GameServerDockerApi>(
-                    builder.Configuration.GetSection("GameServerDockerApi"));
+                // Bind API client configuration directly from appsettings.json.
+                builder.Services.AddSingleton(builder.Configuration.GetSection("GameServerDockerApi").Get<Configurations.GameServerDockerApi>() ?? new Configurations.GameServerDockerApi());
 
                 // Add services to the container.
                 builder.Services.AddRazorComponents()
@@ -54,6 +54,7 @@ namespace GameServer.Web
                 builder.Services.AddHttpClient();
                 builder.Services.AddScoped<Services.V2.GameServerV2ApiService>();
                 builder.Services.AddScoped<Services.V2.GameTypeV2ApiService>();
+                builder.Services.AddScoped<Services.V2.MountTypeConfigApiService>();
 
                 //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";

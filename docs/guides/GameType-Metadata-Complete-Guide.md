@@ -2,11 +2,13 @@
 
 ## Overview
 
+> **This guide describes the legacy (V1) metadata system.** The primary service now uses the V2 data model (`GameType`, `GameTypeRevision`, `GameTypeSettingDefinition`, `GameTypeSettingMetadata`, `GameTypeSettingPortMapping`, `GameTypeWebHost`, `MountTypeConfig`, and `GameServerVolume`). The legacy `DefaultSettings`, `SettingsMetadata`, `PortValidation`, `PortRelationships`, `ExtendedMetadata`, `VolumeSetupConfig`, and `VolumeDriverConfigOptions` types have been removed.
+
 The GameType metadata system provides a comprehensive way to define, validate, and manage game server configurations. This guide explains how all the pieces work together when building a game server.
 
 ---
 
-## Architecture Overview
+## Architecture Overview (Legacy)
 
 ```
 ???????????????????????????????????????????????????????????

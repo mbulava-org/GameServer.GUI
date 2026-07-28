@@ -1,3 +1,4 @@
+using GameServer.Docker.Configurations;
 using GameServer.Docker.Controllers.V2;
 using GameServer.Docker.Dtos.V2;
 using GameServer.Docker.Interfaces;
@@ -6,9 +7,9 @@ using GameTypeModel = GameServer.Docker.Models.V2.GameType;
 using GameTypeRevisionModel = GameServer.Docker.Models.V2.GameTypeRevision;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2;
-using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Mvc;
 using Moq;
 
 namespace GameServer.Docker.Tests.Controllers.V2;
@@ -143,6 +144,7 @@ public class GameServersControllerTests
         return new GameServerValidationService(
             gameTypeRepository.Object,
             serviceOperations.Object,
-            Options.Create(new GameServer.Docker.Configurations.PortAllocation { StartPort = 2000, EndPort = 100000 }));
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), NullLogger<VolumeSetupResolver>.Instance));
     }
 }

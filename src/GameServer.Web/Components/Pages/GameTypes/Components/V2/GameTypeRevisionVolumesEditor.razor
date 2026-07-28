@@ -17,36 +17,68 @@ else
 {
     @foreach (var volume in Volumes)
     {
-        <RadzenCard class="mb-3">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <RadzenFormField Text="Container Path" Variant="Variant.Outlined" class="w-100">
-                        <ChildContent>
-                            <RadzenTextBox @bind-Value="volume.Source" @bind-Value:after="NotifyDraftChangedAsync" Placeholder="/data/worlds" class="w-100" />
-                        </ChildContent>
-                    </RadzenFormField>
-                    <small class="text-muted">The path inside the container where this volume is mounted.</small>
-                </div>
-                <div class="col-md-3">
-                    <RadzenFormField Text="Usage" Variant="Variant.Outlined" class="w-100">
-                        <RadzenDropDown @bind-Value="volume.Usage" @bind-Value:after="NotifyDraftChangedAsync" Data="VolumeUsageOptions" class="w-100" />
-                    </RadzenFormField>
-                </div>
-                <div class="col-md-4">
-                    <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                        <RadzenTextBox @bind-Value="volume.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
-                    </RadzenFormField>
-                </div>
-                <div class="col-md-1 text-end">
-                    <div class="d-flex justify-content-end gap-1">
-                        <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftAsync(volume, -1))" Disabled="@(Volumes.IndexOf(volume) <= 0)" />
-                        <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftAsync(volume, 1))" Disabled="@(Volumes.IndexOf(volume) >= Volumes.Count - 1)" />
-                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveVolumeDraftAsync(volume))" />
+            <RadzenCard class="mb-3">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <RadzenFormField Text="Container Path" Variant="Variant.Outlined" class="w-100">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="volume.Source" @bind-Value:after="NotifyDraftChangedAsync" Placeholder="/data/worlds" class="w-100" />
+                            </ChildContent>
+                        </RadzenFormField>
+                        <small class="text-muted">The path inside the container where this volume is mounted.</small>
+                    </div>
+                    <div class="col-md-3">
+                        <RadzenFormField Text="Usage" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown @bind-Value="volume.Usage" @bind-Value:after="NotifyDraftChangedAsync" Data="VolumeUsageOptions" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-4">
+                        <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="volume.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <div class="d-flex justify-content-end gap-1">
+                            <RadzenButton Icon="arrow_upward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftAsync(volume, -1))" Disabled="@(Volumes.IndexOf(volume) <= 0)" />
+                            <RadzenButton Icon="arrow_downward" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => MoveVolumeDraftAsync(volume, 1))" Disabled="@(Volumes.IndexOf(volume) >= Volumes.Count - 1)" />
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveVolumeDraftAsync(volume))" />
+                        </div>
                     </div>
                 </div>
-            </div>
-        </RadzenCard>
-    }
+                <div class="row g-3 align-items-end mt-1">
+                    <div class="col-md-3">
+                        <RadzenFormField Text="Mount Type" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown @bind-Value="volume.MountType" @bind-Value:after="NotifyDraftChangedAsync" Data="MountTypeOptions" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-2">
+                        <RadzenFormField Text="UID" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric @bind-Value="volume.OwnerUid" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-2">
+                        <RadzenFormField Text="GID" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric @bind-Value="volume.OwnerGid" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-2">
+                        <RadzenFormField Text="Permissions" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="volume.Permissions" @bind-Value:after="NotifyDraftChangedAsync" Placeholder="0755" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-center gap-2">
+                        <RadzenCheckBox @bind-Value="volume.ReadOnly" @bind-Value:after="NotifyDraftChangedAsync" />
+                        <span class="small text-muted">Read-only</span>
+                    </div>
+                </div>
+                @if (!volume.Required)
+                {
+                    <div class="mt-2">
+                        <RadzenBadge Text="Optional" IsPill="true" Shade="Shade.Lighter" />
+                    </div>
+                }
+            </RadzenCard>
+        }
 }
 
 @code {
@@ -59,11 +91,14 @@ else
     [Parameter]
     public EventCallback OnDraftChanged { get; set; }
 
+    private static readonly IReadOnlyList<string> MountTypeOptions = ["volume", "bind", "tmpfs"];
+
     private async Task AddVolumeDraft()
     {
         Volumes.Add(new GameTypeRevisionVolumeDraft
         {
-            Usage = "config"
+            Usage = "config",
+            MountType = "volume"
         });
 
         await NotifyDraftChangedAsync();

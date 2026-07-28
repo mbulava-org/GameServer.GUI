@@ -1,18 +1,20 @@
 # Advanced Port Mapping - Integration Guide
 
+> **This guide is obsolete.** V2 uses `GameTypeSettingPortMapping` inside `GameTypeSettingMetadata` and the primary API no longer contains `PortDefinition`, `GameTypeDefinition`, `PortRelationship`, or `PortValidationRule`. This document is preserved as historical context.
+
 ## ?? Architecture Decision Required
 
 The advanced port mapping system has been designed and documented, but requires an **architecture decision** about where to place the shared models.
 
-### Current Situation
+### Current Situation (Legacy)
 
 - **GameServer.Docker** - API backend project
 - **GameServer.Docker.Client** - NuGet package (auto-generated from API)
 - **GameServer.Web** - Blazor frontend project
 
-### The Issue
+### The Issue (Legacy)
 
-The `PortMappingService` needs to:
+The `PortMappingService` needed to:
 1. Reference `IPortApi` (from Docker.Client)
 2. Use `PortDefinition`, `GameTypeDefinition` (from Docker.Client)
 3. Define new models: `PortRelationship`, `PortValidationRule`

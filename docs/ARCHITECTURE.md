@@ -46,6 +46,11 @@
 - **Agent**: `appsettings.json` → `AgentRegistration:PrimaryServiceUrl`
 - **Primary**: Automatic - agents connect to `/hubs/agentregistration`
 
+**Multi-node requirements:**
+- Agents and Primary Service must share the same overlay network.
+- At least one registered agent must report `IsManagerNode = true` and include the `services`, `tasks`, `nodes`, and `swarm` capabilities so service create/update/delete can be delegated to it.
+- Worker agents only need container-level capabilities (logs, exec, stats, attach).
+
 ### Multi-Node Docker Swarm Deployment
 
 ```
@@ -152,11 +157,10 @@ public class MyHub : Hub
 - `Data/V2/` - V2 EF Core DbContext and entities
 
 **Key Services:**
-- `IServiceOperations` - Abstraction for all Docker operations
-  - `ServiceOperationsViaDirect` - Direct Docker client (requires Docker connection)
-  - `ServiceOperationsViaAgent` - Delegates to manager agent (no Docker connection needed)
+- `IServiceOperations` - Abstraction for all Docker Swarm service operations
+  - `ServiceOperationsViaAgent` - Delegates all service operations to a manager agent
 - `AgentRegistryService` - Agent registration and container→agent mappings
-- `NodeAgentDiscoveryService` - Agent discovery/health tracking over Swarm polling (optional fallback)
+- `NodeAgentDiscoveryService` - Agent discovery/health tracking via push-based registration and UDP announcements
 
 **Persistence:**
 - `GameServerV2DbContext` is the only persistence implementation.
@@ -168,12 +172,11 @@ public class MyHub : Hub
   - `GameType` owning a fixed `ImageReference`
   - `GameTypeRevision` owning version-tagged deployable templates
   - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
-- Derived data such as `GameServerPorts`, `GameServerVolumes`, and resolved Web Host state are not persisted in V2.
+- `GameServerPorts` and resolved Web Host state are not persisted in V2; `GameServerVolumes` are persisted as immutable per-server snapshots resolved from `GameTypeVolume` templates plus `MountTypeConfig` entries.
 
 **✅ PHASE 5 COMPLETE:**
-- Primary Service can run **without any Docker connection** when `ServiceOperations:Mode=Agent`
-- All Docker operations (services, tasks, networks) delegated to manager agent
-- `IDockerClient` is optional and only used in Direct mode
+- Primary Service runs **without any Docker daemon connection**
+- All Docker operations (services, tasks, networks) are delegated to manager agents
 - Container operations always go through agents (logs, exec, stats, attach)
 - V2 persistence is the only active persistence layer
 
@@ -229,7 +232,7 @@ The application uses a single V2 persistence layer.
 - `GameTypeRevision` owns the tagged deployable template.
 - `GameServer` stores only server-specific deployment intent and references `GameTypeRevisionId`.
 - `GameServerSettings` stores desired per-server values.
-- `GameServerPorts`, `GameServerVolumes`, and resolved Web Host state are derived and are not persisted in V2.
+- `GameServerPorts` and resolved Web Host state are derived and are not persisted in V2. `GameServerVolumes` are persisted as immutable snapshots resolved from `GameTypeVolume` templates and `MountTypeConfig` entries.
 - Port availability validation is a backend service responsibility, not persisted schema data.
 
 #### V2 compatibility rules
@@ -296,6 +299,8 @@ var response = await httpClient.GetAsync($"/api/containers/{containerId}/stats")
 ### Pattern 3: Service Operations via IServiceOperations
 
 **File:** `src\GameServer.Docker\Interfaces\IServiceOperations.cs`
+
+All Swarm service operations (create, update, delete, list, inspect) run through `IServiceOperations`. The primary service no longer holds a direct Docker client; the implementation delegates to a manager agent.
 
 ```csharp
 public class GameServerCommandService

@@ -1,5 +1,6 @@
 using GameServerModel = GameServer.Docker.Models.V2.GameServer;
 using GameServerSettingModel = GameServer.Docker.Models.V2.GameServerSetting;
+using GameServerVolumeModel = GameServer.Docker.Models.V2.GameServerVolume;
 using GameTypeModel = GameServer.Docker.Models.V2.GameType;
 using GameTypePortModel = GameServer.Docker.Models.V2.GameTypePort;
 using GameTypeRevisionModel = GameServer.Docker.Models.V2.GameTypeRevision;
@@ -101,6 +102,18 @@ public class GameServerQueryServiceTests
                 Settings =
                 [
                     new GameServerSettingModel { Id = 1, SettingKey = "EULA", Value = "TRUE" }
+                ],
+                Volumes =
+                [
+                    new GameServerVolumeModel
+                    {
+                        Id = 1,
+                        Usage = "world",
+                        ContainerPath = "/data",
+                        Source = "/srv/gameservers/minecraft_srv-1/data",
+                        MountType = "volume",
+                        CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                    }
                 ]
             });
 

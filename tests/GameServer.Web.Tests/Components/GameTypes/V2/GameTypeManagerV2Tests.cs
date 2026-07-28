@@ -7,7 +7,6 @@ using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Moq;
 using Radzen;
 
@@ -99,10 +98,10 @@ public sealed class GameTypeManagerV2Tests : BunitContext
                 BaseAddress = new Uri("http://localhost/")
             });
 
-        var options = Options.Create(new GameServerDockerApi
+        var options = new GameServerDockerApi
         {
             BaseUri = "http://localhost/"
-        });
+        };
 
         return new GameTypeV2ApiService(httpClientFactory.Object, options);
     }

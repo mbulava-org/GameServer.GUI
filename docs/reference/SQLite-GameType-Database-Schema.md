@@ -1,4 +1,6 @@
-# SQLite Database Schema for GameType Management
+# Legacy SQLite Database Schema for GameType Management
+
+> **This schema is obsolete.** The primary service now uses the V2 database schema (`GameServerV2DbContext`). This document is preserved only as historical reference for the original SQLite implementation.
 
 ## Schema Overview
 

@@ -357,6 +357,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ### Roadmap
 
+The detailed project roadmap, implemented features, and planned work are maintained in [docs/MASTER_ROADMAP.md](/docs/MASTER_ROADMAP.md). Treat this as a living document — update it as features ship or priorities change.
+
+High-level next items:
+
 - [ ] Kubernetes support
 - [ ] Multi-cluster management
 - [ ] Advanced scheduling

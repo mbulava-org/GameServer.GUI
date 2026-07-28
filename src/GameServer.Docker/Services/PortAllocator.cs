@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Docker.DotNet;
 using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
-using Microsoft.Extensions.Options;
 
 namespace GameServer.Docker.Services
 {
@@ -21,9 +19,9 @@ namespace GameServer.Docker.Services
 
         public PortAllocator(
             IServiceOperations secretsOperations,
-            IOptions<PortAllocation> portOptions)
+            PortAllocation portOptions)
         {
-            _portOptions = portOptions.Value;
+            _portOptions = portOptions;
             _serviceOperations = secretsOperations;
         }
 

@@ -31,7 +31,12 @@ namespace GameServer.Docker.Agent.Models
         public required string Source { get; set; }
         public required string Target { get; set; }
         public bool ReadOnly { get; set; }
+        public string? DriverName { get; set; }
         public Dictionary<string, string>? VolumeOptions { get; set; }
+        public int? OwnerUid { get; set; }
+        public int? OwnerGid { get; set; }
+        public string? Permissions { get; set; }
+        public string InitMode { get; set; } = "none";
     }
 
     public class ResourcesConfig
@@ -61,6 +66,7 @@ namespace GameServer.Docker.Agent.Models
         public string? Image { get; set; }
         public Dictionary<string, string>? Labels { get; set; }
         public Dictionary<string, string>? Env { get; set; }
+        public List<MountConfig>? Mounts { get; set; }
         public ResourcesConfig? Resources { get; set; }
         public bool ForceUpdate { get; set; }
     }

@@ -1,9 +1,6 @@
-using Docker.DotNet;
-using Docker.DotNet.Models;
 using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models;
-using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -17,7 +14,6 @@ namespace GameServer.Docker.Services
     /// </summary>
     public class NodeAgentDiscoveryService : BackgroundService, INodeAgentDiscovery
     {
-        private readonly IDockerClient? _client;
         private readonly ILogger<NodeAgentDiscoveryService> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IServiceProvider _serviceProvider; // Use IServiceProvider to avoid circular dependency
@@ -41,16 +37,14 @@ namespace GameServer.Docker.Services
             ILogger<NodeAgentDiscoveryService> logger,
             IHttpClientFactory httpClientFactory,
             IServiceProvider serviceProvider, // Inject IServiceProvider to avoid circular dependency
-            IOptions<NodeAgentOptions> agentOptions,
+            NodeAgentOptions agentOptions,
             IAgentRegistry agentRegistry,
-            IUdpAgentRegistry udpAgentRegistry,
-            IDockerClient? client = null)
+            IUdpAgentRegistry udpAgentRegistry)
         {
-            _client = client;
             _logger = logger;
             _httpClientFactory = httpClientFactory;
             _serviceProvider = serviceProvider;
-            _agentOptions = agentOptions.Value;
+            _agentOptions = agentOptions;
             _agentRegistry = agentRegistry;
             _udpAgentRegistry = udpAgentRegistry;
         }
@@ -66,17 +60,6 @@ namespace GameServer.Docker.Services
                 return;
             }
             #pragma warning restore CS0618
-
-            // Check if IDockerClient is available (required for background discovery)
-            if (_client == null)
-            {
-                _logger.LogWarning(
-                    "⚠️ IDockerClient is not available (likely running in Agent mode). " +
-                    "Background agent discovery via Docker Swarm polling is not possible. " +
-                    "Using agent registration system only. " +
-                    "Set NodeAgentOptions:EnableBackgroundDiscovery=false to suppress this warning.");
-                return;
-            }
 
             #pragma warning disable CS0618 // Type or member is obsolete
             _logger.LogWarning(
@@ -121,8 +104,8 @@ namespace GameServer.Docker.Services
             {
                 _logger.LogDebug("Starting background agent discovery cycle");
 
-                var discoveredAgents = await DiscoverAgentsInternalAsync(cancellationToken);
-                
+                var discoveredAgents = new List<NodeAgentEndpoint>();
+
                 // Update the thread-safe agent dictionary
                 var currentNodeIds = new HashSet<string>(discoveredAgents.Select(a => a.NodeId));
                 var previousNodeIds = new HashSet<string>(_agents.Keys);
@@ -225,230 +208,44 @@ namespace GameServer.Docker.Services
             return Task.FromResult(allAgents);
         }
 
-        private async Task<List<NodeAgentEndpoint>> DiscoverAgentsInternalAsync(CancellationToken cancellationToken)
+        private Task<List<NodeAgentEndpoint>> DiscoverAgentsInternalAsync(CancellationToken cancellationToken)
         {
-            if (_client == null)
-            {
-                _logger.LogWarning("Cannot discover agents: IDockerClient is not available");
-                return new List<NodeAgentEndpoint>();
-            }
-
-            _logger.LogTrace("Discovering node agents in swarm (service: {ServiceName}, network: {NetworkName})", 
-                _agentOptions.ServiceName, _agentOptions.NetworkName);
-
-            try
-            {
-                // Find agent service tasks
-                // Note: We only filter by desired-state, not actual state, because services
-                // may remain in "starting" state for extended periods due to health checks
-                var tasks = await _client.Tasks.ListAsync(new TasksListParameters
-                {
-                    Filters = new Dictionary<string, IDictionary<string, bool>>
-                    {
-                        ["service"] = new Dictionary<string, bool> { [_agentOptions.ServiceName] = true },
-                        ["desired-state"] = new Dictionary<string, bool> { ["running"] = true }
-                    }
-                }, cancellationToken);
-
-                var agents = new List<NodeAgentEndpoint>();
-
-                _logger.LogTrace("Found {TaskCount} tasks for service '{ServiceName}'", tasks.Count, _agentOptions.ServiceName);
-
-                // Filter tasks by configured active states (running, starting, ready, etc.)
-                var activeStates = _agentOptions.ActiveTaskStates
-                    .Select(s => s.ToLowerInvariant())
-                    .ToHashSet();
-
-                var activeTasks = tasks.Where(t => 
-                    t.Status?.State != null && 
-                    activeStates.Contains(t.Status.State.ToString().ToLowerInvariant())).ToList();
-
-                _logger.LogTrace("{ActiveCount} of {TotalCount} tasks are in active states", activeTasks.Count, tasks.Count);
-
-                foreach (var task in activeTasks)
-                {
-                    var nodeId = task.NodeID ?? string.Empty;
-                    var containerId = task.Status?.ContainerStatus?.ContainerID ?? string.Empty;
-                    var taskId = task.ID ?? string.Empty;
-
-                    _logger.LogTrace("Processing task {TaskId} on node {NodeId}, container {ContainerId}, state {State}",
-                        taskId, nodeId, containerId, task.Status?.State);
-
-                    if (string.IsNullOrEmpty(nodeId) || string.IsNullOrEmpty(containerId))
-                    {
-                        _logger.LogTrace("Skipping task {TaskId}: missing node ID or container ID", taskId);
-                        continue;
-                    }
-
-                    // Get node information for hostname
-                    var node = await _client.Swarm.InspectNodeAsync(nodeId, cancellationToken);
-                    var nodeName = node.Description?.Hostname ?? nodeId;
-
-                    // Get the overlay network IP from task's NetworkAttachments
-                    // Use the configured network name to find the correct attachment
-                    if (task.NetworksAttachments == null || !task.NetworksAttachments.Any())
-                    {
-                        _logger.LogTrace("Task {TaskId} on node {NodeName} ({NodeId}) has no network attachments",
-                            taskId, nodeName, nodeId);
-                        continue;
-                    }
-
-                    _logger.LogTrace("Task {TaskId} has {Count} network attachment(s): {Networks}",
-                        taskId,
-                        task.NetworksAttachments.Count,
-                        string.Join(", ", task.NetworksAttachments.Select(na => na.Network?.Spec?.Name ?? "unknown")));
-
-                    var networkAttachment = task.NetworksAttachments
-                        .FirstOrDefault(na => na.Network?.Spec?.Name == _agentOptions.NetworkName);
-                    
-                    var agentIp = networkAttachment?.Addresses?.FirstOrDefault()?.Split('/')[0];
-                    
-                    if (string.IsNullOrEmpty(agentIp))
-                    {
-                        _logger.LogTrace("Could not determine overlay network IP for agent on node {NodeName} ({NodeId}) on network {NetworkName}. Available networks: {Networks}", 
-                            nodeName, nodeId, _agentOptions.NetworkName,
-                            string.Join(", ", task.NetworksAttachments?.Select(na => na.Network?.Spec?.Name ?? "unknown") ?? Array.Empty<string>()));
-                        continue;
-                    }
-
-                    _logger.LogTrace("Found agent IP {AgentIp} for task {TaskId} on node {NodeName}",
-                        agentIp, taskId, nodeName);
-
-                    // Agent is accessible via overlay network IP
-                    // Format: http://{overlay-ip}:{agent-port}
-                    var internalUrl = $"http://{agentIp}:{_agentOptions.Port}";
-
-                    var agent = new NodeAgentEndpoint
-                    {
-                        NodeId = nodeId,
-                        NodeName = nodeName,
-                        TaskId = task.ID ?? string.Empty,
-                        ContainerId = containerId,
-                        InternalUrl = internalUrl,
-                        DiscoveredAt = DateTime.UtcNow
-                    };
-
-                    // Health check
-                    _logger.LogTrace("Performing health check for agent at {Url}", internalUrl);
-                    var healthCheckStart = DateTime.UtcNow;
-                    agent.IsHealthy = await CheckAgentHealthAsync(agent);
-                    var healthCheckDuration = (DateTime.UtcNow - healthCheckStart).TotalMilliseconds;
-
-                    agents.Add(agent);
-                    _logger.LogTrace("Discovered agent on node {NodeName} ({NodeId}): {Url} [State: {State}, Healthy: {Healthy}, HealthCheck: {Duration}ms]",
-                        nodeName, nodeId, internalUrl, task.Status?.State, agent.IsHealthy, healthCheckDuration);
-                }
-
-                return agents;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error discovering node agents");
-                return new List<NodeAgentEndpoint>();
-            }
+            // Pull-based Docker Swarm discovery is no longer supported; all agents are discovered
+            // via push-based registry registration or UDP announcements.
+            return Task.FromResult(new List<NodeAgentEndpoint>());
         }
 
-        public async Task<NodeAgentEndpoint?> GetAgentForContainerAsync(string containerId)
+        public Task<NodeAgentEndpoint?> GetAgentForContainerAsync(string containerId)
         {
             _logger.LogDebug("Finding agent for container {ContainerId}", containerId);
 
-            // PHASE 2: Try registry first (new push-based registration system)
+            // Try registry first (new push-based registration system)
             var registryAgent = _agentRegistry.GetAgentForContainer(containerId);
             if (registryAgent != null)
             {
                 _logger.LogDebug(
                     "✅ Found agent via REGISTRY (push-based) for container {ContainerId}: {AgentUrl} on node {NodeName}",
-                            containerId.Substring(0, Math.Min(12, containerId.Length)),
-                            registryAgent.InternalUrl,
-                            registryAgent.NodeName);
-                        return registryAgent;
-                    }
-
-                    var udpAgent = _udpAgentRegistry.GetAgentForContainer(containerId);
-                    if (udpAgent != null)
-                    {
-                        _logger.LogDebug(
-                            "✅ Found agent via UDP for container {ContainerId}: {AgentUrl} on node {NodeName}",
-                            containerId.Substring(0, Math.Min(12, containerId.Length)),
-                            udpAgent.InternalUrl,
-                            udpAgent.NodeName);
-                        return udpAgent;
-                    }
-
-                    if (_client == null)
-                    {
-                        _logger.LogWarning(
-                            "⚠️ Agent not found in registry or UDP discovery for container {ContainerId} and IDockerClient is not available for fallback discovery",
-                            containerId.Substring(0, Math.Min(12, containerId.Length)));
-                        return null;
-                    }
-
-                    _logger.LogDebug(
-                        "⚠️ Agent not found in registry or UDP discovery for container {ContainerId}, falling back to Docker Swarm query (pull-based discovery)",
-                        containerId.Substring(0, Math.Min(12, containerId.Length)));
-
-                    // FALLBACK: Use legacy Docker Swarm query method
-                    // First, find which node the container is on
-                    _logger.LogTrace("Querying Docker for all running tasks to locate container {ContainerId}", containerId);
-                    var tasks = await _client.Tasks.ListAsync(new TasksListParameters
-            {
-                Filters = new Dictionary<string, IDictionary<string, bool>>
-                {
-                    ["desired-state"] = new Dictionary<string, bool> { ["running"] = true }
-                }
-            });
-
-            _logger.LogTrace("Found {TaskCount} running tasks total", tasks.Count);
-
-            // Accept active states (running, starting, ready) since containers may be starting
-            var activeStates = _agentOptions.ActiveTaskStates
-                .Select(s => s.ToLowerInvariant())
-                .ToHashSet();
-
-            var task = tasks.FirstOrDefault(t =>
-                t.Status?.State != null &&
-                activeStates.Contains(t.Status.State.ToString().ToLowerInvariant()) &&
-                t.Status?.ContainerStatus?.ContainerID == containerId);
-
-            if (task == null)
-            {
-                _logger.LogWarning("No active task found for container {ContainerId}. Container may have stopped or not yet started", containerId);
-                return null;
+                    containerId.Substring(0, Math.Min(12, containerId.Length)),
+                    registryAgent.InternalUrl,
+                    registryAgent.NodeName);
+                return Task.FromResult<NodeAgentEndpoint?>(registryAgent);
             }
 
-            var nodeId = task.NodeID;
-            if (string.IsNullOrEmpty(nodeId))
-            {
-                _logger.LogWarning("Task {TaskId} for container {ContainerId} has no node ID", task.ID, containerId);
-                return null;
-            }
-
-            _logger.LogDebug("Container {ContainerId} is running on node {NodeId} (task state: {State})",
-                containerId, nodeId, task.Status?.State);
-
-            // Find agent on that node from our cached list
-            if (_agents.TryGetValue(nodeId, out var agent) && agent.IsHealthy)
+            var udpAgent = _udpAgentRegistry.GetAgentForContainer(containerId);
+            if (udpAgent != null)
             {
                 _logger.LogDebug(
-                    "✅ Found agent via DISCOVERY (pull-based) for container {ContainerId}: {AgentUrl} on node {NodeName}",
-                    containerId,
-                    agent.InternalUrl,
-                    agent.NodeName);
-                return agent;
+                    "✅ Found agent via UDP for container {ContainerId}: {AgentUrl} on node {NodeName}",
+                    containerId.Substring(0, Math.Min(12, containerId.Length)),
+                    udpAgent.InternalUrl,
+                    udpAgent.NodeName);
+                return Task.FromResult<NodeAgentEndpoint?>(udpAgent);
             }
 
-            // Try to find any agent on that node (even if unhealthy)
-            if (_agents.TryGetValue(nodeId, out var unhealthyAgent))
-            {
-                _logger.LogWarning("Agent found on node {NodeId} but is unhealthy: {AgentUrl}", nodeId, unhealthyAgent.InternalUrl);
-            }
-            else
-            {
-                _logger.LogWarning("No agent found on node {NodeId} at all. Available nodes: {Nodes}",
-                    nodeId, string.Join(", ", _agents.Values.Select(a => $"{a.NodeName}({a.NodeId})")));
-            }
-
-            return null;
+            _logger.LogWarning(
+                "⚠️ Agent not found in registry or UDP discovery for container {ContainerId}",
+                containerId.Substring(0, Math.Min(12, containerId.Length)));
+            return Task.FromResult<NodeAgentEndpoint?>(null);
         }
 
         public async Task<NodeAgentEndpoint?> GetAgentForServerAsync(string serverId)

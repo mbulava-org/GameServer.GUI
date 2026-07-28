@@ -3,7 +3,7 @@ using GameServer.Docker.Dtos.V2;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using GameServerModel = GameServer.Docker.Models.V2.GameServer;
 using GameServerSettingModel = GameServer.Docker.Models.V2.GameServerSetting;
@@ -61,7 +61,8 @@ public class GameServerCommandServiceTests
         var validationService = new GameServerValidationService(
             gameTypeRepository.Object,
             serviceOperations.Object,
-            Options.Create(new PortAllocation { StartPort = 2000, EndPort = 100000 }));
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), NullLogger<VolumeSetupResolver>.Instance));
         var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService);
 
         var request = new SaveGameServerRequestDto

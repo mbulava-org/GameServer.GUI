@@ -1,7 +1,6 @@
 using GameServer.Docker.Configurations;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models;
-using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 
 namespace GameServer.Docker.Services
@@ -18,10 +17,10 @@ namespace GameServer.Docker.Services
 
         public UdpAgentRegistryService(
             ILogger<UdpAgentRegistryService> logger,
-            IOptions<UdpAgentDiscoveryOptions> options)
+            UdpAgentDiscoveryOptions options)
         {
             _logger = logger;
-            _options = options.Value;
+            _options = options;
         }
 
         /// <summary>

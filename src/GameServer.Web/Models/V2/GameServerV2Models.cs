@@ -116,13 +116,33 @@ public sealed record GameServerResolvedPort
 
 public sealed record GameServerResolvedVolume
 {
+    public string Usage { get; init; } = string.Empty;
+
+    public string ContainerPath { get; init; } = string.Empty;
+
     public string Source { get; init; } = string.Empty;
 
-    public string? Description { get; init; }
+    public string MountType { get; init; } = "volume";
 
-    public int DisplayOrder { get; init; }
+    public bool ReadOnly { get; init; }
 
-    public string Usage { get; init; } = string.Empty;
+    public string Driver { get; init; } = "local";
+
+    public string? DriverOptionsJson { get; init; }
+
+    public int? OwnerUid { get; init; }
+
+    public int? OwnerGid { get; init; }
+
+    public string? Permissions { get; init; }
+
+    public string InitMode { get; init; } = "none";
+
+    public string? SeedSourcePath { get; init; }
+
+    public bool IsProvisioned { get; init; }
+
+    public DateTime CreatedAt { get; init; }
 }
 
 public sealed record GameServerResolvedWebHost

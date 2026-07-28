@@ -6,6 +6,17 @@ CREATE TABLE core."GameTypeVolumes"
     "Description" text NULL,
     "DisplayOrder" integer NOT NULL DEFAULT 0,
     "Usage" varchar(100) NOT NULL,
+    "MountType" varchar(50) NOT NULL DEFAULT 'volume',
+    "ReadOnly" boolean NOT NULL DEFAULT FALSE,
+    "Driver" varchar(200) NOT NULL DEFAULT 'local',
+    "DriverOptionsJson" jsonb NULL,
+    "SubPathOverride" varchar(500) NULL,
+    "OwnerUid" integer NULL,
+    "OwnerGid" integer NULL,
+    "Permissions" varchar(10) NULL,
+    "InitMode" varchar(50) NOT NULL DEFAULT 'none',
+    "SeedSourcePath" varchar(500) NULL,
+    "Required" boolean NOT NULL DEFAULT TRUE,
     CONSTRAINT "FK_GameTypeVolumes_GameTypeRevisions_GameTypeRevisionId"
         FOREIGN KEY ("GameTypeRevisionId") REFERENCES core."GameTypeRevisions" ("Id") ON DELETE CASCADE
 );

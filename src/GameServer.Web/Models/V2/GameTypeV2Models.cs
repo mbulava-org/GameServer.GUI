@@ -109,6 +109,18 @@ public sealed record GameTypeVolume
     public int DisplayOrder { get; init; }
 
     public string Usage { get; init; } = string.Empty;
+
+    public string MountType { get; init; } = "volume";
+
+    public bool ReadOnly { get; init; }
+
+    public int? OwnerUid { get; init; }
+
+    public int? OwnerGid { get; init; }
+
+    public string? Permissions { get; init; }
+
+    public bool Required { get; init; } = true;
 }
 
 public sealed record GameTypeSettingDefinition

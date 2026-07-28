@@ -7,7 +7,7 @@ namespace GameServer.Docker.Configurations
     {
         public const string SectionName = "UdpAgentDiscovery";
 
-        public bool Enabled { get; set; }
+        public bool Enabled { get; set; } = true;
 
         public string BindAddress { get; set; } = "0.0.0.0";
 
