@@ -11,7 +11,7 @@
 |---|---|
 | Get the project running locally | [Quick Start Guide](QUICK-START.md) |
 | Understand the system architecture | [Architecture Overview](ARCHITECTURE.md) |
-| Learn about node agents | [Agent Architecture](architecture/Agent-Architecture.md) · [Agent Quick Start](guides/Agent-QuickStart.md) |
+| Learn about node agents | [Agent Architecture](architecture/Agent-Architecture.md) · [Quick Start](QUICK-START.md) |
 | Add a new game type | [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md) · [GameType Editor Guide](guides/GameType-Editor-Complete-Functionality-Guide.md) · [Mount Type Config Guide](guides/Volume-Setup-Configuration.md) |
 | Configure port mapping | [Port Mapping Integration Guide](guides/Port-Mapping-Integration-Guide.md) |
 | Work on the database | [DB Initialization](guides/DATABASE-INITIALIZATION.md) · [SQLite Schema](reference/SQLite-GameType-Database-Schema.md) |
@@ -45,7 +45,7 @@ GameServer.GUI/
 ### Core Infrastructure
 | Feature | Status | Key Files / Notes |
 |---|---|---|
-| Multi-node Docker Swarm support | ✅ Done | Push-based agent registration via `/hubs/agentregistration`; requires overlay network, manager agent with `services`/`tasks`/`nodes`/`swarm` capabilities. See [Agent Quick Start](guides/Agent-QuickStart.md) and [Manual Multi-Node Swarm Test Plan](../testing/Manual-MultiNode-Swarm-Test-Plan.md). |
+| Multi-node Docker Swarm support | ✅ Done | Push-based agent registration via `/hubs/agentregistration`; requires overlay network, manager agent with `services`/`tasks`/`nodes`/`swarm` capabilities. See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](../testing/Manual-MultiNode-Swarm-Test-Plan.md). |
 | Node Agent (push-based registration) | ✅ Done | `GameServer.Docker.Agent`, registers via `/hubs/agentregistration` |
 | Agent heartbeats (30s interval) | ✅ Done | Real-time health tracking |
 | Agent capability filtering | ✅ Done | Agents report capabilities; orchestrator routes accordingly |
@@ -129,7 +129,7 @@ GameServer.GUI/
 |---|---|---|
 | Mount type config editor UX refinements | Low | Core storage, deployment, and mount-type configuration GUI implemented |
 | No authentication / authorization | High | All endpoints are open; intended for private networks only |
-| Agent discovery requires pre-configured `PrimaryServiceUrl` and overlay network | Low | See [Agent Quick Start](guides/Agent-QuickStart.md); multi-node Swarm manual test plan in `docs/testing/Manual-MultiNode-Swarm-Test-Plan.md` |
+| Agent discovery requires pre-configured `PrimaryServiceUrl` and overlay network | Low | See [Quick Start](QUICK-START.md); multi-node Swarm manual test plan in `docs/testing/Manual-MultiNode-Swarm-Test-Plan.md` |
 | Docs folder contains 70+ obsolete files from development iterations | Low | [Cleanup plan](DOCUMENTATION-CLEANUP-PLAN.md) exists; not yet executed |
 | PostgreSQL provider exists but SQLite is the default | Low | Switch via connection string config |
 
@@ -160,7 +160,7 @@ GameServer.GUI/
 ### Guides (`docs/guides/`)
 | File | Purpose |
 |---|---|
-| [Agent-QuickStart.md](guides/Agent-QuickStart.md) | Deploy a node agent |
+| [QUICK-START.md](QUICK-START.md) | Deploy all GameServer services in Docker Swarm |
 | [Agent-Registration-Flow.md](guides/Agent-Registration-Flow.md) | Push-based agent registration and heartbeats |
 | [DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md) | DB setup & seeding |
 | [File-Manager.md](guides/File-Manager.md) | Browse and edit server files |
@@ -215,7 +215,7 @@ dotnet test
 3. Use [V2 Assembly Instructions](guides/V2-GameType-Assembly-Instructions.md) to package
 
 ### Deploy a node agent
-Follow [Agent Quick Start](guides/Agent-QuickStart.md). Set `AgentRegistration:PrimaryServiceUrl` in the agent's `appsettings.json`.
+Follow [Quick Start](QUICK-START.md). Set `AgentRegistration:PrimaryServiceUrl` in the agent's `appsettings.json`.
 
 ### Seed the database
 ```bash

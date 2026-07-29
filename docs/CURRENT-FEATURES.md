@@ -649,7 +649,7 @@ Configured per game type in DefaultSettings. Examples:
 3. File manager supports browse, upload, download, and text editing; advanced folder operations are still limited
 
 ### Implemented but not battle-tested
-- Multi-node Docker Swarm support with Node Agent auto-discovery is implemented (see [Agent Quick Start](guides/Agent-QuickStart.md)). It requires at least one manager Node Agent with the `services`/`tasks`/`nodes`/`swarm` capabilities and an overlay network shared by Primary Service and agents. Manual test plans are available in `docs/testing/Manual-MultiNode-Swarm-Test-Plan.md`.
+- Multi-node Docker Swarm support with Node Agent registration is implemented (see [Quick Start](QUICK-START.md)). It requires at least one manager Node Agent with the `services`/`tasks`/`nodes`/`swarm` capabilities and an overlay network shared by Primary Service and agents. Manual test plans are available in `docs/testing/Manual-MultiNode-Swarm-Test-Plan.md`.
 
 ### Planned Features
 - [ ] Backup/restore functionality

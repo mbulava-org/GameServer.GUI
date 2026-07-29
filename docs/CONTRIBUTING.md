@@ -82,7 +82,7 @@ dotnet run
 # Initialize Swarm (if not already done)
 docker swarm init
 
-# Deploy Node Agents (see docs/guides/Agent-QuickStart.md)
+# Deploy Node Agents (see docs/QUICK-START.md)
 ```
 
 ## Coding Standards

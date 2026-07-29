@@ -1,7 +1,6 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Interfaces;
-using Microsoft.Extensions.Options;
 using System.Runtime.CompilerServices;
 using DockerStatsResponse = Docker.DotNet.Models.ContainerStatsResponse;
 
@@ -12,16 +11,15 @@ namespace GameServer.Docker.Agent.Services
     /// </summary>
     public class ContainerService : IContainerService
     {
+        private const int DefaultStatsTimeoutSeconds = 10;
+
         private readonly IDockerClient _dockerClient;
         private readonly ILogger<ContainerService> _logger;
-        private readonly Configurations.ContainerStatsStreamOptions _statsOptions;
 
-        public ContainerService(IDockerClient dockerClient, ILogger<ContainerService> logger,
-            IOptions<Configurations.ContainerStatsStreamOptions> options)
+        public ContainerService(IDockerClient dockerClient, ILogger<ContainerService> logger)
         {
             _dockerClient = dockerClient;
             _logger = logger;
-            _statsOptions = options.Value;
         }
 
         public async Task<Models.ContainerStatsResponse> GetContainerStatsAsync(string containerId, CancellationToken cancellationToken = default)
@@ -42,7 +40,7 @@ namespace GameServer.Docker.Agent.Services
             };
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             // Set a timeout to prevent hanging forever
-            cts.CancelAfter(TimeSpan.FromSeconds(_statsOptions.MaxStreamDurationSeconds));
+            cts.CancelAfter(TimeSpan.FromSeconds(DefaultStatsTimeoutSeconds));
 
             try
             {

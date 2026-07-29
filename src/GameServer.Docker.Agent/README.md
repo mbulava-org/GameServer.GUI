@@ -1,14 +1,13 @@
 # GameServer.Docker.Agent
 
-A lightweight ASP.NET Core Web API that runs on Docker Swarm worker nodes to provide real-time container monitoring and management capabilities.
+A lightweight ASP.NET Core Web API that runs on every Docker Swarm node and registers with the Primary API Service (`GameServer.Docker`). The agent performs the container operations (logs, exec, stats, attach) that the Primary Service delegates to the node that hosts the container.
 
 ## Purpose
 
-The Node Agent provides direct access to Docker containers running on individual worker nodes, enabling:
-- Real-time container statistics (CPU, memory, I/O)
-- Container log retrieval
-- Container inspection
-- Container listing
+The Node Agent:
+- Registers with the Primary Service through a SignalR connection (`/hubs/agentregistration`).
+- Sends periodic heartbeats listing the containers running on the local node.
+- Executes container operations requested by the Primary Service through its own HTTP/SignalR endpoints.
 
 This solves the problem of accessing container-level metrics in Docker Swarm, where the manager node cannot directly query containers on worker nodes.
 
@@ -18,22 +17,24 @@ This solves the problem of accessing container-level metrics in Docker Swarm, wh
 ???????????????????????????????????????????
 ?     GameServer.Docker API (Manager)     ?
 ?                                         ?
-?  NodeAgentDiscoveryService              ?
-?  ??> Discovers agents via overlay      ?
-?      network                            ?
+?  AgentRegistry                          ?
+?  ??> Tracks registered agents          ?
+?     and container-to-agent mappings     ?
 ???????????????????????????????????????????
                ?
-               ? HTTP Requests
+               ? SignalR Registration
+               ? + Heartbeats
                ?
 ????????????????????????????????????????????
-?   GameServer.Docker.Agent (Worker Node)  ?
+?   GameServer.Docker.Agent (Every Node)  ?
 ?                                          ?
 ?   Controllers/                           ?
 ?   ?? HealthController                   ?
 ?   ?? ContainersController                ?
 ?                                          ?
 ?   Services/                              ?
-?   ?? ContainerService                   ?
+?   ?? AgentRegistrationService            ?
+?   ?? ContainerService                    ?
 ?      ??> Docker.DotNet Client           ?
 ????????????????????????????????????????????
                ?
@@ -54,6 +55,7 @@ GameServer.Docker.Agent/
 ?   ??? HealthController.cs         # Health check endpoint
 ?   ??? ContainersController.cs     # Container operations
 ??? Services/
+?   ??? AgentRegistrationService.cs # Primary Service registration/heartbeats
 ?   ??? ContainerService.cs         # Docker container interaction
 ??? Interfaces/
 ?   ??? IContainerService.cs        # Service interface
@@ -190,19 +192,31 @@ List all running containers on this node.
 }
 ```
 
-## Environment Variables
+## Configuration
 
-The agent uses the following environment variables:
+The agent is configured through the `AgentRegistration` section. Set any of these through `appsettings.json` or environment variables (using `__` as the section separator).
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `AgentRegistration__PrimaryServiceUrl` | URL of the Primary Service (required) | `http://gameserver-docker:8080` |
+| `AgentRegistration__HeartbeatIntervalSeconds` | Seconds between heartbeats | `30` |
+| `AgentRegistration__Enabled` | Enable push-based registration | `true` |
+| `AgentRegistration__Capabilities` | Capabilities advertised by the agent | `logs,exec,stats,attach,services` |
+| `AgentRegistration__ConnectionTimeoutSeconds` | SignalR connection timeout | `30` |
+| `AgentRegistration__ReconnectDelaySeconds` | Reconnect delays in seconds | `0,2,10,30` |
+
+The agent also uses these environment variables:
 
 - `DOCKER_HOST` - Docker daemon socket URI (default: `unix:///var/run/docker.sock`)
 - `NODE_NAME` - Human-readable node name for identification
 - `NODE_ID` - Unique node identifier
+- `AGENT_HOST` - Hostname/IP the Primary Service should use to reach the agent
 
 ## Deployment
 
 ### Docker Swarm Service
 
-Deploy as a global service to run on all worker nodes:
+Deploy as a global service so one replica runs on every Swarm node. The agent needs the Docker socket to perform local container operations and `AgentRegistration__PrimaryServiceUrl` so it can register with the Primary Service.
 
 ```yaml
 version: '3.8'
@@ -211,25 +225,24 @@ services:
     image: gameserver-docker-agent:latest
     deploy:
       mode: global
-      placement:
-        constraints:
-          - node.role == worker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker:8080
+      - AgentRegistration__HeartbeatIntervalSeconds=30
       - NODE_NAME={{.Node.Hostname}}
       - NODE_ID={{.Node.ID}}
       - DOCKER_HOST=unix:///var/run/docker.sock
     networks:
       - gameserver-network
-    ports:
-      - "8080:8080"
 
 networks:
   gameserver-network:
-    driver: overlay
-    attachable: true
+    external: true
 ```
+
+For a complete stack that includes the Primary Service, the Web UI, and the Node Agent, see **[docs/QUICK-START.md](../docs/QUICK-START.md)**.
 
 ### Security Considerations
 

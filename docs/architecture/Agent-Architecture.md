@@ -410,7 +410,7 @@ Potential improvements:
 
 ## References
 
-- [Quick Start Guide](./Agent-QuickStart.md)
-- [Detailed Agent README](./Agent-README.md)
+- [Quick Start Guide](../QUICK-START.md)
+- [Detailed Agent README](../../src/GameServer.Docker.Agent/README.md)
 - [Docker Swarm Documentation](https://docs.docker.com/engine/swarm/)
 - [Docker.DotNet Library](https://github.com/dotnet/Docker.DotNet)

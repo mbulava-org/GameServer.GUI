@@ -228,12 +228,13 @@ services:
   gameserver-agent:
     image: your-registry/gameserver-agent:latest
     environment:
+      - ASPNETCORE_ENVIRONMENT=Production
       - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker:8080
       - AgentRegistration__HeartbeatIntervalSeconds=30
       - AgentRegistration__Enabled=true
       - AGENT_HOST={{.Node.Hostname}}
       - NODE_NAME={{.Node.Hostname}}
-      - ASPNETCORE_ENVIRONMENT=Production
+      - NODE_ID={{.Node.ID}}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -329,7 +330,6 @@ Once deployed, access:
 | `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
 | `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | — |
 | `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
-| `UdpAgentDiscovery__Enabled` | Enable UDP agent announcement | `true` |
 
 **V2 SQLite example:**
 
@@ -366,9 +366,7 @@ environment:
 | `AgentRegistration__Enabled` | Enable push registration | `true` |
 | `AgentRegistration__Capabilities` | Comma-separated capabilities: `logs,exec,stats,attach,services` | `logs,exec,stats,attach,services` |
 | `AgentRegistration__ConnectionTimeoutSeconds` | SignalR connection timeout | `30` |
-| `UdpAgentAnnouncement__Enabled` | Enable UDP announcement listener | `true` |
-| `UdpAgentAnnouncement__MulticastGroup` | UDP multicast group | `239.1.1.1` |
-| `UdpAgentAnnouncement__Port` | UDP announcement port | `19090` |
+| `AgentRegistration__ReconnectDelaySeconds` | Reconnect delays in seconds | `0,2,10,30` |
 | `AGENT_HOST` / `NODE_NAME` | Agent hostname/IP | Node hostname |
 
 **GameServer.Web:**
@@ -377,7 +375,7 @@ environment:
 |----------|-------------|---------|
 | `GameServerDockerApi__BaseUri` | Base URL of `GameServer.Docker` API | `http://localhost:5164/` |
 
-**See [Agent-QuickStart.md](guides/Agent-QuickStart.md) for detailed configuration.**
+**The agent only needs `AgentRegistration__PrimaryServiceUrl` to register with the Primary Service. See the swarm deployment section above for a complete stack file.**
 
 ### Scaling
 
@@ -693,7 +691,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Understand the system design
 - **[CURRENT-FEATURES.md](CURRENT-FEATURES.md)** - See all features
-- **[Agent-QuickStart.md](guides/Agent-QuickStart.md)** - Deep dive into agent architecture
+- **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - How agents register with the Primary Service
 - **[GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md)** - Create custom game types
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribute to the project
 

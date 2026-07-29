@@ -9,8 +9,6 @@ Game Server Manager uses a push-based agent registration model. Each Docker node
 | `AgentRegistryService` | `GameServer.Docker` | In-memory registry of connected agents, their capabilities, and container-to-agent mappings |
 | `AgentRegistrationHub` | `GameServer.Docker` | SignalR hub at `/hubs/agentregistration` that receives registrations and heartbeats |
 | `AgentRegistrationService` | `GameServer.Docker.Agent` | Background service that connects to the primary service and pushes registration/heartbeats |
-| `UdpAgentAnnouncementService` | `GameServer.Docker.Agent` | Optional UDP discovery announcement listener |
-| `UdpAgentAnnouncementListenerService` | `GameServer.Docker` | Optional UDP listener for agent announcements |
 | `NodeAgentHub` | `GameServer.Docker.Agent` | Agent-side SignalR hub at `/hubs/nodeagent` used for streaming container data |
 
 ## Registration Flow
