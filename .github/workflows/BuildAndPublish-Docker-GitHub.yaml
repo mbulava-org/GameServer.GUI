@@ -1,0 +1,233 @@
+name: 'Build & Push Docker image - GitHub Container Registry'
+on:
+  workflow_call:
+    inputs:
+      primary_branch:
+        description: 'The name of the ROOT branch, this branch will be the only branch that can use the "latest" tag'
+        type: string
+        required: true
+        default: 'main'
+      dotnet_version:
+        description: '.NET version - must be provided in the setup dotnet action format'
+        required: false
+        type: string
+        default: '8.0.x'
+      semantic_version:
+        description: "The 4 part Version, ie {Major}.{Minor}.{Patch}.{Build}, {Build} is expected to be unique i.e. {action.run_number}. But this is the actual value supplied to the builds and docker tags."
+        type: string
+        required: true
+        default: '1.0.0.0'
+      docker_context:
+        description: 'The directory context to execute in.'
+        required: false
+        type: string
+      docker_file:
+        type: string
+        required: false
+        description: 'Realtive from context to the Dockerfile to be built, or blank.'
+      push_output:
+        description: 'must be True to push in GitHub Container Registry.'
+        required: true
+        type: boolean
+        default: false
+      push_branch:
+        description: "If true will push the image with it's branch specific Tag to the GitHub Container Registry. {push_output} must also be true."
+        type: boolean
+        required: false
+        default: false
+      version_tag:
+        description: 'Add a Tag with full semantic version, if false a Tab with the {Build} value will be added.'
+        type: boolean
+        required: false
+        default: true
+      semantic_version_rollup_tag:
+        description: 'Add Tags to "Roll-up" the semantic version into its larger groupings, {version_tag} must also be true.'
+        type: boolean
+        required: false
+        default: false
+      latest_tag:
+        description: 'If true, and executed on {primary_branch}, the "latest" tag will be applied.'
+        type: boolean
+        required: false
+        default: true
+      target_repo:
+        description: 'The target GitHub Container Registry repository name to perform any pushes to (<owner>/<repo-name> by default).'
+        type: string
+        required: true
+
+jobs:
+  build_and_publish_docker:
+    runs-on: ubuntu-latest
+    env:
+      NEW_VERSION: ${{ inputs.semantic_version}}
+      GHCR_REPO: 'ghcr.io/${{ github.repository_owner }}/${{ inputs.target_repo }}'
+      TAG_BUILD: ${{ github.run_number }}
+      PUSH_DOCKER: false
+      TAGS: ${{ github.ref }}
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - name: Docker Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+          source-url: https://nuget.pkg.github.com/mbulava-org/index.json
+        env: 
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOTNET_INSTALL_DIR: './.dotnet'
+
+      - name: 'Calculate Version Parts'
+        run: |
+          IFS='.'
+          read -ra arr <<< ${{ inputs.semantic_version }}
+          IFS=" "
+          echo "VERSION_BUILD=${arr[3]}" >> $GITHUB_ENV
+          echo "VERSION_MAJOR=${arr[0]}" >> $GITHUB_ENV
+          echo "VERSION_MINOR=${arr[1]}" >> $GITHUB_ENV
+          echo "VERSION_PATCH=${arr[2]}" >> $GITHUB_ENV
+          echo "Successfully parsed ${{ inputs.semantic_version }}"
+          echo "Successfully calculated VERSION_BUILD value ${arr[3]}"
+          echo "Successfully calculated VERSION_MAJOR value ${arr[0]}"
+          echo "Successfully calculated VERSION_MINOR value ${arr[1]}"
+          echo "Successfully calculated VERSION_PATCH value ${arr[2]}"
+
+      - name: 'Calculate GHCR TAGS'
+        run: |
+          if [ "${{ inputs.version_tag }}" = "false" ]; then
+            if [ "${{ inputs.semantic_version_rollup_tag }}" = "true" ]; then
+              echo "Error: version_tag must be true if semantic_version_rollup_tag is true."
+              exit 1
+            fi
+          fi
+          if [ "${{ env.BRANCH }}" = "${{ inputs.primary_branch }}" ]; then
+            #handle primary branch
+            if [ "${{ inputs.version_tag }}" = "true" ]; then
+                myTags="${{ env.GHCR_REPO }}:v${{ env.NEW_VERSION }}"
+            else
+                myTags="${{ env.GHCR_REPO }}:${{ env.VERSION_BUILD }}"
+            fi
+            if [ "${{ inputs.semantic_version_rollup_tag }}" = "true" ]; then
+              myTags+=", ${{ env.GHCR_REPO }}:v${{ env.VERSION_MAJOR }}"
+              myTags+=", ${{ env.GHCR_REPO }}:v${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}"
+              myTags+=", ${{ env.GHCR_REPO }}:v${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ env.VERSION_PATCH }}"
+            fi 
+            if [ "${{ inputs.latest_tag }}" = "true" ]; then
+              myTags+=", ${{ env.GHCR_REPO }}:latest"
+            fi
+            if [ "${{ inputs.push_output }}" = "true" ]; then
+              echo "PUSH_DOCKER=true" >> $GITHUB_ENV
+            fi
+          else 
+            #handle branches.
+            if [ "${{ inputs.version_tag }}" = "true" ]; then
+                myTags="${{ env.GHCR_REPO }}:${{ env.BRANCH }}-v${{ env.NEW_VERSION }}"
+            else
+                myTags="${{ env.GHCR_REPO }}:${{ env.BRANCH }}-${{ env.VERSION_BUILD }}"
+            fi
+            if [ "${{ inputs.semantic_version_rollup_tag }}" = "true" ]; then
+              myTags+=", ${{ env.GHCR_REPO }}:${{ env.BRANCH }}-v${{ env.VERSION_MAJOR }}"
+              myTags+=", ${{ env.GHCR_REPO }}:${{ env.BRANCH }}-v${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}"
+              myTags+=", ${{ env.GHCR_REPO }}:${{ env.BRANCH }}-v${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ env.VERSION_PATCH }}"
+            fi
+            myTags+=", ${{ env.GHCR_REPO }}:${{ env.BRANCH }}"
+            if [ "${{ inputs.push_output }}" = "true" ]; then
+              if [ "${{ inputs.push_branch }}" = "true" ]; then
+                echo "PUSH_DOCKER=true" >> $GITHUB_ENV
+              fi
+            fi
+          fi
+          echo "TAGS=$myTags" >> $GITHUB_ENV
+          echo "Successfully calculated PUSH_DOCKER value: ${{ env.PUSH_DOCKER }}"
+          echo "Successfully parsed & calculated new TAG value(s): $myTags"
+
+      - name: 'Setup Nuget Sources'
+        run: |
+          echo "Copy any private nuget configurations to the docker context (if present)"
+          if [ -f "./../nuget.config" ]; then
+            cp ./../nuget.config ${{ inputs.docker_context }}
+            echo "Copied nuget.config to: ${{ inputs.docker_context }}"
+          else
+            echo "No nuget.config found at ./../nuget.config, skipping copy"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 'Build and Push Docker image'
+        uses: docker/build-push-action@v6
+        with:
+          # List of a customs host-to-IP mapping (e.g., docker:10.180.0.1)
+          #add-hosts: # optional
+          # List of extra privileged entitlement (e.g., network.host,security.insecure)
+          #allow: # optional
+          # List of annotation to set to the image
+          #annotations: # optional
+          # List of attestation parameters (e.g., type=sbom,generator=image)
+          #attests: # optional
+          # List of build-time variables
+          build-args: |
+            VERSION_NUMBER=${{ env.NEW_VERSION }}
+
+          # List of additional build contexts (e.g., name=path)
+          #build-contexts: # optional
+          # Builder instance
+          #builder: # optional
+          # List of external cache sources for buildx (e.g., user/app:cache, type=local,src=path/to/dir)
+          #cache-from: # optional
+          # List of cache export destinations for buildx (e.g., user/app:cache, type=local,dest=path/to/dir)
+          #cache-to: # optional
+          # Optional parent cgroup for the container used in the build
+          #cgroup-parent: # optional
+          # Build's context is the set of files located in the specified PATH or URL
+          context: ${{ inputs.docker_context }}
+          # Path to the Dockerfile
+          file: ${{ inputs.docker_file }}
+          # List of metadata for an image
+          #labels: # optional
+          # Load is a shorthand for --output=type=docker
+          #load: # optional, default is false
+          # Set the networking mode for the RUN instructions during build
+          network: host # optional
+          # Do not use cache when building the image
+          #no-cache: # optional, default is false
+          # Do not cache specified stages
+          #no-cache-filters: # optional
+          # List of output destinations (format: type=local,dest=path)
+          #outputs: # optional
+          # List of target platforms for build
+          #platforms: # optional
+          # Generate provenance attestation for the build (shorthand for --attest=type=provenance)
+          #provenance: # optional
+          # Always attempt to pull all referenced images
+          pull: true # optional, default is false
+          # Push is a shorthand for --output=type=registry
+          push: ${{ env.PUSH_DOCKER }} # optional, default is false
+          # Generate SBOM attestation for the build (shorthand for --attest=type=sbom)
+          #sbom: # optional
+          # List of secrets to expose to the build (e.g., key=string, GIT_AUTH_TOKEN=mytoken)
+          #secrets: # optional
+          # List of secret env vars to expose to the build (e.g., key=envname, MY_SECRET=MY_ENV_VAR)
+          #secret-envs: # optional
+          # List of secret files to expose to the build (e.g., key=filename, MY_SECRET=./secret.txt)
+          #secret-files: # optional
+          # Size of /dev/shm (e.g., 2g)
+          #shm-size: # optional
+          # List of SSH agent socket or keys to expose to the build
+          #ssh: # optional
+          # List of tags
+          tags: ${{ env.TAGS }}
+          # Sets the target stage to build
+          #target: # optional
+          # Ulimit options (e.g., nofile=1024:1024)
+          #ulimit: # optional
+          # GitHub Token used to authenticate against a repository for Git context
+          github-token: ${{ secrets.GITHUB_TOKEN }}# optional, default is ${{ github.token }}

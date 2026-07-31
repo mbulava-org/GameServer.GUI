@@ -295,7 +295,7 @@ jobs:
 
   backend:
     needs: [setup]
-    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
+    uses: ./.github/workflows/BuildAndPublish-Docker-GitHub.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -310,7 +310,7 @@ jobs:
 
   agent-backend:
     needs: [setup]
-    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
+    uses: ./.github/workflows/BuildAndPublish-Docker-GitHub.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -337,7 +337,7 @@ jobs:
 
   web-gui:
     needs: [setup]
-    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
+    uses: ./.github/workflows/BuildAndPublish-Docker-GitHub.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
