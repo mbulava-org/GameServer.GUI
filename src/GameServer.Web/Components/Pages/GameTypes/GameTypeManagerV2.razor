@@ -220,7 +220,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
         }
         finally
         {
@@ -252,11 +252,11 @@
         {
             await GameTypeApiV2.DeleteAsync(gameType.Key);
             await LoadAsync();
-            NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"Game type '{gameType.DisplayName}' was deleted.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Game type '{gameType.DisplayName}' was deleted.");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Delete failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
         }
     }
 
@@ -274,26 +274,26 @@
             var package = await JsonSerializer.DeserializeAsync<PortableGameTypePackage>(stream, jsonSerializerOptions);
             if (package is null)
             {
-                NotificationService.Notify(NotificationSeverity.Warning, "Import failed", "The selected GameType package was empty.");
+                NotificationService.NotifyTimed(NotificationSeverity.Warning, "Import failed", "The selected GameType package was empty.");
                 return;
             }
 
             var imported = await GameTypeApiV2.ImportAsync(package);
             await LoadAsync();
-            NotificationService.Notify(NotificationSeverity.Success, "Imported", $"Game type '{imported.DisplayName}' was imported successfully.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Imported", $"Game type '{imported.DisplayName}' was imported successfully.");
             Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(imported.Key)}");
         }
         catch (JsonException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Import failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Import failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Import failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
         }
     }
 }

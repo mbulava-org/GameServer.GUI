@@ -224,7 +224,7 @@
 
             await WriteSuccess($"Connected! Shell session active.\n");
 
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Success,
                 Summary = "Terminal Connected",
@@ -241,7 +241,7 @@
             Logger.LogError(ex, "Failed to connect to terminal");
             await WriteError($"Connection failed: {ex.Message}");
 
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Connection Failed",

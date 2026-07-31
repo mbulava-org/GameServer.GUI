@@ -473,7 +473,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
         }
         finally
         {
@@ -582,7 +582,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Validation failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Validation failed", ex.Message);
         }
     }
 
@@ -594,7 +594,7 @@
             validationResult = await GameServerApiV2.ValidateAsync(BuildSaveRequest());
             if (!validationResult.IsValid)
             {
-                NotificationService.Notify(NotificationSeverity.Warning, "Validation failed", "Resolve the blocking validation issues before saving.");
+                NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation failed", "Resolve the blocking validation issues before saving.");
                 selectedTabIndex = 1;
                 return;
             }
@@ -603,12 +603,12 @@
                 ? await GameServerApiV2.UpdateAsync(ServerId!, BuildSaveRequest())
                 : await GameServerApiV2.CreateAsync(BuildSaveRequest());
 
-            NotificationService.Notify(NotificationSeverity.Success, isEditMode ? "Server updated" : "Server created", $"'{result.Name}' was saved successfully.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, isEditMode ? "Server updated" : "Server created", $"'{result.Name}' was saved successfully.");
             Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(result.ServerId)}");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Save failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save failed", ex.Message);
         }
         finally
         {

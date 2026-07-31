@@ -355,7 +355,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
         }
         finally
         {
@@ -382,11 +382,11 @@
             var fileName = $"{gameType.Key}-portable.json";
             var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
             await JS.InvokeVoidAsync("downloadFile", fileName, base64);
-            NotificationService.Notify(NotificationSeverity.Success, "Exported", $"Game type '{gameType.DisplayName}' was exported successfully.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Exported", $"Game type '{gameType.DisplayName}' was exported successfully.");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Export failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Export failed", ex.Message);
         }
     }
 
@@ -400,7 +400,7 @@
     {
         if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(gameTypeType))
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Type are required.");
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Type are required.");
             return;
         }
 
@@ -432,18 +432,18 @@
             {
                 selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
                 LoadRevisionDraft(CurrentRevision);
-                NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
+                NotificationService.NotifyTimed(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
             }
             else
             {
                 revisionSaved = await SaveRevisionInternalAsync(notifySuccess: false);
                 if (revisionSaved)
                 {
-                    NotificationService.Notify(NotificationSeverity.Success, "Saved", "V2 GameType and selected revision saved successfully.");
+                    NotificationService.NotifyTimed(NotificationSeverity.Success, "Saved", "V2 GameType and selected revision saved successfully.");
                 }
                 else
                 {
-                    NotificationService.Notify(NotificationSeverity.Warning, "Partially saved", "V2 GameType changes were saved, but the selected revision changes were not saved.");
+                    NotificationService.NotifyTimed(NotificationSeverity.Warning, "Partially saved", "V2 GameType changes were saved, but the selected revision changes were not saved.");
                 }
             }
 
@@ -454,7 +454,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Save failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save failed", ex.Message);
         }
         finally
         {
@@ -505,14 +505,14 @@
     {
         if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
             return false;
         }
 
         var saveIssues = GetRevisionSaveValidationIssues();
         if (saveIssues.Count > 0)
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", saveIssues[0]);
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation", saveIssues[0]);
             return false;
         }
 
@@ -602,14 +602,14 @@
             await ReloadGameTypeAsync(gameType.Key, revision.Id);
             if (notifySuccess)
             {
-                NotificationService.Notify(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
+                NotificationService.NotifyTimed(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
             }
 
             return true;
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Save revision failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save revision failed", ex.Message);
             return false;
         }
         finally
@@ -640,11 +640,11 @@
         {
             await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, editingRevisionId.Value);
             await ReloadGameTypeAsync(gameType.Key, editingRevisionId.Value);
-            NotificationService.Notify(NotificationSeverity.Success, "Current revision updated", "The selected revision is now the active revision.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Current revision updated", "The selected revision is now the active revision.");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Set current failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Set current failed", ex.Message);
         }
     }
 
@@ -660,11 +660,11 @@
             isSavingRevision = true;
             var revision = await GameTypeApiV2.PublishRevisionAsync(gameType.Key, editingRevisionId.Value, setAsCurrentRevision);
             await ReloadGameTypeAsync(gameType.Key, revision.Id);
-            NotificationService.Notify(NotificationSeverity.Success, "Revision published", $"Revision '{revision.VersionTag}' published successfully.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Revision published", $"Revision '{revision.VersionTag}' published successfully.");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Publish failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Publish failed", ex.Message);
         }
         finally
         {
@@ -681,14 +681,14 @@
 
         if (!IsDockerType())
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Detection is only available for Docker game types.");
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Detection", "Detection is only available for Docker game types.");
             return;
         }
 
         var imageReference = string.IsNullOrWhiteSpace(detectionImageReference) ? revisionImageReference : detectionImageReference;
         if (string.IsNullOrWhiteSpace(imageReference))
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Detection", "Enter a Docker image reference to scan.");
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Detection", "Enter a Docker image reference to scan.");
             return;
         }
 
@@ -715,7 +715,7 @@
                 ApplyDetectedPortsToDraft(notify: false);
                 ApplyDetectedVolumesToDraft(notify: false);
                 ApplyDetectedSettingsToDraft(notify: false);
-                NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into revision '{matchingRevision.VersionTag}'.");
+                NotificationService.NotifyTimed(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into revision '{matchingRevision.VersionTag}'.");
             }
             else
             {
@@ -732,12 +732,12 @@
                     detectionComparison = null;
                 }
 
-                NotificationService.Notify(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into a new revision draft for '{detectionResult.ImageReference}:{detectionResult.VersionTag}'.");
+                NotificationService.NotifyTimed(NotificationSeverity.Success, "Detection complete", $"Detected settings were imported into a new revision draft for '{detectionResult.ImageReference}:{detectionResult.VersionTag}'.");
             }
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Detection failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Detection failed", ex.Message);
         }
         finally
         {
@@ -759,7 +759,7 @@
         ApplyDetectedVolumesToDraft(notify: false);
         ApplyDetectedSettingsToDraft(notify: false);
 
-        NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detection results have been applied to a new revision draft.");
+        NotificationService.NotifyTimed(NotificationSeverity.Info, "Draft updated", "Detection results have been applied to a new revision draft.");
     }
 
     private void ApplyDetectionIdentityToDraft(bool notify = true)
@@ -774,7 +774,7 @@
         revisionImageDigest = detectionResult.ImageDigest;
         if (notify)
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected image, tag, and digest have been applied to the draft.");
+            NotificationService.NotifyTimed(NotificationSeverity.Info, "Draft updated", "Detected image, tag, and digest have been applied to the draft.");
         }
     }
 
@@ -806,7 +806,7 @@
 
         if (notify)
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected ports have been applied to the draft.");
+            NotificationService.NotifyTimed(NotificationSeverity.Info, "Draft updated", "Detected ports have been applied to the draft.");
         }
     }
 
@@ -837,7 +837,7 @@
 
         if (notify)
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected volumes have been applied to the draft.");
+            NotificationService.NotifyTimed(NotificationSeverity.Info, "Draft updated", "Detected volumes have been applied to the draft.");
         }
     }
 
@@ -902,7 +902,7 @@
 
         if (notify)
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Draft updated", "Detected settings have been merged into the draft while preserving existing metadata where possible.");
+            NotificationService.NotifyTimed(NotificationSeverity.Info, "Draft updated", "Detected settings have been merged into the draft while preserving existing metadata where possible.");
         }
     }
 

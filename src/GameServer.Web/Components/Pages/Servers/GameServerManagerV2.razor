@@ -238,7 +238,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
         }
         finally
         {

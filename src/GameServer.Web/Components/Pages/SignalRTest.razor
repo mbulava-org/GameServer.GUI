@@ -1,4 +1,4 @@
-﻿@page "/signalr-test"
+@page "/signalr-test"
 @rendermode InteractiveServer
 @using GameServer.Docker.Client.Interfaces
 @using GameServer.Docker.Client.Services
@@ -433,10 +433,10 @@
             
             await client.ConnectAsync(CancellationToken.None);
             
-            AddLog("SUCCESS", "✅ Connected successfully!");
+            AddLog("SUCCESS", "? Connected successfully!");
             AddLog("INFO", "Connection ID established with hub");
             
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Success,
                 Summary = "Connected",
@@ -447,13 +447,13 @@
         catch (HttpRequestException ex)
         {
             connectionError = $"Network error: {ex.Message}";
-            AddLog("ERROR", $"❌ HTTP Request failed: {ex.Message}");
+            AddLog("ERROR", $"? HTTP Request failed: {ex.Message}");
             AddLog("ERROR", "Possible causes:");
             AddLog("ERROR", "  - Backend not running");
             AddLog("ERROR", "  - Wrong URL in configuration");
             AddLog("ERROR", "  - Firewall blocking connection");
             
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Connection Failed",
@@ -464,10 +464,10 @@
         catch (TimeoutException ex)
         {
             connectionError = $"Connection timeout: {ex.Message}";
-            AddLog("ERROR", $"❌ Connection timeout: {ex.Message}");
+            AddLog("ERROR", $"? Connection timeout: {ex.Message}");
             AddLog("ERROR", "Backend is not responding in time");
             
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Connection Timeout",
@@ -478,7 +478,7 @@
         catch (Exception ex)
         {
             connectionError = ex.Message;
-            AddLog("ERROR", $"❌ Connection failed: {ex.GetType().Name}");
+            AddLog("ERROR", $"? Connection failed: {ex.GetType().Name}");
             AddLog("ERROR", $"Message: {ex.Message}");
             if (ex.InnerException != null)
             {
@@ -488,13 +488,13 @@
             // Check for common CORS error
             if (ex.Message.Contains("CORS") || ex.Message.Contains("Access-Control-Allow-Origin"))
             {
-                AddLog("ERROR", "🚨 CORS ERROR DETECTED!");
+                AddLog("ERROR", "?? CORS ERROR DETECTED!");
                 AddLog("ERROR", "Backend needs CORS configuration:");
                 AddLog("ERROR", "  builder.Services.AddCors(...)");
                 AddLog("ERROR", "  app.UseCors()");
             }
             
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Connection Failed",
@@ -535,9 +535,9 @@
             }
             
             client = null;
-            AddLog("SUCCESS", "✅ Disconnected");
+            AddLog("SUCCESS", "? Disconnected");
             
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Info,
                 Summary = "Disconnected",
@@ -547,7 +547,7 @@
         }
         catch (Exception ex)
         {
-            AddLog("ERROR", $"❌ Disconnect error: {ex.Message}");
+            AddLog("ERROR", $"? Disconnect error: {ex.Message}");
         }
         
         StateHasChanged();
@@ -565,8 +565,8 @@
         }
         catch (Exception ex)
         {
-            AddLog("ERROR", $"❌ Subscribe failed: {ex.Message}");
-            NotificationService.Notify(new NotificationMessage
+            AddLog("ERROR", $"? Subscribe failed: {ex.Message}");
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Subscribe Failed",
@@ -587,7 +587,7 @@
         }
         catch (Exception ex)
         {
-            AddLog("ERROR", $"❌ Unsubscribe failed: {ex.Message}");
+            AddLog("ERROR", $"? Unsubscribe failed: {ex.Message}");
         }
     }
     
@@ -604,17 +604,17 @@
             if (snapshot != null)
             {
                 latestData = snapshot;
-                AddLog("SUCCESS", $"✅ Snapshot received");
+                AddLog("SUCCESS", $"? Snapshot received");
                 StateHasChanged();
             }
             else
             {
-                AddLog("WARNING", "⚠️ Snapshot returned null");
+                AddLog("WARNING", "?? Snapshot returned null");
             }
         }
         catch (Exception ex)
         {
-            AddLog("ERROR", $"❌ Snapshot failed: {ex.Message}");
+            AddLog("ERROR", $"? Snapshot failed: {ex.Message}");
         }
     }
     
@@ -638,7 +638,7 @@
             var cpuUsage = usage.CpuUsagePercent ?? 0;
             var memUsage = usage.MemoryUsagePercent ?? 0;
             
-            AddLog("DATA", $"📊 ResourceUpdate: {usage.ServerId} - CPU: {cpuUsage:F2}%, Memory: {memUsage:F2}%");
+            AddLog("DATA", $"?? ResourceUpdate: {usage.ServerId} - CPU: {cpuUsage:F2}%, Memory: {memUsage:F2}%");
             StateHasChanged();
         });
     }
@@ -647,7 +647,7 @@
     {
         InvokeAsync(() =>
         {
-            AddLog("SUCCESS", $"✅ Subscribed: {info.ServerId} ({info.IntervalSeconds}s interval)");
+            AddLog("SUCCESS", $"? Subscribed: {info.ServerId} ({info.IntervalSeconds}s interval)");
             StateHasChanged();
         });
     }
@@ -656,7 +656,7 @@
     {
         InvokeAsync(() =>
         {
-            AddLog("SUCCESS", $"✅ Subscribed to {info.ServerIds.Length} servers ({info.IntervalSeconds}s interval)");
+            AddLog("SUCCESS", $"? Subscribed to {info.ServerIds.Length} servers ({info.IntervalSeconds}s interval)");
             StateHasChanged();
         });
     }
@@ -683,7 +683,7 @@
     {
         InvokeAsync(() =>
         {
-            AddLog("ERROR", $"❌ Error: {error}");
+            AddLog("ERROR", $"? Error: {error}");
             StateHasChanged();
         });
     }

@@ -222,6 +222,10 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 logger.LogInformation("Adding missing {Table}.{Column} column...", table, column);
                 await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
             }
+            else
+            {
+                logger.LogDebug("Verified {Table}.{Column} exists", table, column);
+            }
         }
 
         foreach (var (table, sql) in GetMySqlPostBaselineTableCreations())
@@ -249,13 +253,18 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameTypeVolumes", "MountType", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `MountType` varchar(50) NULL;"),
             ("GameTypeVolumes", "OwnerUid", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `OwnerUid` int NULL;"),
             ("GameTypeVolumes", "OwnerGid", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `OwnerGid` int NULL;"),
+            ("GameTypeVolumes", "Permissions", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `Permissions` varchar(10) NULL;"),
             ("GameTypeVolumes", "ReadOnly", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `ReadOnly` tinyint(1) NOT NULL DEFAULT 0;"),
             ("GameTypeVolumes", "Required", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `Required` tinyint(1) NOT NULL DEFAULT 1;"),
             ("GameTypeSettingDefinitions", "DisplayOrder", "ALTER TABLE `GameTypeSettingDefinitions` ADD COLUMN `DisplayOrder` int NOT NULL DEFAULT 0;"),
             ("GameServers", "ServiceName", "ALTER TABLE `GameServers` ADD COLUMN `ServiceName` varchar(200) NOT NULL DEFAULT '';"),
             ("GameServers", "Status", "ALTER TABLE `GameServers` ADD COLUMN `Status` varchar(50) NOT NULL DEFAULT '';"),
             ("GameServers", "IsDeleted", "ALTER TABLE `GameServers` ADD COLUMN `IsDeleted` tinyint(1) NOT NULL DEFAULT 0;"),
-            ("GameServers", "GameTypeRevisionId", "ALTER TABLE `GameServers` ADD COLUMN `GameTypeRevisionId` int NULL;")
+            ("GameServers", "GameTypeRevisionId", "ALTER TABLE `GameServers` ADD COLUMN `GameTypeRevisionId` int NULL;"),
+            ("GameServers", "CreatedAt", "ALTER TABLE `GameServers` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
+            ("GameServers", "UpdatedAt", "ALTER TABLE `GameServers` ADD COLUMN `UpdatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
+            ("GameServers", "LastDeployedAt", "ALTER TABLE `GameServers` ADD COLUMN `LastDeployedAt` datetime(6) NULL;"),
+            ("GameServers", "LastSeenAt", "ALTER TABLE `GameServers` ADD COLUMN `LastSeenAt` datetime(6) NULL;")
         ];
     }
 

@@ -30,4 +30,24 @@ public static class NotificationServiceExtensions
             CloseOnClick = false
         });
     }
+
+    /// <summary>
+    /// Shows a Radzen notification from a <paramref name="message"/> and applies a default
+    /// timeout if the message does not already specify one.
+    /// </summary>
+    public static void NotifyTimed(
+        this NotificationService notificationService,
+        NotificationMessage message,
+        int? durationMilliseconds = null)
+    {
+        ArgumentNullException.ThrowIfNull(notificationService);
+        ArgumentNullException.ThrowIfNull(message);
+
+        if (message.Duration is null or <= 0)
+        {
+            message.Duration = durationMilliseconds ?? DefaultDurationMs;
+        }
+
+        notificationService.Notify(message);
+    }
 }

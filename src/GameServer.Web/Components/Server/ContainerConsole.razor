@@ -1,4 +1,4 @@
-﻿@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
 @using GameServer.Web.Configurations
@@ -151,7 +151,7 @@
     {
         CursorBlink = true,
         CursorStyle = CursorStyle.Block,
-        DisableStdin = false, // ✅ Ensure stdin is enabled
+        DisableStdin = false, // ? Ensure stdin is enabled
         Theme = new XtermBlazor.Theme
         {
             Background = "#000000",
@@ -280,7 +280,7 @@
             await WriteSystemMessage($"Connected to {ServerId} console (shared attach)");
             await WriteSystemMessage("Click the terminal and start typing. Output is shared with other viewers.");
 
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Success,
                 Summary = "Console Connected",
@@ -296,7 +296,7 @@
             isConnected = false;
             await WriteSystemMessage($"Connection failed: {ex.Message}", isError: true);
 
-            NotificationService.Notify(new NotificationMessage
+            NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Connection Failed",
