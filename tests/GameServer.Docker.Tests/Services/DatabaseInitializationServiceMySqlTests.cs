@@ -13,7 +13,7 @@ namespace GameServer.Docker.Tests.Services;
 public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
 {
     private MySqlContainer? _container;
-    private GameServerV2DbContext? _context;
+    private MySqlGameServerV2DbContext? _context;
     private V2Repositories.GameTypeRepository? _v2Repository;
 
     public async Task InitializeAsync()
@@ -27,10 +27,10 @@ public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
 
         await _container.StartAsync();
 
-        var optionsBuilder = new DbContextOptionsBuilder<GameServerV2DbContext>();
+        var optionsBuilder = new DbContextOptionsBuilder<MySqlGameServerV2DbContext>();
         GameServerV2DbContextFactory.ConfigureProvider(optionsBuilder, "mysql", _container.GetConnectionString());
 
-        _context = new GameServerV2DbContext(optionsBuilder.Options);
+        _context = new MySqlGameServerV2DbContext(optionsBuilder.Options);
         _v2Repository = new V2Repositories.GameTypeRepository(_context, Mock.Of<ILogger<V2Repositories.GameTypeRepository>>());
     }
 

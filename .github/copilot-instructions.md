@@ -45,6 +45,7 @@
 - For this project, new V2 DbContext work should follow the same pattern as the existing DbContext so automatic client generation is not disrupted.
 - For this project, V2 repository initialization should follow the same pattern as the legacy repository's `InitializeDatabaseAsync` behavior unless intentionally diverging.
 - For V2 database work, prefer adding PostgreSQL support through a dedicated PostgreSQL database project and use pgPacTool/postgresPacTools to deploy schema and database object changes instead of ad hoc schema deployment.
+- For EF Core databases in this project: whenever an EF-mapped object/model is altered, a corresponding EF migration MUST be created; migrations should be written as safely as possible to avoid losing existing data; and on application startup the database must be checked and any pending migrations applied automatically.
 
 ### Docker & Swarm
 - **NEVER** connect directly to `IDockerClient` from SignalR Hubs for container operations

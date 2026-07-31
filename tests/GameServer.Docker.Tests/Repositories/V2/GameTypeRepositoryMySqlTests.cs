@@ -11,7 +11,7 @@ namespace GameServer.Docker.Tests.Repositories.V2;
 public class GameTypeRepositoryMySqlTests : IAsyncLifetime
 {
     private MySqlContainer? _container;
-    private GameServerV2DbContext? _context;
+    private MySqlGameServerV2DbContext? _context;
     private GameTypeRepository? _repository;
 
     public async Task InitializeAsync()
@@ -25,10 +25,10 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
 
         await _container.StartAsync();
 
-        var optionsBuilder = new DbContextOptionsBuilder<GameServerV2DbContext>();
+        var optionsBuilder = new DbContextOptionsBuilder<MySqlGameServerV2DbContext>();
         GameServerV2DbContextFactory.ConfigureProvider(optionsBuilder, "mysql", _container.GetConnectionString());
 
-        _context = new GameServerV2DbContext(optionsBuilder.Options);
+        _context = new MySqlGameServerV2DbContext(optionsBuilder.Options);
         _repository = new GameTypeRepository(_context, Mock.Of<ILogger<GameTypeRepository>>());
     }
 
@@ -124,33 +124,38 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task InitializeDatabaseAsync_WhenBaselineHistoryExistsWithLegacyImageReferenceColumn_ShouldRepairSchemaAndAllowCreates()
+    public async Task InitializeDatabaseAsync_WhenPreMigrationLegacySchemaExists_ShouldReconcileToBaselineAndAllowCreates()
     {
         ArgumentNullException.ThrowIfNull(_repository);
         ArgumentNullException.ThrowIfNull(_context);
 
-        await _repository.InitializeDatabaseAsync();
+        // Simulate a database created before EF migrations were adopted: only the legacy GameTypes table
+        // with an ImageReference column and no __EFMigrationsHistory table.
         await _context.Database.ExecuteSqlRawAsync(
-            "ALTER TABLE `GameTypes` ADD COLUMN `ImageReference` varchar(500) NOT NULL DEFAULT ''; ");
+            "CREATE TABLE `GameTypes` (`Id` int NOT NULL AUTO_INCREMENT, `Key` varchar(200) NOT NULL, `DisplayName` varchar(200) NOT NULL, `Description` longtext NULL, `ImageReference` varchar(500) NOT NULL, `ThumbnailUrl` longtext NULL, `DocumentationUrl` longtext NULL, `IsActive` tinyint(1) NOT NULL, `CurrentRevisionId` int NULL, `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), `UpdatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (`Id`), UNIQUE KEY `IX_GameTypes_Key` (`Key`));");
+        await _context.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE `GameTypeRevisions` (`Id` int NOT NULL AUTO_INCREMENT, `GameTypeId` int NOT NULL, `VersionTag` varchar(200) NOT NULL, `ImageDigest` longtext NULL, `EnableTTY` tinyint(1) NOT NULL, `Notes` longtext NULL, `IsPublished` tinyint(1) NOT NULL, `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (`Id`), KEY `IX_GameTypeRevisions_GameTypeId` (`GameTypeId`));");
+        await _context.Database.ExecuteSqlRawAsync(
+            "CREATE UNIQUE INDEX `IX_GameTypeRevisions_GameTypeId_VersionTag` ON `GameTypeRevisions` (`GameTypeId`, `VersionTag`);");
+        await _context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO `GameTypes` (`Key`, `DisplayName`, `ImageReference`, `IsActive`) VALUES ('minecraft', 'Minecraft', 'itzg/minecraft-server', 1);");
 
+        await _repository.InitializeDatabaseAsync();
+        // Running twice must be a no-op after the baseline is recorded.
         await _repository.InitializeDatabaseAsync();
 
         var hasLegacyImageReferenceColumn = await _context.Database
             .SqlQueryRaw<int>("SELECT 1 AS `Value` FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'GameTypes' AND column_name = 'ImageReference' LIMIT 1")
             .AnyAsync();
 
-        _context.GameTypes.Add(new GameTypeEntity
-        {
-            Key = "bedrock-mysql-v2",
-            DisplayName = "Minecraft Bedrock",
-            Type = "docker",
-            IsActive = true
-        });
-        await _context.SaveChangesAsync();
+        var revisionHasImageReference = await _context.Database
+            .SqlQueryRaw<int>("SELECT 1 AS `Value` FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'GameTypeRevisions' AND column_name = 'ImageReference' LIMIT 1")
+            .AnyAsync();
 
-        var createdCount = await _context.GameTypes.CountAsync();
+        var preservedGameTypeCount = await _context.GameTypes.CountAsync();
 
         Assert.False(hasLegacyImageReferenceColumn);
-        Assert.Equal(1, createdCount);
+        Assert.True(revisionHasImageReference);
+        Assert.Equal(1, preservedGameTypeCount);
     }
 }

@@ -9,19 +9,19 @@ namespace GameServer.Docker.Tests.Repositories.V2;
 
 public class GameTypeRepositoryTests : IDisposable
 {
-    private readonly GameServerV2DbContext _context;
+    private readonly SqliteGameServerV2DbContext _context;
     private readonly GameTypeRepository _repository;
 
     public GameTypeRepositoryTests()
     {
         var dbPath = $":memory:_{Guid.NewGuid()}";
-        var options = new DbContextOptionsBuilder<GameServerV2DbContext>()
+        var options = new DbContextOptionsBuilder<SqliteGameServerV2DbContext>()
             .UseSqlite($"DataSource={dbPath};Mode=Memory;Cache=Shared")
             .Options;
 
-        _context = new GameServerV2DbContext(options);
+        _context = new SqliteGameServerV2DbContext(options);
         _context.Database.OpenConnection();
-        _context.Database.EnsureCreated();
+        _context.Database.Migrate();
 
         _repository = new GameTypeRepository(_context, Mock.Of<ILogger<GameTypeRepository>>());
     }
@@ -36,11 +36,11 @@ public class GameTypeRepositoryTests : IDisposable
     public async Task InitializeDatabaseAsync_WhenNoMigrationsExist_ShouldEnsureSchemaAndRemainQueryable()
     {
         var dbPath = $":memory:_{Guid.NewGuid()}";
-        var options = new DbContextOptionsBuilder<GameServerV2DbContext>()
+        var options = new DbContextOptionsBuilder<SqliteGameServerV2DbContext>()
             .UseSqlite($"DataSource={dbPath};Mode=Memory;Cache=Shared")
             .Options;
 
-        await using var context = new GameServerV2DbContext(options);
+        await using var context = new SqliteGameServerV2DbContext(options);
         await context.Database.OpenConnectionAsync();
 
         var repository = new GameTypeRepository(context, Mock.Of<ILogger<GameTypeRepository>>());
@@ -55,11 +55,11 @@ public class GameTypeRepositoryTests : IDisposable
     public async Task InitializeDatabaseAsync_WhenLegacySchemaExists_ShouldUpgradeExistingRows()
     {
         var dbPath = $":memory:_{Guid.NewGuid()}";
-        var options = new DbContextOptionsBuilder<GameServerV2DbContext>()
+        var options = new DbContextOptionsBuilder<SqliteGameServerV2DbContext>()
             .UseSqlite($"DataSource={dbPath};Mode=Memory;Cache=Shared")
             .Options;
 
-        await using var context = new GameServerV2DbContext(options);
+        await using var context = new SqliteGameServerV2DbContext(options);
         await context.Database.OpenConnectionAsync();
 
         await context.Database.ExecuteSqlRawAsync(
@@ -83,7 +83,7 @@ public class GameTypeRepositoryTests : IDisposable
         Assert.Equal("itzg/minecraft-server", upgradedRevision.ImageReference);
 
         var migrationId = await context.Database.SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"").SingleAsync();
-        Assert.Equal("20260404190753_RefactorV2GameTypeTypeAndRevisionImageReference", migrationId);
+        Assert.Equal("20260731225517_InitialCreate", migrationId);
     }
 
     [Fact]

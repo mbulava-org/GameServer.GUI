@@ -28,40 +28,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 return;
             }
 
-            if (!await TableExistsAsync("GameTypes").ConfigureAwait(false))
-            {
-                logger.LogInformation("No V2 tables found. Ensuring the V2 database schema is created...");
-                var created = await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
-                if (created)
-                {
-                    var historyRepository = context.GetService<IHistoryRepository>();
-                    await context.Database.ExecuteSqlRawAsync(historyRepository.GetCreateIfNotExistsScript()).ConfigureAwait(false);
-                    await context.Database.ExecuteSqlRawAsync(
-                        historyRepository.GetInsertScript(new HistoryRow(InitialV2MigrationId, context.Model.GetProductVersion())))
-                        .ConfigureAwait(false);
-                    logger.LogInformation("V2 database schema created and baselined successfully");
-                }
-                else
-                {
-                    logger.LogInformation("V2 database schema already exists");
-                }
-            }
-            else
-            {
-                await PrepareDatabaseForMigrationsAsync().ConfigureAwait(false);
-
-                var pendingMigrations = (await context.Database.GetPendingMigrationsAsync().ConfigureAwait(false)).ToList();
-                if (pendingMigrations.Count == 0)
-                {
-                    logger.LogInformation("No pending V2 database migrations to apply.");
-                }
-                else
-                {
-                    logger.LogInformation("Applying V2 database migrations...");
-                    await context.Database.MigrateAsync().ConfigureAwait(false);
-                    logger.LogInformation("V2 database migrations applied successfully");
-                }
-            }
+            await MigrateRelationalDatabaseAsync().ConfigureAwait(false);
 
             var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
             if (!hasGameTypes)
@@ -103,132 +70,139 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         logger.LogInformation("V2 PostgreSQL database initialized. Found {Count} game types.", count);
     }
 
-    private async Task PrepareDatabaseForMigrationsAsync()
+    private async Task MigrateRelationalDatabaseAsync()
     {
-        var historyRepository = context.GetService<IHistoryRepository>();
-        var historyExists = await historyRepository.ExistsAsync().ConfigureAwait(false);
-        if (historyExists)
+        // Bring pre-migrations databases up to the InitialCreate baseline and record it in history so
+        // MigrateAsync only applies genuinely new migrations instead of trying to recreate existing objects.
+        await BaselineExistingDatabaseIfNeededAsync().ConfigureAwait(false);
+
+        var pendingMigrations = (await context.Database.GetPendingMigrationsAsync().ConfigureAwait(false)).ToList();
+        if (pendingMigrations.Count == 0)
         {
-            var appliedMigrations = await context.Database.GetAppliedMigrationsAsync().ConfigureAwait(false);
-            if (appliedMigrations.Contains(InitialV2MigrationId, StringComparer.Ordinal))
-            {
-                await EnsureSchemaMatchesBaselineAsync().ConfigureAwait(false);
-                return;
-            }
+            logger.LogInformation("No pending V2 database migrations to apply.");
+        }
+        else
+        {
+            logger.LogInformation(
+                "Applying {Count} pending V2 database migration(s): {Migrations}",
+                pendingMigrations.Count,
+                string.Join(", ", pendingMigrations));
+            await context.Database.MigrateAsync().ConfigureAwait(false);
+            logger.LogInformation("V2 database migrations applied successfully.");
+        }
+    }
+
+    /// <summary>
+    /// Detects databases that were created before EF Core migrations were adopted (the old
+    /// EnsureCreated + synthetic baseline path) and reconciles them to the InitialCreate baseline
+    /// without dropping data, then records the real InitialCreate migration in history so the normal
+    /// MigrateAsync flow can take over. Fresh databases are left untouched so MigrateAsync creates them.
+    /// </summary>
+    private async Task BaselineExistingDatabaseIfNeededAsync()
+    {
+        var initialMigrationId = context.Database.GetMigrations().FirstOrDefault();
+        if (string.IsNullOrEmpty(initialMigrationId))
+        {
+            throw new InvalidOperationException("No V2 EF Core migrations were found for the active provider.");
         }
 
+        // Fresh database: no schema yet. MigrateAsync will create everything from scratch.
         if (!await TableExistsAsync("GameTypes").ConfigureAwait(false))
         {
-            logger.LogInformation("No V2 tables found. Creating the current V2 schema before baselining migration history...");
-
-            var created = await context.Database.EnsureCreatedAsync().ConfigureAwait(false);
-            if (created)
-            {
-                await context.Database.ExecuteSqlRawAsync(historyRepository.GetCreateIfNotExistsScript()).ConfigureAwait(false);
-                await context.Database.ExecuteSqlRawAsync(
-                    historyRepository.GetInsertScript(new HistoryRow(InitialV2MigrationId, context.Model.GetProductVersion())))
-                    .ConfigureAwait(false);
-            }
-
             return;
         }
 
-        var gameTypesHasLegacyImageReference = await ColumnExistsAsync("GameTypes", "ImageReference").ConfigureAwait(false);
-        var gameTypesHasTypeColumn = await ColumnExistsAsync("GameTypes", "Type").ConfigureAwait(false);
-        var revisionsHasImageReference = await ColumnExistsAsync("GameTypeRevisions", "ImageReference").ConfigureAwait(false);
+        var historyRepository = context.GetService<IHistoryRepository>();
+        var historyExists = await historyRepository.ExistsAsync().ConfigureAwait(false);
+        var appliedMigrations = historyExists
+            ? (await context.Database.GetAppliedMigrationsAsync().ConfigureAwait(false)).ToList()
+            : [];
 
-        if (gameTypesHasLegacyImageReference && !revisionsHasImageReference)
+        // The real baseline migration is already recorded: nothing to reconcile, MigrateAsync handles the rest.
+        if (appliedMigrations.Contains(initialMigrationId, StringComparer.Ordinal))
         {
-            logger.LogInformation("Detected existing V2 schema created before migrations. Upgrading legacy columns before applying migrations...");
-            await UpgradeLegacySchemaAsync().ConfigureAwait(false);
-        }
-        else if (gameTypesHasLegacyImageReference && gameTypesHasTypeColumn)
-        {
-            logger.LogInformation("Detected stale GameTypes.ImageReference column on current schema. Removing legacy column before applying migrations...");
-            await RemoveLegacyGameTypesImageReferenceColumnAsync().ConfigureAwait(false);
-        }
-        else if (!gameTypesHasTypeColumn || !revisionsHasImageReference)
-        {
-            throw new InvalidOperationException("The existing V2 database schema does not match either the legacy pre-migration schema or the current migration baseline.");
+            return;
         }
 
+        logger.LogInformation(
+            "Existing pre-migrations V2 schema detected. Reconciling to the '{MigrationId}' baseline before recording migration history...",
+            initialMigrationId);
+
+        await ReconcileToBaselineSchemaAsync().ConfigureAwait(false);
+
+        // Ensure the history table exists, drop any synthetic baseline marker, then record the real baseline
+        // so MigrateAsync treats InitialCreate as already applied instead of recreating existing objects.
         await context.Database.ExecuteSqlRawAsync(historyRepository.GetCreateIfNotExistsScript()).ConfigureAwait(false);
+        await RemoveSyntheticBaselineHistoryAsync().ConfigureAwait(false);
         await context.Database.ExecuteSqlRawAsync(
-            historyRepository.GetInsertScript(new HistoryRow(InitialV2MigrationId, context.Model.GetProductVersion())))
+            historyRepository.GetInsertScript(new HistoryRow(initialMigrationId, context.Model.GetProductVersion())))
             .ConfigureAwait(false);
 
-        logger.LogInformation("Recorded baseline V2 migration history for existing database '{MigrationId}'.", InitialV2MigrationId);
+        logger.LogInformation("Recorded baseline V2 migration history '{MigrationId}' for the existing database.", initialMigrationId);
     }
 
-    private async Task EnsureSchemaMatchesBaselineAsync()
+    private async Task RemoveSyntheticBaselineHistoryAsync()
     {
-        if (!await TableExistsAsync("GameTypes").ConfigureAwait(false))
-        {
-            throw new InvalidOperationException("The V2 database is missing the required 'GameTypes' table even though the baseline migration is recorded.");
-        }
+        // Older builds recorded a synthetic baseline id that does not correspond to a real migration.
+        var quotedTable = context.Database.IsSqlite() ? "\"__EFMigrationsHistory\"" : "`__EFMigrationsHistory`";
+        var quotedColumn = context.Database.IsSqlite() ? "\"MigrationId\"" : "`MigrationId`";
+        await context.Database.ExecuteSqlRawAsync(
+            $"DELETE FROM {quotedTable} WHERE {quotedColumn} = {{0}};",
+            InitialV2MigrationId)
+            .ConfigureAwait(false);
+    }
 
-        if (!await TableExistsAsync("GameTypeRevisions").ConfigureAwait(false))
-        {
-            throw new InvalidOperationException("The V2 database is missing the required 'GameTypeRevisions' table even though the baseline migration is recorded.");
-        }
-
+    /// <summary>
+    /// Idempotently reconciles a pre-migrations database up to the InitialCreate baseline schema,
+    /// preserving existing rows. Safe to run repeatedly: every change is guarded by an existence check.
+    /// </summary>
+    private async Task ReconcileToBaselineSchemaAsync()
+    {
         var gameTypesHasLegacyImageReference = await ColumnExistsAsync("GameTypes", "ImageReference").ConfigureAwait(false);
         var gameTypesHasType = await ColumnExistsAsync("GameTypes", "Type").ConfigureAwait(false);
         var revisionsHasImageReference = await ColumnExistsAsync("GameTypeRevisions", "ImageReference").ConfigureAwait(false);
 
         if (gameTypesHasLegacyImageReference && !revisionsHasImageReference)
         {
-            logger.LogWarning("Detected V2 schema drift with baseline history present. Reapplying legacy schema upgrade to move ImageReference into revisions.");
+            logger.LogInformation("Upgrading legacy V2 schema: moving ImageReference from GameTypes into GameTypeRevisions...");
             await UpgradeLegacySchemaAsync().ConfigureAwait(false);
-            return;
         }
-
-        if (!gameTypesHasType || !revisionsHasImageReference)
+        else if (gameTypesHasLegacyImageReference && gameTypesHasType)
         {
-            throw new InvalidOperationException("The recorded V2 migration history does not match the current V2 schema. The database requires manual repair before the application can continue.");
-        }
-
-        if (gameTypesHasLegacyImageReference)
-        {
-            logger.LogWarning("Detected stale V2 schema drift. Removing legacy GameTypes.ImageReference column so saves use the current schema.");
+            logger.LogInformation("Removing stale GameTypes.ImageReference column...");
             await RemoveLegacyGameTypesImageReferenceColumnAsync().ConfigureAwait(false);
         }
 
-        await RepairPostBaselineSchemaAsync().ConfigureAwait(false);
+        await AddMissingBaselineColumnsAndTablesAsync().ConfigureAwait(false);
+        await SeedDefaultMountTypeConfigsAsync().ConfigureAwait(false);
     }
 
-    private async Task RepairPostBaselineSchemaAsync()
+    private async Task AddMissingBaselineColumnsAndTablesAsync()
     {
-        if (context.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) != true)
-        {
-            return;
-        }
-
-        logger.LogInformation("Checking for post-baseline schema additions...");
-
         if (!await TableExistsAsync("MountTypeConfigs").ConfigureAwait(false))
         {
             logger.LogInformation("Creating missing MountTypeConfigs table...");
-            foreach (var statement in GetMySqlMountTypeConfigTableStatements())
+            foreach (var statement in GetMountTypeConfigTableStatements())
             {
                 await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
             }
         }
 
-        foreach (var (table, column, sql) in GetMySqlPostBaselineColumnAdditions())
+        foreach (var (table, column, sql) in GetPostBaselineColumnAdditions())
         {
+            if (!await TableExistsAsync(table).ConfigureAwait(false))
+            {
+                continue;
+            }
+
             if (!await ColumnExistsAsync(table, column).ConfigureAwait(false))
             {
                 logger.LogInformation("Adding missing {Table}.{Column} column...", table, column);
                 await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
             }
-            else
-            {
-                logger.LogDebug("Verified {Table}.{Column} exists", table, column);
-            }
         }
 
-        foreach (var (table, sql) in GetMySqlPostBaselineTableCreations())
+        foreach (var (table, sql) in GetPostBaselineTableCreations())
         {
             if (!await TableExistsAsync(table).ConfigureAwait(false))
             {
@@ -236,9 +210,22 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
             }
         }
-
-        await SeedDefaultMountTypeConfigsAsync().ConfigureAwait(false);
     }
+
+    private IReadOnlyList<string> GetMountTypeConfigTableStatements() =>
+        context.Database.IsSqlite()
+            ? GetSqliteMountTypeConfigTableStatements()
+            : GetMySqlMountTypeConfigTableStatements();
+
+    private IReadOnlyList<(string Table, string Column, string Sql)> GetPostBaselineColumnAdditions() =>
+        context.Database.IsSqlite()
+            ? GetSqlitePostBaselineColumnAdditions()
+            : GetMySqlPostBaselineColumnAdditions();
+
+    private IReadOnlyList<(string Table, string Sql)> GetPostBaselineTableCreations() =>
+        context.Database.IsSqlite()
+            ? GetSqlitePostBaselineTableCreations()
+            : GetMySqlPostBaselineTableCreations();
 
     private static IReadOnlyList<(string Table, string Column, string Sql)> GetMySqlPostBaselineColumnAdditions()
     {
@@ -261,11 +248,11 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameServers", "Status", "ALTER TABLE `GameServers` ADD COLUMN `Status` varchar(50) NOT NULL DEFAULT '';"),
             ("GameServers", "IsDeleted", "ALTER TABLE `GameServers` ADD COLUMN `IsDeleted` tinyint(1) NOT NULL DEFAULT 0;"),
             ("GameServers", "GameTypeRevisionId", "ALTER TABLE `GameServers` ADD COLUMN `GameTypeRevisionId` int NULL;"),
-            ("GameServers", "CreatedAt", "ALTER TABLE `GameServers` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
-            ("GameServers", "UpdatedAt", "ALTER TABLE `GameServers` ADD COLUMN `UpdatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
+            ("GameServers", "CreatedAt", "ALTER TABLE `GameServers` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);"),
+            ("GameServers", "UpdatedAt", "ALTER TABLE `GameServers` ADD COLUMN `UpdatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);"),
             ("GameServers", "LastDeployedAt", "ALTER TABLE `GameServers` ADD COLUMN `LastDeployedAt` datetime(6) NULL;"),
             ("GameServers", "LastSeenAt", "ALTER TABLE `GameServers` ADD COLUMN `LastSeenAt` datetime(6) NULL;"),
-            ("GameServerVolumes", "CreatedAt", "ALTER TABLE `GameServerVolumes` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
+            ("GameServerVolumes", "CreatedAt", "ALTER TABLE `GameServerVolumes` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);"),
             ("GameServerVolumes", "IsProvisioned", "ALTER TABLE `GameServerVolumes` ADD COLUMN `IsProvisioned` tinyint(1) NOT NULL DEFAULT 0;")
         ];
     }
@@ -358,6 +345,151 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                     KEY `IX_GameServerSettings_GameServerId` (`GameServerId`)
                 );
                 """)
+        ];
+    }
+
+    private static IReadOnlyList<(string Table, string Column, string Sql)> GetSqlitePostBaselineColumnAdditions()
+    {
+        // SQLite disallows non-constant defaults (e.g. CURRENT_TIMESTAMP) when adding NOT NULL columns,
+        // so a constant epoch default is used for timestamp columns; the application overwrites these on save.
+        return
+        [
+            ("GameTypeRevisions", "EnableTTY", "ALTER TABLE \"GameTypeRevisions\" ADD COLUMN \"EnableTTY\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameTypeRevisions", "Notes", "ALTER TABLE \"GameTypeRevisions\" ADD COLUMN \"Notes\" TEXT NULL;"),
+            ("GameTypeRevisions", "IsPublished", "ALTER TABLE \"GameTypeRevisions\" ADD COLUMN \"IsPublished\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameTypePorts", "AdvertisedPort", "ALTER TABLE \"GameTypePorts\" ADD COLUMN \"AdvertisedPort\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameTypePorts", "Description", "ALTER TABLE \"GameTypePorts\" ADD COLUMN \"Description\" TEXT NULL;"),
+            ("GameTypePorts", "DisplayOrder", "ALTER TABLE \"GameTypePorts\" ADD COLUMN \"DisplayOrder\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameTypeVolumes", "MountType", "ALTER TABLE \"GameTypeVolumes\" ADD COLUMN \"MountType\" TEXT NULL;"),
+            ("GameTypeVolumes", "OwnerUid", "ALTER TABLE \"GameTypeVolumes\" ADD COLUMN \"OwnerUid\" INTEGER NULL;"),
+            ("GameTypeVolumes", "OwnerGid", "ALTER TABLE \"GameTypeVolumes\" ADD COLUMN \"OwnerGid\" INTEGER NULL;"),
+            ("GameTypeVolumes", "Permissions", "ALTER TABLE \"GameTypeVolumes\" ADD COLUMN \"Permissions\" TEXT NULL;"),
+            ("GameTypeVolumes", "ReadOnly", "ALTER TABLE \"GameTypeVolumes\" ADD COLUMN \"ReadOnly\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameTypeVolumes", "Required", "ALTER TABLE \"GameTypeVolumes\" ADD COLUMN \"Required\" INTEGER NOT NULL DEFAULT 1;"),
+            ("GameTypeSettingDefinitions", "DisplayOrder", "ALTER TABLE \"GameTypeSettingDefinitions\" ADD COLUMN \"DisplayOrder\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameServers", "ServiceName", "ALTER TABLE \"GameServers\" ADD COLUMN \"ServiceName\" TEXT NOT NULL DEFAULT '';"),
+            ("GameServers", "Status", "ALTER TABLE \"GameServers\" ADD COLUMN \"Status\" TEXT NOT NULL DEFAULT '';"),
+            ("GameServers", "IsDeleted", "ALTER TABLE \"GameServers\" ADD COLUMN \"IsDeleted\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameServers", "GameTypeRevisionId", "ALTER TABLE \"GameServers\" ADD COLUMN \"GameTypeRevisionId\" INTEGER NULL;"),
+            ("GameServers", "CreatedAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"CreatedAt\" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';"),
+            ("GameServers", "UpdatedAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"UpdatedAt\" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';"),
+            ("GameServers", "LastDeployedAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"LastDeployedAt\" TEXT NULL;"),
+            ("GameServers", "LastSeenAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"LastSeenAt\" TEXT NULL;"),
+            ("GameServerVolumes", "CreatedAt", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"CreatedAt\" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';"),
+            ("GameServerVolumes", "IsProvisioned", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"IsProvisioned\" INTEGER NOT NULL DEFAULT 0;")
+        ];
+    }
+
+    private static IReadOnlyList<(string Table, string Sql)> GetSqlitePostBaselineTableCreations()
+    {
+        return
+        [
+            ("GameTypeSettingMetadata", """
+                CREATE TABLE IF NOT EXISTS "GameTypeSettingMetadata" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_GameTypeSettingMetadata" PRIMARY KEY AUTOINCREMENT,
+                    "AllowedValuesJson" TEXT NULL,
+                    "AutoAllocatePort" INTEGER NOT NULL DEFAULT 0,
+                    "CannotBeEmpty" INTEGER NOT NULL DEFAULT 0,
+                    "Category" TEXT NULL,
+                    "DataType" TEXT NULL,
+                    "GameTypeSettingDefinitionId" INTEGER NOT NULL,
+                    "IsRequired" INTEGER NOT NULL DEFAULT 0,
+                    "Placeholder" TEXT NULL,
+                    "ValidateRelatedPortsAvailability" INTEGER NOT NULL DEFAULT 1,
+                    "ValidationMessage" TEXT NULL,
+                    "ValidationPattern" TEXT NULL,
+                    "ValueMappingsJson" TEXT NULL
+                );
+                """),
+            ("GameTypeSettingMetadataIndex", "CREATE UNIQUE INDEX IF NOT EXISTS \"IX_GameTypeSettingMetadata_GameTypeSettingDefinitionId\" ON \"GameTypeSettingMetadata\" (\"GameTypeSettingDefinitionId\");"),
+            ("GameTypeSettingPortMappings", """
+                CREATE TABLE IF NOT EXISTS "GameTypeSettingPortMappings" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_GameTypeSettingPortMappings" PRIMARY KEY AUTOINCREMENT,
+                    "CalculationValue" INTEGER NULL,
+                    "DisplayOrder" INTEGER NOT NULL DEFAULT 0,
+                    "GameTypeSettingMetadataId" INTEGER NOT NULL,
+                    "IsRequired" INTEGER NOT NULL DEFAULT 1,
+                    "MappingRole" INTEGER NOT NULL,
+                    "RelationType" INTEGER NOT NULL,
+                    "TargetContainerPort" INTEGER NOT NULL DEFAULT 0,
+                    "TargetProtocol" TEXT NOT NULL DEFAULT 'udp',
+                    CONSTRAINT "CK_GameTypeSettingPortMappings_Role" CHECK ("MappingRole" IN (0, 1)),
+                    CONSTRAINT "CK_GameTypeSettingPortMappings_Type" CHECK ("RelationType" IN (0, 1, 2, 3)),
+                    CONSTRAINT "CK_GameTypeSettingPortMappings_Protocol" CHECK ("TargetProtocol" IN ('tcp', 'udp'))
+                );
+                """),
+            ("GameTypeSettingPortMappingsIndex", "CREATE INDEX IF NOT EXISTS \"IX_GameTypeSettingPortMappings_GameTypeSettingMetadataId\" ON \"GameTypeSettingPortMappings\" (\"GameTypeSettingMetadataId\");"),
+            ("GameTypeWebHosts", """
+                CREATE TABLE IF NOT EXISTS "GameTypeWebHosts" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_GameTypeWebHosts" PRIMARY KEY AUTOINCREMENT,
+                    "ContainerPort" INTEGER NULL,
+                    "ContainerPortVariable" TEXT NULL,
+                    "Description" TEXT NULL,
+                    "DisplayOrder" INTEGER NOT NULL DEFAULT 0,
+                    "EnabledWhen" TEXT NULL,
+                    "GameTypeRevisionId" INTEGER NOT NULL,
+                    "Name" TEXT NOT NULL,
+                    "PathSegment" TEXT NULL
+                );
+                """),
+            ("GameTypeWebHostsIndex", "CREATE INDEX IF NOT EXISTS \"IX_GameTypeWebHosts_GameTypeRevisionId\" ON \"GameTypeWebHosts\" (\"GameTypeRevisionId\");"),
+            ("GameServerVolumes", """
+                CREATE TABLE IF NOT EXISTS "GameServerVolumes" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_GameServerVolumes" PRIMARY KEY AUTOINCREMENT,
+                    "ContainerPath" TEXT NOT NULL,
+                    "CreatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    "Driver" TEXT NOT NULL,
+                    "DriverOptionsJson" TEXT NULL,
+                    "GameServerId" INTEGER NOT NULL,
+                    "InitMode" TEXT NOT NULL,
+                    "IsProvisioned" INTEGER NOT NULL DEFAULT 0,
+                    "MountType" TEXT NOT NULL,
+                    "OwnerGid" INTEGER NULL,
+                    "OwnerUid" INTEGER NULL,
+                    "Permissions" TEXT NULL,
+                    "ReadOnly" INTEGER NOT NULL DEFAULT 0,
+                    "Required" INTEGER NOT NULL DEFAULT 1,
+                    "SeedSourcePath" TEXT NULL,
+                    "Source" TEXT NOT NULL,
+                    "Usage" TEXT NOT NULL
+                );
+                """),
+            ("GameServerVolumesUniqueIndex", "CREATE UNIQUE INDEX IF NOT EXISTS \"IX_GameServerVolumes_GameServerId_ContainerPath\" ON \"GameServerVolumes\" (\"GameServerId\", \"ContainerPath\");"),
+            ("GameServerSettings", """
+                CREATE TABLE IF NOT EXISTS "GameServerSettings" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_GameServerSettings" PRIMARY KEY AUTOINCREMENT,
+                    "GameServerId" INTEGER NOT NULL,
+                    "SettingKey" TEXT NOT NULL,
+                    "Value" TEXT NULL
+                );
+                """),
+            ("GameServerSettingsIndex", "CREATE INDEX IF NOT EXISTS \"IX_GameServerSettings_GameServerId\" ON \"GameServerSettings\" (\"GameServerId\");")
+        ];
+    }
+
+    private static IReadOnlyList<string> GetSqliteMountTypeConfigTableStatements()
+    {
+        return
+        [
+            """
+            CREATE TABLE IF NOT EXISTS "MountTypeConfigs" (
+                "Key" TEXT NOT NULL CONSTRAINT "PK_MountTypeConfigs" PRIMARY KEY,
+                "DisplayName" TEXT NOT NULL,
+                "Description" TEXT NULL,
+                "Driver" TEXT NOT NULL,
+                "DriverOptionsJson" TEXT NULL,
+                "SourcePathTemplate" TEXT NOT NULL,
+                "ContainerPathTemplate" TEXT NOT NULL,
+                "DefaultReadOnly" INTEGER NOT NULL,
+                "DefaultInitMode" TEXT NOT NULL,
+                "DefaultOwnerUid" INTEGER NULL,
+                "DefaultOwnerGid" INTEGER NULL,
+                "DefaultPermissions" TEXT NULL,
+                "IsActive" INTEGER NOT NULL,
+                "CreatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                "UpdatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+            );
+            """
         ];
     }
 

@@ -11,19 +11,50 @@ namespace GameServer.Docker.Data.V2;
 /// </summary>
 public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServerV2DbContext>
 {
+    /// <summary>
+    /// The assembly that contains the generated EF Core migrations for the V2 relational providers.
+    /// </summary>
+    internal static readonly string MigrationsAssemblyName =
+        typeof(GameServerV2DbContext).Assembly.GetName().Name!;
+
     public GameServerV2DbContext CreateDbContext(string[] args)
     {
-        var optionsBuilder = new DbContextOptionsBuilder<GameServerV2DbContext>();
         var provider = ResolveArgument(args, "--provider") ?? "sqlite";
         var connectionString = ResolveArgument(args, "--connection") ?? "Data Source=:memory:";
 
-        // Use a temporary in-memory SQLite database by default for design-time operations.
-        // PostgreSQL and MySQL can still be selected explicitly through arguments when needed.
-        ConfigureProvider(optionsBuilder, provider, connectionString);
-        return new GameServerV2DbContext(optionsBuilder.Options);
+        // Design-time operations (e.g. `dotnet ef migrations add`) must never require a live
+        // database connection, so connection validation is disabled here.
+        switch (provider.Trim().ToLowerInvariant())
+        {
+            case "mysql":
+            {
+                var optionsBuilder = new DbContextOptionsBuilder<MySqlGameServerV2DbContext>();
+                ConfigureProvider((DbContextOptionsBuilder)optionsBuilder, provider, connectionString, validateConnection: false);
+                return new MySqlGameServerV2DbContext(optionsBuilder.Options);
+            }
+
+            case "postgres":
+            case "postgresql":
+            {
+                var optionsBuilder = new DbContextOptionsBuilder<GameServerV2DbContext>();
+                ConfigureProvider((DbContextOptionsBuilder)optionsBuilder, provider, connectionString, validateConnection: false);
+                return new GameServerV2DbContext(optionsBuilder.Options);
+            }
+
+            default:
+            {
+                var optionsBuilder = new DbContextOptionsBuilder<SqliteGameServerV2DbContext>();
+                ConfigureProvider((DbContextOptionsBuilder)optionsBuilder, "sqlite", connectionString, validateConnection: false);
+                return new SqliteGameServerV2DbContext(optionsBuilder.Options);
+            }
+        }
     }
 
-    internal static void ConfigureProvider(DbContextOptionsBuilder optionsBuilder, string provider, string connectionString)
+    internal static void ConfigureProvider(
+        DbContextOptionsBuilder optionsBuilder,
+        string provider,
+        string connectionString,
+        bool validateConnection = true)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
 
@@ -47,11 +78,13 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
                     Pooling = true
                 }.ToString();
 
-                optionsBuilder.UseSqlite(sqliteConnectionString);
+                optionsBuilder.UseSqlite(
+                    sqliteConnectionString,
+                    x => x.MigrationsAssembly(MigrationsAssemblyName));
                 break;
 
             case "mysql":
-                ConfigureMySqlProvider(optionsBuilder, connectionString);
+                ConfigureMySqlProvider(optionsBuilder, connectionString, validateConnection);
                 break;
 
             case "postgres":
@@ -64,7 +97,7 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
         }
     }
 
-    private static void ConfigureMySqlProvider(DbContextOptionsBuilder optionsBuilder, string connectionString)
+    private static void ConfigureMySqlProvider(DbContextOptionsBuilder optionsBuilder, string connectionString, bool validateConnection)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         var mySqlCS = new MySqlConnectionStringBuilder(connectionString)
@@ -74,22 +107,27 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
             DefaultCommandTimeout = 30,
         };
 
-        try
+        if (validateConnection)
         {
-            // Test the connection string by opening a connection.
-            using var testConnection = new MySqlConnection(mySqlCS.ConnectionString);
-            testConnection.Open();
+            try
+            {
+                // Test the connection string by opening a connection.
+                using var testConnection = new MySqlConnection(mySqlCS.ConnectionString);
+                testConnection.Open();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to connect to MySQL database with the provided connection string: \"{mySqlCS.ConnectionString}\". Please verify the connection details.", ex);
+            }
         }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to connect to MySQL database with the provided connection string: \"{mySqlCS.ConnectionString}\". Please verify the connection details.", ex);
-        }
+
         optionsBuilder.UseMySQL(mySqlCS.ConnectionString, options =>
         {
             options.EnableRetryOnFailure(
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorNumbersToAdd: null);
+            options.MigrationsAssembly(MigrationsAssemblyName);
         });
     }
 

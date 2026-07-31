@@ -96,11 +96,16 @@ namespace GameServer.Docker
 
                 // Add V2 database context for the persistence implementation.
                 // Provider selection is isolated from the legacy DbContext so both paths can coexist.
-                builder.Services.AddDbContext<DataV2.GameServerV2DbContext>((serviceProvider, options) =>
+                // The provider-specific subclasses (Sqlite/MySql) own their EF Core migration sets, so the
+                // matching concrete context must be registered for MigrateAsync() to discover its migrations.
+                // GameServerV2DbContext is aliased to whichever concrete context is active so repositories
+                // (which depend on the base type) resolve the correct instance.
                 {
-                    var v2Options = serviceProvider.GetRequiredService<IOptions<Configurations.V2DatabaseOptions>>().Value;
-                    var provider = v2Options.Provider;
-                    var defaultConnectionName = provider.Trim().ToLowerInvariant() switch
+                    var v2Options = builder.Configuration
+                        .GetSection(Configurations.V2DatabaseOptions.SectionName)
+                        .Get<Configurations.V2DatabaseOptions>() ?? new Configurations.V2DatabaseOptions();
+                    var provider = (v2Options.Provider ?? "sqlite").Trim().ToLowerInvariant();
+                    var defaultConnectionName = provider switch
                     {
                         "postgres" or "postgresql" => "GameServerV2PostgresDb",
                         "mysql" => "GameServerV2MySqlDb",
@@ -115,18 +120,41 @@ namespace GameServer.Docker
                         ?? builder.Configuration.GetConnectionString("GameServerV2Db")
                         ?? "Data Source=./data/gameserver-v2.db";
 
-                    DataV2.GameServerV2DbContextFactory.ConfigureProvider(
-                        (DbContextOptionsBuilder)options,
-                        provider,
-                        v2ConnectionString);
-
-                    if (builder.Environment.IsDevelopment())
+                    void ConfigureV2Options(DbContextOptionsBuilder options)
                     {
-                        options.EnableSensitiveDataLogging();
+                        DataV2.GameServerV2DbContextFactory.ConfigureProvider(
+                            options,
+                            provider,
+                            v2ConnectionString);
+
+                        if (builder.Environment.IsDevelopment())
+                        {
+                            options.EnableSensitiveDataLogging();
+                        }
+
+                        options.EnableServiceProviderCaching(false);
                     }
 
-                    options.EnableServiceProviderCaching(false);
-                });
+                    switch (provider)
+                    {
+                        case "mysql":
+                            builder.Services.AddDbContext<DataV2.MySqlGameServerV2DbContext>((_, options) => ConfigureV2Options(options));
+                            builder.Services.AddScoped<DataV2.GameServerV2DbContext>(sp => sp.GetRequiredService<DataV2.MySqlGameServerV2DbContext>());
+                            break;
+
+                        case "postgres":
+                        case "postgresql":
+                            // PostgreSQL schema is deployed via the dedicated pgPac database project, so the
+                            // base context (without an EF migration set) is used directly.
+                            builder.Services.AddDbContext<DataV2.GameServerV2DbContext>((_, options) => ConfigureV2Options(options));
+                            break;
+
+                        default:
+                            builder.Services.AddDbContext<DataV2.SqliteGameServerV2DbContext>((_, options) => ConfigureV2Options(options));
+                            builder.Services.AddScoped<DataV2.GameServerV2DbContext>(sp => sp.GetRequiredService<DataV2.SqliteGameServerV2DbContext>());
+                            break;
+                    }
+                }
 
                 // Add V2 repositories
                 // Register IMemoryCache for GameType caching

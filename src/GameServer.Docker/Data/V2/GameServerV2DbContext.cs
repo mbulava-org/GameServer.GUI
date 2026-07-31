@@ -7,8 +7,29 @@ namespace GameServer.Docker.Data.V2;
 /// </summary>
 public class GameServerV2DbContext : DbContext
 {
+    /// <summary>
+    /// Fixed timestamp used for deterministic seed data (<c>HasData</c>). Using a constant keeps the
+    /// migrations model snapshot stable across builds so EF does not report pending model changes.
+    /// </summary>
+    private static readonly DateTime SeedTimestamp = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     public GameServerV2DbContext(DbContextOptions<GameServerV2DbContext> options)
         : base(options)
+    {
+        ApplySqlitePragmas();
+    }
+
+    /// <summary>
+    /// Constructor used by provider-specific subclasses (see <see cref="SqliteGameServerV2DbContext"/>
+    /// and <see cref="MySqlGameServerV2DbContext"/>) so each provider can own its own migration set.
+    /// </summary>
+    protected GameServerV2DbContext(DbContextOptions options)
+        : base(options)
+    {
+        ApplySqlitePragmas();
+    }
+
+    private void ApplySqlitePragmas()
     {
         if (Database.IsSqlite())
         {
@@ -260,6 +281,8 @@ public class GameServerV2DbContext : DbContext
             ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
             ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
 
+            // Use a fixed, deterministic seed timestamp so the migrations model snapshot does not
+            // change on every build (which would otherwise trigger EF's PendingModelChangesWarning).
             entity.HasData(
                 new MountTypeConfigEntity
                 {
@@ -271,7 +294,9 @@ public class GameServerV2DbContext : DbContext
                     ContainerPathTemplate = "{Source}",
                     DefaultReadOnly = false,
                     DefaultInitMode = "none",
-                    IsActive = true
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
                 },
                 new MountTypeConfigEntity
                 {
@@ -283,7 +308,9 @@ public class GameServerV2DbContext : DbContext
                     ContainerPathTemplate = "{Source}",
                     DefaultReadOnly = false,
                     DefaultInitMode = "none",
-                    IsActive = true
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
                 },
                 new MountTypeConfigEntity
                 {
@@ -295,7 +322,9 @@ public class GameServerV2DbContext : DbContext
                     ContainerPathTemplate = "{Source}",
                     DefaultReadOnly = false,
                     DefaultInitMode = "none",
-                    IsActive = true
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
                 },
                 new MountTypeConfigEntity
                 {
@@ -307,7 +336,9 @@ public class GameServerV2DbContext : DbContext
                     ContainerPathTemplate = "{Source}",
                     DefaultReadOnly = false,
                     DefaultInitMode = "none",
-                    IsActive = true
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
                 });
         });
     }
