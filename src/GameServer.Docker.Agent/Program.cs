@@ -5,6 +5,10 @@ using GameServer.Docker.Agent.Configurations;
 using Serilog;
 using System.Reflection;
 
+var assembly = Assembly.GetExecutingAssembly();
+var assemblyVersion = assembly.GetName().Version?.ToString() ?? "unknown";
+var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? assemblyVersion;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure Serilog with environment-based log level
@@ -20,13 +24,13 @@ Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft.AspNetCore.Http.Connections", Serilog.Events.LogEventLevel.Error) // Suppress WebSocket logs
     .Enrich.FromLogContext()
     .Enrich.WithProperty("ApplicationName", "GameServer.Docker.Agent")
+    .Enrich.WithProperty("ApplicationVersion", assemblyVersion)
+    .Enrich.WithProperty("ApplicationInformationalVersion", informationalVersion)
     .Enrich.WithProperty("NodeName", Environment.GetEnvironmentVariable("NODE_NAME") ?? "unknown")
     .WriteTo.Console()
     .CreateLogger();
 
-//Log startup information
-var asmb = Assembly.GetExecutingAssembly();
-Log.Information($"Starting GameServer.Docker.Agent Version - {asmb.GetName().Version}");
+Log.Information("Starting GameServer.Docker.Agent Version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
 
 builder.Host.UseSerilog();
 
@@ -101,6 +105,6 @@ app.MapHub<GameServer.Docker.Agent.Hubs.NodeAgentHub>("/hubs/nodeagent");
 app.MapControllers();
 
 Log.Information("Node Agent starting on {NodeName}...", Environment.GetEnvironmentVariable("NODE_NAME") ?? "unknown");
+app.Logger.LogInformation("GameServer.Docker.Agent runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
 
 app.Run();
-

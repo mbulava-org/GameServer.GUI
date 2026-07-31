@@ -18,9 +18,10 @@ namespace GameServer.Web
                 .CreateBootstrapLogger();
             try
             {
-                //Log startup information
-                var asmb = Assembly.GetExecutingAssembly();
-                Log.Information($"Starting GameServer.Web Version - {asmb.GetName().Version}");
+                var assembly = Assembly.GetExecutingAssembly();
+                var assemblyVersion = assembly.GetName().Version?.ToString() ?? "unknown";
+                var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? assemblyVersion;
+                Log.Information("Starting GameServer.Web Version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
 
 
                 var builder = WebApplication.CreateBuilder(args);
@@ -35,6 +36,8 @@ namespace GameServer.Web
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
                         .Enrich.WithProperty("ApplicationName", "GameServer.Web")
+                        .Enrich.WithProperty("ApplicationVersion", assemblyVersion)
+                        .Enrich.WithProperty("ApplicationInformationalVersion", informationalVersion)
                         .WriteTo.Console(
                             outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
 
@@ -75,6 +78,7 @@ namespace GameServer.Web
 
 
                 var app = builder.Build();
+                app.Logger.LogInformation("GameServer.Web runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
 
                 // Configure the HTTP request pipeline.
                 if (!app.Environment.IsDevelopment())

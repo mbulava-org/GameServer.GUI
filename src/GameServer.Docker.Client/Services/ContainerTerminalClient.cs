@@ -151,11 +151,18 @@ namespace GameServer.Docker.Client.Services
                 "Starting exec session for container {ContainerId} with shell {Shell}",
                 containerId, shell);
 
-            return await _hubConnection.InvokeAsync<bool>(
+            var started = await _hubConnection.InvokeAsync<bool>(
                 "StartExecSession",
                 containerId,
                 shell,
                 cancellationToken);
+
+            if (started)
+            {
+                _containerId = containerId;
+            }
+
+            return started;
         }
 
         /// <inheritdoc/>

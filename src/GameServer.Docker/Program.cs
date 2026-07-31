@@ -25,9 +25,10 @@ namespace GameServer.Docker
 
             try
             {
-                //Log startup information
-                var asmb = Assembly.GetExecutingAssembly();
-                Log.Information($"Starting GameServer.Docker Version - {asmb.GetName().Version}");
+                var assembly = Assembly.GetExecutingAssembly();
+                var assemblyVersion = assembly.GetName().Version?.ToString() ?? "unknown";
+                var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? assemblyVersion;
+                Log.Information("Starting GameServer.Docker Version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
 
                 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,7 +41,9 @@ namespace GameServer.Docker
                         .ReadFrom.Configuration(builder.Configuration)
                         .ReadFrom.Services(services)
                         .Enrich.FromLogContext()
-                        .Enrich.WithProperty("ApplicationName", "GameServer.Docker"));
+                        .Enrich.WithProperty("ApplicationName", "GameServer.Docker")
+                        .Enrich.WithProperty("ApplicationVersion", assemblyVersion)
+                        .Enrich.WithProperty("ApplicationInformationalVersion", informationalVersion));
                         // Console sink is configured in appsettings.json - don't add it here!
 
                 // Bind configuration classes directly from appsettings.json.
@@ -236,6 +239,7 @@ namespace GameServer.Docker
                 }
 
                 var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
+                mainLogger.LogInformation("GameServer.Docker runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
                 mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
 
                 // Add Serilog request logging

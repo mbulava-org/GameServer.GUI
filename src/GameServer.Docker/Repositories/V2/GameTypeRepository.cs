@@ -730,7 +730,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
 
     private static GameType MapToModel(DataV2.GameTypeEntity entity)
     {
-        return new GameType
+        var gameType = new GameType
         {
             Id = entity.Id,
             Key = entity.Key,
@@ -742,9 +742,26 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             IsActive = entity.IsActive,
             CurrentRevisionId = entity.CurrentRevisionId,
             CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
-            Revisions = entity.Revisions.OrderBy(x => x.CreatedAt).ThenBy(x => x.VersionTag).Select(revision => MapToModel(revision, MapToModel(entity))).ToList()
+            UpdatedAt = entity.UpdatedAt
         };
+
+        var revisions = entity.Revisions
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.VersionTag)
+            .Select(revision => MapToModel(revision))
+            .ToList();
+
+        var result = gameType with
+        {
+            Revisions = revisions
+        };
+
+        foreach (var revision in result.Revisions)
+        {
+            revision.GameType = result;
+        }
+
+        return result;
     }
 
     private static GameTypeRevision MapToModel(DataV2.GameTypeRevisionEntity entity, GameType? gameType = null)
@@ -930,4 +947,3 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         }
     }
 }
-

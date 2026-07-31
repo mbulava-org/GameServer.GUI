@@ -59,6 +59,7 @@ jobs:
   build_and_publish_docker:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NEW_VERSION: ${{ inputs.semantic_version}}
       GHCR_REPO: 'ghcr.io/${{ github.repository_owner }}/${{ inputs.target_repo }}'
       TAG_BUILD: ${{ github.run_number }}
@@ -67,7 +68,7 @@ jobs:
       BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - name: 'Checkout'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Docker Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -77,7 +78,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.dotnet_version }}
           source-url: https://nuget.pkg.github.com/mbulava-org/index.json
@@ -160,10 +161,10 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 'Build and Push Docker image'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           # List of a customs host-to-IP mapping (e.g., docker:10.180.0.1)
           #add-hosts: # optional
