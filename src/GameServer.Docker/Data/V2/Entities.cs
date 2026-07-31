@@ -122,9 +122,8 @@ public class GameTypeVolumeEntity
     /// Mount-type code referencing MountTypeConfig.Key.
     /// Not enforced as a database FK so existing data continues to load.
     /// </summary>
-    [Required]
     [MaxLength(50)]
-    public string MountType { get; set; } = "volume";
+    public string? MountType { get; set; } = "volume";
 
     public bool ReadOnly { get; set; }
 

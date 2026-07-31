@@ -188,13 +188,103 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             throw new InvalidOperationException("The recorded V2 migration history does not match the current V2 schema. The database requires manual repair before the application can continue.");
         }
 
-        if (!gameTypesHasLegacyImageReference)
+        if (gameTypesHasLegacyImageReference)
         {
-            return;
+            logger.LogWarning("Detected stale V2 schema drift. Removing legacy GameTypes.ImageReference column so saves use the current schema.");
+            await RemoveLegacyGameTypesImageReferenceColumnAsync().ConfigureAwait(false);
         }
 
-        logger.LogWarning("Detected stale V2 schema drift. Removing legacy GameTypes.ImageReference column so saves use the current schema.");
-        await RemoveLegacyGameTypesImageReferenceColumnAsync().ConfigureAwait(false);
+        await RepairPostBaselineSchemaAsync().ConfigureAwait(false);
+    }
+
+    private async Task RepairPostBaselineSchemaAsync()
+    {
+        if (context.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            logger.LogInformation("Checking for post-baseline schema additions...");
+
+            if (!await TableExistsAsync("MountTypeConfigs").ConfigureAwait(false))
+            {
+                logger.LogInformation("Creating missing MountTypeConfigs table...");
+                foreach (var statement in GetMySqlMountTypeConfigTableStatements())
+                {
+                    await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
+                }
+            }
+
+            if (!await ColumnExistsAsync("GameTypeVolumes", "MountType").ConfigureAwait(false))
+            {
+                logger.LogInformation("Adding missing GameTypeVolumes.MountType column...");
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE `GameTypeVolumes` ADD COLUMN `MountType` varchar(50) NULL;")
+                    .ConfigureAwait(false);
+            }
+
+            await SeedDefaultMountTypeConfigsAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task SeedDefaultMountTypeConfigsAsync()
+    {
+        // Ensure seeded data matches GameServerV2DbContext.HasData for the four built-in mount types.
+        var defaultConfigs = new (string Key, string DisplayName, string Driver, string? DriverOptionsJson, string SourcePathTemplate, string ContainerPathTemplate, bool DefaultReadOnly, string DefaultInitMode, bool IsActive)[]
+        {
+            ("volume", "Docker volume", "local", null, "{gameTypeKey}_{serverId}_{Source}", "{Source}", false, "none", true),
+            ("bind", "Bind mount", "local", null, "/host/gameservers/{gameTypeKey}/{serverId}/{Source}", "{Source}", false, "none", true),
+            ("tmpfs", "tmpfs", "local", null, string.Empty, "{Source}", false, "none", true),
+            ("nfs", "NFS volume", "vieux/sshfs", "{\"type\":\"nfs\",\"device\":\":/exported/path\",\"o\":\"addr=host.docker.internal,rw\"}", "{gameTypeKey}_{serverId}_{Source}", "{Source}", false, "none", true)
+        };
+
+        foreach (var config in defaultConfigs)
+        {
+            if (!await context.MountTypeConfigs.AnyAsync(m => m.Key == config.Key).ConfigureAwait(false))
+            {
+                logger.LogInformation("Seeding default mount type config '{MountTypeKey}'...", config.Key);
+                context.MountTypeConfigs.Add(new DataV2.MountTypeConfigEntity
+                {
+                    Key = config.Key,
+                    DisplayName = config.DisplayName,
+                    Driver = config.Driver,
+                    DriverOptionsJson = config.DriverOptionsJson,
+                    SourcePathTemplate = config.SourcePathTemplate,
+                    ContainerPathTemplate = config.ContainerPathTemplate,
+                    DefaultReadOnly = config.DefaultReadOnly,
+                    DefaultInitMode = config.DefaultInitMode,
+                    IsActive = config.IsActive,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        await context.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<string> GetMySqlMountTypeConfigTableStatements()
+    {
+        return
+        [
+            """
+            CREATE TABLE IF NOT EXISTS `MountTypeConfigs` (
+                `Key` varchar(50) NOT NULL,
+                `DisplayName` varchar(200) NOT NULL,
+                `Description` longtext NULL,
+                `Driver` varchar(200) NOT NULL,
+                `DriverOptionsJson` longtext NULL,
+                `SourcePathTemplate` varchar(500) NOT NULL,
+                `ContainerPathTemplate` varchar(500) NOT NULL,
+                `DefaultReadOnly` tinyint(1) NOT NULL,
+                `DefaultInitMode` varchar(50) NOT NULL,
+                `DefaultOwnerUid` int NULL,
+                `DefaultOwnerGid` int NULL,
+                `DefaultPermissions` varchar(10) NULL,
+                `IsActive` tinyint(1) NOT NULL,
+                `CreatedAt` datetime(6) NOT NULL,
+                `UpdatedAt` datetime(6) NOT NULL,
+                PRIMARY KEY (`Key`)
+            );
+            """
+        ];
     }
 
     private async Task UpgradeLegacySchemaAsync()

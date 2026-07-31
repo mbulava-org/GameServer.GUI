@@ -132,7 +132,7 @@ public class GameServerV2DbContext : DbContext
             entity.HasIndex(e => e.GameTypeRevisionId);
             entity.Property(e => e.Source).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Usage).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.MountType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.MountType).HasMaxLength(50);
             entity.Property(e => e.Permissions).HasMaxLength(10);
 
             // Soft FK to MountTypeConfigs; keep optional so existing data loads.
