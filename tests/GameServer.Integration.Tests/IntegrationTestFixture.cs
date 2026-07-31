@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.Sqlite;
 
 namespace GameServer.Integration.Tests;
 
@@ -18,16 +17,13 @@ namespace GameServer.Integration.Tests;
 /// </summary>
 public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Program>
 {
-    // Keep open connections for the lifetime of the factory so the in-memory database persist
-    private readonly SqliteConnection _v2Connection;
+    private readonly string _v2DatabasePath;
 
     public IntegrationTestFactory()
     {
         // Set before the host starts so Program.cs reads it during service registration
         Environment.SetEnvironmentVariable("SKIP_DB_INIT", "true");
-
-        _v2Connection = new SqliteConnection("Data Source=:memory:");
-        _v2Connection.Open();
+        _v2DatabasePath = Path.Combine(Path.GetTempPath(), $"gameserver-v2-integration-{Guid.NewGuid():N}.db");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -46,24 +42,9 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
                 // Force V2 to use SQLite so Npgsql is never selected
                 ["V2Database:Provider"] = "sqlite",
                 ["V2Database:ConnectionStringName"] = "GameServerV2Db",
-                ["ConnectionStrings:GameServerV2Db"] = "Data Source=:memory:",
+                ["ConnectionStrings:GameServerV2Db"] = $"Data Source={_v2DatabasePath}",
             });
             Environment.SetEnvironmentVariable("SKIP_DB_INIT", "true");
-        });
-
-        builder.ConfigureServices(services =>
-        {
-            // Remove ALL descriptors related to GameServerV2DbContext
-            var v2Descriptors = services
-                .Where(d => d.ServiceType == typeof(DbContextOptions<GameServer.Docker.Data.V2.GameServerV2DbContext>)
-                         || d.ServiceType == typeof(GameServer.Docker.Data.V2.GameServerV2DbContext))
-                .ToList();
-            foreach (var d in v2Descriptors) services.Remove(d);
-
-            // Register isolated SQLite backed by an open connection (preserves in-memory schema)
-            services.AddDbContext<GameServer.Docker.Data.V2.GameServerV2DbContext>(options =>
-                options.UseSqlite(_v2Connection)
-                       .EnableServiceProviderCaching(false));
         });
     }
 
@@ -86,7 +67,10 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
         base.Dispose(disposing);
         if (disposing)
         {
-            _v2Connection.Dispose();
+            if (File.Exists(_v2DatabasePath))
+            {
+                File.Delete(_v2DatabasePath);
+            }
         }
     }
 }
