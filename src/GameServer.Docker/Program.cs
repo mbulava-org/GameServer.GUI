@@ -48,7 +48,7 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton(builder.Configuration.GetSection("NetworkOptions").Get<Configurations.NetworkOptions>() ?? new Configurations.NetworkOptions());
                 builder.Services.AddSingleton(builder.Configuration.GetSection("NodeAgentOptions").Get<Configurations.NodeAgentOptions>() ?? new Configurations.NodeAgentOptions());
                 builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName).Get<Configurations.UdpAgentDiscoveryOptions>() ?? new Configurations.UdpAgentDiscoveryOptions());
-                builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName).Get<Configurations.V2DatabaseOptions>() ?? new Configurations.V2DatabaseOptions());
+                builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
 
                 // Agent Registry (new registration-based system) - MUST BE BEFORE ServiceOperations and NodeAgentDiscovery
                 // Agents connect to the Primary Service and push their state

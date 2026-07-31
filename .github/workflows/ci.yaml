@@ -252,28 +252,27 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore GameServer.GUI.slnx
 
-      # Workaround: MSBuild.Sdk.PostgreSql 1.0.0-preview3 ships only Windows native
-      # libraries (win-x64). On Linux the pgpac compiler cannot find libpg_query_17.so
-      # and exits with code 1. The mbulava.postgresql.dac package (restored above as a
-      # transitive dep) already contains the correct linux-x64 .so files — copy them
-      # into the location the SDK tasks DLL searches at build time.
-      # Track: upgrade MSBuild.Sdk.PostgreSql when a version that ships linux libs lands.
-      - name: Fix native libs for MSBuild.Sdk.PostgreSql (linux-x64 workaround)
-        run: |
-          NUGET_CACHE="${HOME}/.nuget/packages"
-          SDK_VER="1.0.0-preview3"
-          DAC_VER="1.0.0-preview9"
-          SRC="$NUGET_CACHE/mbulava.postgresql.dac/$DAC_VER/runtimes/linux-x64/native"
-          DST="$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER/tasks/net10.0/runtimes/linux-x64/native"
-          if [ -d "$SRC" ] && [ -d "$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER" ]; then
-            mkdir -p "$DST"
-            cp "$SRC/libpg_query_16.so" "$DST/" 2>/dev/null || true
-            cp "$SRC/libpg_query_17.so" "$DST/" 2>/dev/null || true
-            echo "Copied linux-x64 native libs to $DST"
-            ls "$DST"
-          else
-            echo "Source or SDK package dir not found — skipping (DB project excluded from solution build)"
-          fi
+      # # Workaround: MSBuild.Sdk.PostgreSql 1.0.0-preview3 ships only Windows native
+      # # libraries (win-x64). On Linux the pgpac compiler cannot find libpg_query_17.so
+      # # and exits with code 1. The mbulava.postgresql.dac package (restored above as a
+      # # transitive dep) already contains the correct linux-x64 .so files — copy them
+      # # into the location the SDK tasks DLL searches at build time.
+      # # Track: upgrade MSBuild.Sdk.PostgreSql when a version that ships linux libs lands.
+      #   run: |
+      #     NUGET_CACHE="${HOME}/.nuget/packages"
+      #     SDK_VER="1.0.0-preview3"
+      #     DAC_VER="1.0.0-preview9"
+      #     SRC="$NUGET_CACHE/mbulava.postgresql.dac/$DAC_VER/runtimes/linux-x64/native"
+      #     DST="$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER/tasks/net10.0/runtimes/linux-x64/native"
+      #     if [ -d "$SRC" ] && [ -d "$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER" ]; then
+      #       mkdir -p "$DST"
+      #       cp "$SRC/libpg_query_16.so" "$DST/" 2>/dev/null || true
+      #       cp "$SRC/libpg_query_17.so" "$DST/" 2>/dev/null || true
+      #       echo "Copied linux-x64 native libs to $DST"
+      #       ls "$DST"
+      #     else
+      #       echo "Source or SDK package dir not found — skipping (DB project excluded from solution build)"
+      #     fi
 
       - name: Build solution
         run: dotnet build GameServer.GUI.slnx --no-restore --configuration Release
@@ -295,7 +294,7 @@ jobs:
 
   backend:
     needs: [setup]
-    uses: ./.github/workflows/BuildAndPublish-Docker-GitHub.yaml
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -310,7 +309,7 @@ jobs:
 
   agent-backend:
     needs: [setup]
-    uses: ./.github/workflows/BuildAndPublish-Docker-GitHub.yaml
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
@@ -337,7 +336,7 @@ jobs:
 
   web-gui:
     needs: [setup]
-    uses: ./.github/workflows/BuildAndPublish-Docker-GitHub.yaml
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
