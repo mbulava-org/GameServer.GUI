@@ -185,7 +185,7 @@
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Load failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
         }
         finally
         {
@@ -229,11 +229,11 @@
             }
 
             selectedConfig = saved;
-            NotificationService.Notify(NotificationSeverity.Success, "Configuration saved", $"Mount type '{saved.Key}' has been persisted.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Configuration saved", $"Mount type '{saved.Key}' has been persisted.");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Save failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save failed", ex.Message);
         }
         finally
         {
@@ -248,11 +248,11 @@
             await MountTypeConfigApi.DeleteAsync(config.Key);
             configs.Remove(config);
             selectedConfig = configs.FirstOrDefault();
-            NotificationService.Notify(NotificationSeverity.Success, "Configuration deleted", $"Mount type '{config.Key}' has been removed.");
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Configuration deleted", $"Mount type '{config.Key}' has been removed.");
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Delete failed", ex.Message);
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
         }
     }
 

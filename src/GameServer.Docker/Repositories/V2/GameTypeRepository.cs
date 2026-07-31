@@ -199,29 +199,155 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
 
     private async Task RepairPostBaselineSchemaAsync()
     {
-        if (context.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
+        if (context.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) != true)
         {
-            logger.LogInformation("Checking for post-baseline schema additions...");
-
-            if (!await TableExistsAsync("MountTypeConfigs").ConfigureAwait(false))
-            {
-                logger.LogInformation("Creating missing MountTypeConfigs table...");
-                foreach (var statement in GetMySqlMountTypeConfigTableStatements())
-                {
-                    await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
-                }
-            }
-
-            if (!await ColumnExistsAsync("GameTypeVolumes", "MountType").ConfigureAwait(false))
-            {
-                logger.LogInformation("Adding missing GameTypeVolumes.MountType column...");
-                await context.Database.ExecuteSqlRawAsync(
-                    "ALTER TABLE `GameTypeVolumes` ADD COLUMN `MountType` varchar(50) NULL;")
-                    .ConfigureAwait(false);
-            }
-
-            await SeedDefaultMountTypeConfigsAsync().ConfigureAwait(false);
+            return;
         }
+
+        logger.LogInformation("Checking for post-baseline schema additions...");
+
+        if (!await TableExistsAsync("MountTypeConfigs").ConfigureAwait(false))
+        {
+            logger.LogInformation("Creating missing MountTypeConfigs table...");
+            foreach (var statement in GetMySqlMountTypeConfigTableStatements())
+            {
+                await context.Database.ExecuteSqlRawAsync(statement).ConfigureAwait(false);
+            }
+        }
+
+        foreach (var (table, column, sql) in GetMySqlPostBaselineColumnAdditions())
+        {
+            if (!await ColumnExistsAsync(table, column).ConfigureAwait(false))
+            {
+                logger.LogInformation("Adding missing {Table}.{Column} column...", table, column);
+                await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
+            }
+        }
+
+        foreach (var (table, sql) in GetMySqlPostBaselineTableCreations())
+        {
+            if (!await TableExistsAsync(table).ConfigureAwait(false))
+            {
+                logger.LogInformation("Creating missing {Table} table...", table);
+                await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
+            }
+        }
+
+        await SeedDefaultMountTypeConfigsAsync().ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<(string Table, string Column, string Sql)> GetMySqlPostBaselineColumnAdditions()
+    {
+        return
+        [
+            ("GameTypeRevisions", "EnableTTY", "ALTER TABLE `GameTypeRevisions` ADD COLUMN `EnableTTY` tinyint(1) NOT NULL DEFAULT 0;"),
+            ("GameTypeRevisions", "Notes", "ALTER TABLE `GameTypeRevisions` ADD COLUMN `Notes` longtext NULL;"),
+            ("GameTypeRevisions", "IsPublished", "ALTER TABLE `GameTypeRevisions` ADD COLUMN `IsPublished` tinyint(1) NOT NULL DEFAULT 0;"),
+            ("GameTypePorts", "AdvertisedPort", "ALTER TABLE `GameTypePorts` ADD COLUMN `AdvertisedPort` tinyint(1) NOT NULL DEFAULT 0;"),
+            ("GameTypePorts", "Description", "ALTER TABLE `GameTypePorts` ADD COLUMN `Description` varchar(500) NULL;"),
+            ("GameTypePorts", "DisplayOrder", "ALTER TABLE `GameTypePorts` ADD COLUMN `DisplayOrder` int NOT NULL DEFAULT 0;"),
+            ("GameTypeVolumes", "MountType", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `MountType` varchar(50) NULL;"),
+            ("GameTypeVolumes", "OwnerUid", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `OwnerUid` int NULL;"),
+            ("GameTypeVolumes", "OwnerGid", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `OwnerGid` int NULL;"),
+            ("GameTypeVolumes", "ReadOnly", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `ReadOnly` tinyint(1) NOT NULL DEFAULT 0;"),
+            ("GameTypeVolumes", "Required", "ALTER TABLE `GameTypeVolumes` ADD COLUMN `Required` tinyint(1) NOT NULL DEFAULT 1;"),
+            ("GameTypeSettingDefinitions", "DisplayOrder", "ALTER TABLE `GameTypeSettingDefinitions` ADD COLUMN `DisplayOrder` int NOT NULL DEFAULT 0;"),
+            ("GameServers", "ServiceName", "ALTER TABLE `GameServers` ADD COLUMN `ServiceName` varchar(200) NOT NULL DEFAULT '';"),
+            ("GameServers", "Status", "ALTER TABLE `GameServers` ADD COLUMN `Status` varchar(50) NOT NULL DEFAULT '';"),
+            ("GameServers", "IsDeleted", "ALTER TABLE `GameServers` ADD COLUMN `IsDeleted` tinyint(1) NOT NULL DEFAULT 0;"),
+            ("GameServers", "GameTypeRevisionId", "ALTER TABLE `GameServers` ADD COLUMN `GameTypeRevisionId` int NULL;")
+        ];
+    }
+
+    private static IReadOnlyList<(string Table, string Sql)> GetMySqlPostBaselineTableCreations()
+    {
+        return
+        [
+            ("GameTypeSettingMetadata", """
+                CREATE TABLE IF NOT EXISTS `GameTypeSettingMetadata` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `AllowedValuesJson` longtext NULL,
+                    `AutoAllocatePort` tinyint(1) NOT NULL DEFAULT 0,
+                    `CannotBeEmpty` tinyint(1) NOT NULL DEFAULT 0,
+                    `Category` varchar(100) NULL,
+                    `DataType` varchar(50) NULL,
+                    `GameTypeSettingDefinitionId` int NOT NULL,
+                    `IsRequired` tinyint(1) NOT NULL DEFAULT 0,
+                    `Placeholder` longtext NULL,
+                    `ValidateRelatedPortsAvailability` tinyint(1) NOT NULL DEFAULT 1,
+                    `ValidationMessage` longtext NULL,
+                    `ValidationPattern` longtext NULL,
+                    `ValueMappingsJson` longtext NULL,
+                    PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_GameTypeSettingMetadata_GameTypeSettingDefinitionId` (`GameTypeSettingDefinitionId`)
+                );
+                """),
+            ("GameTypeSettingPortMappings", """
+                CREATE TABLE IF NOT EXISTS `GameTypeSettingPortMappings` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `CalculationValue` int NULL,
+                    `DisplayOrder` int NOT NULL DEFAULT 0,
+                    `GameTypeSettingMetadataId` int NOT NULL,
+                    `IsRequired` tinyint(1) NOT NULL DEFAULT 1,
+                    `MappingRole` int NOT NULL,
+                    `RelationType` int NOT NULL,
+                    `TargetContainerPort` int NOT NULL DEFAULT 0,
+                    `TargetProtocol` varchar(10) NOT NULL DEFAULT 'udp',
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_GameTypeSettingPortMappings_GameTypeSettingMetadataId` (`GameTypeSettingMetadataId`),
+                    CONSTRAINT `CK_GameTypeSettingPortMappings_Role` CHECK (`MappingRole` IN (0, 1)),
+                    CONSTRAINT `CK_GameTypeSettingPortMappings_Type` CHECK (`RelationType` IN (0, 1, 2, 3)),
+                    CONSTRAINT `CK_GameTypeSettingPortMappings_Protocol` CHECK (`TargetProtocol` IN ('tcp', 'udp'))
+                );
+                """),
+            ("GameTypeWebHosts", """
+                CREATE TABLE IF NOT EXISTS `GameTypeWebHosts` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `ContainerPort` int NULL,
+                    `ContainerPortVariable` varchar(200) NULL,
+                    `Description` longtext NULL,
+                    `DisplayOrder` int NOT NULL DEFAULT 0,
+                    `EnabledWhen` varchar(500) NULL,
+                    `GameTypeRevisionId` int NOT NULL,
+                    `Name` varchar(200) NOT NULL,
+                    `PathSegment` varchar(200) NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_GameTypeWebHosts_GameTypeRevisionId` (`GameTypeRevisionId`)
+                );
+                """),
+            ("GameServerVolumes", """
+                CREATE TABLE IF NOT EXISTS `GameServerVolumes` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `ContainerPath` varchar(500) NOT NULL,
+                    `Driver` varchar(200) NOT NULL,
+                    `DriverOptionsJson` longtext NULL,
+                    `GameServerId` int NOT NULL,
+                    `InitMode` varchar(50) NOT NULL,
+                    `MountType` varchar(50) NOT NULL,
+                    `OwnerGid` int NULL,
+                    `OwnerUid` int NULL,
+                    `Permissions` varchar(10) NULL,
+                    `ReadOnly` tinyint(1) NOT NULL DEFAULT 0,
+                    `Required` tinyint(1) NOT NULL DEFAULT 1,
+                    `SeedSourcePath` varchar(500) NULL,
+                    `Source` varchar(500) NOT NULL,
+                    `Usage` varchar(100) NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_GameServerVolumes_GameServerId_ContainerPath` (`GameServerId`, `ContainerPath`),
+                    KEY `IX_GameServerVolumes_GameServerId` (`GameServerId`)
+                );
+                """),
+            ("GameServerSettings", """
+                CREATE TABLE IF NOT EXISTS `GameServerSettings` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `GameServerId` int NOT NULL,
+                    `SettingKey` varchar(200) NOT NULL,
+                    `Value` longtext NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_GameServerSettings_GameServerId` (`GameServerId`)
+                );
+                """)
+        ];
     }
 
     private async Task SeedDefaultMountTypeConfigsAsync()
