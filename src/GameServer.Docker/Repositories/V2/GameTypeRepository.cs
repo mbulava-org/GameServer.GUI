@@ -264,7 +264,9 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameServers", "CreatedAt", "ALTER TABLE `GameServers` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
             ("GameServers", "UpdatedAt", "ALTER TABLE `GameServers` ADD COLUMN `UpdatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
             ("GameServers", "LastDeployedAt", "ALTER TABLE `GameServers` ADD COLUMN `LastDeployedAt` datetime(6) NULL;"),
-            ("GameServers", "LastSeenAt", "ALTER TABLE `GameServers` ADD COLUMN `LastSeenAt` datetime(6) NULL;")
+            ("GameServers", "LastSeenAt", "ALTER TABLE `GameServers` ADD COLUMN `LastSeenAt` datetime(6) NULL;"),
+            ("GameServerVolumes", "CreatedAt", "ALTER TABLE `GameServerVolumes` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;"),
+            ("GameServerVolumes", "IsProvisioned", "ALTER TABLE `GameServerVolumes` ADD COLUMN `IsProvisioned` tinyint(1) NOT NULL DEFAULT 0;")
         ];
     }
 

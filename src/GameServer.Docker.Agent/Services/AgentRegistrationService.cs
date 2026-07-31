@@ -364,8 +364,32 @@ namespace GameServer.Docker.Agent.Services
                 return Task.CompletedTask;
             }
 
-            _logger.LogWarning(exception, "Lost connection to Primary Service, reconnecting...");
+            if (IsUnexpectedDisconnect(exception))
+            {
+                _logger.LogWarning("Primary Service disconnected unexpectedly. The agent will reconnect automatically.");
+                _logger.LogDebug(exception, "Detailed disconnect information");
+            }
+            else
+            {
+                _logger.LogInformation("Connection to Primary Service closed. Reconnecting automatically.");
+            }
+
             return Task.CompletedTask;
+        }
+
+        private static bool IsUnexpectedDisconnect(Exception? exception)
+        {
+            if (exception is null)
+            {
+                return false;
+            }
+
+            var message = exception.Message;
+            return message.Contains("closed", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("reset by peer", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("Connection reset", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("close handshake", StringComparison.OrdinalIgnoreCase)
+                || exception is System.Net.WebSockets.WebSocketException;
         }
 
         private async Task OnReconnected(string? connectionId)
@@ -396,7 +420,8 @@ namespace GameServer.Docker.Agent.Services
 
             if (exception != null)
             {
-                _logger.LogError(exception, "Connection to Primary Service closed with error");
+                _logger.LogWarning("Connection to Primary Service closed unexpectedly. The agent will reconnect automatically.");
+                _logger.LogDebug(exception, "Detailed close error information");
             }
             else
             {

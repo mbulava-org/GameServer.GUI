@@ -24,6 +24,17 @@ public sealed class AgentShutdownNotificationService(
                 "PrimaryServiceShuttingDown",
                 ["Primary Service is shutting down."],
                 cancellationToken);
+
+            // Give the SignalR message a moment to flush to connected agents before the host completes shutdown.
+            const int shutdownNotificationGraceMs = 1500;
+            try
+            {
+                await Task.Delay(shutdownNotificationGraceMs, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Host is terminating immediately; we already sent the notification.
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
