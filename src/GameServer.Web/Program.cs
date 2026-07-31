@@ -50,6 +50,22 @@ namespace GameServer.Web
                     .AddInteractiveServerComponents();
                 builder.Services.AddRadzenComponents();
 
+                // When running behind a published Docker port and/or a reverse proxy, the Blazor Server
+                // circuit negotiates the '/_blazor' WebSocket against the scheme/host the browser sees.
+                // Honor X-Forwarded-* headers so the circuit connects using the correct external scheme/host.
+                builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+                {
+                    options.ForwardedHeaders =
+                        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor |
+                        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto |
+                        Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost;
+
+                    // The proxies/networks are not known ahead of time in container deployments,
+                    // so clear the defaults to accept forwarded headers from the docker/proxy network.
+                    options.KnownNetworks.Clear();
+                    options.KnownProxies.Clear();
+                });
+
 
 
                 // Register WebSocket service as singleton
@@ -80,6 +96,10 @@ namespace GameServer.Web
                 var app = builder.Build();
                 app.Logger.LogInformation("GameServer.Web runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
 
+                // Apply forwarded headers first so downstream middleware and the Blazor circuit see the
+                // external scheme/host (published Docker port today, reverse proxy later).
+                app.UseForwardedHeaders();
+
                 // Configure the HTTP request pipeline.
                 if (!app.Environment.IsDevelopment())
                 {
@@ -89,7 +109,7 @@ namespace GameServer.Web
                 }
 
                 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-                
+
                 // HTTPS redirection (disabled in production/Docker - handled by reverse proxy)
                 if (app.Environment.IsDevelopment())
                 {
@@ -99,7 +119,11 @@ namespace GameServer.Web
                 // Critical: Serve static files from wwwroot AND from Razor Class Libraries (_content)
                 // In .NET 10, this automatically uses the staticwebassets.runtime.json manifest
                 app.UseStaticFiles();
-                
+
+                // Enable WebSockets so the Blazor Server circuit ('/_blazor') can use the WebSocket
+                // transport instead of falling back/failing when hosted in Docker or behind a proxy.
+                app.UseWebSockets();
+
                 app.UseAntiforgery();
 
                 // Map static assets (for .NET 10+ optimizations)
