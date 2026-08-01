@@ -9,7 +9,13 @@ public sealed record MountTypeConfig
     public string? Description { get; set; }
 
     /// <summary>
-    /// Free-form key/value options for this mount type. Well-known keys include:
+    /// Template used to compute the name of the Docker named volume created for this mount type.
+    /// Must resolve to a value that is unique per server/volume combination.
+    /// </summary>
+    public string? VolumeNameFormat { get; set; }
+
+    /// <summary>
+    /// Free-form key/value options for this mount type.
     /// Driver, DriverOptionsJson, SourcePathTemplate, DefaultReadOnly, DefaultEnsureNfsPathExists,
     /// DefaultOwnerUid, DefaultOwnerGid, DefaultPermissions.
     /// </summary>

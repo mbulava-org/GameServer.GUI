@@ -68,6 +68,7 @@ public sealed class MountTypeConfigController : ControllerBase
             Key = dto.Key,
             DisplayName = dto.DisplayName,
             Description = dto.Description,
+            VolumeNameFormat = dto.VolumeNameFormat,
             Options = dto.Options,
             IsActive = dto.IsActive
         };
@@ -93,6 +94,7 @@ public sealed class MountTypeConfigController : ControllerBase
             Key = config.Key,
             DisplayName = config.DisplayName,
             Description = config.Description,
+            VolumeNameFormat = config.VolumeNameFormat,
             Options = config.Options,
             IsActive = config.IsActive,
             CreatedAt = config.CreatedAt,

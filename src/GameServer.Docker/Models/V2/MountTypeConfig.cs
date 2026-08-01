@@ -19,7 +19,15 @@ public sealed record MountTypeConfig
     public string? Description { get; init; }
 
     /// <summary>
-    /// Free-form key/value options for this mount type. Each mount type may require different
+    /// Template used to compute the name of the Docker named volume created for this mount type.
+    /// Since this becomes the actual volume name, it must resolve to a value that is unique per
+    /// server/volume combination. Supports the same tokens as other templated options, such as
+    /// {gameTypeKey}, {serverId}, and {Source}.
+    /// </summary>
+    public string? VolumeNameFormat { get; init; }
+
+    /// <summary>
+    /// Free-form key/value options
     /// initialization options, so the shape is intentionally open-ended rather than a fixed set
     /// of columns. Well-known keys used by <see cref="Services.V2.VolumeSetupResolver"/> include:
     /// <c>Driver</c>, <c>DriverOptionsJson</c>, <c>SourcePathTemplate</c>, <c>DefaultReadOnly</c>,

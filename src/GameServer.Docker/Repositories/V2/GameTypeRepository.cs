@@ -254,7 +254,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameServers", "LastSeenAt", "ALTER TABLE `GameServers` ADD COLUMN `LastSeenAt` datetime(6) NULL;"),
             ("GameServerVolumes", "CreatedAt", "ALTER TABLE `GameServerVolumes` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);"),
             ("GameServerVolumes", "IsProvisioned", "ALTER TABLE `GameServerVolumes` ADD COLUMN `IsProvisioned` tinyint(1) NOT NULL DEFAULT 0;"),
-            ("GameServerVolumes", "VolumeName", "ALTER TABLE `GameServerVolumes` ADD COLUMN `VolumeName` varchar(500) NOT NULL DEFAULT '';")
+            ("GameServerVolumes", "VolumeName", "ALTER TABLE `GameServerVolumes` ADD COLUMN `VolumeName` varchar(500) NOT NULL DEFAULT '';"),
+            ("MountTypeConfigs", "VolumeNameFormat", "ALTER TABLE `MountTypeConfigs` ADD COLUMN `VolumeNameFormat` varchar(500) NULL;")
         ];
     }
 
@@ -378,7 +379,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameServers", "LastSeenAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"LastSeenAt\" TEXT NULL;"),
             ("GameServerVolumes", "CreatedAt", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"CreatedAt\" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';"),
             ("GameServerVolumes", "IsProvisioned", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"IsProvisioned\" INTEGER NOT NULL DEFAULT 0;"),
-            ("GameServerVolumes", "VolumeName", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"VolumeName\" TEXT NOT NULL DEFAULT '';")
+            ("GameServerVolumes", "VolumeName", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"VolumeName\" TEXT NOT NULL DEFAULT '';"),
+            ("MountTypeConfigs", "VolumeNameFormat", "ALTER TABLE \"MountTypeConfigs\" ADD COLUMN \"VolumeNameFormat\" TEXT NULL;")
         ];
     }
 
@@ -478,6 +480,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 "Key" TEXT NOT NULL CONSTRAINT "PK_MountTypeConfigs" PRIMARY KEY,
                 "DisplayName" TEXT NOT NULL,
                 "Description" TEXT NULL,
+                "VolumeNameFormat" TEXT NULL,
                 "OptionsJson" TEXT NULL,
                 "IsActive" INTEGER NOT NULL,
                 "CreatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
@@ -490,10 +493,10 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
     private async Task SeedDefaultMountTypeConfigsAsync()
     {
         // Ensure seeded data matches GameServerV2DbContext.HasData for the built-in mount types.
-        var defaultConfigs = new (string Key, string DisplayName, string OptionsJson, bool IsActive)[]
+        var defaultConfigs = new (string Key, string DisplayName, string VolumeNameFormat, string OptionsJson, bool IsActive)[]
         {
-            ("volume", "Docker volume", "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}", true),
-            ("nfs", "NFS volume", "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}", true)
+            ("volume", "Docker volume", "{gameTypeKey}_{serverId}_{Source}", "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}", true),
+            ("nfs", "NFS volume", "{gameTypeKey}_{serverId}_{Source}", "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}", true)
         };
 
         foreach (var config in defaultConfigs)
@@ -505,6 +508,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 {
                     Key = config.Key,
                     DisplayName = config.DisplayName,
+                    VolumeNameFormat = config.VolumeNameFormat,
                     OptionsJson = config.OptionsJson,
                     IsActive = config.IsActive,
                     CreatedAt = DateTime.UtcNow,
@@ -525,6 +529,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 `Key` varchar(50) NOT NULL,
                 `DisplayName` varchar(200) NOT NULL,
                 `Description` longtext NULL,
+                `VolumeNameFormat` varchar(500) NULL,
                 `OptionsJson` longtext NULL,
                 `IsActive` tinyint(1) NOT NULL,
                 `CreatedAt` datetime(6) NOT NULL,

@@ -401,6 +401,13 @@ public class MountTypeConfigEntity
     public string? Description { get; set; }
 
     /// <summary>
+    /// Template used to compute the name of the Docker named volume created for this mount type.
+    /// Must resolve to a unique value per server/volume combination.
+    /// </summary>
+    [MaxLength(500)]
+    public string? VolumeNameFormat { get; set; }
+
+    /// <summary>
     /// JSON-serialized free-form key/value options for this mount type.
     /// </summary>
     public string? OptionsJson { get; set; }

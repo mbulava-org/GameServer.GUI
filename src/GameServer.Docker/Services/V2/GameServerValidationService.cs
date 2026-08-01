@@ -517,11 +517,24 @@ public sealed class GameServerValidationService
             ValidateVolumeDefinition(definition, revision.Volumes, layout, issues);
         }
 
-        foreach (var volume in volumeSetupResolver.ResolveForCreate(
-            serverId ?? Guid.NewGuid().ToString("N"),
-            revision.GameType?.Key ?? "unknown",
-            revision.Volumes,
-            layout))
+        IReadOnlyList<GameServer.Docker.Models.V2.GameServerVolume> resolvedSnapshots;
+        try
+        {
+            resolvedSnapshots = volumeSetupResolver.ResolveForCreate(
+                serverId ?? Guid.NewGuid().ToString("N"),
+                revision.GameType?.Key ?? "unknown",
+                revision.Volumes,
+                layout);
+        }
+        catch (NotImplementedException)
+        {
+            // Volume/mount resolution is temporarily disabled while the mount-type
+            // configuration data model and UI are validated. Skip resolved-volume output
+            // until this is re-enabled.
+            return result;
+        }
+
+        foreach (var volume in resolvedSnapshots)
         {
             if (!containerPaths.Add(volume.ContainerPath))
             {

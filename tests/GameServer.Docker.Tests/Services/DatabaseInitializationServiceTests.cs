@@ -83,7 +83,7 @@ public class DatabaseInitializationServiceTests
         IServiceProvider serviceProvider,
         IHostApplicationLifetime applicationLifetime,
         ILogger<DatabaseInitializationService> logger)
-        : DatabaseInitializationService(serviceProvider, applicationLifetime, logger)
+        : DatabaseInitializationService(serviceProvider, applicationLifetime, new GameServer.Docker.Services.DatabaseReadinessGate(), logger)
     {
         public Task ExecuteForTestAsync(CancellationToken cancellationToken)
         {

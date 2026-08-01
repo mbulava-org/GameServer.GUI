@@ -11,15 +11,18 @@ namespace GameServer.Docker.Services
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly IHostApplicationLifetime _applicationLifetime;
+        private readonly IDatabaseReadinessGate _readinessGate;
         private readonly ILogger<DatabaseInitializationService> _logger;
 
         public DatabaseInitializationService(
             IServiceProvider serviceProvider,
             IHostApplicationLifetime applicationLifetime,
+            IDatabaseReadinessGate readinessGate,
             ILogger<DatabaseInitializationService> logger)
         {
             _serviceProvider = serviceProvider;
             _applicationLifetime = applicationLifetime;
+            _readinessGate = readinessGate;
             _logger = logger;
         }
 
@@ -38,6 +41,7 @@ namespace GameServer.Docker.Services
 
                 await v2Repository.InitializeDatabaseAsync();
 
+                _readinessGate.MarkReady();
                 _logger.LogInformation("Background database initialization complete for V2 persistence store.");
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

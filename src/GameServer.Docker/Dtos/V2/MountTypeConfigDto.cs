@@ -12,7 +12,13 @@ public sealed record MountTypeConfigDto
     public string? Description { get; init; }
 
     /// <summary>
-    /// Free-form key/value options for this mount type. See
+    /// Template used to compute the name of the Docker named volume created for this mount type.
+    /// Must resolve to a value that is unique per server/volume combination.
+    /// </summary>
+    public string? VolumeNameFormat { get; init; }
+
+    /// <summary>
+    /// Free-form key/value options for this mount type.
     /// <see cref="GameServer.Docker.Models.V2.MountTypeConfig.Options"/> for well-known keys.
     /// </summary>
     public Dictionary<string, string>? Options { get; init; }

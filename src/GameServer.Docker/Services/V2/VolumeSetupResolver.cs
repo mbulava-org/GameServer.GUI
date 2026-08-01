@@ -73,30 +73,11 @@ public sealed class VolumeSetupResolver(
         IReadOnlyDictionary<string, string>? driverOverrides = null,
         IReadOnlyDictionary<string, string?>? settingValues = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(gameTypeKey);
-        ArgumentNullException.ThrowIfNull(revisionVolumes);
-
-        var effectiveLayout = NormalizeLayout(layout);
-        var effectiveOverrides = driverOverrides ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        return revisionVolumes
-            .OrderBy(v => v.DisplayOrder)
-            .ThenBy(v => v.Source)
-            .Select((definition, index) =>
-            {
-                var config = GetMountTypeConfigAsync(definition.MountType).GetAwaiter().GetResult();
-                return ResolveSingle(
-                    config,
-                    serverId,
-                    gameTypeKey,
-                    definition,
-                    effectiveLayout,
-                    effectiveOverrides,
-                    index,
-                    settingValues);
-            })
-            .ToList();
+        // Volume/mount resolution during service create/update is temporarily disabled while the
+        // mount-type configuration data model and UI are validated. Revisit once the mount-type
+        // configuration (including VolumeNameFormat) is confirmed correct.
+        throw new NotImplementedException(
+            "Volume/mount resolution for game server create/update is not yet implemented.");
     }
 
     public IReadOnlyList<GameServerVolume> ResolveForUpdate(

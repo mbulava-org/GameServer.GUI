@@ -282,6 +282,7 @@ public class GameServerV2DbContext : DbContext
                 {
                     Key = "volume",
                     DisplayName = "Docker volume",
+                    VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}",
                     OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,
@@ -291,6 +292,7 @@ public class GameServerV2DbContext : DbContext
                 {
                     Key = "nfs",
                     DisplayName = "NFS volume",
+                    VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}",
                     OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,

@@ -76,12 +76,17 @@
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <RadzenFormField Text="Key" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="selectedConfig.Key" class="w-100" Disabled="@(!string.IsNullOrEmpty(selectedConfig.CreatedAt.ToString()))" />
+                                    <RadzenTextBox @bind-Value="selectedConfig.Key" class="w-100" Disabled="@(selectedConfig.CreatedAt != default)" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-4">
                                 <RadzenFormField Text="Display Name" Variant="Variant.Outlined" class="w-100">
                                     <RadzenTextBox @bind-Value="selectedConfig.DisplayName" class="w-100" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-4">
+                                <RadzenFormField Text="Volume Name Format" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenTextBox @bind-Value="selectedConfig.VolumeNameFormat" class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
@@ -94,6 +99,11 @@
                                 <span class="small text-muted ms-2">Active</span>
                             </div>
                         </div>
+                        <p class="text-muted small mb-0">
+                            <strong>Volume Name Format</strong> is the template used to compute the name of the Docker
+                            named volume created for this mount type. This becomes the actual volume name, so it must
+                            resolve to a value that is unique per server/volume (e.g. <code>{gameTypeKey}_{serverId}_{Source}</code>).
+                        </p>
 
                         <hr />
 
@@ -242,8 +252,9 @@
     {
         var draft = new MountTypeConfig
         {
-            Key = $"custom-{Guid.NewGuid():N}",
+            Key = string.Empty,
             DisplayName = "New mount type",
+            VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}",
             Options = new Dictionary<string, string>
             {
                 ["Driver"] = "local",
@@ -259,6 +270,12 @@
     {
         if (selectedConfig is null)
         {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedConfig.Key))
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save failed", "A Key is required.");
             return;
         }
 

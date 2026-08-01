@@ -53,6 +53,12 @@ namespace GameServer.Docker
                 builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName).Get<Configurations.UdpAgentDiscoveryOptions>() ?? new Configurations.UdpAgentDiscoveryOptions());
                 builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
 
+                // Gate that flips to "ready" once background database initialization (migrations + seeding)
+                // has completed. Requests made while a migration is mid-flight (e.g. a column rename) can
+                // otherwise fail with transient "Unknown column" errors, so API requests are held back with
+                // a 503 until this is signaled.
+                builder.Services.AddSingleton<Services.IDatabaseReadinessGate, Services.DatabaseReadinessGate>();
+
                 // Agent Registry (new registration-based system) - MUST BE BEFORE ServiceOperations and NodeAgentDiscovery
                 // Agents connect to the Primary Service and push their state
                 // This will eventually replace NodeAgentDiscoveryService
@@ -296,6 +302,25 @@ namespace GameServer.Docker
                 app.UseCors();
 
                 app.UseAuthorization();
+
+                // Reject API requests with 503 while database initialization is still running in the
+                // background, so clients don't get transient "Unknown column" errors mid-migration.
+                app.Use(async (context, next) =>
+                {
+                    var readinessGate = context.RequestServices.GetRequiredService<Services.IDatabaseReadinessGate>();
+                    if (!readinessGate.IsReady && context.Request.Path.StartsWithSegments("/api"))
+                    {
+                        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                        context.Response.Headers.RetryAfter = "2";
+                        await context.Response.WriteAsJsonAsync(new
+                        {
+                            error = "Database initialization is still in progress. Please retry shortly."
+                        });
+                        return;
+                    }
+
+                    await next();
+                });
 
                 // Map SignalR hubs
                 app.MapHub<Hubs.ContainerAttachHub>("/hubs/attach");      // Shared multi-subscriber container attach

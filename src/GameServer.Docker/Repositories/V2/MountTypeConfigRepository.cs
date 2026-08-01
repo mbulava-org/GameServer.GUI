@@ -58,6 +58,7 @@ public sealed class MountTypeConfigRepository(GameServerV2DbContext dbContext) :
 
         existing.DisplayName = config.DisplayName;
         existing.Description = config.Description;
+        existing.VolumeNameFormat = config.VolumeNameFormat;
         existing.OptionsJson = config.Options is { Count: > 0 }
             ? JsonSerializer.Serialize(config.Options)
             : null;
@@ -90,6 +91,7 @@ public sealed class MountTypeConfigRepository(GameServerV2DbContext dbContext) :
             Key = entity.Key,
             DisplayName = entity.DisplayName,
             Description = entity.Description,
+            VolumeNameFormat = entity.VolumeNameFormat,
             Options = DeserializeOptions(entity.OptionsJson),
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,

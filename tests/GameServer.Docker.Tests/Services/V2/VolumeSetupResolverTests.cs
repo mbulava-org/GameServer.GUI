@@ -56,7 +56,7 @@ public class VolumeSetupResolverTests
     }
 
     [Fact]
-    public void ResolveForCreate_ShouldResolveVolumeSourceAndContainerPath()
+    public void ResolveForCreate_ShouldThrowNotImplementedException()
     {
         var resolver = CreateResolver();
         var revisionVolume = new GameTypeVolume
@@ -65,53 +65,12 @@ public class VolumeSetupResolverTests
             Usage = "worlds"
         };
 
-        var result = resolver.ResolveForCreate("srv1", "minecraft", [revisionVolume]);
-
-        Assert.Single(result);
-        Assert.Equal("/minecraft_srv1_/data/worlds", result[0].Source);
-        Assert.Equal("/data/worlds", result[0].ContainerPath);
-        Assert.Equal("volume", result[0].MountType);
+        Assert.Throws<NotImplementedException>(
+            () => resolver.ResolveForCreate("srv1", "minecraft", [revisionVolume]));
     }
 
     [Fact]
-    public void ResolveForCreate_StandardLayout_ShouldIncludeNfsDriverOptions()
-    {
-        var resolver = CreateResolver();
-        var revisionVolume = new GameTypeVolume
-        {
-            Source = "/data/worlds",
-            Usage = "worlds"
-        };
-
-        var result = resolver.ResolveForCreate("srv1", "minecraft", [revisionVolume], layout: "standard");
-
-        Assert.Single(result);
-        Assert.NotNull(result[0].DriverOptionsJson);
-        Assert.Contains("\"type\":\"nfs\"", result[0].DriverOptionsJson);
-    }
-
-    [Fact]
-    public void ResolveForCreate_ShouldPreserveOwnershipAndPermissions()
-    {
-        var resolver = CreateResolver();
-        var revisionVolume = new GameTypeVolume
-        {
-            Source = "/data/worlds",
-            Usage = "worlds",
-            OwnerUid = 1000,
-            OwnerGid = 1000,
-            Permissions = "0755"
-        };
-
-        var result = resolver.ResolveForCreate("srv1", "minecraft", [revisionVolume]);
-
-        Assert.Equal(1000, result[0].OwnerUid);
-        Assert.Equal(1000, result[0].OwnerGid);
-        Assert.Equal("0755", result[0].Permissions);
-    }
-
-    [Fact]
-    public void ResolveForUpdate_WithExistingSnapshot_ShouldOnlyReturnNewVolumes()
+    public void ResolveForUpdate_ShouldThrowNotImplementedException()
     {
         var resolver = CreateResolver();
         var existing = new GameServerVolume
@@ -126,20 +85,26 @@ public class VolumeSetupResolverTests
             new() { Source = "/data/config", Usage = "config" }
         };
 
-        var result = resolver.ResolveForUpdate("srv1", "minecraft", revisionVolumes, [existing]);
-
-        Assert.Single(result);
-        Assert.Equal("/data/config", result[0].ContainerPath);
+        Assert.Throws<NotImplementedException>(
+            () => resolver.ResolveForUpdate("srv1", "minecraft", revisionVolumes, [existing]));
     }
 
     [Fact]
     public void BuildMountConfigs_ShouldProduceAgentMountConfigs()
     {
         var resolver = CreateResolver();
-        var resolved = resolver.ResolveForCreate("srv1", "minecraft",
-        [
-            new GameTypeVolume { Source = "/data/worlds", Usage = "worlds", ReadOnly = true }
-        ]);
+        var resolved = new List<GameServerVolume>
+        {
+            new()
+            {
+                ContainerPath = "/data/worlds",
+                Source = "/minecraft_srv1_/data/worlds",
+                Usage = "worlds",
+                MountType = "volume",
+                ReadOnly = true,
+                Driver = "local"
+            }
+        };
 
         var mounts = resolver.BuildMountConfigs(resolved);
 
@@ -149,21 +114,5 @@ public class VolumeSetupResolverTests
         Assert.Equal("/data/worlds", (string)mount.Target);
         Assert.True((bool)mount.ReadOnly);
         Assert.Equal("local", (string?)mount.DriverName);
-    }
-
-    [Fact]
-    public void ResolveForCreate_BindMount_ShouldNotSetDriverOptionsJson()
-    {
-        var resolver = CreateResolver();
-        var revisionVolume = new GameTypeVolume
-        {
-            Source = "/data/worlds",
-            Usage = "worlds",
-            MountType = "bind"
-        };
-
-        var result = resolver.ResolveForCreate("srv1", "minecraft", [revisionVolume]);
-
-        Assert.Null(result[0].DriverOptionsJson);
     }
 }

@@ -590,6 +590,10 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                         .HasColumnType("TEXT")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<string>("VolumeNameFormat")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Key");
 
                     b.ToTable("MountTypeConfigs", (string)null);
@@ -602,7 +606,8 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                             DisplayName = "Docker volume",
                             IsActive = true,
                             OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}"
                         },
                         new
                         {
@@ -611,7 +616,8 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                             DisplayName = "NFS volume",
                             IsActive = true,
                             OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}"
                         });
                 });
 
