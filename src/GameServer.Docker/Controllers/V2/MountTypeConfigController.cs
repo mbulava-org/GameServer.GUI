@@ -68,15 +68,7 @@ public sealed class MountTypeConfigController : ControllerBase
             Key = dto.Key,
             DisplayName = dto.DisplayName,
             Description = dto.Description,
-            Driver = dto.Driver,
-            DriverOptionsJson = dto.DriverOptionsJson,
-            SourcePathTemplate = dto.SourcePathTemplate,
-            ContainerPathTemplate = dto.ContainerPathTemplate,
-            DefaultReadOnly = dto.DefaultReadOnly,
-            DefaultInitMode = Enum.Parse<VolumeInitMode>(dto.DefaultInitMode, ignoreCase: true),
-            DefaultOwnerUid = dto.DefaultOwnerUid,
-            DefaultOwnerGid = dto.DefaultOwnerGid,
-            DefaultPermissions = dto.DefaultPermissions,
+            Options = dto.Options,
             IsActive = dto.IsActive
         };
 
@@ -101,15 +93,7 @@ public sealed class MountTypeConfigController : ControllerBase
             Key = config.Key,
             DisplayName = config.DisplayName,
             Description = config.Description,
-            Driver = config.Driver,
-            DriverOptionsJson = config.DriverOptionsJson,
-            SourcePathTemplate = config.SourcePathTemplate,
-            ContainerPathTemplate = config.ContainerPathTemplate,
-            DefaultReadOnly = config.DefaultReadOnly,
-            DefaultInitMode = config.DefaultInitMode.ToString().ToLowerInvariant(),
-            DefaultOwnerUid = config.DefaultOwnerUid,
-            DefaultOwnerGid = config.DefaultOwnerGid,
-            DefaultPermissions = config.DefaultPermissions,
+            Options = config.Options,
             IsActive = config.IsActive,
             CreatedAt = config.CreatedAt,
             UpdatedAt = config.UpdatedAt

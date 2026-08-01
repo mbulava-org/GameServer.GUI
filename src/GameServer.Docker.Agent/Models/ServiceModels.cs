@@ -36,7 +36,6 @@ namespace GameServer.Docker.Agent.Models
         public int? OwnerUid { get; set; }
         public int? OwnerGid { get; set; }
         public string? Permissions { get; set; }
-        public string InitMode { get; set; } = "none";
     }
 
     public class ResourcesConfig

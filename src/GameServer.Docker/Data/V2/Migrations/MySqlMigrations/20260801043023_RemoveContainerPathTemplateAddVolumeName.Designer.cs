@@ -3,6 +3,7 @@ using System;
 using GameServer.Docker.Data.V2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
 {
     [DbContext(typeof(MySqlGameServerV2DbContext))]
-    partial class MySqlGameServerV2DbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801043023_RemoveContainerPathTemplateAddVolumeName")]
+    partial class RemoveContainerPathTemplateAddVolumeName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -561,6 +564,22 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<bool>("DefaultEnsureNfsPathExists")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("DefaultOwnerGid")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DefaultOwnerUid")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DefaultPermissions")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<bool>("DefaultReadOnly")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
@@ -569,11 +588,21 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<string>("Driver")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("DriverOptionsJson")
+                        .HasColumnType("longtext");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("OptionsJson")
-                        .HasColumnType("longtext");
+                    b.Property<string>("SourcePathTemplate")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -587,18 +616,25 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                         {
                             Key = "volume",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultEnsureNfsPathExists = false,
+                            DefaultReadOnly = false,
                             DisplayName = "Docker volume",
+                            Driver = "local",
                             IsActive = true,
-                            OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
+                            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
                             Key = "nfs",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultEnsureNfsPathExists = true,
+                            DefaultReadOnly = false,
                             DisplayName = "NFS volume",
+                            Driver = "local",
+                            DriverOptionsJson = "{\"type\":\"nfs\",\"device\":\":/exported/path\",\"o\":\"addr=host.docker.internal,rw\"}",
                             IsActive = true,
-                            OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
+                            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });

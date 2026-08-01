@@ -127,13 +127,11 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                     b.Property<string>("DriverOptionsJson")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("GameServerId")
+                    b.Property<bool>("EnsureNfsPathExists")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("InitMode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                    b.Property<int>("GameServerId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsProvisioned")
                         .HasColumnType("INTEGER");
@@ -156,10 +154,6 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                     b.Property<bool>("ReadOnly")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("SeedSourcePath")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -168,6 +162,11 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                     b.Property<string>("Usage")
                         .IsRequired()
                         .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VolumeName")
+                        .IsRequired()
+                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -466,6 +465,9 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("EnsureNfsPathExists")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("GameTypeRevisionId")
                         .HasColumnType("INTEGER");
 
@@ -476,8 +478,16 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                     b.Property<int?>("OwnerGid")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("OwnerGidVariable")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("OwnerUid")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("OwnerUidVariable")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Permissions")
                         .HasMaxLength(10)
@@ -556,33 +566,10 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ContainerPathTemplate")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<string>("DefaultInitMode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("DefaultOwnerGid")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("DefaultOwnerUid")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("DefaultPermissions")
-                        .HasMaxLength(10)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("DefaultReadOnly")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Description")
                         .HasColumnType("TEXT");
@@ -592,20 +579,10 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Driver")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DriverOptionsJson")
-                        .HasColumnType("TEXT");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("SourcePathTemplate")
-                        .IsRequired()
-                        .HasMaxLength(500)
+                    b.Property<string>("OptionsJson")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -621,54 +598,19 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                         new
                         {
                             Key = "volume",
-                            ContainerPathTemplate = "{Source}",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            DefaultInitMode = "none",
-                            DefaultReadOnly = false,
                             DisplayName = "Docker volume",
-                            Driver = "local",
                             IsActive = true,
-                            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Key = "bind",
-                            ContainerPathTemplate = "{Source}",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            DefaultInitMode = "none",
-                            DefaultReadOnly = false,
-                            DisplayName = "Bind mount",
-                            Driver = "local",
-                            IsActive = true,
-                            SourcePathTemplate = "/host/gameservers/{gameTypeKey}/{serverId}/{Source}",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Key = "tmpfs",
-                            ContainerPathTemplate = "{Source}",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            DefaultInitMode = "none",
-                            DefaultReadOnly = false,
-                            DisplayName = "tmpfs",
-                            Driver = "local",
-                            IsActive = true,
-                            SourcePathTemplate = "",
+                            OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
                             Key = "nfs",
-                            ContainerPathTemplate = "{Source}",
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            DefaultInitMode = "none",
-                            DefaultReadOnly = false,
                             DisplayName = "NFS volume",
-                            Driver = "vieux/sshfs",
-                            DriverOptionsJson = "{\"type\":\"nfs\",\"device\":\":/exported/path\",\"o\":\"addr=host.docker.internal,rw\"}",
                             IsActive = true,
-                            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
+                            OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });

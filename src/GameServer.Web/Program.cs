@@ -47,7 +47,12 @@ namespace GameServer.Web
 
                 // Add services to the container.
                 builder.Services.AddRazorComponents()
-                    .AddInteractiveServerComponents();
+                    .AddInteractiveServerComponents(options =>
+                    {
+                        // Only surface detailed server-side exception text to the browser in Development.
+                        // In production (Docker/reverse proxy) keep this off so internal details aren't leaked.
+                        options.DetailedErrors = builder.Environment.IsDevelopment();
+                    });
                 builder.Services.AddRadzenComponents();
 
                 // When running behind a published Docker port and/or a reverse proxy, the Blazor Server
@@ -110,8 +115,14 @@ namespace GameServer.Web
 
                 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
-                // HTTPS redirection (disabled in production/Docker - handled by reverse proxy)
-                if (app.Environment.IsDevelopment())
+                // HTTPS redirection is only safe when an HTTPS port is actually configured.
+                // In Docker (and behind the reverse proxy) TLS is terminated upstream and no HTTPS port
+                // is bound, so redirecting here fails ("Failed to determine the https port for redirect")
+                // and can disrupt the Blazor '/_blazor' circuit negotiation. Only enable it when a port exists.
+                var httpsPort = builder.Configuration["HTTPS_PORT"]
+                    ?? builder.Configuration["ASPNETCORE_HTTPS_PORT"]
+                    ?? builder.Configuration["ASPNETCORE_HTTPS_PORTS"];
+                if (!string.IsNullOrWhiteSpace(httpsPort))
                 {
                     app.UseHttpsRedirection();
                 }

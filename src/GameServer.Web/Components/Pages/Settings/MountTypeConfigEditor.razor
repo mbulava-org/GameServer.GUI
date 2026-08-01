@@ -52,6 +52,7 @@
                     else
                     {
                         <RadzenListBox @bind-Value="selectedConfig"
+                                       Change="@(() => RefreshOptionRows())"
                                        Data="@configs"
                                        TextProperty="@nameof(MountTypeConfig.DisplayName)"
                                        TValue="MountTypeConfig"
@@ -83,43 +84,46 @@
                                     <RadzenTextBox @bind-Value="selectedConfig.DisplayName" class="w-100" />
                                 </RadzenFormField>
                             </div>
-                            <div class="col-md-4">
-                                <RadzenFormField Text="Driver" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="selectedConfig.Driver" class="w-100" />
-                                </RadzenFormField>
-                            </div>
-                            <div class="col-md-6">
-                                <RadzenFormField Text="Source Path Template" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="selectedConfig.SourcePathTemplate" class="w-100" />
-                                </RadzenFormField>
-                                <small class="text-muted">Tokens: <code>{gameTypeKey}</code>, <code>{serverId}</code>, <code>{Source}</code>.</small>
-                            </div>
-                            <div class="col-md-6">
-                                <RadzenFormField Text="Container Path Template" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="selectedConfig.ContainerPathTemplate" class="w-100" />
-                                </RadzenFormField>
-                                <small class="text-muted">Tokens: <code>{Source}</code>.</small>
-                            </div>
-                            <div class="col-md-6">
-                                <RadzenFormField Text="Driver Options (JSON)" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextArea @bind-Value="selectedConfig.DriverOptionsJson" class="w-100" Rows="4" Placeholder='{"type":"nfs","device":"...","o":"..."}' />
-                                </RadzenFormField>
-                            </div>
                             <div class="col-md-6">
                                 <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
                                     <RadzenTextArea @bind-Value="selectedConfig.Description" class="w-100" Rows="4" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-3">
-                                <RadzenCheckBox @bind-Value="selectedConfig.DefaultReadOnly" />
-                                <span class="small text-muted ms-2">Read-only by default</span>
-                            </div>
-                            <div class="col-md-3">
                                 <RadzenCheckBox @bind-Value="selectedConfig.IsActive" />
                                 <span class="small text-muted ms-2">Active</span>
                             </div>
                         </div>
+
+                        <hr />
+
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">Options</h6>
+                            <RadzenButton Text="Add Option" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@AddOptionRow" />
+                        </div>
+                        <p class="text-muted small">
+                            Free-form key/value options for this mount type (e.g. <code>Driver</code>, <code>DriverOptionsJson</code>,
+                            <code>SourcePathTemplate</code>, <code>DefaultReadOnly</code>, <code>DefaultEnsureNfsPathExists</code>,
+                            <code>DefaultOwnerUid</code>, <code>DefaultOwnerGid</code>, <code>DefaultPermissions</code>). Values may
+                            contain tokens such as <code>{Source}</code>, <code>{serverId}</code>, <code>{gameTypeKey}</code>, and
+                            <code>{Target}</code> that are substituted when volumes are resolved.
+                        </p>
+                        @foreach (var row in optionRows)
+                        {
+                            <div class="row g-2 align-items-center mb-2">
+                                <div class="col-md-4">
+                                    <RadzenTextBox Value="@row.Key" ValueChanged="@(v => UpdateOptionKey(row, v))" class="w-100" Placeholder="Key" />
+                                </div>
+                                <div class="col-md-7">
+                                    <RadzenTextBox Value="@row.Value" ValueChanged="@(v => UpdateOptionValue(row, v))" class="w-100" Placeholder="Value" />
+                                </div>
+                                <div class="col-md-1">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveOptionRow(row))" />
+                                </div>
+                            </div>
+                        }
                     </RadzenCard>
+
 
                     <RadzenCard class="mb-3">
                         <h5 class="mb-3">Live Preview</h5>
@@ -143,7 +147,7 @@
 
                         <hr />
 
-                        <h6>Resolved Source</h6>
+                        <h6>Resolved Volume Name (Source Path Template)</h6>
                         <code class="d-block text-break mb-2">@ResolvePreviewPath(selectedConfig, useLocal: false)</code>
 
                         <h6>Resolved Container Path</h6>
@@ -160,15 +164,13 @@
     private bool isSaving;
     private List<MountTypeConfig> configs = [];
     private MountTypeConfig? selectedConfig;
+    private List<OptionRow> optionRows = [];
 
-    private readonly MountTypeConfig blankConfig = new()
+    private sealed class OptionRow
     {
-        Key = string.Empty,
-        DisplayName = "New mount type",
-        Driver = "local",
-        SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-        ContainerPathTemplate = "{Source}"
-    };
+        public string Key { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
 
     private string previewGameTypeKey = "minecraft";
     private string previewServerId = "srv1";
@@ -182,6 +184,7 @@
         {
             configs = [.. await MountTypeConfigApi.GetAllAsync()];
             selectedConfig = configs.FirstOrDefault();
+            RefreshOptionRows();
         }
         catch (HttpRequestException ex)
         {
@@ -193,18 +196,63 @@
         }
     }
 
+    private void RefreshOptionRows()
+    {
+        optionRows = selectedConfig?.Options is { Count: > 0 }
+            ? selectedConfig.Options.Select(kvp => new OptionRow { Key = kvp.Key, Value = kvp.Value }).ToList()
+            : [];
+    }
+
+    private void SyncOptionsToSelectedConfig()
+    {
+        if (selectedConfig is null)
+        {
+            return;
+        }
+
+        selectedConfig.Options = optionRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Key))
+            .ToDictionary(r => r.Key, r => r.Value);
+    }
+
+    private void AddOptionRow()
+    {
+        optionRows.Add(new OptionRow());
+    }
+
+    private void RemoveOptionRow(OptionRow row)
+    {
+        optionRows.Remove(row);
+        SyncOptionsToSelectedConfig();
+    }
+
+    private void UpdateOptionKey(OptionRow row, string value)
+    {
+        row.Key = value;
+        SyncOptionsToSelectedConfig();
+    }
+
+    private void UpdateOptionValue(OptionRow row, string value)
+    {
+        row.Value = value;
+        SyncOptionsToSelectedConfig();
+    }
+
     private void AddNewConfig()
     {
         var draft = new MountTypeConfig
         {
             Key = $"custom-{Guid.NewGuid():N}",
             DisplayName = "New mount type",
-            Driver = "local",
-            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-            ContainerPathTemplate = "{Source}"
+            Options = new Dictionary<string, string>
+            {
+                ["Driver"] = "local",
+                ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+            }
         };
         configs.Add(draft);
         selectedConfig = draft;
+        RefreshOptionRows();
     }
 
     private async Task SaveAsync()
@@ -217,6 +265,7 @@
         try
         {
             isSaving = true;
+            SyncOptionsToSelectedConfig();
             var saved = await MountTypeConfigApi.SaveAsync(selectedConfig);
             var index = configs.FindIndex(c => string.Equals(c.Key, saved.Key, StringComparison.OrdinalIgnoreCase));
             if (index >= 0)
@@ -229,6 +278,7 @@
             }
 
             selectedConfig = saved;
+            RefreshOptionRows();
             NotificationService.NotifyTimed(NotificationSeverity.Success, "Configuration saved", $"Mount type '{saved.Key}' has been persisted.");
         }
         catch (HttpRequestException ex)
@@ -248,6 +298,7 @@
             await MountTypeConfigApi.DeleteAsync(config.Key);
             configs.Remove(config);
             selectedConfig = configs.FirstOrDefault();
+            RefreshOptionRows();
             NotificationService.NotifyTimed(NotificationSeverity.Success, "Configuration deleted", $"Mount type '{config.Key}' has been removed.");
         }
         catch (HttpRequestException ex)
@@ -258,28 +309,39 @@
 
     private string ResolvePreviewPath(MountTypeConfig config, bool useLocal)
     {
-        var template = config.SourcePathTemplate;
         if (string.Equals(config.Key, "tmpfs", StringComparison.OrdinalIgnoreCase))
         {
             return "tmpfs";
         }
 
-        var path = template
+        // The {Source} token is a normalized copy of the container source: drop a leading '/',
+        // then replace any remaining '/' with '-'. The calculated template value is the volume name.
+        var sourceToken = NormalizeSourceToken(previewSource);
+
+        var template = config.Options is not null && config.Options.TryGetValue("SourcePathTemplate", out var t) ? t : string.Empty;
+
+        return template
             .Replace("{gameTypeKey}", previewGameTypeKey, StringComparison.OrdinalIgnoreCase)
             .Replace("{serverId}", previewServerId, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Source}", previewSource, StringComparison.OrdinalIgnoreCase)
-            .Replace('\\', '/')
-            .Trim('/');
-
-        return "/" + path;
+            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase);
     }
 
     private string ResolvePreviewContainerPath(MountTypeConfig config)
     {
-        return config.ContainerPathTemplate
-            .Replace("{Source}", previewSource, StringComparison.OrdinalIgnoreCase)
-            .Replace('\\', '/')
-            .Trim('/');
+        // The resolved container path matches the Container Source sample (leading-slash absolute).
+        var value = (previewSource ?? string.Empty).Replace('\\', '/').Trim('/');
+        return value.Length == 0 ? "/" : "/" + value;
+    }
+
+    private static string NormalizeSourceToken(string containerSource)
+    {
+        var value = (containerSource ?? string.Empty).Replace('\\', '/');
+        if (value.StartsWith('/'))
+        {
+            value = value[1..];
+        }
+
+        return value.Replace('/', '-');
     }
 
     private void GoBack() => Navigation.NavigateTo("/");

@@ -12,28 +12,34 @@ public class VolumeSetupResolverTests
     {
         Key = "volume",
         DisplayName = "Docker volume",
-        Driver = "local",
-        DriverOptionsJson = "{\"type\":\"nfs\",\"device\":\":/exported/gameservers\",\"o\":\"addr=host.docker.internal,rw\"}",
-        SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-        ContainerPathTemplate = "{Source}"
+        Options = new Dictionary<string, string>
+        {
+            ["Driver"] = "local",
+            ["DriverOptionsJson"] = "{\"type\":\"nfs\",\"device\":\":/exported/gameservers\",\"o\":\"addr=host.docker.internal,rw\"}",
+            ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+        }
     };
 
     private static readonly MountTypeConfig BindConfig = new()
     {
         Key = "bind",
         DisplayName = "Bind mount",
-        Driver = "local",
-        SourcePathTemplate = "/host/gameservers/{gameTypeKey}/{serverId}/{Source}",
-        ContainerPathTemplate = "{Source}"
+        Options = new Dictionary<string, string>
+        {
+            ["Driver"] = "local",
+            ["SourcePathTemplate"] = "/host/gameservers/{gameTypeKey}/{serverId}/{Source}"
+        }
     };
 
     private static readonly MountTypeConfig TmpfsConfig = new()
     {
         Key = "tmpfs",
         DisplayName = "tmpfs",
-        Driver = "local",
-        SourcePathTemplate = string.Empty,
-        ContainerPathTemplate = "{Source}"
+        Options = new Dictionary<string, string>
+        {
+            ["Driver"] = "local",
+            ["SourcePathTemplate"] = string.Empty
+        }
     };
 
     private static VolumeSetupResolver CreateResolver(MountTypeConfig? config = null)

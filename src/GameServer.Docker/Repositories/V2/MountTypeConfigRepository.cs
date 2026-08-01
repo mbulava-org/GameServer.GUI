@@ -1,6 +1,7 @@
 using GameServer.Docker.Data.V2;
 using GameServer.Docker.Models.V2;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace GameServer.Docker.Repositories.V2;
 
@@ -57,15 +58,9 @@ public sealed class MountTypeConfigRepository(GameServerV2DbContext dbContext) :
 
         existing.DisplayName = config.DisplayName;
         existing.Description = config.Description;
-        existing.Driver = config.Driver;
-        existing.DriverOptionsJson = config.DriverOptionsJson;
-        existing.SourcePathTemplate = config.SourcePathTemplate;
-        existing.ContainerPathTemplate = config.ContainerPathTemplate;
-        existing.DefaultReadOnly = config.DefaultReadOnly;
-        existing.DefaultInitMode = config.DefaultInitMode.ToString().ToLowerInvariant();
-        existing.DefaultOwnerUid = config.DefaultOwnerUid;
-        existing.DefaultOwnerGid = config.DefaultOwnerGid;
-        existing.DefaultPermissions = config.DefaultPermissions;
+        existing.OptionsJson = config.Options is { Count: > 0 }
+            ? JsonSerializer.Serialize(config.Options)
+            : null;
         existing.IsActive = config.IsActive;
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -95,18 +90,27 @@ public sealed class MountTypeConfigRepository(GameServerV2DbContext dbContext) :
             Key = entity.Key,
             DisplayName = entity.DisplayName,
             Description = entity.Description,
-            Driver = entity.Driver,
-            DriverOptionsJson = entity.DriverOptionsJson,
-            SourcePathTemplate = entity.SourcePathTemplate,
-            ContainerPathTemplate = entity.ContainerPathTemplate,
-            DefaultReadOnly = entity.DefaultReadOnly,
-            DefaultInitMode = Enum.Parse<VolumeInitMode>(entity.DefaultInitMode, ignoreCase: true),
-            DefaultOwnerUid = entity.DefaultOwnerUid,
-            DefaultOwnerGid = entity.DefaultOwnerGid,
-            DefaultPermissions = entity.DefaultPermissions,
+            Options = DeserializeOptions(entity.OptionsJson),
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
+    }
+
+    private static Dictionary<string, string>? DeserializeOptions(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

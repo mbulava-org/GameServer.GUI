@@ -34,8 +34,7 @@ public class MountTypeConfigRepositoryTests : IDisposable
 
         Assert.NotEmpty(result);
         Assert.Contains(result, c => c.Key == "volume");
-        Assert.Contains(result, c => c.Key == "bind");
-        Assert.Contains(result, c => c.Key == "tmpfs");
+        Assert.Contains(result, c => c.Key == "nfs");
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class MountTypeConfigRepositoryTests : IDisposable
 
         Assert.NotNull(result);
         Assert.Equal("volume", result.Key);
-        Assert.Equal("local", result.Driver);
+        Assert.Equal("local", result.GetOption("Driver"));
     }
 
     [Fact]
@@ -56,19 +55,21 @@ public class MountTypeConfigRepositoryTests : IDisposable
         var repository = new MountTypeConfigRepository(_dbContext);
         var update = new MountTypeConfig
         {
-            Key = "nfs",
+            Key = "custom-nfs",
             DisplayName = "NFS volume",
-            Driver = "vieux/sshfs",
-            DriverOptionsJson = "{\"type\":\"nfs\",\"device\":\":/volume1/gameservers\",\"o\":\"addr=10.0.0.5,rw\"}",
-            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-            ContainerPathTemplate = "{Source}"
+            Options = new Dictionary<string, string>
+            {
+                ["Driver"] = "vieux/sshfs",
+                ["DriverOptionsJson"] = "{\"type\":\"nfs\",\"device\":\":/volume1/gameservers\",\"o\":\"addr=10.0.0.5,rw\"}",
+                ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+            }
         };
 
         await repository.SaveAsync(update);
 
-        var stored = Assert.Single(_dbContext.MountTypeConfigs.Where(e => e.Key == "nfs").ToList());
-        Assert.Equal("vieux/sshfs", stored.Driver);
-        Assert.Contains("10.0.0.5", stored.DriverOptionsJson);
+        var stored = Assert.Single(_dbContext.MountTypeConfigs.Where(e => e.Key == "custom-nfs").ToList());
+        Assert.Contains("vieux/sshfs", stored.OptionsJson);
+        Assert.Contains("10.0.0.5", stored.OptionsJson);
     }
 
     [Fact]
@@ -79,16 +80,19 @@ public class MountTypeConfigRepositoryTests : IDisposable
         {
             Key = "volume",
             DisplayName = "Volume updated",
-            Driver = "rexray/ebs",
-            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-            ContainerPathTemplate = "{Source}"
+            Options = new Dictionary<string, string>
+            {
+                ["Driver"] = "rexray/ebs",
+                ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+            }
         };
 
         var result = await repository.SaveAsync(update);
 
         Assert.Equal("Volume updated", result.DisplayName);
+        Assert.Equal("rexray/ebs", result.GetOption("Driver"));
         var stored = _dbContext.MountTypeConfigs.Single(e => e.Key == "volume");
-        Assert.Equal("rexray/ebs", stored.Driver);
+        Assert.Contains("rexray/ebs", stored.OptionsJson);
     }
 
     [Fact]
@@ -98,9 +102,7 @@ public class MountTypeConfigRepositoryTests : IDisposable
         {
             Key = "custom",
             DisplayName = "Custom mount",
-            Driver = "local",
-            SourcePathTemplate = "{Source}",
-            ContainerPathTemplate = "{Source}"
+            OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{Source}\"}"
         });
         await _dbContext.SaveChangesAsync();
         var repository = new MountTypeConfigRepository(_dbContext);

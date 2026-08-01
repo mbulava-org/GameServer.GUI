@@ -74,7 +74,7 @@ public sealed record PortableGameTypeVolumeDto
 
     public string Usage { get; init; } = string.Empty;
 
-    public string MountType { get; init; } = "volume";
+    public string MountType { get; init; } = "nfs";
 
     public bool ReadOnly { get; init; }
 
@@ -82,7 +82,13 @@ public sealed record PortableGameTypeVolumeDto
 
     public int? OwnerGid { get; init; }
 
+    public string? OwnerUidVariable { get; init; }
+
+    public string? OwnerGidVariable { get; init; }
+
     public string? Permissions { get; init; }
+
+    public bool EnsureNfsPathExists { get; init; }
 
     public bool Required { get; init; } = true;
 }

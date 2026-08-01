@@ -153,6 +153,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             Usage = model.Usage,
             ContainerPath = model.ContainerPath,
             Source = model.Source,
+            VolumeName = model.VolumeName,
             MountType = model.MountType.ToString().ToLowerInvariant(),
             ReadOnly = model.ReadOnly,
             Driver = model.Driver,
@@ -160,8 +161,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             OwnerUid = model.OwnerUid,
             OwnerGid = model.OwnerGid,
             Permissions = model.Permissions,
-            InitMode = model.InitMode.ToString().ToLowerInvariant(),
-            SeedSourcePath = model.SeedSourcePath,
+            EnsureNfsPathExists = model.EnsureNfsPathExists,
             IsProvisioned = model.IsProvisioned,
             CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt
         };
@@ -176,6 +176,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             Usage = entity.Usage,
             ContainerPath = entity.ContainerPath,
             Source = entity.Source,
+            VolumeName = entity.VolumeName,
             MountType = entity.MountType,
             ReadOnly = entity.ReadOnly,
             Driver = entity.Driver,
@@ -183,10 +184,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             OwnerUid = entity.OwnerUid,
             OwnerGid = entity.OwnerGid,
             Permissions = entity.Permissions,
-            InitMode = Enum.TryParse<Models.V2.VolumeInitMode>(entity.InitMode, true, out var initMode)
-                ? initMode
-                : Models.V2.VolumeInitMode.None,
-            SeedSourcePath = entity.SeedSourcePath,
+            EnsureNfsPathExists = entity.EnsureNfsPathExists,
             IsProvisioned = entity.IsProvisioned,
             CreatedAt = entity.CreatedAt
         };

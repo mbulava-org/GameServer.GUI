@@ -118,7 +118,13 @@ public sealed record GameTypeVolume
 
     public int? OwnerGid { get; init; }
 
+    public string? OwnerUidVariable { get; init; }
+
+    public string? OwnerGidVariable { get; init; }
+
     public string? Permissions { get; init; }
+
+    public bool EnsureNfsPathExists { get; init; }
 
     public bool Required { get; init; } = true;
 }

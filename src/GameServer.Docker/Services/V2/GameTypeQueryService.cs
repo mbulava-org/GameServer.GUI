@@ -153,7 +153,10 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
                     ReadOnly = x.ReadOnly,
                     OwnerUid = x.OwnerUid,
                     OwnerGid = x.OwnerGid,
+                    OwnerUidVariable = x.OwnerUidVariable,
+                    OwnerGidVariable = x.OwnerGidVariable,
                     Permissions = x.Permissions,
+                    EnsureNfsPathExists = x.EnsureNfsPathExists,
                     Required = x.Required
                 })
                 .ToList(),
@@ -273,7 +276,10 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
                     ReadOnly = volume.ReadOnly,
                     OwnerUid = volume.OwnerUid,
                     OwnerGid = volume.OwnerGid,
+                    OwnerUidVariable = volume.OwnerUidVariable,
+                    OwnerGidVariable = volume.OwnerGidVariable,
                     Permissions = volume.Permissions,
+                    EnsureNfsPathExists = volume.EnsureNfsPathExists,
                     Required = volume.Required
                 })
                 .ToList(),

@@ -94,7 +94,23 @@ public sealed record GameTypeVolume
 
     public int? OwnerGid { get; init; }
 
+    /// <summary>
+    /// Optional revision setting key whose numeric value resolves the owner UID at deploy time.
+    /// </summary>
+    public string? OwnerUidVariable { get; init; }
+
+    /// <summary>
+    /// Optional revision setting key whose numeric value resolves the owner GID at deploy time.
+    /// </summary>
+    public string? OwnerGidVariable { get; init; }
+
     public string? Permissions { get; init; }
+
+    /// <summary>
+    /// When true, the NFS target directory is ensured to exist (and default permissions
+    /// pre-applied where provided) before the container starts. Only meaningful for nfs mounts.
+    /// </summary>
+    public bool EnsureNfsPathExists { get; init; }
 
     public bool Required { get; init; } = true;
 }
@@ -110,6 +126,12 @@ public sealed record GameServerVolume
     public string ContainerPath { get; init; } = string.Empty;
 
     public string Source { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Calculated docker volume name (from the mount type's SourcePathTemplate). Also the
+    /// name of the folder created under /data for NFS mounts and the {Target} token value.
+    /// </summary>
+    public string VolumeName { get; init; } = string.Empty;
 
     /// <summary>
     /// Concrete mount-type code used when the volume was created. Stored as a snapshot
@@ -129,9 +151,11 @@ public sealed record GameServerVolume
 
     public string? Permissions { get; init; }
 
-    public VolumeInitMode InitMode { get; init; } = VolumeInitMode.None;
-
-    public string? SeedSourcePath { get; init; }
+    /// <summary>
+    /// When true, the NFS target directory is ensured to exist (and default permissions
+    /// pre-applied where provided) before the container starts. Only meaningful for nfs mounts.
+    /// </summary>
+    public bool EnsureNfsPathExists { get; init; }
 
     public bool IsProvisioned { get; init; }
 
@@ -239,12 +263,4 @@ public enum VolumeMountType
     Volume = 0,
     Bind = 1,
     Tmpfs = 2
-}
-
-public enum VolumeInitMode
-{
-    None = 0,
-    Create = 1,
-    SeedFromImage = 2,
-    CopyOnFirstRun = 3
 }

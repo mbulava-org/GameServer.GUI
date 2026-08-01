@@ -48,28 +48,82 @@ else
                 <div class="row g-3 align-items-end mt-1">
                     <div class="col-md-3">
                         <RadzenFormField Text="Mount Type" Variant="Variant.Outlined" class="w-100">
-                            <RadzenDropDown @bind-Value="volume.MountType" @bind-Value:after="NotifyDraftChangedAsync" Data="MountTypeOptions" class="w-100" />
+                            <RadzenDropDown TValue="string"
+                                            Data="@MountTypeOptions"
+                                            TextProperty="DisplayName"
+                                            ValueProperty="Key"
+                                            @bind-Value="volume.MountType"
+                                            @bind-Value:after="NotifyDraftChangedAsync"
+                                            Placeholder="Select mount type"
+                                            class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="col-md-2">
                         <RadzenFormField Text="UID" Variant="Variant.Outlined" class="w-100">
-                            <RadzenNumeric @bind-Value="volume.OwnerUid" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                            @if (HasVariable(volume.OwnerUidVariable))
+                            {
+                                <RadzenTextBox Value="@GetVariableDisplayValue(volume.OwnerUidVariable)" Disabled="true" class="w-100" />
+                            }
+                            else
+                            {
+                                <RadzenNumeric @bind-Value="volume.OwnerUid" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                            }
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-2">
+                        <RadzenFormField Text="UID Variable" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="string"
+                                            Data="@NumericVariableOptions"
+                                            TextProperty="Label"
+                                            ValueProperty="SettingKey"
+                                            Value="@volume.OwnerUidVariable"
+                                            Change="@(value => OnUidVariableChanged(volume, value))"
+                                            AllowClear="true"
+                                            Placeholder="Numeric setting"
+                                            class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="col-md-2">
                         <RadzenFormField Text="GID" Variant="Variant.Outlined" class="w-100">
-                            <RadzenNumeric @bind-Value="volume.OwnerGid" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                            @if (HasVariable(volume.OwnerGidVariable))
+                            {
+                                <RadzenTextBox Value="@GetVariableDisplayValue(volume.OwnerGidVariable)" Disabled="true" class="w-100" />
+                            }
+                            else
+                            {
+                                <RadzenNumeric @bind-Value="volume.OwnerGid" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                            }
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-2">
+                        <RadzenFormField Text="GID Variable" Variant="Variant.Outlined" class="w-100">
+                            <RadzenDropDown TValue="string"
+                                            Data="@NumericVariableOptions"
+                                            TextProperty="Label"
+                                            ValueProperty="SettingKey"
+                                            Value="@volume.OwnerGidVariable"
+                                            Change="@(value => OnGidVariableChanged(volume, value))"
+                                            AllowClear="true"
+                                            Placeholder="Numeric setting"
+                                            class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="col-md-2">
                         <RadzenFormField Text="Permissions" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextBox @bind-Value="volume.Permissions" @bind-Value:after="NotifyDraftChangedAsync" Placeholder="0755" class="w-100" />
+                            <RadzenTextBox @bind-Value="volume.Permissions" @bind-Value:after="NotifyDraftChangedAsync" Placeholder="0777" class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="col-md-3 d-flex align-items-center gap-2">
                         <RadzenCheckBox @bind-Value="volume.ReadOnly" @bind-Value:after="NotifyDraftChangedAsync" />
                         <span class="small text-muted">Read-only</span>
                     </div>
+                    @if (IsNfsMount(volume.MountType))
+                    {
+                        <div class="col-md-4 d-flex align-items-center gap-2">
+                            <RadzenCheckBox @bind-Value="volume.EnsureNfsPathExists" @bind-Value:after="NotifyDraftChangedAsync" />
+                            <span class="small text-muted">Ensure NFS path exists</span>
+                        </div>
+                    }
                 </div>
                 @if (!volume.Required)
                 {
@@ -89,19 +143,80 @@ else
     public IReadOnlyList<string> VolumeUsageOptions { get; set; } = [];
 
     [Parameter]
+    public IReadOnlyList<VolumeMountTypeOption> MountTypeOptions { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<VolumeNumericVariableOption> NumericVariableOptions { get; set; } = [];
+
+    [Parameter]
     public EventCallback OnDraftChanged { get; set; }
 
-    private static readonly IReadOnlyList<string> MountTypeOptions = ["volume", "bind", "tmpfs"];
+    private bool HasVariable(string? variable) => !string.IsNullOrWhiteSpace(variable);
+
+    private static bool IsNfsMount(string? mountType) =>
+        string.Equals(mountType, "nfs", StringComparison.OrdinalIgnoreCase);
+
+    private string GetVariableDisplayValue(string? variable)
+    {
+        var option = NumericVariableOptions.FirstOrDefault(x => string.Equals(x.SettingKey, variable, StringComparison.OrdinalIgnoreCase));
+        return option?.Label ?? variable ?? string.Empty;
+    }
+
+    private async Task OnUidVariableChanged(GameTypeRevisionVolumeDraft volume, object? value)
+    {
+        var key = value as string;
+        volume.OwnerUidVariable = string.IsNullOrWhiteSpace(key) ? null : key;
+        if (volume.OwnerUidVariable is not null)
+        {
+            volume.OwnerUid = null;
+        }
+
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task OnGidVariableChanged(GameTypeRevisionVolumeDraft volume, object? value)
+    {
+        var key = value as string;
+        volume.OwnerGidVariable = string.IsNullOrWhiteSpace(key) ? null : key;
+        if (volume.OwnerGidVariable is not null)
+        {
+            volume.OwnerGid = null;
+        }
+
+        await NotifyDraftChangedAsync();
+    }
 
     private async Task AddVolumeDraft()
     {
-        Volumes.Add(new GameTypeRevisionVolumeDraft
+        var defaultOption = MountTypeOptions.FirstOrDefault();
+        var draft = new GameTypeRevisionVolumeDraft
         {
             Usage = "config",
-            MountType = "volume"
-        });
+            MountType = defaultOption?.Key ?? "volume",
+            Permissions = "0777"
+        };
+
+        ApplyMountTypeDefaults(draft, defaultOption);
+        Volumes.Add(draft);
 
         await NotifyDraftChangedAsync();
+    }
+
+    private static void ApplyMountTypeDefaults(GameTypeRevisionVolumeDraft draft, VolumeMountTypeOption? option)
+    {
+        if (option is null)
+        {
+            return;
+        }
+
+        draft.ReadOnly = option.DefaultReadOnly;
+        draft.EnsureNfsPathExists = option.DefaultEnsureNfsPathExists;
+        draft.OwnerUid = option.DefaultOwnerUid;
+        draft.OwnerGid = option.DefaultOwnerGid;
+        if (!string.IsNullOrWhiteSpace(option.DefaultPermissions))
+        {
+            draft.Permissions = option.DefaultPermissions;
+        }
     }
 
     private async Task RemoveVolumeDraftAsync(GameTypeRevisionVolumeDraft volume)

@@ -11,33 +11,11 @@ public sealed record MountTypeConfigDto
 
     public string? Description { get; init; }
 
-    public string Driver { get; init; } = string.Empty;
-
     /// <summary>
-    /// JSON-serialized dictionary of default driver options. Tokens such as
-    /// {Source}, {serverId}, and {gameTypeKey} may be replaced by the resolver.
+    /// Free-form key/value options for this mount type. See
+    /// <see cref="GameServer.Docker.Models.V2.MountTypeConfig.Options"/> for well-known keys.
     /// </summary>
-    public string? DriverOptionsJson { get; init; }
-
-    /// <summary>
-    /// Template for the host/source path. Tokens: {Source}, {serverId}, {gameTypeKey}.
-    /// </summary>
-    public string SourcePathTemplate { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Template for the container target path. Tokens: {Source}.
-    /// </summary>
-    public string ContainerPathTemplate { get; init; } = "{Source}";
-
-    public bool DefaultReadOnly { get; init; }
-
-    public string DefaultInitMode { get; init; } = "none";
-
-    public int? DefaultOwnerUid { get; init; }
-
-    public int? DefaultOwnerGid { get; init; }
-
-    public string? DefaultPermissions { get; init; }
+    public Dictionary<string, string>? Options { get; init; }
 
     public bool IsActive { get; init; } = true;
 
@@ -45,3 +23,4 @@ public sealed record MountTypeConfigDto
 
     public DateTime UpdatedAt { get; init; }
 }
+

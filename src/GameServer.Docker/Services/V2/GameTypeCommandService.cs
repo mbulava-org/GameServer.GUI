@@ -332,7 +332,10 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                 ReadOnly = volume.ReadOnly,
                 OwnerUid = volume.OwnerUid,
                 OwnerGid = volume.OwnerGid,
+                OwnerUidVariable = volume.OwnerUidVariable,
+                OwnerGidVariable = volume.OwnerGidVariable,
                 Permissions = volume.Permissions,
+                EnsureNfsPathExists = volume.EnsureNfsPathExists,
                 Required = volume.Required
             }).ToList(),
             SettingDefinitions = revision.SettingDefinitions.Select(setting => new GameTypeSettingDefinitionDto
@@ -558,7 +561,10 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                 ReadOnly = x.ReadOnly,
                 OwnerUid = x.OwnerUid,
                 OwnerGid = x.OwnerGid,
+                OwnerUidVariable = x.OwnerUidVariable,
+                OwnerGidVariable = x.OwnerGidVariable,
                 Permissions = x.Permissions,
+                EnsureNfsPathExists = x.EnsureNfsPathExists,
                 Required = x.Required
             }).ToList(),
             SettingDefinitions = request.SettingDefinitions.Select(x => new GameTypeSettingDefinition
@@ -660,7 +666,10 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
                 ReadOnly = x.ReadOnly,
                 OwnerUid = x.OwnerUid,
                 OwnerGid = x.OwnerGid,
+                OwnerUidVariable = x.OwnerUidVariable,
+                OwnerGidVariable = x.OwnerGidVariable,
                 Permissions = x.Permissions,
+                EnsureNfsPathExists = x.EnsureNfsPathExists,
                 Required = x.Required
             }).ToList(),
             SettingDefinitions = revision.SettingDefinitions.Select(x => new GameTypeSettingDefinitionDto

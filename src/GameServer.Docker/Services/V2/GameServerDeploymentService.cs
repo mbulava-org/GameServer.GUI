@@ -18,6 +18,7 @@ public sealed class GameServerDeploymentService(
     IGameServerRepository gameServerRepository,
     IGameTypeRepository gameTypeRepository,
     IVolumeSetupResolver volumeSetupResolver,
+    INfsVolumePreparationService nfsVolumePreparationService,
     IServiceOperations serviceOperations,
     ILogger<GameServerDeploymentService> logger)
 {
@@ -35,6 +36,11 @@ public sealed class GameServerDeploymentService(
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
 
         var volumes = ResolveServerVolumes(server, gameType, revision, volumeBindingLayout);
+
+        // Prepare NFS-backed target folders (create + ownership/permissions) on the API host
+        // before asking the agent to create the service.
+        await nfsVolumePreparationService.PrepareAsync(volumes, cancellationToken).ConfigureAwait(false);
+
         var parameters = BuildCreateParameters(server, revision, volumes);
 
         var response = await serviceOperations.CreateServiceAsync(parameters, cancellationToken).ConfigureAwait(false);
@@ -73,6 +79,9 @@ public sealed class GameServerDeploymentService(
         var newVolumes = ResolveNewServerVolumes(server, gameType, revision, layout);
         var allVolumes = server.Volumes.Concat(newVolumes).ToList();
 
+        // Prepare newly introduced NFS-backed target folders before updating the service.
+        await nfsVolumePreparationService.PrepareAsync(newVolumes, cancellationToken).ConfigureAwait(false);
+
         var parameters = BuildUpdateParameters(server, revision, allVolumes, imageReference);
         await serviceOperations.UpdateServiceAsync(server.ServiceName, parameters, cancellationToken).ConfigureAwait(false);
 
@@ -100,7 +109,7 @@ public sealed class GameServerDeploymentService(
         }
 
         return volumeSetupResolver
-            .ResolveForCreate(server.ServerId, gameType.Key, revision.Volumes, layout)
+            .ResolveForCreate(server.ServerId, gameType.Key, revision.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server))
             .ToList();
     }
 
@@ -111,8 +120,22 @@ public sealed class GameServerDeploymentService(
         string layout)
     {
         return volumeSetupResolver
-            .ResolveForUpdate(server.ServerId, gameType.Key, revision.Volumes, server.Volumes, layout)
+            .ResolveForUpdate(server.ServerId, gameType.Key, revision.Volumes, server.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server))
             .ToList();
+    }
+
+    private static IReadOnlyDictionary<string, string?> BuildSettingValues(GameServerModel server)
+    {
+        var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var setting in server.Settings)
+        {
+            if (!string.IsNullOrWhiteSpace(setting.SettingKey))
+            {
+                values[setting.SettingKey] = setting.Value;
+            }
+        }
+
+        return values;
     }
 
     private async Task<(GameType GameType, GameTypeRevision Revision)> ResolveGameTypeAndRevisionAsync(

@@ -9,6 +9,7 @@
 @using Radzen
 @using Radzen.Blazor
 @inject Services.V2.GameTypeV2ApiService GameTypeApiV2
+@inject Services.V2.MountTypeConfigApiService MountTypeConfigApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -188,6 +189,8 @@
                         <div class="p-4">
                             <GameTypeRevisionVolumesEditor Volumes="revisionVolumes"
                                                            VolumeUsageOptions="volumeUsageOptions"
+                                                           MountTypeOptions="mountTypeOptions"
+                                                           NumericVariableOptions="@GetVolumeNumericVariableOptions()"
                                                            OnDraftChanged="HandleRevisionDraftChangedAsync" />
                         </div>
                     </RadzenTabsItem>
@@ -271,6 +274,7 @@
     private List<GameTypeRevisionVolumeDraft> revisionVolumes = [];
     private List<GameTypeRevisionSettingDraft> revisionSettingDefinitions = [];
     private List<GameTypeRevisionWebHostDraft> revisionWebHosts = [];
+    private List<VolumeMountTypeOption> mountTypeOptions = [];
     private string detectionImageReference = string.Empty;
     private string detectionVersionTag = string.Empty;
     private GameTypeSetupDetectionResult? detectionResult;
@@ -328,6 +332,8 @@
         try
         {
             isLoading = true;
+
+            await LoadMountTypeOptionsAsync();
 
             if (isNew)
             {
@@ -541,7 +547,16 @@
                     Source = volume.Source,
                     Description = volume.Description,
                     DisplayOrder = index,
-                    Usage = volume.Usage
+                    Usage = volume.Usage,
+                    MountType = volume.MountType,
+                    ReadOnly = volume.ReadOnly,
+                    OwnerUid = volume.OwnerUid,
+                    OwnerGid = volume.OwnerGid,
+                    OwnerUidVariable = volume.OwnerUidVariable,
+                    OwnerGidVariable = volume.OwnerGidVariable,
+                    Permissions = volume.Permissions,
+                    EnsureNfsPathExists = volume.EnsureNfsPathExists,
+                    Required = volume.Required
                 }).ToList(),
                 SettingDefinitions = revisionSettingDefinitions.Select((setting, index) => new GameTypeSettingDefinition
                 {
@@ -830,7 +845,16 @@
                 {
                     Source = volume.ContainerPath,
                     Description = existing?.Description ?? InferVolumeDescription(volume.ContainerPath),
-                    Usage = existing?.Usage ?? InferVolumeUsage(volume.ContainerPath)
+                    Usage = existing?.Usage ?? InferVolumeUsage(volume.ContainerPath),
+                    MountType = existing?.MountType ?? "volume",
+                    ReadOnly = existing?.ReadOnly ?? false,
+                    OwnerUid = existing?.OwnerUid,
+                    OwnerGid = existing?.OwnerGid,
+                    OwnerUidVariable = existing?.OwnerUidVariable,
+                    OwnerGidVariable = existing?.OwnerGidVariable,
+                    Permissions = string.IsNullOrWhiteSpace(existing?.Permissions) ? "0777" : existing!.Permissions,
+                    EnsureNfsPathExists = existing?.EnsureNfsPathExists ?? false,
+                    Required = existing?.Required ?? true
                 };
             })
             .ToList();
@@ -955,7 +979,16 @@
         {
             Source = x.Source,
             Description = x.Description,
-            Usage = x.Usage
+            Usage = x.Usage,
+            MountType = string.IsNullOrWhiteSpace(x.MountType) ? "volume" : x.MountType,
+            ReadOnly = x.ReadOnly,
+            OwnerUid = x.OwnerUid,
+            OwnerGid = x.OwnerGid,
+            OwnerUidVariable = x.OwnerUidVariable,
+            OwnerGidVariable = x.OwnerGidVariable,
+            Permissions = string.IsNullOrWhiteSpace(x.Permissions) ? "0777" : x.Permissions,
+            EnsureNfsPathExists = x.EnsureNfsPathExists,
+            Required = x.Required
         }).ToList() ?? [];
         revisionSettingDefinitions = revision?.SettingDefinitions.Select(x => new GameTypeRevisionSettingDraft
         {
@@ -1129,6 +1162,64 @@
         return revisionSettingDefinitions
             .Select(CreateWebHostPortVariableOption)
             .OfType<WebHostPortVariableOption>()
+            .OrderBy(option => option.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task LoadMountTypeOptionsAsync()
+    {
+        try
+        {
+            var configs = await MountTypeConfigApi.GetAllAsync();
+            mountTypeOptions = configs
+                .Where(config => config.IsActive)
+                .OrderBy(config => config.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .Select(config => new VolumeMountTypeOption
+                {
+                    Key = config.Key,
+                    DisplayName = string.IsNullOrWhiteSpace(config.DisplayName) ? config.Key : config.DisplayName,
+                    DefaultReadOnly = ParseBool(GetOptionValue(config, "DefaultReadOnly")),
+                    DefaultEnsureNfsPathExists = ParseBool(GetOptionValue(config, "DefaultEnsureNfsPathExists")),
+                    DefaultOwnerUid = ParseInt(GetOptionValue(config, "DefaultOwnerUid")),
+                    DefaultOwnerGid = ParseInt(GetOptionValue(config, "DefaultOwnerGid")),
+                    DefaultPermissions = GetOptionValue(config, "DefaultPermissions")
+                })
+                .ToList();
+        }
+        catch (HttpRequestException)
+        {
+            // Leave options empty; the editor still allows existing values to persist.
+            mountTypeOptions = [];
+        }
+    }
+
+    private static string? GetOptionValue(MountTypeConfig config, string key) =>
+        config.Options is not null && config.Options.TryGetValue(key, out var value) ? value : null;
+
+    private static bool ParseBool(string? value) =>
+        bool.TryParse(value, out var parsed) && parsed;
+
+    private static int? ParseInt(string? value) =>
+        int.TryParse(value, out var parsed) ? parsed : null;
+
+    private IReadOnlyList<VolumeNumericVariableOption> GetVolumeNumericVariableOptions()
+    {
+        return revisionSettingDefinitions
+            .Where(setting => !string.IsNullOrWhiteSpace(setting.SettingKey))
+            .Where(setting =>
+            {
+                var dataType = setting.Metadata.DataType?.Trim();
+                return !string.IsNullOrWhiteSpace(dataType) && supportedWebHostVariableDataTypes.Contains(dataType);
+            })
+            .Select(setting => new VolumeNumericVariableOption
+            {
+                SettingKey = setting.SettingKey,
+                DataType = setting.Metadata.DataType?.Trim(),
+                DefaultValue = int.TryParse(setting.DefaultValue, out var value) ? value : null,
+                Label = int.TryParse(setting.DefaultValue, out var labelValue)
+                    ? $"{setting.SettingKey} ({labelValue})"
+                    : setting.SettingKey
+            })
             .OrderBy(option => option.SettingKey, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

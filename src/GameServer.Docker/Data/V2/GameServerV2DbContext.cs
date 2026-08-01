@@ -155,6 +155,8 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.Usage).IsRequired().HasMaxLength(100);
             entity.Property(e => e.MountType).HasMaxLength(50);
             entity.Property(e => e.Permissions).HasMaxLength(10);
+            entity.Property(e => e.OwnerUidVariable).HasMaxLength(200);
+            entity.Property(e => e.OwnerGidVariable).HasMaxLength(200);
 
             // Soft FK to MountTypeConfigs; keep optional so existing data loads.
             entity.HasOne<MountTypeConfigEntity>()
@@ -174,11 +176,10 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.Usage).IsRequired().HasMaxLength(100);
             entity.Property(e => e.ContainerPath).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Source).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.VolumeName).IsRequired().HasMaxLength(500);
             entity.Property(e => e.MountType).IsRequired().HasMaxLength(50);
             entity.Property(e => e.Driver).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Permissions).HasMaxLength(10);
-            entity.Property(e => e.InitMode).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.SeedSourcePath).HasMaxLength(500);
 
             entity.HasOne(e => e.GameServer)
                 .WithMany(e => e.Volumes)
@@ -271,13 +272,6 @@ public class GameServerV2DbContext : DbContext
             entity.HasKey(e => e.Key);
             entity.Property(e => e.Key).IsRequired().HasMaxLength(50);
             entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Driver).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.SourcePathTemplate).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.ContainerPathTemplate).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.DefaultInitMode).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.DefaultPermissions).HasMaxLength(10);
-            entity.Property(e => e.DefaultOwnerUid);
-            entity.Property(e => e.DefaultOwnerGid);
             ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
             ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
 
@@ -288,40 +282,7 @@ public class GameServerV2DbContext : DbContext
                 {
                     Key = "volume",
                     DisplayName = "Docker volume",
-                    Driver = "local",
-                    DriverOptionsJson = null,
-                    SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-                    ContainerPathTemplate = "{Source}",
-                    DefaultReadOnly = false,
-                    DefaultInitMode = "none",
-                    IsActive = true,
-                    CreatedAt = SeedTimestamp,
-                    UpdatedAt = SeedTimestamp
-                },
-                new MountTypeConfigEntity
-                {
-                    Key = "bind",
-                    DisplayName = "Bind mount",
-                    Driver = "local",
-                    DriverOptionsJson = null,
-                    SourcePathTemplate = "/host/gameservers/{gameTypeKey}/{serverId}/{Source}",
-                    ContainerPathTemplate = "{Source}",
-                    DefaultReadOnly = false,
-                    DefaultInitMode = "none",
-                    IsActive = true,
-                    CreatedAt = SeedTimestamp,
-                    UpdatedAt = SeedTimestamp
-                },
-                new MountTypeConfigEntity
-                {
-                    Key = "tmpfs",
-                    DisplayName = "tmpfs",
-                    Driver = "local",
-                    DriverOptionsJson = null,
-                    SourcePathTemplate = string.Empty,
-                    ContainerPathTemplate = "{Source}",
-                    DefaultReadOnly = false,
-                    DefaultInitMode = "none",
+                    OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,
                     UpdatedAt = SeedTimestamp
@@ -330,12 +291,7 @@ public class GameServerV2DbContext : DbContext
                 {
                     Key = "nfs",
                     DisplayName = "NFS volume",
-                    Driver = "vieux/sshfs",
-                    DriverOptionsJson = "{\"type\":\"nfs\",\"device\":\":/exported/path\",\"o\":\"addr=host.docker.internal,rw\"}",
-                    SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-                    ContainerPathTemplate = "{Source}",
-                    DefaultReadOnly = false,
-                    DefaultInitMode = "none",
+                    OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,
                     UpdatedAt = SeedTimestamp

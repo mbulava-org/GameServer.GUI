@@ -3,7 +3,7 @@ namespace GameServer.Docker.Models.V2;
 /// <summary>
 /// Defines how Docker mounts of a particular type should be created.
 /// Each row is keyed by the mount-type identifier (e.g. volume, bind, tmpfs)
-/// and stores the templates and defaults used when resolving a <see cref="GameTypeVolume"/>
+/// and stores the options used when resolving a <see cref="GameTypeVolume"/>
 /// into a concrete <see cref="GameServerVolume"/>.
 /// </summary>
 public sealed record MountTypeConfig
@@ -19,40 +19,23 @@ public sealed record MountTypeConfig
     public string? Description { get; init; }
 
     /// <summary>
-    /// Default Docker driver to use for mounts of this type (e.g. local, vieux-sshfs, rexray/ebs).
+    /// Free-form key/value options for this mount type. Each mount type may require different
+    /// initialization options, so the shape is intentionally open-ended rather than a fixed set
+    /// of columns. Well-known keys used by <see cref="Services.V2.VolumeSetupResolver"/> include:
+    /// <c>Driver</c>, <c>DriverOptionsJson</c>, <c>SourcePathTemplate</c>, <c>DefaultReadOnly</c>,
+    /// <c>DefaultEnsureNfsPathExists</c>, <c>DefaultOwnerUid</c>, <c>DefaultOwnerGid</c>, and
+    /// <c>DefaultPermissions</c>. Values may contain internal tokens such as {Source}, {serverId},
+    /// {gameTypeKey}, and {Target} that are substituted by the resolver.
     /// </summary>
-    public string Driver { get; init; } = string.Empty;
-
-    /// <summary>
-    /// JSON-serialized dictionary of default driver options for this mount type.
-    /// Tokens such as {Source}, {serverId}, and {gameTypeKey} may be replaced
-    /// by the resolver before the volume is created.
-    /// </summary>
-    public string? DriverOptionsJson { get; init; }
-
-    /// <summary>
-    /// Template for resolving the host/source path. Tokens: {Source}, {serverId}, {gameTypeKey}.
-    /// </summary>
-    public string SourcePathTemplate { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Template for the container target path. Tokens: {Source}.
-    /// </summary>
-    public string ContainerPathTemplate { get; init; } = "{Source}";
-
-    public bool DefaultReadOnly { get; init; }
-
-    public VolumeInitMode DefaultInitMode { get; init; } = VolumeInitMode.None;
-
-    public int? DefaultOwnerUid { get; init; }
-
-    public int? DefaultOwnerGid { get; init; }
-
-    public string? DefaultPermissions { get; init; }
+    public Dictionary<string, string>? Options { get; init; }
 
     public bool IsActive { get; init; } = true;
 
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; init; } = DateTime.UtcNow;
+
+    public string? GetOption(string key) =>
+        Options is not null && Options.TryGetValue(key, out var value) ? value : null;
 }
+

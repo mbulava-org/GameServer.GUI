@@ -49,7 +49,13 @@ public sealed class GameTypeRevisionVolumeDraft
 
     public int? OwnerGid { get; set; }
 
+    public string? OwnerUidVariable { get; set; }
+
+    public string? OwnerGidVariable { get; set; }
+
     public string? Permissions { get; set; }
+
+    public bool EnsureNfsPathExists { get; set; }
 
     public bool Required { get; set; } = true;
 }
@@ -135,6 +141,34 @@ public sealed class WebHostPortVariableOption
     public string? DataType { get; init; }
 
     public bool IsCompatible { get; init; } = true;
+}
+
+public sealed class VolumeMountTypeOption
+{
+    public string Key { get; init; } = string.Empty;
+
+    public string DisplayName { get; init; } = string.Empty;
+
+    public bool DefaultReadOnly { get; init; }
+
+    public bool DefaultEnsureNfsPathExists { get; init; }
+
+    public int? DefaultOwnerUid { get; init; }
+
+    public int? DefaultOwnerGid { get; init; }
+
+    public string? DefaultPermissions { get; init; }
+}
+
+public sealed class VolumeNumericVariableOption
+{
+    public string SettingKey { get; init; } = string.Empty;
+
+    public string Label { get; init; } = string.Empty;
+
+    public int? DefaultValue { get; init; }
+
+    public string? DataType { get; init; }
 }
 
 internal static partial class GameTypeRevisionWebHostDraftRules

@@ -253,7 +253,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameServers", "LastDeployedAt", "ALTER TABLE `GameServers` ADD COLUMN `LastDeployedAt` datetime(6) NULL;"),
             ("GameServers", "LastSeenAt", "ALTER TABLE `GameServers` ADD COLUMN `LastSeenAt` datetime(6) NULL;"),
             ("GameServerVolumes", "CreatedAt", "ALTER TABLE `GameServerVolumes` ADD COLUMN `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);"),
-            ("GameServerVolumes", "IsProvisioned", "ALTER TABLE `GameServerVolumes` ADD COLUMN `IsProvisioned` tinyint(1) NOT NULL DEFAULT 0;")
+            ("GameServerVolumes", "IsProvisioned", "ALTER TABLE `GameServerVolumes` ADD COLUMN `IsProvisioned` tinyint(1) NOT NULL DEFAULT 0;"),
+            ("GameServerVolumes", "VolumeName", "ALTER TABLE `GameServerVolumes` ADD COLUMN `VolumeName` varchar(500) NOT NULL DEFAULT '';")
         ];
     }
 
@@ -320,15 +321,15 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                     `Driver` varchar(200) NOT NULL,
                     `DriverOptionsJson` longtext NULL,
                     `GameServerId` int NOT NULL,
-                    `InitMode` varchar(50) NOT NULL,
+                    `EnsureNfsPathExists` tinyint(1) NOT NULL DEFAULT 0,
                     `MountType` varchar(50) NOT NULL,
                     `OwnerGid` int NULL,
                     `OwnerUid` int NULL,
                     `Permissions` varchar(10) NULL,
                     `ReadOnly` tinyint(1) NOT NULL DEFAULT 0,
                     `Required` tinyint(1) NOT NULL DEFAULT 1,
-                    `SeedSourcePath` varchar(500) NULL,
                     `Source` varchar(500) NOT NULL,
+                    `VolumeName` varchar(500) NOT NULL DEFAULT '',
                     `Usage` varchar(100) NOT NULL,
                     PRIMARY KEY (`Id`),
                     UNIQUE KEY `IX_GameServerVolumes_GameServerId_ContainerPath` (`GameServerId`, `ContainerPath`),
@@ -376,7 +377,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ("GameServers", "LastDeployedAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"LastDeployedAt\" TEXT NULL;"),
             ("GameServers", "LastSeenAt", "ALTER TABLE \"GameServers\" ADD COLUMN \"LastSeenAt\" TEXT NULL;"),
             ("GameServerVolumes", "CreatedAt", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"CreatedAt\" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';"),
-            ("GameServerVolumes", "IsProvisioned", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"IsProvisioned\" INTEGER NOT NULL DEFAULT 0;")
+            ("GameServerVolumes", "IsProvisioned", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"IsProvisioned\" INTEGER NOT NULL DEFAULT 0;"),
+            ("GameServerVolumes", "VolumeName", "ALTER TABLE \"GameServerVolumes\" ADD COLUMN \"VolumeName\" TEXT NOT NULL DEFAULT '';")
         ];
     }
 
@@ -441,7 +443,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                     "Driver" TEXT NOT NULL,
                     "DriverOptionsJson" TEXT NULL,
                     "GameServerId" INTEGER NOT NULL,
-                    "InitMode" TEXT NOT NULL,
+                    "EnsureNfsPathExists" INTEGER NOT NULL DEFAULT 0,
                     "IsProvisioned" INTEGER NOT NULL DEFAULT 0,
                     "MountType" TEXT NOT NULL,
                     "OwnerGid" INTEGER NULL,
@@ -449,8 +451,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                     "Permissions" TEXT NULL,
                     "ReadOnly" INTEGER NOT NULL DEFAULT 0,
                     "Required" INTEGER NOT NULL DEFAULT 1,
-                    "SeedSourcePath" TEXT NULL,
                     "Source" TEXT NOT NULL,
+                    "VolumeName" TEXT NOT NULL DEFAULT '',
                     "Usage" TEXT NOT NULL
                 );
                 """),
@@ -476,15 +478,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 "Key" TEXT NOT NULL CONSTRAINT "PK_MountTypeConfigs" PRIMARY KEY,
                 "DisplayName" TEXT NOT NULL,
                 "Description" TEXT NULL,
-                "Driver" TEXT NOT NULL,
-                "DriverOptionsJson" TEXT NULL,
-                "SourcePathTemplate" TEXT NOT NULL,
-                "ContainerPathTemplate" TEXT NOT NULL,
-                "DefaultReadOnly" INTEGER NOT NULL,
-                "DefaultInitMode" TEXT NOT NULL,
-                "DefaultOwnerUid" INTEGER NULL,
-                "DefaultOwnerGid" INTEGER NULL,
-                "DefaultPermissions" TEXT NULL,
+                "OptionsJson" TEXT NULL,
                 "IsActive" INTEGER NOT NULL,
                 "CreatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
                 "UpdatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
@@ -495,13 +489,11 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
 
     private async Task SeedDefaultMountTypeConfigsAsync()
     {
-        // Ensure seeded data matches GameServerV2DbContext.HasData for the four built-in mount types.
-        var defaultConfigs = new (string Key, string DisplayName, string Driver, string? DriverOptionsJson, string SourcePathTemplate, string ContainerPathTemplate, bool DefaultReadOnly, string DefaultInitMode, bool IsActive)[]
+        // Ensure seeded data matches GameServerV2DbContext.HasData for the built-in mount types.
+        var defaultConfigs = new (string Key, string DisplayName, string OptionsJson, bool IsActive)[]
         {
-            ("volume", "Docker volume", "local", null, "{gameTypeKey}_{serverId}_{Source}", "{Source}", false, "none", true),
-            ("bind", "Bind mount", "local", null, "/host/gameservers/{gameTypeKey}/{serverId}/{Source}", "{Source}", false, "none", true),
-            ("tmpfs", "tmpfs", "local", null, string.Empty, "{Source}", false, "none", true),
-            ("nfs", "NFS volume", "vieux/sshfs", "{\"type\":\"nfs\",\"device\":\":/exported/path\",\"o\":\"addr=host.docker.internal,rw\"}", "{gameTypeKey}_{serverId}_{Source}", "{Source}", false, "none", true)
+            ("volume", "Docker volume", "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}", true),
+            ("nfs", "NFS volume", "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}", true)
         };
 
         foreach (var config in defaultConfigs)
@@ -513,12 +505,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 {
                     Key = config.Key,
                     DisplayName = config.DisplayName,
-                    Driver = config.Driver,
-                    DriverOptionsJson = config.DriverOptionsJson,
-                    SourcePathTemplate = config.SourcePathTemplate,
-                    ContainerPathTemplate = config.ContainerPathTemplate,
-                    DefaultReadOnly = config.DefaultReadOnly,
-                    DefaultInitMode = config.DefaultInitMode,
+                    OptionsJson = config.OptionsJson,
                     IsActive = config.IsActive,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -538,15 +525,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 `Key` varchar(50) NOT NULL,
                 `DisplayName` varchar(200) NOT NULL,
                 `Description` longtext NULL,
-                `Driver` varchar(200) NOT NULL,
-                `DriverOptionsJson` longtext NULL,
-                `SourcePathTemplate` varchar(500) NOT NULL,
-                `ContainerPathTemplate` varchar(500) NOT NULL,
-                `DefaultReadOnly` tinyint(1) NOT NULL,
-                `DefaultInitMode` varchar(50) NOT NULL,
-                `DefaultOwnerUid` int NULL,
-                `DefaultOwnerGid` int NULL,
-                `DefaultPermissions` varchar(10) NULL,
+                `OptionsJson` longtext NULL,
                 `IsActive` tinyint(1) NOT NULL,
                 `CreatedAt` datetime(6) NOT NULL,
                 `UpdatedAt` datetime(6) NOT NULL,
@@ -1156,7 +1135,10 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 ReadOnly = x.ReadOnly,
                 OwnerUid = x.OwnerUid,
                 OwnerGid = x.OwnerGid,
+                OwnerUidVariable = x.OwnerUidVariable,
+                OwnerGidVariable = x.OwnerGidVariable,
                 Permissions = x.Permissions,
+                EnsureNfsPathExists = x.EnsureNfsPathExists,
                 Required = x.Required
             }).ToList(),
             SettingDefinitions = entity.SettingDefinitions.OrderBy(x => x.DisplayOrder).Select(x => new GameTypeSettingDefinition
@@ -1236,7 +1218,10 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 ReadOnly = x.ReadOnly,
                 OwnerUid = x.OwnerUid,
                 OwnerGid = x.OwnerGid,
+                OwnerUidVariable = x.OwnerUidVariable,
+                OwnerGidVariable = x.OwnerGidVariable,
                 Permissions = x.Permissions,
+                EnsureNfsPathExists = x.EnsureNfsPathExists,
                 Required = x.Required
             }).ToList(),
             SettingDefinitions = model.SettingDefinitions.Select(x => new DataV2.GameTypeSettingDefinitionEntity

@@ -55,7 +55,8 @@
                             AllowFiltering="true"
                             FilterMode="FilterMode.Advanced"
                             AllowColumnResize="true"
-                            RowDoubleClick="@OnRowDoubleClick">
+                            RowClick="@OnRowClick"
+                            RowRender="@OnRowRender">
                 <Columns>
                     <RadzenDataGridColumn TItem="GameServerListItem"
                                           Property="GameTypeThumbnailUrl"
@@ -246,9 +247,14 @@
         }
     }
 
-    private void OnRowDoubleClick(DataGridRowMouseEventArgs<GameServerListItem> args)
+    private void OnRowClick(DataGridRowMouseEventArgs<GameServerListItem> args)
     {
         Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(args.Data.ServerId)}");
+    }
+
+    private static void OnRowRender(RowRenderEventArgs<GameServerListItem> args)
+    {
+        args.Attributes.Add("style", "cursor: pointer;");
     }
 
     private static string FormatPort(GameServerResolvedPort port)

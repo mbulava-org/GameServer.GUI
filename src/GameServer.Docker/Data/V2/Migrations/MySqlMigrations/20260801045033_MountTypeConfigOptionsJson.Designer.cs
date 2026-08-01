@@ -3,6 +3,7 @@ using System;
 using GameServer.Docker.Data.V2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
 {
     [DbContext(typeof(MySqlGameServerV2DbContext))]
-    partial class MySqlGameServerV2DbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801045033_MountTypeConfigOptionsJson")]
+    partial class MountTypeConfigOptionsJson
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

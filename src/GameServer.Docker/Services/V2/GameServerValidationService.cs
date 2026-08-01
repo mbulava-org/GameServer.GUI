@@ -544,8 +544,7 @@ public sealed class GameServerValidationService
                 OwnerUid = volume.OwnerUid,
                 OwnerGid = volume.OwnerGid,
                 Permissions = volume.Permissions,
-                InitMode = volume.InitMode.ToString().ToLowerInvariant(),
-                SeedSourcePath = volume.SeedSourcePath,
+                EnsureNfsPathExists = volume.EnsureNfsPathExists,
                 IsProvisioned = volume.IsProvisioned,
                 CreatedAt = volume.CreatedAt
             });

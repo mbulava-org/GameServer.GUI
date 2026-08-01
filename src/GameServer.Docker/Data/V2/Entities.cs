@@ -131,8 +131,26 @@ public class GameTypeVolumeEntity
 
     public int? OwnerGid { get; set; }
 
+    /// <summary>
+    /// Optional revision setting key whose numeric value resolves the owner UID at deploy time.
+    /// </summary>
+    [MaxLength(200)]
+    public string? OwnerUidVariable { get; set; }
+
+    /// <summary>
+    /// Optional revision setting key whose numeric value resolves the owner GID at deploy time.
+    /// </summary>
+    [MaxLength(200)]
+    public string? OwnerGidVariable { get; set; }
+
     [MaxLength(10)]
     public string? Permissions { get; set; }
+
+    /// <summary>
+    /// When true, the NFS target directory is ensured to exist (and default permissions
+    /// pre-applied where provided) before the container starts. Only meaningful for nfs mounts.
+    /// </summary>
+    public bool EnsureNfsPathExists { get; set; }
 
     public bool Required { get; set; } = true;
 
@@ -313,6 +331,14 @@ public class GameServerVolumeEntity
     [MaxLength(500)]
     public string Source { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Calculated docker volume name (from the mount type's SourcePathTemplate). Also the
+    /// name of the folder created under /data for NFS mounts and the {Target} token value.
+    /// </summary>
+    [Required]
+    [MaxLength(500)]
+    public string VolumeName { get; set; } = string.Empty;
+
     [Required]
     [MaxLength(50)]
     public string MountType { get; set; } = "volume";
@@ -332,12 +358,11 @@ public class GameServerVolumeEntity
     [MaxLength(10)]
     public string? Permissions { get; set; }
 
-    [Required]
-    [MaxLength(50)]
-    public string InitMode { get; set; } = "none";
-
-    [MaxLength(500)]
-    public string? SeedSourcePath { get; set; }
+    /// <summary>
+    /// When true, the NFS target directory is ensured to exist (and default permissions
+    /// pre-applied where provided) before the container starts. Only meaningful for nfs mounts.
+    /// </summary>
+    public bool EnsureNfsPathExists { get; set; }
 
     public bool IsProvisioned { get; set; }
 
@@ -375,32 +400,10 @@ public class MountTypeConfigEntity
 
     public string? Description { get; set; }
 
-    [Required]
-    [MaxLength(200)]
-    public string Driver { get; set; } = string.Empty;
-
-    public string? DriverOptionsJson { get; set; }
-
-    [Required]
-    [MaxLength(500)]
-    public string SourcePathTemplate { get; set; } = string.Empty;
-
-    [Required]
-    [MaxLength(500)]
-    public string ContainerPathTemplate { get; set; } = "{Source}";
-
-    public bool DefaultReadOnly { get; set; }
-
-    [Required]
-    [MaxLength(50)]
-    public string DefaultInitMode { get; set; } = "none";
-
-    public int? DefaultOwnerUid { get; set; }
-
-    public int? DefaultOwnerGid { get; set; }
-
-    [MaxLength(10)]
-    public string? DefaultPermissions { get; set; }
+    /// <summary>
+    /// JSON-serialized free-form key/value options for this mount type.
+    /// </summary>
+    public string? OptionsJson { get; set; }
 
     public bool IsActive { get; set; } = true;
 

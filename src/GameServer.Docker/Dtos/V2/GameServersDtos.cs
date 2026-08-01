@@ -136,9 +136,7 @@ public sealed record GameServerResolvedVolumeDto
 
     public string? Permissions { get; init; }
 
-    public string InitMode { get; init; } = "none";
-
-    public string? SeedSourcePath { get; init; }
+    public bool EnsureNfsPathExists { get; init; }
 
     public bool IsProvisioned { get; init; }
 

@@ -189,8 +189,7 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
             OwnerUid = volume.OwnerUid,
             OwnerGid = volume.OwnerGid,
             Permissions = volume.Permissions,
-            InitMode = volume.InitMode.ToString().ToLowerInvariant(),
-            SeedSourcePath = volume.SeedSourcePath,
+            EnsureNfsPathExists = volume.EnsureNfsPathExists,
             IsProvisioned = volume.IsProvisioned,
             CreatedAt = volume.CreatedAt
         };

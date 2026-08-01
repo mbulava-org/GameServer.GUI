@@ -501,8 +501,7 @@ namespace GameServer.Docker.Services
                 m.VolumeOptions?.Labels,
                 OwnerUid = (int?)null,
                 OwnerGid = (int?)null,
-                Permissions = (string?)null,
-                InitMode = "none"
+                Permissions = (string?)null
             }).Cast<object>().ToList();
         }
 

@@ -22,7 +22,8 @@ public interface IVolumeSetupResolver
         string gameTypeKey,
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         string layout = "standard",
-        IReadOnlyDictionary<string, string>? driverOverrides = null);
+        IReadOnlyDictionary<string, string>? driverOverrides = null,
+        IReadOnlyDictionary<string, string?>? settingValues = null);
 
     /// <summary>
     /// Returns only newly introduced <see cref="GameServerVolume"/> snapshots not already
@@ -34,7 +35,8 @@ public interface IVolumeSetupResolver
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         IReadOnlyList<GameServerVolume> existingVolumes,
         string layout = "standard",
-        IReadOnlyDictionary<string, string>? driverOverrides = null);
+        IReadOnlyDictionary<string, string>? driverOverrides = null,
+        IReadOnlyDictionary<string, string?>? settingValues = null);
 
     /// <summary>
     /// Transforms resolved snapshots into agent mount requests.
@@ -68,7 +70,8 @@ public sealed class VolumeSetupResolver(
         string gameTypeKey,
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         string layout = "standard",
-        IReadOnlyDictionary<string, string>? driverOverrides = null)
+        IReadOnlyDictionary<string, string>? driverOverrides = null,
+        IReadOnlyDictionary<string, string?>? settingValues = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         ArgumentException.ThrowIfNullOrWhiteSpace(gameTypeKey);
@@ -90,7 +93,8 @@ public sealed class VolumeSetupResolver(
                     definition,
                     effectiveLayout,
                     effectiveOverrides,
-                    index);
+                    index,
+                    settingValues);
             })
             .ToList();
     }
@@ -101,11 +105,12 @@ public sealed class VolumeSetupResolver(
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         IReadOnlyList<GameServerVolume> existingVolumes,
         string layout = "standard",
-        IReadOnlyDictionary<string, string>? driverOverrides = null)
+        IReadOnlyDictionary<string, string>? driverOverrides = null,
+        IReadOnlyDictionary<string, string?>? settingValues = null)
     {
         ArgumentNullException.ThrowIfNull(existingVolumes);
 
-        var resolved = ResolveForCreate(serverId, gameTypeKey, revisionVolumes, layout, driverOverrides);
+        var resolved = ResolveForCreate(serverId, gameTypeKey, revisionVolumes, layout, driverOverrides, settingValues);
         var existingPaths = existingVolumes
             .Select(v => v.ContainerPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -141,7 +146,7 @@ public sealed class VolumeSetupResolver(
                     OwnerUid = volume.OwnerUid,
                     OwnerGid = volume.OwnerGid,
                     Permissions = volume.Permissions,
-                    InitMode = volume.InitMode.ToString().ToLowerInvariant()
+                    EnsureNfsPathExists = volume.EnsureNfsPathExists
                 };
             })
             .ToList();
@@ -154,15 +159,30 @@ public sealed class VolumeSetupResolver(
         GameTypeVolume definition,
         string layout,
         IReadOnlyDictionary<string, string> driverOverrides,
-        int displayOrder)
+        int displayOrder,
+        IReadOnlyDictionary<string, string?>? settingValues)
     {
         var mountType = definition.MountType;
         var isLocalLayout = string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase);
 
-        var source = ResolveSourcePath(config, serverId, gameTypeKey, definition, isLocalLayout);
-        var containerPath = ResolveContainerPath(config, definition);
-        var driver = config.Driver.NullIfEmpty() ?? "local";
-        var driverOptions = ResolveDriverOptions(config, definition, driverOverrides, isLocalLayout);
+        // {Source} token: a normalized copy of the container source path. Drop a leading '/',
+        // then replace any remaining '/' with '-'.
+        var sourceToken = NormalizeSourceToken(definition.Source);
+
+        // The container path must match the container source sample exactly (leading-slash absolute).
+        var containerPath = NormalizeContainerPath(definition.Source);
+
+        // The calculated SourcePathTemplate becomes the docker volume name / folder under /data.
+        var volumeName = ResolveVolumeName(config, serverId, gameTypeKey, sourceToken, definition);
+
+        var source = volumeName;
+        var driver = config.GetOption("Driver").NullIfEmpty() ?? "local";
+        var driverOptions = ResolveDriverOptions(config, sourceToken, volumeName, driverOverrides, isLocalLayout);
+
+        var ownerUid = ResolveOwnerValue(definition.OwnerUidVariable, definition.OwnerUid, settingValues)
+            ?? ParseInt(config.GetOption("DefaultOwnerUid"));
+        var ownerGid = ResolveOwnerValue(definition.OwnerGidVariable, definition.OwnerGid, settingValues)
+            ?? ParseInt(config.GetOption("DefaultOwnerGid"));
 
         return new GameServerVolume
         {
@@ -170,68 +190,110 @@ public sealed class VolumeSetupResolver(
             Usage = definition.Usage,
             ContainerPath = containerPath,
             Source = source,
+            VolumeName = volumeName,
             MountType = mountType,
             ReadOnly = definition.ReadOnly,
             Driver = driver,
             DriverOptionsJson = driverOptions,
-            OwnerUid = definition.OwnerUid ?? config.DefaultOwnerUid,
-            OwnerGid = definition.OwnerGid ?? config.DefaultOwnerGid,
-            Permissions = definition.Permissions ?? config.DefaultPermissions,
-            InitMode = config.DefaultInitMode,
-            SeedSourcePath = null,
+            OwnerUid = ownerUid,
+            OwnerGid = ownerGid,
+            Permissions = definition.Permissions ?? config.GetOption("DefaultPermissions"),
+            EnsureNfsPathExists = definition.EnsureNfsPathExists,
             IsProvisioned = false,
             CreatedAt = DateTime.UtcNow
         };
     }
 
-    private static string ResolveSourcePath(
+    private static int? ParseInt(string? value) =>
+        int.TryParse(value, out var parsed) ? parsed : null;
+
+    private int? ResolveOwnerValue(
+        string? variableKey,
+        int? explicitValue,
+        IReadOnlyDictionary<string, string?>? settingValues)
+    {
+        if (string.IsNullOrWhiteSpace(variableKey))
+        {
+            return explicitValue;
+        }
+
+        if (settingValues is not null
+            && settingValues.TryGetValue(variableKey, out var rawValue)
+            && int.TryParse(rawValue, out var parsed))
+        {
+            return parsed;
+        }
+
+        logger.LogWarning(
+            "Volume owner variable '{Variable}' could not be resolved to a numeric value; falling back to explicit value.",
+            variableKey);
+
+        return explicitValue;
+    }
+
+    /// <summary>
+    /// Normalizes the container source path into the {Source} token value: drop a leading '/'
+    /// then replace any remaining '/' with '-'.
+    /// </summary>
+    private static string NormalizeSourceToken(string containerSource)
+    {
+        var value = (containerSource ?? string.Empty).Replace('\\', '/');
+        if (value.StartsWith('/'))
+        {
+            value = value[1..];
+        }
+
+        return value.Replace('/', '-');
+    }
+
+    /// <summary>
+    /// Produces the concrete container path, matching the container source sample exactly but
+    /// normalized to a leading-slash absolute path.
+    /// </summary>
+    private static string NormalizeContainerPath(string containerSource)
+    {
+        var value = (containerSource ?? string.Empty).Replace('\\', '/').Trim('/');
+        return value.Length == 0 ? "/" : "/" + value;
+    }
+
+    private static string ResolveVolumeName(
         MountTypeConfig config,
         string serverId,
         string gameTypeKey,
-        GameTypeVolume definition,
-        bool isLocalLayout)
+        string sourceToken,
+        GameTypeVolume definition)
     {
-        // tmpfs mounts do not have a host source path.
+        // tmpfs mounts do not have a host source/volume.
         if (string.Equals(definition.MountType, "tmpfs", StringComparison.OrdinalIgnoreCase))
         {
             return "tmpfs";
         }
 
-        var template = config.SourcePathTemplate;
-        var path = template
+        var template = config.GetOption("SourcePathTemplate") ?? string.Empty;
+        return template
             .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
             .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Source}", definition.Source, StringComparison.OrdinalIgnoreCase)
-            .Replace('\\', '/')
-            .Trim('/');
-
-        return path.StartsWith('/') ? path : "/" + path;
-    }
-
-    private static string ResolveContainerPath(MountTypeConfig config, GameTypeVolume definition)
-    {
-        var path = config.ContainerPathTemplate
-            .Replace("{Source}", definition.Source, StringComparison.OrdinalIgnoreCase)
-            .Replace('\\', '/')
-            .Trim('/');
-
-        return path.StartsWith('/') ? path : "/" + path;
+            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveDriverOptions(
         MountTypeConfig config,
-        GameTypeVolume definition,
+        string sourceToken,
+        string volumeName,
         IReadOnlyDictionary<string, string> driverOverrides,
         bool isLocalLayout)
     {
-        if (isLocalLayout || string.IsNullOrWhiteSpace(config.DriverOptionsJson))
+        var driverOptionsJson = config.GetOption("DriverOptionsJson");
+        if (isLocalLayout || string.IsNullOrWhiteSpace(driverOptionsJson))
         {
             return null;
         }
 
         // Replace tokens before serialization so resolved values are concrete.
-        var json = config.DriverOptionsJson
-            .Replace("{Source}", definition.Source, StringComparison.OrdinalIgnoreCase);
+        // {Target} resolves to the calculated SourcePathTemplate value (the volume name).
+        var json = driverOptionsJson
+            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Target}", volumeName, StringComparison.OrdinalIgnoreCase);
 
         if (driverOverrides.Count == 0)
         {

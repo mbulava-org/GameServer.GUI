@@ -22,8 +22,8 @@ public class MountTypeConfigControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<MountTypeConfigDto>(ok.Value);
         Assert.Equal("volume", dto.Key);
-        Assert.Equal("local", dto.Driver);
-        Assert.Equal("{gameTypeKey}_{serverId}_{Source}", dto.SourcePathTemplate);
+        Assert.Equal("local", dto.Options?["Driver"]);
+        Assert.Equal("{gameTypeKey}_{serverId}_{Source}", dto.Options?["SourcePathTemplate"]);
     }
 
     [Fact]
@@ -48,10 +48,12 @@ public class MountTypeConfigControllerTests
         {
             Key = "nfs",
             DisplayName = "NFS volume",
-            Driver = "vieux/sshfs",
-            DriverOptionsJson = "{\"type\":\"nfs\"}",
-            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-            ContainerPathTemplate = "{Source}"
+            Options = new Dictionary<string, string>
+            {
+                ["Driver"] = "vieux/sshfs",
+                ["DriverOptionsJson"] = "{\"type\":\"nfs\"}",
+                ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+            }
         };
 
         var response = await controller.Save("nfs", update, CancellationToken.None);
@@ -62,7 +64,7 @@ public class MountTypeConfigControllerTests
         repository.Verify(x => x.SaveAsync(It.Is<MountTypeConfig>(c =>
             c.Key == "nfs" &&
             c.DisplayName == "NFS volume" &&
-            c.Driver == "vieux/sshfs"), It.IsAny<CancellationToken>()), Times.Once);
+            c.GetOption("Driver") == "vieux/sshfs"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -94,9 +96,11 @@ public class MountTypeConfigControllerTests
         {
             Key = "volume",
             DisplayName = "Docker volume",
-            Driver = "local",
-            SourcePathTemplate = "{gameTypeKey}_{serverId}_{Source}",
-            ContainerPathTemplate = "{Source}"
+            Options = new Dictionary<string, string>
+            {
+                ["Driver"] = "local",
+                ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+            }
         };
     }
 }
