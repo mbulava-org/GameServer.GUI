@@ -5,23 +5,31 @@
 
 @if (dataType == "boolean")
 {
-    <RadzenDropDown TValue="string"
-                    Value="@Value"
-                    ValueChanged="@OnStringChanged"
-                    Data="@booleanOptions"
-                    TextProperty="Label"
-                    ValueProperty="Value"
-                    class="w-100" />
+    <div class="d-flex align-items-center gap-2">
+        <RadzenCheckBox TValue="bool"
+                        Value="@IsChecked"
+                        Change="@OnBooleanChanged" />
+        <span>@(IsChecked ? "Enabled" : "Disabled")</span>
+    </div>
 }
 else if (dataType == "enum")
 {
-    <RadzenDropDown TValue="string"
-                    Value="@Value"
-                    ValueChanged="@OnStringChanged"
-                    Data="@enumOptions"
-                    TextProperty="Label"
-                    ValueProperty="Value"
-                    class="w-100" />
+    @if (enumOptions.Count > 0)
+    {
+        <RadzenDropDown TValue="string"
+                        Value="@Value"
+                        ValueChanged="@OnStringChanged"
+                        Data="@enumOptions"
+                        TextProperty="Label"
+                        ValueProperty="Value"
+                        class="w-100" />
+    }
+    else
+    {
+        <RadzenTextBox Value="@Value"
+                       ValueChanged="@OnStringChanged"
+                       class="w-100" />
+    }
 }
 else
 {
@@ -41,12 +49,9 @@ else
     public EventCallback<string?> ValueChanged { get; set; }
 
     private string dataType = string.Empty;
-    private IReadOnlyList<EnumOption> booleanOptions =
-    [
-        new("true", "True"),
-        new("false", "False")
-    ];
     private IReadOnlyList<EnumOption> enumOptions = [];
+
+    private bool IsChecked => string.Equals(Value, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(Value, "yes", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnParametersSet()
     {
@@ -62,6 +67,11 @@ else
     private Task OnStringChanged(string? value)
     {
         return ValueChanged.InvokeAsync(value);
+    }
+
+    private Task OnBooleanChanged(bool value)
+    {
+        return ValueChanged.InvokeAsync(value ? "true" : "false");
     }
 
     private static IReadOnlyList<EnumOption> GetEnumOptions(GameTypeSettingDefinition definition)

@@ -928,7 +928,16 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Source = x.Source,
             Description = x.Description,
             DisplayOrder = x.DisplayOrder,
-            Usage = x.Usage
+            Usage = x.Usage,
+            MountType = x.MountType,
+            ReadOnly = x.ReadOnly,
+            OwnerUid = x.OwnerUid,
+            OwnerGid = x.OwnerGid,
+            OwnerUidVariable = x.OwnerUidVariable,
+            OwnerGidVariable = x.OwnerGidVariable,
+            Permissions = x.Permissions,
+            EnsureNfsPathExists = x.EnsureNfsPathExists,
+            Required = x.Required
         }).ToList();
 
         entity.SettingDefinitions = revision.SettingDefinitions.Select(x => new DataV2.GameTypeSettingDefinitionEntity

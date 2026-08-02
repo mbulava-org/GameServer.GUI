@@ -104,36 +104,7 @@
                             named volume created for this mount type. This becomes the actual volume name, so it must
                             resolve to a value that is unique per server/volume (e.g. <code>{gameTypeKey}_{serverId}_{Source}</code>).
                         </p>
-
-                        <hr />
-
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="mb-0">Options</h6>
-                            <RadzenButton Text="Add Option" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@AddOptionRow" />
-                        </div>
-                        <p class="text-muted small">
-                            Free-form key/value options for this mount type (e.g. <code>Driver</code>, <code>DriverOptionsJson</code>,
-                            <code>SourcePathTemplate</code>, <code>DefaultReadOnly</code>, <code>DefaultEnsureNfsPathExists</code>,
-                            <code>DefaultOwnerUid</code>, <code>DefaultOwnerGid</code>, <code>DefaultPermissions</code>). Values may
-                            contain tokens such as <code>{Source}</code>, <code>{serverId}</code>, <code>{gameTypeKey}</code>, and
-                            <code>{Target}</code> that are substituted when volumes are resolved.
-                        </p>
-                        @foreach (var row in optionRows)
-                        {
-                            <div class="row g-2 align-items-center mb-2">
-                                <div class="col-md-4">
-                                    <RadzenTextBox Value="@row.Key" ValueChanged="@(v => UpdateOptionKey(row, v))" class="w-100" Placeholder="Key" />
-                                </div>
-                                <div class="col-md-7">
-                                    <RadzenTextBox Value="@row.Value" ValueChanged="@(v => UpdateOptionValue(row, v))" class="w-100" Placeholder="Value" />
-                                </div>
-                                <div class="col-md-1">
-                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveOptionRow(row))" />
-                                </div>
-                            </div>
-                        }
                     </RadzenCard>
-
 
                     <RadzenCard class="mb-3">
                         <h5 class="mb-3">Live Preview</h5>
@@ -157,11 +128,40 @@
 
                         <hr />
 
-                        <h6>Resolved Volume Name (Source Path Template)</h6>
+                        <h6>Resolved Volume Name</h6>
                         <code class="d-block text-break mb-2">@ResolvePreviewPath(selectedConfig, useLocal: false)</code>
 
                         <h6>Resolved Container Path</h6>
                         <code class="d-block text-break">@ResolvePreviewContainerPath(selectedConfig)</code>
+                    </RadzenCard>
+
+                    <RadzenCard class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">Options</h6>
+                            <RadzenButton Text="Add Option" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@AddOptionRow" />
+                        </div>
+                        <p class="text-muted small">
+                            Free-form key/value options for this mount type (e.g. <code>Driver</code>, <code>DriverOptionsJson</code>,
+                            <code>SourcePathTemplate</code>, <code>DefaultReadOnly</code>, <code>DefaultEnsureNfsPathExists</code>,
+                            <code>DefaultOwnerUid</code>, <code>DefaultOwnerGid</code>, <code>DefaultPermissions</code>). Values may
+                            contain tokens such as <code>{Source}</code>, <code>{serverId}</code>, <code>{gameTypeKey}</code>, and
+                            <code>{Target}</code> that are substituted when volumes are resolved.
+                        </p>
+
+                        @foreach (var row in optionRows)
+                        {
+                            <div class="row g-2 align-items-center mb-2">
+                                <div class="col-md-4">
+                                    <RadzenTextBox Value="@row.Key" ValueChanged="@(v => UpdateOptionKey(row, v))" class="w-100" Placeholder="Key" />
+                                </div>
+                                <div class="col-md-7">
+                                    <RadzenTextBox Value="@row.Value" ValueChanged="@(v => UpdateOptionValue(row, v))" class="w-100" Placeholder="Value" />
+                                </div>
+                                <div class="col-md-1">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveOptionRow(row))" />
+                                </div>
+                            </div>
+                        }
                     </RadzenCard>
                 }
             </div>
@@ -185,8 +185,6 @@
     private string previewGameTypeKey = "minecraft";
     private string previewServerId = "srv1";
     private string previewSource = "/data/worlds";
-    private string previewLayout = "standard";
-    private static readonly IReadOnlyList<string> previewLayoutOptions = ["standard", "local"];
 
     protected override async Task OnInitializedAsync()
     {
@@ -353,11 +351,7 @@
     private static string NormalizeSourceToken(string containerSource)
     {
         var value = (containerSource ?? string.Empty).Replace('\\', '/');
-        if (value.StartsWith('/'))
-        {
-            value = value[1..];
-        }
-
+        value = value.Trim('/');
         return value.Replace('/', '-');
     }
 

@@ -180,6 +180,7 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
         return new GameServerResolvedVolumeDto
         {
             Usage = volume.Usage,
+            VolumeName = volume.VolumeName,
             ContainerPath = volume.ContainerPath,
             Source = volume.Source,
             MountType = volume.MountType.ToString().ToLowerInvariant(),

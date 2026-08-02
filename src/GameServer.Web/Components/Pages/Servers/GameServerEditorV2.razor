@@ -195,6 +195,7 @@
                         @foreach (var volume in validationResult.ResolvedVolumes)
                         {
                             <div class="small border rounded p-2 mb-2">
+                                <div><strong>Volume Name:</strong> <code>@volume.VolumeName</code></div>
                                 <div><strong>Container:</strong> <code>@volume.ContainerPath</code></div>
                                 <div><strong>Host/Source:</strong> <code>@volume.Source</code></div>
                                 <div>

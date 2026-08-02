@@ -118,6 +118,8 @@ public sealed record GameServerResolvedVolume
 {
     public string Usage { get; init; } = string.Empty;
 
+    public string VolumeName { get; init; } = string.Empty;
+
     public string ContainerPath { get; init; } = string.Empty;
 
     public string Source { get; init; } = string.Empty;

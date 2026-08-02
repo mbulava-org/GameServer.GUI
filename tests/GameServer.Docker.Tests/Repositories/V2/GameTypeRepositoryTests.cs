@@ -174,4 +174,80 @@ public class GameTypeRepositoryTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => _repository.AddRevisionAsync(gameType.Key, revision));
     }
+
+    [Fact]
+    public async Task UpdateRevisionAsync_ShouldPreserveAllVolumeFields()
+    {
+        var gameType = await _repository.CreateAsync(new GameType
+        {
+            Key = "volume-test",
+            DisplayName = "Volume Test",
+            Type = "docker",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    ImageReference = "test/image",
+                    VersionTag = "latest",
+                    Volumes =
+                    [
+                        new GameTypeVolume
+                        {
+                            Source = "data",
+                            Description = "Test volume",
+                            DisplayOrder = 2,
+                            Usage = "saves",
+                            MountType = "nfs",
+                            ReadOnly = true,
+                            OwnerUid = 1000,
+                            OwnerGid = 1001,
+                            OwnerUidVariable = "UID",
+                            OwnerGidVariable = "GID",
+                            Permissions = "0770",
+                            EnsureNfsPathExists = true,
+                            Required = false
+                        }
+                    ]
+                }
+            ]
+        });
+
+        var loaded = await _repository.GetByKeyAsync(gameType.Key);
+        Assert.NotNull(loaded);
+
+        var revision = loaded!.Revisions.Single();
+        revision.Volumes[0] = revision.Volumes[0] with
+        {
+            Description = "Updated test volume",
+            DisplayOrder = 4,
+            Usage = "logs",
+            MountType = "volume",
+            ReadOnly = false,
+            OwnerUid = 2000,
+            OwnerGid = 2001,
+            OwnerUidVariable = "NEW_UID",
+            OwnerGidVariable = "NEW_GID",
+            Permissions = "0755",
+            EnsureNfsPathExists = false,
+            Required = true
+        };
+
+        await _repository.UpdateRevisionAsync(gameType.Key, revision);
+
+        var reloaded = await _repository.GetByKeyAsync(gameType.Key);
+        var volume = reloaded!.Revisions.Single().Volumes.Single();
+
+        Assert.Equal("Updated test volume", volume.Description);
+        Assert.Equal(4, volume.DisplayOrder);
+        Assert.Equal("logs", volume.Usage);
+        Assert.Equal("volume", volume.MountType);
+        Assert.False(volume.ReadOnly);
+        Assert.Equal(2000, volume.OwnerUid);
+        Assert.Equal(2001, volume.OwnerGid);
+        Assert.Equal("NEW_UID", volume.OwnerUidVariable);
+        Assert.Equal("NEW_GID", volume.OwnerGidVariable);
+        Assert.Equal("0755", volume.Permissions);
+        Assert.False(volume.EnsureNfsPathExists);
+        Assert.True(volume.Required);
+    }
 }
