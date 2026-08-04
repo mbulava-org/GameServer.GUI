@@ -311,6 +311,8 @@ public class GameServerEntity
     public virtual ICollection<GameServerSettingEntity> Settings { get; set; } = new List<GameServerSettingEntity>();
 
     public virtual ICollection<GameServerVolumeEntity> Volumes { get; set; } = new List<GameServerVolumeEntity>();
+
+    public virtual ICollection<GameServerPortEntity> Ports { get; set; } = new List<GameServerPortEntity>();
 }
 
 public class GameServerVolumeEntity
@@ -383,6 +385,26 @@ public class GameServerSettingEntity
     public string SettingKey { get; set; } = string.Empty;
 
     public string? Value { get; set; }
+
+    [ForeignKey(nameof(GameServerId))]
+    public virtual GameServerEntity GameServer { get; set; } = null!;
+}
+
+public class GameServerPortEntity
+{
+    public int Id { get; set; }
+
+    public int GameServerId { get; set; }
+
+    public int ContainerPort { get; set; }
+
+    [Required]
+    [MaxLength(10)]
+    public string Protocol { get; set; } = "tcp";
+
+    public int PublishedPort { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [ForeignKey(nameof(GameServerId))]
     public virtual GameServerEntity GameServer { get; set; } = null!;

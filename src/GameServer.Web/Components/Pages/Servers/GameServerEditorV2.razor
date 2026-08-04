@@ -7,6 +7,7 @@
 @using Radzen.Blazor
 @inject Services.V2.GameServerV2ApiService GameServerApiV2
 @inject Services.V2.GameTypeV2ApiService GameTypeApiV2
+@inject Services.V2.MountTypeConfigApiService MountTypeConfigApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 
@@ -90,26 +91,6 @@
         <div class="row g-3">
             <div class="col-xl-4">
                 <RadzenCard class="mb-3">
-                    <h5 class="mb-3">Basic Information</h5>
-                    <div class="mb-3">
-                        <RadzenFormField Text="Server Name" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextBox @bind-Value="draft.Name" class="w-100" />
-                        </RadzenFormField>
-                    </div>
-                    <div class="mb-3">
-                        <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextArea @bind-Value="draft.Description" Rows="4" class="w-100" />
-                        </RadzenFormField>
-                    </div>
-                    <div class="mb-3">
-                        <RadzenFormField Text="Service Name" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextBox @bind-Value="draft.ServiceName" class="w-100" />
-                        </RadzenFormField>
-                        <small class="text-muted">Leave blank to let the backend generate a service name.</small>
-                    </div>
-                </RadzenCard>
-
-                <RadzenCard class="mb-3">
                     <h5 class="mb-3">Revision Selection</h5>
                     <div class="mb-3">
                         <RadzenFormField Text="Game Type" Variant="Variant.Outlined" class="w-100">
@@ -146,71 +127,83 @@
                     }
                 </RadzenCard>
 
-                <RadzenCard>
-                    <h5 class="mb-3">Volume Binding Layout</h5>
-                    <p class="small text-muted mb-2">Choose how persistent volumes are bound when this server is deployed. <strong>Standard</strong> uses NFS storage so data survives server restarts and stops. <strong>Local</strong> maps directly to the Docker host filesystem. Volume setup details are defined on the GameType revision; this page only selects the layout.</p>
+                <RadzenCard class="mb-3">
+                    <h5 class="mb-3">Basic Information</h5>
                     <div class="mb-3">
-                        <RadzenFormField Text="Binding Layout" Variant="Variant.Outlined" class="w-100">
-                            <RadzenDropDown TValue="string"
-                                            @bind-Value="volumeBindingLayout"
-                                            Data="@volumeBindingLayoutOptions"
-                                            Change="@OnVolumeBindingLayoutChanged"
-                                            class="w-100" />
+                        <RadzenFormField Text="Server Name" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="draft.Name" class="w-100" />
                         </RadzenFormField>
                     </div>
-                    @if (volumeBindingLayout == VolumeLayoutStandard)
-                    {
-                        <div class="mb-3">
-                            <RadzenFormField Text="NFS Server Address" Variant="Variant.Outlined" class="w-100">
-                                <RadzenTextBox @bind-Value="nfsAddress" Placeholder="e.g. 192.168.1.10 or nfs.example.com" class="w-100" />
-                            </RadzenFormField>
-                            <small class="text-muted">Hostname or IP of the NFS server (used in the Docker volume driver <code>addr=</code> option).</small>
-                        </div>
-                        <div class="mb-3">
-                            <RadzenFormField Text="NFS Export Path" Variant="Variant.Outlined" class="w-100">
-                                <RadzenTextBox @bind-Value="nfsExportPath" Placeholder="e.g. /exported/gameservers" class="w-100" />
-                            </RadzenFormField>
-                            <small class="text-muted">The exported path on the NFS server. A per-server sub-path will be appended automatically.</small>
-                        </div>
-                        <div class="mb-3">
-                            <RadzenFormField Text="NFS Mount Options" Variant="Variant.Outlined" class="w-100">
-                                <RadzenTextBox @bind-Value="nfsMountOptions" Placeholder="e.g. rw,nfsvers=4" class="w-100" />
-                            </RadzenFormField>
-                            <small class="text-muted">Extra NFS mount options. <code>addr=&lt;host&gt;</code> is appended automatically from the address above.</small>
-                        </div>
-                    }
-                    @if (volumeBindingLayout == VolumeLayoutLocal)
-                    {
-                        <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" class="mt-2 mb-0">
-                            Local binding maps volume paths directly onto the Docker host. Ownership and permissions can be enforced, but data may be lost if the host is replaced or the server is migrated to a different node.
-                        </RadzenAlert>
-                    }
+                    <div class="mb-3">
+                        <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextArea @bind-Value="draft.Description" Rows="4" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="mb-3">
+                        <RadzenFormField Text="Service Name" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="draft.ServiceName" class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted">Leave blank to let the backend generate a service name.</small>
+                    </div>
+                </RadzenCard>
 
-                    @if (validationResult?.ResolvedVolumes.Any() == true)
+                <RadzenCard class="mb-3">
+                    <h5 class="mb-3">Volume Mounts</h5>
+                    <p class="small text-muted mb-2">Each volume defined on the GameType revision is listed below. Select a mount type for each volume.</p>
+                    @if (CurrentRevisionVolumes.Any())
                     {
-                        <h6 class="mt-3 mb-2">Resolved Mounts</h6>
-                        <RadzenAlert AlertStyle="AlertStyle.Info" Shade="Shade.Light" class="mb-2">
-                            These mounts are calculated from the GameType revision volume setup and your selected layout. Changing layout here does not modify already-deployed volumes.
-                        </RadzenAlert>
-                        @foreach (var volume in validationResult.ResolvedVolumes)
+                        @foreach (var volume in CurrentRevisionVolumes)
                         {
-                            <div class="small border rounded p-2 mb-2">
-                                <div><strong>Volume Name:</strong> <code>@volume.VolumeName</code></div>
-                                <div><strong>Container:</strong> <code>@volume.ContainerPath</code></div>
-                                <div><strong>Host/Source:</strong> <code>@volume.Source</code></div>
-                                <div>
-                                    <span class="text-muted">@volume.MountType · @(volume.ReadOnly ? "read-only" : "read/write")</span>
-                                    @if (!string.IsNullOrWhiteSpace(volume.Permissions))
-                                    {
-                                        <span class="text-muted"> · @volume.Permissions</span>
-                                    }
-                                    @if (volume.OwnerUid.HasValue || volume.OwnerGid.HasValue)
-                                    {
-                                        <span class="text-muted"> · uid:@(volume.OwnerUid?.ToString() ?? "-") gid:@(volume.OwnerGid?.ToString() ?? "-")</span>
-                                    }
-                                </div>
+                            <div class="border rounded p-2 mb-2">
+                                <div class="fw-semibold mb-1"><code>@volume.Source</code></div>
+                                @if (!string.IsNullOrWhiteSpace(volume.Description))
+                                {
+                                    <div class="small text-muted mb-1">@volume.Description</div>
+                                }
+                                <div class="small text-muted mb-1">Usage: @volume.Usage · @(volume.ReadOnly ? "read-only" : "read/write")</div>
+                                <RadzenFormField Text="Mount Type" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenDropDown TValue="string"
+                                                    Value="@GetVolumeMountType(volume)"
+                                                    ValueChanged="@(value => SetVolumeMountType(volume, value))"
+                                                    Data="@mountTypeOptions"
+                                                    TextProperty="DisplayName"
+                                                    ValueProperty="Key"
+                                                    class="w-100" />
+                                </RadzenFormField>
                             </div>
                         }
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No volumes defined on the selected revision.</p>
+                    }
+                </RadzenCard>
+
+                <RadzenCard class="mb-3">
+                    <h5 class="mb-3">Port Mappings</h5>
+                    <p class="small text-muted mb-2">Ports defined on the GameType revision. These are fixed and cannot be changed here.</p>
+                    @if (CurrentRevisionPorts.Any())
+                    {
+                        <ul class="mb-0 ps-3">
+                            @foreach (var port in CurrentRevisionPorts)
+                            {
+                                <li>
+                                    <code>@port.ContainerPort/@port.Protocol</code>
+                                    @if (port.AdvertisedPort)
+                                    {
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Advertised" Variant="Variant.Outlined" class="ms-1" />
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(port.Description))
+                                    {
+                                        <span class="text-muted small"> — @port.Description</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No ports defined on the selected revision.</p>
                     }
                 </RadzenCard>
             </div>
@@ -298,24 +291,16 @@
                                             <h5 class="mb-3">Resolved Volumes</h5>
                                             @if (validationResult?.ResolvedVolumes.Any() == true)
                                             {
-                                                <div class="mb-2">
-                                                    <RadzenBadge BadgeStyle="@(volumeBindingLayout == VolumeLayoutStandard ? BadgeStyle.Info : BadgeStyle.Warning)"
-                                                                 Text="@volumeBindingLayout"
-                                                                 Variant="Variant.Outlined" />
-                                                </div>
                                                 <ul class="mb-0 ps-3">
                                                     @foreach (var volume in validationResult.ResolvedVolumes)
                                                     {
                                                         <li>
+                                                            <strong>@volume.VolumeName</strong>:
                                                             <code>@volume.ContainerPath</code> &rarr; <code>@volume.Source</code>
-                                                            <span class="text-muted small"> — @volume.Usage</span>
+                                                            <span class="text-muted small"> — @volume.MountType · @volume.Usage</span>
                                                         </li>
                                                     }
                                                 </ul>
-                                                @if (volumeBindingLayout == VolumeLayoutStandard && !string.IsNullOrWhiteSpace(nfsAddress))
-                                                {
-                                                    <div class="small text-muted mt-2">NFS: <code>@nfsAddress:@nfsExportPath</code></div>
-                                                }
                                             }
                                             else
                                             {
@@ -382,14 +367,9 @@
     private bool isSaving;
     private int selectedTabIndex;
 
-    // Volume binding layout
-    private const string VolumeLayoutStandard = "Standard (NFS)";
-    private const string VolumeLayoutLocal = "Local (Docker Host)";
-    private static readonly IReadOnlyList<string> volumeBindingLayoutOptions = [VolumeLayoutStandard, VolumeLayoutLocal];
-    private string volumeBindingLayout = VolumeLayoutStandard;
-    private string nfsAddress = string.Empty;
-    private string nfsExportPath = string.Empty;
-    private string nfsMountOptions = "rw";
+    // Volume mount type selections (keyed by GameTypeVolume.Id)
+    private readonly List<MountTypeConfig> mountTypeOptions = [];
+    private readonly Dictionary<int, string> volumeMountTypeSelections = new();
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
@@ -397,10 +377,17 @@
         selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.SettingDefinitions
         ?? [];
 
+    private IReadOnlyList<GameTypeVolume> CurrentRevisionVolumes =>
+        selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.Volumes
+        ?? [];
+
+    private IReadOnlyList<GameTypePort> CurrentRevisionPorts =>
+        selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.Ports
+        ?? [];
+
     private bool CanSave =>
         !string.IsNullOrWhiteSpace(draft.Name)
-        && draft.GameTypeRevisionId > 0
-        && (volumeBindingLayout != VolumeLayoutStandard || !string.IsNullOrWhiteSpace(nfsAddress));
+        && draft.GameTypeRevisionId > 0;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -423,6 +410,7 @@
                 await Task.WhenAll(gameTypesTask, serverTask);
 
                 gameTypes.AddRange(await gameTypesTask);
+                await LoadMountTypesAsync();
                 var server = await serverTask;
                 if (server is null)
                 {
@@ -445,8 +433,6 @@
                     draft.SettingValues[setting.SettingKey] = setting.Value;
                 }
 
-                LoadVolumeBindingFromOptions(server.DockerVolumeOptions);
-
                 selectedGameTypeKey = server.GameTypeKey;
                 if (!string.IsNullOrWhiteSpace(selectedGameTypeKey))
                 {
@@ -460,6 +446,7 @@
             }
 
             gameTypes.AddRange(await GameTypeApiV2.GetListAsync(includeInactive: true));
+            await LoadMountTypesAsync();
             selectedGameTypeKey = gameTypes.FirstOrDefault()?.Key;
             draft = new GameServerEditorDraft();
 
@@ -634,28 +621,33 @@
                     Value = draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue
                 })
                 .ToList(),
-            VolumeBindingLayout = NormalizeVolumeLayout(volumeBindingLayout),
+            VolumeBindingLayout = "per-volume",
             NetworkOptions = []
         };
     }
 
-    private static string NormalizeVolumeLayout(string layout) =>
-        string.Equals(layout, VolumeLayoutLocal, StringComparison.OrdinalIgnoreCase) ? "local" : "standard";
-
-    private Task OnVolumeBindingLayoutChanged(object? value)
+    private string GetVolumeMountType(GameTypeVolume volume)
     {
-        validationResult = null;
-        return Task.CompletedTask;
+        return volumeMountTypeSelections.TryGetValue(volume.Id, out var selected) ? selected : volume.MountType;
     }
 
-    private void LoadVolumeBindingFromOptions(IEnumerable<GameServerConfigurationOption> options)
+    private void SetVolumeMountType(GameTypeVolume volume, string? value)
     {
-        // Legacy key/value volume options are no longer the source of truth.
-        // Volume layout is now derived from the dedicated VolumeBindingLayout field when available.
-        var optionMap = options.ToDictionary(o => o.Key, o => o.Value, StringComparer.OrdinalIgnoreCase);
-        if (optionMap.TryGetValue("layout", out var layout) && string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase))
+        volumeMountTypeSelections[volume.Id] = value ?? volume.MountType;
+        validationResult = null;
+    }
+
+    private async Task LoadMountTypesAsync()
+    {
+        try
         {
-            volumeBindingLayout = VolumeLayoutLocal;
+            mountTypeOptions.Clear();
+            var configs = await MountTypeConfigApi.GetAllAsync();
+            mountTypeOptions.AddRange(configs);
+        }
+        catch (HttpRequestException)
+        {
+            // Mount types will remain empty; user can still proceed.
         }
     }
 

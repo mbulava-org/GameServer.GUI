@@ -78,6 +78,36 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                     b.ToTable("GameServers", (string)null);
                 });
 
+            modelBuilder.Entity("GameServer.Docker.Data.V2.GameServerPortEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<int>("ContainerPort")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("GameServerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Protocol")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<int>("PublishedPort")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GameServerId");
+
+                    b.ToTable("GameServerPorts", (string)null);
+                });
+
             modelBuilder.Entity("GameServer.Docker.Data.V2.GameServerSettingEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -620,6 +650,17 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                     b.Navigation("GameTypeRevision");
                 });
 
+            modelBuilder.Entity("GameServer.Docker.Data.V2.GameServerPortEntity", b =>
+                {
+                    b.HasOne("GameServer.Docker.Data.V2.GameServerEntity", "GameServer")
+                        .WithMany("Ports")
+                        .HasForeignKey("GameServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GameServer");
+                });
+
             modelBuilder.Entity("GameServer.Docker.Data.V2.GameServerSettingEntity", b =>
                 {
                     b.HasOne("GameServer.Docker.Data.V2.GameServerEntity", "GameServer")
@@ -727,6 +768,8 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
 
             modelBuilder.Entity("GameServer.Docker.Data.V2.GameServerEntity", b =>
                 {
+                    b.Navigation("Ports");
+
                     b.Navigation("Settings");
 
                     b.Navigation("Volumes");

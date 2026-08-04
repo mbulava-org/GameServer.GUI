@@ -64,6 +64,8 @@ public class GameServerV2DbContext : DbContext
 
     public DbSet<GameServerSettingEntity> GameServerSettings { get; set; }
 
+    public DbSet<GameServerPortEntity> GameServerPorts { get; set; }
+
     public DbSet<MountTypeConfigEntity> MountTypeConfigs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -264,6 +266,20 @@ public class GameServerV2DbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.GameServerId, e.SettingKey }).IsUnique();
             entity.Property(e => e.SettingKey).IsRequired().HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<GameServerPortEntity>(entity =>
+        {
+            entity.ToTable("GameServerPorts");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.GameServerId);
+            entity.Property(e => e.Protocol).IsRequired().HasMaxLength(10);
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+
+            entity.HasOne(e => e.GameServer)
+                .WithMany(e => e.Ports)
+                .HasForeignKey(e => e.GameServerId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MountTypeConfigEntity>(entity =>

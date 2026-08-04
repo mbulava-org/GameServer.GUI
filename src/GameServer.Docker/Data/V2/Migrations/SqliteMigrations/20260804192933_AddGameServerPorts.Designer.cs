@@ -3,6 +3,7 @@ using System;
 using GameServer.Docker.Data.V2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
 {
     [DbContext(typeof(SqliteGameServerV2DbContext))]
-    partial class SqliteGameServerV2DbContextModelSnapshot : ModelSnapshot
+    [Migration("20260804192933_AddGameServerPorts")]
+    partial class AddGameServerPorts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
