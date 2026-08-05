@@ -161,6 +161,13 @@
                                     <div class="small text-muted mb-1">@volume.Description</div>
                                 }
                                 <div class="small text-muted mb-1">Usage: @volume.Usage · @(volume.ReadOnly ? "read-only" : "read/write")</div>
+                                @{
+                                    var generatedName = ComputeVolumeName(volume);
+                                }
+                                @if (!string.IsNullOrWhiteSpace(generatedName))
+                                {
+                                    <div class="small mb-1"><strong>Volume Name:</strong> <code>@generatedName</code></div>
+                                }
                                 <RadzenFormField Text="Mount Type" Variant="Variant.Outlined" class="w-100">
                                     <RadzenDropDown TValue="string"
                                                     Value="@GetVolumeMountType(volume)"
@@ -181,25 +188,39 @@
 
                 <RadzenCard class="mb-3">
                     <h5 class="mb-3">Port Mappings</h5>
-                    <p class="small text-muted mb-2">Ports defined on the GameType revision. These are fixed and cannot be changed here.</p>
+                    <p class="small text-muted mb-2">Set the published (exposed) port for each container port. Ports with auto-calculated offsets will update automatically.</p>
                     @if (CurrentRevisionPorts.Any())
                     {
-                        <ul class="mb-0 ps-3">
-                            @foreach (var port in CurrentRevisionPorts)
-                            {
-                                <li>
+                        @foreach (var port in CurrentRevisionPorts.OrderBy(p => p.DisplayOrder))
+                        {
+                            var isAutoCalculated = IsAutoCalculatedPort(port);
+                            <div class="border rounded p-2 mb-2">
+                                <div class="d-flex align-items-center gap-2 mb-1">
                                     <code>@port.ContainerPort/@port.Protocol</code>
                                     @if (port.AdvertisedPort)
                                     {
-                                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Advertised" Variant="Variant.Outlined" class="ms-1" />
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Advertised" Variant="Variant.Outlined" />
+                                    }
+                                    @if (isAutoCalculated)
+                                    {
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Auto" Variant="Variant.Outlined" />
                                     }
                                     @if (!string.IsNullOrWhiteSpace(port.Description))
                                     {
-                                        <span class="text-muted small"> — @port.Description</span>
+                                        <span class="text-muted small">@port.Description</span>
                                     }
-                                </li>
-                            }
-                        </ul>
+                                </div>
+                                <RadzenFormField Text="Published Port" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenNumeric TValue="int"
+                                                   Value="@GetPublishedPort(port)"
+                                                   ValueChanged="@(value => OnPublishedPortChanged(port, value))"
+                                                   Min="1"
+                                                   Max="65535"
+                                                   class="w-100"
+                                                   Disabled="@isAutoCalculated" />
+                                </RadzenFormField>
+                            </div>
+                        }
                     }
                     else
                     {
@@ -371,6 +392,9 @@
     private readonly List<MountTypeConfig> mountTypeOptions = [];
     private readonly Dictionary<int, string> volumeMountTypeSelections = new();
 
+    // Published port selections (keyed by GameTypePort.Id)
+    private readonly Dictionary<int, int> publishedPortSelections = new();
+
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
     private IReadOnlyList<GameTypeSettingDefinition> CurrentSettingDefinitions =>
@@ -442,6 +466,7 @@
                 RefreshRevisionOptions();
                 EnsureRevisionSelected();
                 EnsureSettingsInitialized();
+                EnsurePortsInitialized();
                 return;
             }
 
@@ -458,6 +483,7 @@
             RefreshRevisionOptions();
             EnsureRevisionSelected();
             EnsureSettingsInitialized();
+            EnsurePortsInitialized();
         }
         catch (HttpRequestException ex)
         {
@@ -482,6 +508,7 @@
         RefreshRevisionOptions();
         EnsureRevisionSelected();
         EnsureSettingsInitialized();
+        EnsurePortsInitialized();
     }
 
     private Task OnRevisionChanged(int? revisionId)
@@ -489,6 +516,7 @@
         draft.GameTypeRevisionId = revisionId ?? 0;
         validationResult = null;
         EnsureSettingsInitialized();
+        EnsurePortsInitialized();
         return Task.CompletedTask;
     }
 
@@ -531,6 +559,103 @@
         foreach (var key in draft.SettingValues.Keys.Where(key => !validKeys.Contains(key)).ToList())
         {
             draft.SettingValues.Remove(key);
+        }
+    }
+
+    private void EnsurePortsInitialized()
+    {
+        publishedPortSelections.Clear();
+        foreach (var port in CurrentRevisionPorts)
+        {
+            publishedPortSelections[port.Id] = port.ContainerPort;
+        }
+
+        RecalculateAutoPortsFromAll();
+    }
+
+    private int GetPublishedPort(GameTypePort port)
+    {
+        return publishedPortSelections.TryGetValue(port.Id, out var published) ? published : port.ContainerPort;
+    }
+
+    private void OnPublishedPortChanged(GameTypePort port, int value)
+    {
+        publishedPortSelections[port.Id] = value;
+        validationResult = null;
+        RecalculateAutoPortsFrom(port);
+    }
+
+    private bool IsAutoCalculatedPort(GameTypePort port)
+    {
+        // A port is auto-calculated if any setting has a Related (non-Primary) port mapping
+        // targeting this container port with an Offset, Fixed, or Multiplier relation.
+        return CurrentSettingDefinitions.Any(def =>
+            def.Metadata?.PortMappings.Any(pm =>
+                pm.TargetContainerPort == port.ContainerPort
+                && string.Equals(pm.TargetProtocol, port.Protocol, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+            ) == true);
+    }
+
+    private void RecalculateAutoPortsFromAll()
+    {
+        foreach (var port in CurrentRevisionPorts)
+        {
+            if (!IsAutoCalculatedPort(port))
+            {
+                RecalculateAutoPortsFrom(port);
+            }
+        }
+    }
+
+    private void RecalculateAutoPortsFrom(GameTypePort sourcePort)
+    {
+        // Find all settings that have a Direct/Primary mapping to this port,
+        // then recalculate any Related offset/multiplier ports from the same setting.
+        var sourcePublished = GetPublishedPort(sourcePort);
+
+        foreach (var definition in CurrentSettingDefinitions)
+        {
+            var portMappings = definition.Metadata?.PortMappings;
+            if (portMappings is null || portMappings.Count == 0)
+            {
+                continue;
+            }
+
+            // Check if this setting has a Direct/Primary mapping to the source port
+            var primaryMapping = portMappings.FirstOrDefault(pm =>
+                pm.TargetContainerPort == sourcePort.ContainerPort
+                && string.Equals(pm.TargetProtocol, sourcePort.Protocol, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase));
+
+            if (primaryMapping is null)
+            {
+                continue;
+            }
+
+            // Now recalculate all related (non-Direct) ports in this setting
+            foreach (var relatedMapping in portMappings.Where(pm =>
+                !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)))
+            {
+                var targetPort = CurrentRevisionPorts.FirstOrDefault(p =>
+                    p.ContainerPort == relatedMapping.TargetContainerPort
+                    && string.Equals(p.Protocol, relatedMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+
+                if (targetPort is null)
+                {
+                    continue;
+                }
+
+                var calculated = relatedMapping.RelationType switch
+                {
+                    "Offset" => sourcePublished + (relatedMapping.CalculationValue ?? 0),
+                    "Multiplier" => sourcePublished * (relatedMapping.CalculationValue ?? 1),
+                    "Fixed" => relatedMapping.CalculationValue ?? targetPort.ContainerPort,
+                    _ => targetPort.ContainerPort
+                };
+
+                publishedPortSelections[targetPort.Id] = Math.Clamp(calculated, 1, 65535);
+            }
         }
     }
 
@@ -635,6 +760,28 @@
     {
         volumeMountTypeSelections[volume.Id] = value ?? volume.MountType;
         validationResult = null;
+    }
+
+    private string? ComputeVolumeName(GameTypeVolume volume)
+    {
+        var mountTypeKey = GetVolumeMountType(volume);
+        var config = mountTypeOptions.FirstOrDefault(m => string.Equals(m.Key, mountTypeKey, StringComparison.OrdinalIgnoreCase));
+        if (config is null || string.IsNullOrWhiteSpace(config.VolumeNameFormat))
+        {
+            return null;
+        }
+
+        var serviceName = !string.IsNullOrWhiteSpace(draft.ServiceName)
+            ? draft.ServiceName
+            : !string.IsNullOrWhiteSpace(draft.Name)
+                ? draft.Name.Replace(' ', '-').ToLowerInvariant()
+                : "<service-name>";
+
+        return config.VolumeNameFormat
+            .Replace("{ServiceName}", serviceName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Usage}", volume.Usage, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Source}", volume.Source.Replace('/', '-'), StringComparison.OrdinalIgnoreCase)
+            .Replace("{MountType}", mountTypeKey, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task LoadMountTypesAsync()
