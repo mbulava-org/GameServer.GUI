@@ -6,6 +6,7 @@
 @inject Services.V2.GameServerV2ApiService GameServerApiV2
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
+@inject Services.IThumbnailCacheService ThumbnailCacheService
 
 <PageTitle>Game Servers V2</PageTitle>
 
@@ -67,7 +68,7 @@
                         <Template Context="server">
                             @if (!string.IsNullOrWhiteSpace(server.GameTypeThumbnailUrl))
                             {
-                                <img src="@server.GameTypeThumbnailUrl"
+                                <img src="@GetThumbnailUrl(server.GameTypeThumbnailUrl)"
                                      alt="@server.GameTypeDisplayName"
                                      class="gameserver-list-thumbnail"
                                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
@@ -221,6 +222,7 @@
 
 @code {
     private readonly List<GameServerListItem> servers = [];
+    private readonly Dictionary<string, string> cachedThumbnailUrls = new(StringComparer.Ordinal);
     private bool includeDeleted;
     private bool isLoading = true;
 
@@ -236,6 +238,7 @@
             isLoading = true;
             servers.Clear();
             servers.AddRange(await GameServerApiV2.GetListAsync(includeDeleted));
+            await CacheThumbnailUrlsAsync(servers.Select(static server => server.GameTypeThumbnailUrl));
         }
         catch (HttpRequestException ex)
         {
@@ -255,6 +258,39 @@
     private static void OnRowRender(RowRenderEventArgs<GameServerListItem> args)
     {
         args.Attributes.Add("style", "cursor: pointer;");
+    }
+
+    private string? GetThumbnailUrl(string? sourceUrl)
+    {
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            return null;
+        }
+
+        return cachedThumbnailUrls.TryGetValue(sourceUrl, out var cachedUrl) ? cachedUrl : sourceUrl;
+    }
+
+    private async Task CacheThumbnailUrlsAsync(IEnumerable<string?> thumbnailUrls)
+    {
+        var sourceUrls = thumbnailUrls
+            .Where(static url => !string.IsNullOrWhiteSpace(url))
+            .Select(static url => url!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        cachedThumbnailUrls.Clear();
+        if (sourceUrls.Count == 0)
+        {
+            return;
+        }
+
+        var cacheEntries = await Task.WhenAll(sourceUrls.Select(async url =>
+            new KeyValuePair<string, string>(url, (await ThumbnailCacheService.GetCachedThumbnailUrlAsync(url)) ?? url)));
+
+        foreach (var cacheEntry in cacheEntries)
+        {
+            cachedThumbnailUrls[cacheEntry.Key] = cacheEntry.Value;
+        }
     }
 
     private static string FormatPort(GameServerResolvedPort port)

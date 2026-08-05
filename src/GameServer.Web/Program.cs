@@ -1,6 +1,8 @@
 using GameServer.Docker.Client;
 using GameServer.Docker.Client.Extensions;
 using GameServer.Web.Components;
+using GameServer.Web.Services;
+using Microsoft.Extensions.FileProviders;
 using Radzen;
 using Serilog;
 using System.Reflection;
@@ -76,6 +78,13 @@ namespace GameServer.Web
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
                 builder.Services.AddHttpClient();
+                builder.Services.Configure<ThumbnailCacheOptions>(options =>
+                {
+                    options.CacheDirectory = Path.Combine(Path.GetTempPath(), "GameServer.Web", "thumbnail-cache");
+                    options.RequestPath = "/thumbnail-cache";
+                    Directory.CreateDirectory(options.CacheDirectory);
+                });
+                builder.Services.AddScoped<IThumbnailCacheService, ThumbnailCacheService>();
                 builder.Services.AddScoped<Services.V2.GameServerV2ApiService>();
                 builder.Services.AddScoped<Services.V2.GameTypeV2ApiService>();
                 builder.Services.AddScoped<Services.V2.MountTypeConfigApiService>();
@@ -130,6 +139,13 @@ namespace GameServer.Web
                 // Critical: Serve static files from wwwroot AND from Razor Class Libraries (_content)
                 // In .NET 10, this automatically uses the staticwebassets.runtime.json manifest
                 app.UseStaticFiles();
+
+                var thumbnailCacheOptions = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ThumbnailCacheOptions>>().Value;
+                app.UseStaticFiles(new StaticFileOptions
+                {
+                    FileProvider = new PhysicalFileProvider(thumbnailCacheOptions.CacheDirectory),
+                    RequestPath = thumbnailCacheOptions.RequestPath
+                });
 
                 // Enable WebSockets so the Blazor Server circuit ('/_blazor') can use the WebSocket
                 // transport instead of falling back/failing when hosted in Docker or behind a proxy.

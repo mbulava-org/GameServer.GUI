@@ -5,6 +5,7 @@ using Bunit;
 using GameServer.Web.Components.Pages.Servers;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -166,8 +167,10 @@ public sealed class GameServerPagesV2Tests : BunitContext
     private void RegisterApis(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
+        Services.AddSingleton(CreateMountTypeConfigApiService(handler));
     }
 
     private static GameServerV2ApiService CreateGameServerApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
@@ -188,6 +191,24 @@ public sealed class GameServerPagesV2Tests : BunitContext
             .Returns(() => new HttpClient(new StubHttpMessageHandler(handler)) { BaseAddress = new Uri("http://localhost/") });
 
         return new GameTypeV2ApiService(httpClientFactory.Object, CreateOptions());
+    }
+
+    private static MountTypeConfigApiService CreateMountTypeConfigApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+    {
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(factory => factory.CreateClient(It.IsAny<string>()))
+            .Returns(() => new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/mounttypeconfigs")
+                {
+                    return CreateJsonResponse(new List<MountTypeConfig>());
+                }
+
+                return handler(request);
+            })) { BaseAddress = new Uri("http://localhost/") });
+
+        return new MountTypeConfigApiService(httpClientFactory.Object, CreateOptions());
     }
 
     private static GameServerDockerApi CreateOptions()
@@ -211,6 +232,14 @@ public sealed class GameServerPagesV2Tests : BunitContext
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             return Task.FromResult(handler(request));
+        }
+    }
+
+    private sealed class PassthroughThumbnailCacheService : IThumbnailCacheService
+    {
+        public Task<string?> GetCachedThumbnailUrlAsync(string? sourceUrl, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(sourceUrl);
         }
     }
 }
