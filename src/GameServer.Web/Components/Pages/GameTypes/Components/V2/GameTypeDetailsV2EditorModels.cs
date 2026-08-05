@@ -97,7 +97,32 @@ public sealed class GameTypeRevisionSettingMetadataDraft
 
     public string? ValueMappingsJson { get; set; }
 
+    /// <summary>
+    /// The underlying data type for enum values (string or numeric).
+    /// Used by the enum editor UI; not persisted directly.
+    /// </summary>
+    public string EnumUnderlyingType { get; set; } = "string";
+
+    /// <summary>
+    /// Editable enum value entries. Parsed from AllowedValuesJson/ValueMappingsJson on load,
+    /// and synced back to those JSON fields on change.
+    /// </summary>
+    public List<EnumValueDraft> EnumValues { get; set; } = [];
+
     public List<GameTypeRevisionPortMappingDraft> PortMappings { get; set; } = [];
+}
+
+public sealed class EnumValueDraft
+{
+    /// <summary>
+    /// The actual value sent to the server/container (e.g. "0", "survival", "1").
+    /// </summary>
+    public string Value { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The user-friendly display label shown in the UI (e.g. "Survival", "Creative").
+    /// </summary>
+    public string DisplayLabel { get; set; } = string.Empty;
 }
 
 public sealed class GameTypeRevisionPortMappingDraft

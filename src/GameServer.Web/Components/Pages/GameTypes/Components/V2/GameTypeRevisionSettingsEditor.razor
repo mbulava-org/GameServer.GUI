@@ -1,6 +1,7 @@
 @using GameServer.Web.Models.V2
 @using Radzen
 @using Radzen.Blazor
+@using System.Text.Json
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -118,12 +119,12 @@ else
                             <div class="col-md-6">
                                 <RadzenFormField Text="Data Type" Variant="Variant.Outlined" class="w-100">
                                     <RadzenDropDown TValue="string"
-                                                    @bind-Value="setting.Metadata.DataType"
-                                                    @bind-Value:after="NotifyDraftChangedAsync"
-                                                    Data="@GetDataTypeOptionsForDisplay()"
-                                                    TextProperty="DisplayName"
-                                                    ValueProperty="Value"
-                                                    class="w-100" />
+                                                        @bind-Value="setting.Metadata.DataType"
+                                                        @bind-Value:after="() => OnDataTypeChangedAsync(setting.Metadata)"
+                                                        Data="@GetDataTypeOptionsForDisplay()"
+                                                        TextProperty="DisplayName"
+                                                        ValueProperty="Value"
+                                                        class="w-100" />
                                 </RadzenFormField>
                             </div>
                             <div class="col-md-6">
@@ -141,6 +142,48 @@ else
                                     <RadzenTextBox @bind-Value="setting.Description" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
+                            @if (string.Equals(setting.Metadata.DataType, "enum", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <div class="col-12">
+                                    <div class="d-flex align-items-center gap-3 mb-2">
+                                        <strong>Enum Configuration</strong>
+                                        <RadzenDropDown TValue="string"
+                                                        @bind-Value="setting.Metadata.EnumUnderlyingType"
+                                                        @bind-Value:after="() => OnEnumValueChangedAsync(setting.Metadata)"
+                                                        Data="@(new[] { "string", "numeric" })"
+                                                        Style="width: 140px;"
+                                                        Placeholder="Underlying Type" />
+                                    </div>
+                                    <table class="table table-sm table-bordered mb-2">
+                                        <thead>
+                                            <tr>
+                                                <th>Value (sent to server)</th>
+                                                <th>Display Label (shown in UI)</th>
+                                                <th style="width:50px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var enumVal in setting.Metadata.EnumValues)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <RadzenTextBox @bind-Value="enumVal.Value" @bind-Value:after="() => OnEnumValueChangedAsync(setting.Metadata)" class="w-100" />
+                                                    </td>
+                                                    <td>
+                                                        <RadzenTextBox @bind-Value="enumVal.DisplayLabel" @bind-Value:after="() => OnEnumValueChangedAsync(setting.Metadata)" class="w-100" />
+                                                    </td>
+                                                    <td>
+                                                        <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="() => RemoveEnumValueAsync(setting.Metadata, enumVal)" />
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                    <RadzenButton Text="Add Value" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="() => AddEnumValueAsync(setting.Metadata)" />
+                                </div>
+                            }
+                            else
+                            {
                             <div class="col-md-6">
                                 <RadzenFormField Text="Allowed Values JSON" Variant="Variant.Outlined" class="w-100">
                                     <RadzenTextBox @bind-Value="setting.Metadata.AllowedValuesJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
@@ -151,6 +194,7 @@ else
                                     <RadzenTextBox @bind-Value="setting.Metadata.ValueMappingsJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
+                            }
                             <div class="col-12 d-flex gap-4 flex-wrap">
                                 <div class="d-flex align-items-center gap-2">
                                     <RadzenCheckBox @bind-Value="setting.Metadata.IsRequired" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
@@ -496,6 +540,13 @@ else
         foreach (var setting in Settings)
         {
             SyncRelatedMappings(setting);
+
+            if (string.Equals(setting.Metadata.DataType, "enum", StringComparison.OrdinalIgnoreCase)
+                && setting.Metadata.EnumValues.Count == 0
+                && !string.IsNullOrWhiteSpace(setting.Metadata.AllowedValuesJson))
+            {
+                ParseEnumValues(setting.Metadata);
+            }
         }
 
         if (SelectedSetting is null)
@@ -976,6 +1027,100 @@ else
     private Task NotifyDraftChangedAsync()
     {
         return OnDraftChanged.InvokeAsync();
+    }
+
+    private static void ParseEnumValues(GameTypeRevisionSettingMetadataDraft metadata)
+    {
+        metadata.EnumValues.Clear();
+
+        List<string>? allowedValues = null;
+        Dictionary<string, string>? valueMappings = null;
+
+        if (!string.IsNullOrWhiteSpace(metadata.AllowedValuesJson))
+        {
+            try { allowedValues = JsonSerializer.Deserialize<List<string>>(metadata.AllowedValuesJson); }
+            catch { /* ignore malformed */ }
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.ValueMappingsJson))
+        {
+            try { valueMappings = JsonSerializer.Deserialize<Dictionary<string, string>>(metadata.ValueMappingsJson); }
+            catch { /* ignore malformed */ }
+        }
+
+        if (allowedValues is { Count: > 0 })
+        {
+            // Infer underlying type: if all values parse as numbers, treat as numeric
+            var allNumeric = allowedValues.All(v => double.TryParse(v, out _));
+            metadata.EnumUnderlyingType = allNumeric ? "numeric" : "string";
+
+            foreach (var val in allowedValues)
+            {
+                var label = valueMappings is not null && valueMappings.TryGetValue(val, out var mapped)
+                    ? mapped
+                    : val;
+
+                metadata.EnumValues.Add(new EnumValueDraft { Value = val, DisplayLabel = label });
+            }
+        }
+    }
+
+    private static void SyncEnumValuesToJson(GameTypeRevisionSettingMetadataDraft metadata)
+    {
+        if (metadata.EnumValues.Count == 0)
+        {
+            metadata.AllowedValuesJson = null;
+            metadata.ValueMappingsJson = null;
+            return;
+        }
+
+        var values = metadata.EnumValues.Select(e => e.Value).ToList();
+        metadata.AllowedValuesJson = JsonSerializer.Serialize(values);
+
+        // Only store value mappings if any display label differs from the value
+        var hasMappings = metadata.EnumValues.Any(e => !string.Equals(e.Value, e.DisplayLabel, StringComparison.Ordinal));
+        if (hasMappings)
+        {
+            var mappings = metadata.EnumValues.ToDictionary(e => e.Value, e => e.DisplayLabel);
+            metadata.ValueMappingsJson = JsonSerializer.Serialize(mappings);
+        }
+        else
+        {
+            metadata.ValueMappingsJson = null;
+        }
+    }
+
+    private async Task OnEnumValueChangedAsync(GameTypeRevisionSettingMetadataDraft metadata)
+    {
+        SyncEnumValuesToJson(metadata);
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task OnDataTypeChangedAsync(GameTypeRevisionSettingMetadataDraft metadata)
+    {
+        if (string.Equals(metadata.DataType, "enum", StringComparison.OrdinalIgnoreCase))
+        {
+            if (metadata.EnumValues.Count == 0 && !string.IsNullOrWhiteSpace(metadata.AllowedValuesJson))
+            {
+                ParseEnumValues(metadata);
+            }
+        }
+
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task AddEnumValueAsync(GameTypeRevisionSettingMetadataDraft metadata)
+    {
+        metadata.EnumValues.Add(new EnumValueDraft());
+        SyncEnumValuesToJson(metadata);
+        await NotifyDraftChangedAsync();
+    }
+
+    private async Task RemoveEnumValueAsync(GameTypeRevisionSettingMetadataDraft metadata, EnumValueDraft item)
+    {
+        metadata.EnumValues.Remove(item);
+        SyncEnumValuesToJson(metadata);
+        await NotifyDraftChangedAsync();
     }
 
     private sealed record PortTargetOption(string Value, string Label);

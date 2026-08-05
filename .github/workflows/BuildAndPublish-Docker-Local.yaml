@@ -64,7 +64,6 @@ jobs:
   build_and_publish_docker:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NEW_VERSION: ${{ inputs.semantic_version}}
       DOCKER_REPO: '${{ secrets.DOCKERHUB_USERNAME}}/${{ inputs.target_repo }}'
       TAG_BUILD: ${{ github.run_number }}
