@@ -11,6 +11,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject DialogService DialogService
+@inject Services.IThumbnailCacheService ThumbnailCacheService
 
 <PageTitle>Edit Server - @Server?.Name</PageTitle>
 
@@ -39,10 +40,10 @@
     {
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div class="d-flex align-items-center gap-3">
-                @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+                @if (!string.IsNullOrWhiteSpace(cachedGameTypeThumbnailUrl))
                 {
                     <div class="game-thumbnail-small">
-                        <img src="@gameType.ThumbnailUrl" 
+                        <img src="@cachedGameTypeThumbnailUrl" 
                              alt="@gameType.DisplayName"
                              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                         <div class="thumbnail-fallback-small" style="display: none;">
@@ -107,10 +108,10 @@
                             <div class="col-md-4">
                                 <RadzenCard>
                                     <h6 class="mb-3">Game Type</h6>
-                                    @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+                                    @if (!string.IsNullOrWhiteSpace(cachedGameTypeThumbnailUrl))
                                     {
                                         <div class="game-type-thumbnail-large mb-3">
-                                            <img src="@gameType.ThumbnailUrl" 
+                                            <img src="@cachedGameTypeThumbnailUrl" 
                                                  alt="@gameType.DisplayName"
                                                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                                             <div class="thumbnail-fallback-large" style="display: none;">
@@ -310,6 +311,7 @@
     private GameServer? Server;
     private GameTypeDefinition? gameType;
     private GameTypeExtendedMetadata? extendedMetadata;
+    private string? cachedGameTypeThumbnailUrl;
     private bool loading = true;
     private bool saving = false;
     private List<string> protocols = new() { "tcp", "udp" };
@@ -345,6 +347,7 @@
                 // Load game type definition
                 var allGameTypes = await GameTypeApi.GetAllAsync();
                 gameType = allGameTypes.FirstOrDefault(gt => gt.Key == Server.GameType);
+                cachedGameTypeThumbnailUrl = await ThumbnailCacheService.GetCachedThumbnailUrlAsync(gameType?.ThumbnailUrl);
 
                 // Load extended metadata for web hosts preview
                 if (!string.IsNullOrWhiteSpace(Server.GameType))
@@ -364,6 +367,10 @@
                 Server.Settings ??= new Dictionary<string, string>();
                 Server.Ports ??= new List<PortMapping>();
                 Server.Volumes ??= new List<VolumeDefinition>();
+            }
+            else
+            {
+                cachedGameTypeThumbnailUrl = null;
             }
         }
         catch (Exception ex)

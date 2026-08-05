@@ -5,6 +5,7 @@ using Bunit;
 using GameServer.Web.Components.Pages.Servers;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -167,6 +168,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
     private void RegisterApis(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
     }
@@ -212,6 +214,14 @@ public sealed class GameServerPagesV2Tests : BunitContext
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             return Task.FromResult(handler(request));
+        }
+    }
+
+    private sealed class PassthroughThumbnailCacheService : IThumbnailCacheService
+    {
+        public Task<string?> GetCachedThumbnailUrlAsync(string? sourceUrl, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(sourceUrl);
         }
     }
 }

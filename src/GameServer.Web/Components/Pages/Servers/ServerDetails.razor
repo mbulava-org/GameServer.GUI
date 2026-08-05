@@ -12,6 +12,7 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject Services.IThumbnailCacheService ThumbnailCacheService
 
 <PageTitle>@(server?.Name ?? "Server Details")</PageTitle>
 
@@ -43,10 +44,10 @@ else
                         ButtonStyle="ButtonStyle.Light" 
                         Click='@(() => NavigationManager.NavigateTo("/servers"))' 
                         Size="ButtonSize.Small" />
-          @if (!string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl))
+          @if (!string.IsNullOrWhiteSpace(cachedGameTypeThumbnailUrl))
           {
             <div class="game-thumbnail">
-              <img src="@gameType.ThumbnailUrl" 
+              <img src="@cachedGameTypeThumbnailUrl" 
                    alt="@gameType.DisplayName"
                    onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
               <div class="thumbnail-fallback" style="display: none;">
@@ -652,6 +653,7 @@ private string VanityDomain => "games.dev.bulavafamily.com";
 private GameServer? server;
 private GameTypeDefinition? gameType;
 private GameTypeExtendedMetadata? extendedMetadata;
+private string? cachedGameTypeThumbnailUrl;
 private ServerResourceUsage? resourceUsage;
 private bool loading = true;
 private bool actionInProgress = false;
@@ -700,7 +702,8 @@ private async Task LoadServerAsync()
             // Load the game type definition to get thumbnail
             var allGameTypes = await GameTypeApi.GetAllAsync();
             gameType = allGameTypes.FirstOrDefault(gt => gt.Key == server.GameType);
-                
+            cachedGameTypeThumbnailUrl = await ThumbnailCacheService.GetCachedThumbnailUrlAsync(gameType?.ThumbnailUrl);
+
             // Load extended metadata to check TTY setting
             try
             {
@@ -711,6 +714,11 @@ private async Task LoadServerAsync()
                 // Extended metadata is optional
                 extendedMetadata = null;
             }
+        }
+
+        if (server is null)
+        {
+            cachedGameTypeThumbnailUrl = null;
         }
 
         // Initialize editable settings

@@ -6,6 +6,7 @@
 @inject Services.V2.GameServerV2ApiService GameServerApiV2
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
+@inject Services.IThumbnailCacheService ThumbnailCacheService
 
 <PageTitle>@(server?.Name ?? "Game Server V2")</PageTitle>
 
@@ -39,9 +40,9 @@
                               ButtonStyle="ButtonStyle.Light"
                               Size="ButtonSize.Small"
                               Click="@GoBack" />
-                @if (!string.IsNullOrWhiteSpace(server.GameTypeThumbnailUrl))
+                @if (!string.IsNullOrWhiteSpace(cachedGameTypeThumbnailUrl))
                 {
-                    <img src="@server.GameTypeThumbnailUrl"
+                    <img src="@cachedGameTypeThumbnailUrl"
                          alt="@server.GameTypeDisplayName"
                          class="gameserver-detail-thumbnail"
                          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
@@ -313,6 +314,7 @@
 
     private GameServerDetail? server;
     private GameServerValidationResult? validationPreview;
+    private string? cachedGameTypeThumbnailUrl;
     private bool isLoading = true;
 
     private IReadOnlyList<GameServerResolvedPort> CurrentResolvedPorts => validationPreview?.ResolvedPorts ?? server?.ResolvedPorts ?? [];
@@ -333,6 +335,7 @@
         if (string.IsNullOrWhiteSpace(ServerId))
         {
             server = null;
+            cachedGameTypeThumbnailUrl = null;
             isLoading = false;
             return;
         }
@@ -340,7 +343,11 @@
         try
         {
             isLoading = true;
+            cachedGameTypeThumbnailUrl = null;
             server = await GameServerApiV2.GetByServerIdAsync(ServerId);
+            cachedGameTypeThumbnailUrl = server is null
+                ? null
+                : await ThumbnailCacheService.GetCachedThumbnailUrlAsync(server.GameTypeThumbnailUrl);
             validationPreview = server is null ? null : await GameServerApiV2.ValidateAsync(BuildValidationRequest(server));
         }
         catch (HttpRequestException ex)

@@ -8,6 +8,7 @@
 @inject IGameTypeApi GameTypeApi
 @inject NavigationManager Navigation
 @inject NotificationService NotificationService
+@inject Services.IThumbnailCacheService ThumbnailCacheService
 
 <PageTitle>Game Servers Dashboard</PageTitle>
 
@@ -196,6 +197,7 @@
 @code {
     private List<GameServerDashboardItem> servers = new();
     private List<GameTypeDefinition> gameTypes = new();
+    private readonly Dictionary<string, string> cachedThumbnailUrls = new(StringComparer.Ordinal);
     private bool loading = true;
 
     protected override async Task OnInitializedAsync()
@@ -216,6 +218,7 @@
             
             servers = (await serversTask).ToList();
             gameTypes = (await gameTypesTask).ToList();
+            await CacheThumbnailUrlsAsync(gameTypes.Select(static gt => gt.ThumbnailUrl));
         }
         catch (Exception ex)
         {
@@ -269,12 +272,43 @@
         };
     }
 
+    private async Task CacheThumbnailUrlsAsync(IEnumerable<string?> thumbnailUrls)
+    {
+        var sourceUrls = thumbnailUrls
+            .Where(static url => !string.IsNullOrWhiteSpace(url))
+            .Select(static url => url!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        cachedThumbnailUrls.Clear();
+        if (sourceUrls.Count == 0)
+        {
+            return;
+        }
+
+        var cacheEntries = await Task.WhenAll(sourceUrls.Select(async url =>
+            new KeyValuePair<string, string>(url, (await ThumbnailCacheService.GetCachedThumbnailUrlAsync(url)) ?? url)));
+
+        foreach (var cacheEntry in cacheEntries)
+        {
+            cachedThumbnailUrls[cacheEntry.Key] = cacheEntry.Value;
+        }
+    }
+
+    private string? GetThumbnailUrl(string? sourceUrl)
+    {
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+            return null;
+
+        return cachedThumbnailUrls.TryGetValue(sourceUrl, out var cachedUrl) ? cachedUrl : sourceUrl;
+    }
+
     private string? GetGameTypeThumbnail(string? gameTypeKey)
     {
         if (string.IsNullOrWhiteSpace(gameTypeKey))
             return null;
 
         var gameType = gameTypes.FirstOrDefault(gt => gt.Key == gameTypeKey);
-        return !string.IsNullOrWhiteSpace(gameType?.ThumbnailUrl) ? gameType.ThumbnailUrl : null;
+        return GetThumbnailUrl(gameType?.ThumbnailUrl);
     }
 }

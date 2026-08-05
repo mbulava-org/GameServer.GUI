@@ -5,6 +5,7 @@ using Bunit;
 using GameServer.Web.Components.Pages.GameTypes;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -85,6 +86,7 @@ public sealed class GameTypeManagerV2Tests : BunitContext
     {
         var deletedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton(CreateApiService(request => responder(request, deletedKeys)));
     }
 
@@ -120,6 +122,14 @@ public sealed class GameTypeManagerV2Tests : BunitContext
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             return Task.FromResult(responder(request));
+        }
+    }
+
+    private sealed class PassthroughThumbnailCacheService : IThumbnailCacheService
+    {
+        public Task<string?> GetCachedThumbnailUrlAsync(string? sourceUrl, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(sourceUrl);
         }
     }
 }
