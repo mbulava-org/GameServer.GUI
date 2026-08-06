@@ -131,10 +131,19 @@ jobs:
             HEAD_REF="${{ github.sha }}"
           fi
 
-          echo "Detecting project changes between $BASE_REF...$HEAD_REF"
+          # workflow_dispatch has no 'before', and the first push to a branch reports the
+          # all-zero SHA. Fall back to the previous commit so the diff still resolves.
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            BASE_REF="$(git rev-parse ${HEAD_REF}^ 2>/dev/null || echo '')"
+          fi
 
-          # Get all changed files
-          CHANGED_FILES=$(git diff --name-only $BASE_REF $HEAD_REF || true)
+          if [ -z "$BASE_REF" ]; then
+            echo "::notice::No comparable base commit - treating all projects as changed"
+            CHANGED_FILES="$(git ls-files)"
+          else
+            echo "Detecting project changes between $BASE_REF...$HEAD_REF"
+            CHANGED_FILES=$(git diff --name-only "$BASE_REF" "$HEAD_REF" || true)
+          fi
 
           # Detect changes in each project folder
           BACKEND_CHANGED="false"
@@ -143,7 +152,7 @@ jobs:
           CLIENT_CHANGED="false"
           TESTS_CHANGED="false"
 
-          # Check GameServer.Docker (backend)
+
           if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker/'; then
             BACKEND_CHANGED="true"
             echo "::notice::✅ GameServer.Docker project has changes"
@@ -199,38 +208,40 @@ jobs:
           AGENT_CHANGED="${{ steps.detect-project-changes.outputs.agent_changed }}"
           WEB_CHANGED="${{ steps.detect-project-changes.outputs.web_changed }}"
           CLIENT_CHANGED="${{ steps.detect-project-changes.outputs.client_changed }}"
+          TESTS_CHANGED="${{ steps.detect-project-changes.outputs.tests_changed }}"
 
           echo "🔍 Push Decision Calculation:"
           echo "  - Force Publish: $FORCE_PUBLISH"
+          echo "  - Tests Changed: $TESTS_CHANGED"
 
-          # Calculate push decisions: (change detected) OR (force publish)
-          if [ "$BACKEND_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          # Calculate push decisions: (project changed) OR (tests changed) OR (force publish)
+          if [ "$BACKEND_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
             echo "push_backend=true" >> $GITHUB_OUTPUT
-            echo "  ✅ Backend will be pushed (changed=$BACKEND_CHANGED, force=$FORCE_PUBLISH)"
+            echo "  ✅ Backend will be pushed (changed=$BACKEND_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_backend=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Backend push skipped (no changes, not forced)"
           fi
 
-          if [ "$AGENT_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$AGENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
             echo "push_agent=true" >> $GITHUB_OUTPUT
-            echo "  ✅ Agent will be pushed (changed=$AGENT_CHANGED, force=$FORCE_PUBLISH)"
+            echo "  ✅ Agent will be pushed (changed=$AGENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_agent=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Agent push skipped (no changes, not forced)"
           fi
 
-          if [ "$WEB_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$WEB_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
             echo "push_web=true" >> $GITHUB_OUTPUT
-            echo "  ✅ Web will be pushed (changed=$WEB_CHANGED, force=$FORCE_PUBLISH)"
+            echo "  ✅ Web will be pushed (changed=$WEB_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_web=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Web push skipped (no changes, not forced)"
           fi
 
-          if [ "$CLIENT_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$CLIENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
             echo "push_client=true" >> $GITHUB_OUTPUT
-            echo "  ✅ Client will be pushed (changed=$CLIENT_CHANGED, force=$FORCE_PUBLISH)"
+            echo "  ✅ Client will be pushed (changed=$CLIENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_client=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Client push skipped (no changes, not forced)"
@@ -283,9 +294,29 @@ jobs:
         run: |
           dotnet test GameServer.GUI.slnx \
             --no-build --configuration Release \
-            --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests" \
+            --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests&Category!=PostgreSql" \
             --logger "trx;LogFileName=test-results.trx" \
+            --collect:"XPlat Code Coverage" \
             --results-directory ./test-results
+
+      - name: Generate coverage report
+        if: always()
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          reportgenerator \
+            -reports:"./test-results/**/coverage.cobertura.xml" \
+            -targetdir:"./coverage-report" \
+            -reporttypes:"Html;Cobertura;MarkdownSummaryGithub;TextSummary"
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          if [ -f ./coverage-report/SummaryGithub.md ]; then
+            cat ./coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No coverage summary was produced." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload test results
         if: always()
@@ -294,10 +325,18 @@ jobs:
           name: test-results
           path: ./test-results/*.trx
 
+      - name: Upload code coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: code-coverage-report
+          path: |
+            ./coverage-report/**
+            ./test-results/**/coverage.cobertura.xml
+
   backend:
-    needs: [setup]
-    if: |
-      ${{ needs.setup.outputs.push_backend == 'true' }} || ${{ github.event.inputs.force_publish == 'true' }}
+    needs: [setup, test]
+    if: needs.setup.outputs.push_backend == 'true'
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
@@ -312,9 +351,8 @@ jobs:
       target_repo: 'gameserver-docker'
 
   agent-backend:
-    needs: [setup]
-    if: |
-      ${{ needs.setup.outputs.push_agent == 'true' }} || ${{ github.event.inputs.force_publish == 'true' }}
+    needs: [setup, test]
+    if: needs.setup.outputs.push_agent == 'true'
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:
@@ -341,9 +379,8 @@ jobs:
   #     disable_tests: false
 
   web-gui:
-    needs: [setup]
-    if: |
-      ${{ needs.setup.outputs.push_web == 'true' }} || ${{ github.event.inputs.force_publish == 'true' }}
+    needs: [setup, test]
+    if: needs.setup.outputs.push_web == 'true'
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
     with:

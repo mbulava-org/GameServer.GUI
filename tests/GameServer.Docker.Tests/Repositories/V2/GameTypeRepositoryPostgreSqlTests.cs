@@ -7,6 +7,10 @@ using Testcontainers.PostgreSql;
 
 namespace GameServer.Docker.Tests.Repositories.V2;
 
+// Ignored for now: the V2 PostgreSQL schema is deployed externally via pgPacTool, so this
+// suite needs a provisioned schema in addition to a Postgres container. Re-enable once the
+// schema deployment is wired into the test fixture.
+[Trait("Category", "PostgreSql")]
 public class GameTypeRepositoryPostgreSqlTests : IAsyncLifetime
 {
     private PostgreSqlContainer? _container;
@@ -44,7 +48,7 @@ public class GameTypeRepositoryPostgreSqlTests : IAsyncLifetime
         }
     }
 
-    [Fact(Skip = "Requires Docker/Testcontainers to validate the PostgreSQL initialization path.")]
+    [Fact(Skip = "Ignored for now - PostgreSQL V2 schema must be deployed externally via pgPacTool before this can run.")]
     public async Task InitializeDatabaseAsync_WhenSchemaHasNotBeenDeployed_ShouldThrowGuidance()
     {
         ArgumentNullException.ThrowIfNull(_repository);
