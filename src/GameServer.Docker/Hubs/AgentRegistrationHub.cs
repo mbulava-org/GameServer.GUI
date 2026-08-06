@@ -29,6 +29,25 @@ namespace GameServer.Docker.Hubs
         {
             var connectionId = Context.ConnectionId;
 
+            // The URL reported by the agent may use a Docker node hostname (e.g. "dev-docker-100")
+            // that is not resolvable from the Primary Service across nodes. The SignalR connection's
+            // remote IP is the agent's actual address on the shared overlay network, so use that as
+            // the host to reach the agent while preserving the scheme/port it advertised.
+            var remoteIp = Context.GetHttpContext()?.Connection.RemoteIpAddress;
+            var resolvedUrl = RewriteHostWithRemoteIp(info.InternalUrl, remoteIp);
+
+            if (!string.Equals(resolvedUrl, info.InternalUrl, StringComparison.Ordinal))
+            {
+                _logger.LogInformation(
+                    "Overriding agent-reported URL {ReportedUrl} with connection IP based URL {ResolvedUrl} for Node={NodeName} ({NodeId})",
+                    info.InternalUrl,
+                    resolvedUrl,
+                    info.NodeName,
+                    info.NodeId);
+
+                info.InternalUrl = resolvedUrl;
+            }
+
             _logger.LogInformation(
                 "Agent registration request: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Url={Url}",
                 info.NodeName,
@@ -39,6 +58,42 @@ namespace GameServer.Docker.Hubs
             _agentRegistry.RegisterAgent(info, connectionId);
 
             await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Rebuilds the agent URL using the SignalR connection's remote IP address as the host,
+        /// preserving the scheme and port advertised by the agent. Falls back to the original URL
+        /// when the remote IP is unavailable or the URL cannot be parsed.
+        /// </summary>
+        private static string RewriteHostWithRemoteIp(string reportedUrl, System.Net.IPAddress? remoteIp)
+        {
+            if (remoteIp is null || string.IsNullOrWhiteSpace(reportedUrl))
+            {
+                return reportedUrl;
+            }
+
+            // Normalize IPv4-mapped IPv6 addresses (e.g. ::ffff:10.0.0.5) to their IPv4 form.
+            if (remoteIp.IsIPv4MappedToIPv6)
+            {
+                remoteIp = remoteIp.MapToIPv4();
+            }
+
+            if (System.Net.IPAddress.IsLoopback(remoteIp))
+            {
+                return reportedUrl;
+            }
+
+            if (!Uri.TryCreate(reportedUrl, UriKind.Absolute, out var uri))
+            {
+                return reportedUrl;
+            }
+
+            var host = remoteIp.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                ? $"[{remoteIp}]"
+                : remoteIp.ToString();
+
+            var builder = new UriBuilder(uri) { Host = host };
+            return builder.Uri.ToString().TrimEnd('/');
         }
 
         /// <summary>

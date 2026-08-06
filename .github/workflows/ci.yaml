@@ -292,12 +292,23 @@ jobs:
 
       - name: Run tests (excluding Testcontainers/Docker-socket tests)
         run: |
-          dotnet test GameServer.GUI.slnx \
-            --no-build --configuration Release \
-            --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests&Category!=PostgreSql" \
-            --logger "trx;LogFileName=test-results.trx" \
-            --collect:"XPlat Code Coverage" \
-            --results-directory ./test-results
+          # Run each test project separately so every project writes its own
+          # uniquely-named .trx file (a shared LogFileName would overwrite).
+          # All coverage.cobertura.xml files still land under ./test-results and
+          # are combined by the coverage report step below.
+          overall=0
+          for proj in $(find tests -name '*.Tests.csproj' | sort); do
+            name=$(basename "$proj" .csproj)
+            echo "::group::Testing $name"
+            dotnet test "$proj" \
+              --no-build --configuration Release \
+              --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests&Category!=PostgreSql" \
+              --logger "trx;LogFileName=${name}.trx" \
+              --collect:"XPlat Code Coverage" \
+              --results-directory ./test-results || overall=1
+            echo "::endgroup::"
+          done
+          exit $overall
 
       - name: Generate coverage report
         if: always()
