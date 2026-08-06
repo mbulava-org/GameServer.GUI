@@ -85,9 +85,9 @@ namespace GameServer.Web
                     Directory.CreateDirectory(options.CacheDirectory);
                 });
                 builder.Services.AddScoped<IThumbnailCacheService, ThumbnailCacheService>();
-                builder.Services.AddScoped<Services.V2.GameServerV2ApiService>();
-                builder.Services.AddScoped<Services.V2.GameTypeV2ApiService>();
-                builder.Services.AddScoped<Services.V2.MountTypeConfigApiService>();
+                builder.Services.AddScoped<Services.V2.IGameServerV2ApiService, Services.V2.GameServerV2ApiService>();
+                builder.Services.AddScoped<Services.V2.IGameTypeV2ApiService, Services.V2.GameTypeV2ApiService>();
+                builder.Services.AddScoped<Services.V2.IMountTypeConfigApiService, Services.V2.MountTypeConfigApiService>();
 
                 //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";

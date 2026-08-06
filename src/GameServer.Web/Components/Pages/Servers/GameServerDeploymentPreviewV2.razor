@@ -1,0 +1,220 @@
+@using GameServer.Web.Models.V2
+
+@if (Preview is null)
+{
+    <RadzenCard>
+        <p class="text-muted mb-3">
+            Generate a deployment preview to inspect the exact Swarm service that would be created
+            for this server: networks, environment variables (post-calculation), port mappings and volume mounts.
+        </p>
+        <RadzenButton Text="Generate Preview"
+                      Icon="preview"
+                      IsBusy="@IsLoading"
+                      BusyText="Generating..."
+                      Disabled="@IsLoading"
+                      Click="@(() => OnRefresh.InvokeAsync())" />
+    </RadzenCard>
+}
+else
+{
+    <div class="d-flex justify-content-end mb-3">
+        <RadzenButton Text="Refresh Preview"
+                      Icon="refresh"
+                      ButtonStyle="ButtonStyle.Light"
+                      IsBusy="@IsLoading"
+                      BusyText="Generating..."
+                      Disabled="@IsLoading"
+                      Click="@(() => OnRefresh.InvokeAsync())" />
+    </div>
+
+    @foreach (var notice in Preview.Notices)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" AllowClose="false" class="mb-2">
+            @notice
+        </RadzenAlert>
+    }
+
+    @foreach (var issue in Preview.Issues)
+    {
+        <RadzenAlert AlertStyle="@(issue.IsBlocking ? AlertStyle.Danger : AlertStyle.Warning)"
+                     ShowIcon="true"
+                     AllowClose="false"
+                     class="mb-2">
+            <strong>@issue.Code</strong> — @issue.Message
+            @if (!string.IsNullOrWhiteSpace(issue.Scope))
+            {
+                <span class="text-muted small"> (@issue.Scope)</span>
+            }
+        </RadzenAlert>
+    }
+
+    <RadzenCard class="mb-3">
+        <h5 class="mb-3">Service</h5>
+        <div class="row g-2">
+            <div class="col-md-6"><span class="text-muted small d-block">Service Name</span><code>@Preview.ServiceName</code></div>
+            <div class="col-md-6"><span class="text-muted small d-block">Server Id</span><code>@Preview.ServerId</code></div>
+            <div class="col-md-6"><span class="text-muted small d-block">Image</span><code>@Preview.ImageReference</code></div>
+            <div class="col-md-6"><span class="text-muted small d-block">Version Tag</span><code>@Preview.VersionTag</code></div>
+            <div class="col-md-6"><span class="text-muted small d-block">Volume Layout</span>@Preview.VolumeBindingLayout</div>
+            <div class="col-md-6"><span class="text-muted small d-block">TTY</span>@(Preview.EnableTTY ? "Enabled" : "Disabled")</div>
+        </div>
+    </RadzenCard>
+
+    <RadzenCard class="mb-3">
+        <h5 class="mb-3">Labels</h5>
+        @if (Preview.Labels.Count == 0)
+        {
+            <p class="text-muted mb-0">No labels.</p>
+        }
+        else
+        {
+            <ul class="mb-0 ps-3">
+                @foreach (var label in Preview.Labels)
+                {
+                    <li><code>@label.Key</code> = <code>@label.Value</code></li>
+                }
+            </ul>
+        }
+    </RadzenCard>
+
+    <RadzenCard class="mb-3">
+        <h5 class="mb-3">Networks</h5>
+        @if (Preview.Networks.Count == 0)
+        {
+            <p class="text-muted mb-0">No networks attached.</p>
+        }
+        else
+        {
+            <RadzenDataGrid Data="@Preview.Networks" TItem="GameServerPreviewNetwork" AllowPaging="false">
+                <Columns>
+                    <RadzenDataGridColumn TItem="GameServerPreviewNetwork" Property="Name" Title="Name" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewNetwork" Property="Driver" Title="Driver" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewNetwork" Property="Description" Title="Description" />
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </RadzenCard>
+
+    <RadzenCard class="mb-3">
+        <h5 class="mb-3">Environment Variables (@Preview.EnvironmentVariables.Count)</h5>
+        @if (Preview.EnvironmentVariables.Count == 0)
+        {
+            <p class="text-muted mb-0">No environment variables will be set.</p>
+        }
+        else
+        {
+            <RadzenDataGrid Data="@Preview.EnvironmentVariables" TItem="GameServerPreviewEnvironmentVariable" AllowPaging="false">
+                <Columns>
+                    <RadzenDataGridColumn TItem="GameServerPreviewEnvironmentVariable" Property="Key" Title="Key" Width="220px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewEnvironmentVariable" Title="Effective Value">
+                        <Template Context="entry">
+                            <code>@(string.IsNullOrEmpty(entry.Value) ? "(empty)" : entry.Value)</code>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="GameServerPreviewEnvironmentVariable" Title="Raw" Width="200px">
+                        <Template Context="entry">
+                            @if (entry.IsExpanded)
+                            {
+                                <code class="text-muted">@entry.RawValue</code>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="GameServerPreviewEnvironmentVariable" Property="DataType" Title="Type" Width="130px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewEnvironmentVariable" Title="Source" Width="110px">
+                        <Template Context="entry">
+                            <span class="text-muted small">@(entry.UsesDefault ? "default" : "override")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </RadzenCard>
+
+    <RadzenCard class="mb-3">
+        <h5 class="mb-3">Ports (@Preview.Ports.Count)</h5>
+        @if (Preview.Ports.Count == 0)
+        {
+            <p class="text-muted mb-0">No ports defined.</p>
+        }
+        else
+        {
+            <RadzenDataGrid Data="@Preview.Ports" TItem="GameServerPreviewPort" AllowPaging="false">
+                <Columns>
+                    <RadzenDataGridColumn TItem="GameServerPreviewPort" Title="Published" Width="120px">
+                        <Template Context="port">
+                            @(port.Published ? port.PublishedPort.ToString() : "—")
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="GameServerPreviewPort" Property="ContainerPort" Title="Container" Width="120px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewPort" Property="Protocol" Title="Protocol" Width="110px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewPort" Property="PublishMode" Title="Mode" Width="140px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewPort" Property="Description" Title="Description" />
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </RadzenCard>
+
+    <RadzenCard class="mb-3">
+        <h5 class="mb-3">Volumes (@Preview.Volumes.Count)</h5>
+        @if (Preview.Volumes.Count == 0)
+        {
+            <p class="text-muted mb-0">No volume mounts resolved.</p>
+        }
+        else
+        {
+            <RadzenDataGrid Data="@Preview.Volumes" TItem="GameServerPreviewVolume" AllowPaging="false">
+                <Columns>
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="Usage" Title="Usage" Width="110px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="VolumeName" Title="Volume Name" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="ContainerPath" Title="Container Path" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="Source" Title="Source" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="MountType" Title="Mount" Width="100px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="Driver" Title="Driver" Width="100px" />
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Ownership" Width="140px">
+                        <Template Context="volume">
+                            @(volume.OwnerUid?.ToString() ?? "—"):@(volume.OwnerGid?.ToString() ?? "—")
+                            @if (!string.IsNullOrWhiteSpace(volume.Permissions))
+                            {
+                                <span class="text-muted small"> @volume.Permissions</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Read Only" Width="100px">
+                        <Template Context="volume">@(volume.ReadOnly ? "yes" : "no")</Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </RadzenCard>
+
+    <RadzenCard>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h5 class="mb-0">Raw Service Spec</h5>
+            <RadzenButton Text="@(showRawJson ? "Hide" : "Show")"
+                          ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small"
+                          Click="@(() => showRawJson = !showRawJson)" />
+        </div>
+        @if (showRawJson)
+        {
+            <pre class="mb-0 p-3 bg-light border rounded" style="max-height: 480px; overflow: auto;"><code>@Preview.RawServiceSpecJson</code></pre>
+        }
+    </RadzenCard>
+}
+
+@code {
+    [Parameter]
+    public GameServerDeploymentPreview? Preview { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public EventCallback OnRefresh { get; set; }
+
+    private bool showRawJson;
+}

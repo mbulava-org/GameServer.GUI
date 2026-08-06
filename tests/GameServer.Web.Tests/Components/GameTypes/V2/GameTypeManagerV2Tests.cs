@@ -89,7 +89,7 @@ public sealed class GameTypeManagerV2Tests : BunitContext
         Services.AddSingleton(CreateApiService(request => responder(request, deletedKeys)));
     }
 
-    private GameTypeV2ApiService CreateApiService(Func<HttpRequestMessage, HttpResponseMessage> responder)
+    private IGameTypeV2ApiService CreateApiService(Func<HttpRequestMessage, HttpResponseMessage> responder)
     {
         var handler = new StubHttpMessageHandler(responder);
         var httpClientFactory = new Mock<IHttpClientFactory>();

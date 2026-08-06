@@ -110,6 +110,6 @@ Neither ports, volumes, nor web hosts are persisted inside the `GameServer` V2 e
 ## Related Documentation
 
 - [V2 GameType Editor Components](V2-GameType-Editor-Components.md)
-- [Port Mapping Integration Guide](Port-Mapping-Integration-Guide.md)
+- [Deployment Preview & Live Port Validation](V2-Deployment-Preview-And-Port-Validation.md)
 - [V2 GameServer Lifecycle](V2-GameServer-Lifecycle.md)
 - [Architecture Overview](../ARCHITECTURE.md)

@@ -102,7 +102,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
     }
 
     [Fact]
-    public void GameServerEditorV2_New_ShouldRenderRevisionSettings()
+    public void GameServerEditorV2_New_ShouldRequireGameTypeSelection()
     {
         // Arrange
         RegisterApis(request =>
@@ -159,8 +159,12 @@ public sealed class GameServerPagesV2Tests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("Create Game Server V2", cut.Markup);
-            Assert.Contains("SERVER_PORT", cut.Markup);
             Assert.Contains("Create Server", cut.Markup);
+
+            // No game type is selected by default, so the requirement is surfaced
+            // and the revision settings are not rendered yet.
+            Assert.Contains("A game type must be selected before continuing.", cut.Markup);
+            Assert.DoesNotContain("SERVER_PORT", cut.Markup);
         });
     }
 
@@ -173,7 +177,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         Services.AddSingleton(CreateMountTypeConfigApiService(handler));
     }
 
-    private static GameServerV2ApiService CreateGameServerApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+    private static IGameServerV2ApiService CreateGameServerApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory
@@ -183,7 +187,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         return new GameServerV2ApiService(httpClientFactory.Object, CreateOptions());
     }
 
-    private static GameTypeV2ApiService CreateGameTypeApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+    private static IGameTypeV2ApiService CreateGameTypeApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory
@@ -193,7 +197,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         return new GameTypeV2ApiService(httpClientFactory.Object, CreateOptions());
     }
 
-    private static MountTypeConfigApiService CreateMountTypeConfigApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+    private static IMountTypeConfigApiService CreateMountTypeConfigApiService(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory

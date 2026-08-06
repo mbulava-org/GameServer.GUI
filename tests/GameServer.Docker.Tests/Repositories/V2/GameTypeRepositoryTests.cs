@@ -52,7 +52,7 @@ public class GameTypeRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task InitializeDatabaseAsync_WhenLegacySchemaExists_ShouldUpgradeExistingRows()
+    public async Task InitializeDatabaseAsync_ShouldApplyAllMigrationsAndSeedMountTypes()
     {
         var dbPath = $":memory:_{Guid.NewGuid()}";
         var options = new DbContextOptionsBuilder<SqliteGameServerV2DbContext>()
@@ -62,28 +62,19 @@ public class GameTypeRepositoryTests : IDisposable
         await using var context = new SqliteGameServerV2DbContext(options);
         await context.Database.OpenConnectionAsync();
 
-        await context.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE \"GameTypes\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_GameTypes\" PRIMARY KEY AUTOINCREMENT, \"Key\" TEXT NOT NULL, \"DisplayName\" TEXT NOT NULL, \"Description\" TEXT NULL, \"ImageReference\" TEXT NOT NULL, \"ThumbnailUrl\" TEXT NULL, \"DocumentationUrl\" TEXT NULL, \"IsActive\" INTEGER NOT NULL, \"CurrentRevisionId\" INTEGER NULL, \"CreatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \"UpdatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);");
-        await context.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX \"IX_GameTypes_Key\" ON \"GameTypes\" (\"Key\");");
-        await context.Database.ExecuteSqlRawAsync("CREATE INDEX \"IX_GameTypes_IsActive\" ON \"GameTypes\" (\"IsActive\");");
-        await context.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE \"GameTypeRevisions\" (\"Id\" INTEGER NOT NULL CONSTRAINT \"PK_GameTypeRevisions\" PRIMARY KEY AUTOINCREMENT, \"GameTypeId\" INTEGER NOT NULL, \"VersionTag\" TEXT NOT NULL, \"ImageDigest\" TEXT NULL, \"EnableTTY\" INTEGER NOT NULL, \"Notes\" TEXT NULL, \"IsPublished\" INTEGER NOT NULL, \"CreatedAt\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT \"FK_GameTypeRevisions_GameTypes_GameTypeId\" FOREIGN KEY (\"GameTypeId\") REFERENCES \"GameTypes\" (\"Id\") ON DELETE CASCADE);");
-        await context.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX \"IX_GameTypeRevisions_GameTypeId_VersionTag\" ON \"GameTypeRevisions\" (\"GameTypeId\", \"VersionTag\");");
-        await context.Database.ExecuteSqlRawAsync("INSERT INTO \"GameTypes\" (\"Id\", \"Key\", \"DisplayName\", \"Description\", \"ImageReference\", \"ThumbnailUrl\", \"DocumentationUrl\", \"IsActive\", \"CurrentRevisionId\", \"CreatedAt\", \"UpdatedAt\") VALUES (1, 'minecraft', 'Minecraft', 'Legacy schema row', 'itzg/minecraft-server', NULL, NULL, 1, 10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);");
-        await context.Database.ExecuteSqlRawAsync("INSERT INTO \"GameTypeRevisions\" (\"Id\", \"GameTypeId\", \"VersionTag\", \"ImageDigest\", \"EnableTTY\", \"Notes\", \"IsPublished\", \"CreatedAt\") VALUES (10, 1, 'latest', 'sha256:test', 1, 'legacy revision', 1, CURRENT_TIMESTAMP);");
-
         var repository = new GameTypeRepository(context, Mock.Of<ILogger<GameTypeRepository>>());
 
         await repository.InitializeDatabaseAsync();
+        // Running twice must be a no-op once all migrations are recorded.
+        await repository.InitializeDatabaseAsync();
 
-        var upgradedGameType = await context.GameTypes.SingleAsync(x => x.Key == "minecraft");
-        var upgradedRevision = await context.GameTypeRevisions.SingleAsync(x => x.GameTypeId == upgradedGameType.Id);
+        var appliedMigrations = (await context.Database.GetAppliedMigrationsAsync()).ToList();
+        Assert.Equal(context.Database.GetMigrations(), appliedMigrations);
+        Assert.Empty(await context.Database.GetPendingMigrationsAsync());
 
-        Assert.Equal("docker", upgradedGameType.Type);
-        Assert.Equal("itzg/minecraft-server", upgradedRevision.ImageReference);
-
-        var migrationId = await context.Database.SqlQueryRaw<string>("SELECT \"MigrationId\" AS \"Value\" FROM \"__EFMigrationsHistory\"").SingleAsync();
-        Assert.Equal("20260731225517_InitialCreate", migrationId);
+        // Mount type defaults come from the model's HasData seed, applied by the migrations.
+        Assert.True(await context.MountTypeConfigs.AnyAsync(x => x.Key == "volume"));
+        Assert.True(await context.MountTypeConfigs.AnyAsync(x => x.Key == "nfs"));
     }
 
     [Fact]

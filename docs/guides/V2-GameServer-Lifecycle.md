@@ -1,6 +1,6 @@
 # V2 GameServer Lifecycle Guide
 
-This guide describes the current V2 server management flow. The V2 UI is the active path in the navigation menu; legacy `/servers` routes still exist but are no longer promoted.
+This guide describes the current V2 server management flow. The V2 UI is the active path in the navigation menu.
 
 ## Pages & Routes
 
@@ -19,9 +19,13 @@ This guide describes the current V2 server management flow. The V2 UI is the act
 4. Pick the published revision. Only revisions that are published can be selected.
 5. Enter the server name and an optional description. The service name is derived from the name.
 6. Provide per-server setting overrides in `GameServerSettingFieldV2`. Required settings are marked.
-7. Click **Create**. The frontend validates first via `POST /api/v2/gameservers/validate`, then creates the server via `POST /api/v2/gameservers`.
+7. Adjust published ports if needed. Availability is checked live and the **Create** button stays disabled while a conflict is outstanding.
+8. Open the **Deployment Preview** tab to review the fully-calculated service spec before committing.
+9. Click **Create**. The frontend validates first via `POST /api/v2/gameservers/validate`, then creates the server via `POST /api/v2/gameservers`.
 
-Port mappings and volumes are not configured per server; they are derived from the selected `GameTypeRevision` at deployment time.
+Volumes are not configured per server; they are derived from the selected `GameTypeRevision` at deployment time. Port rows are fixed by the revision — you can change published port numbers but cannot add or remove mappings.
+
+See [Deployment Preview & Live Port Validation](V2-Deployment-Preview-And-Port-Validation.md) for details on both surfaces.
 
 ## Viewing Servers
 
@@ -66,6 +70,8 @@ V2 servers use soft delete. After deletion, the server remains in the database w
 | GET | `/api/v2/gameservers?includeDeleted=false` | List servers |
 | GET | `/api/v2/gameservers/{serverId}` | Get one server |
 | POST | `/api/v2/gameservers/validate` | Validate a create request |
+| POST | `/api/v2/gameservers/preview` | Dry-run the Swarm service spec |
+| POST | `/api/v2/gameservers/ports/availability` | Check published port conflicts |
 | POST | `/api/v2/gameservers` | Create server |
 | PUT | `/api/v2/gameservers/{serverId}` | Update server |
 
@@ -77,6 +83,9 @@ V2 servers use soft delete. After deletion, the server remains in the database w
 
 ## Related Documentation
 
+- [Deployment Preview & Live Port Validation](V2-Deployment-Preview-And-Port-Validation.md)
+- [V2 GameType Settings & Metadata](V2-GameType-Settings-And-Metadata.md)
+- [V2 Ports & Web Hosts](V2-Ports-And-WebHosts.md)
 - [Architecture Overview](../ARCHITECTURE.md)
 - [Current Features](../CURRENT-FEATURES.md)
 - [Testing Quick Reference](../TESTING-QUICK-REFERENCE.md)

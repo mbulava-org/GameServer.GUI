@@ -96,8 +96,8 @@ else
                         <code class="setting-key-large">@(string.IsNullOrWhiteSpace(setting.SettingKey) ? "NEW_SETTING" : setting.SettingKey)</code>
                     </div>
                     <div class="d-flex gap-2 flex-wrap justify-content-end">
-                        <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => MoveSettingDraft(setting, -1))" Disabled="@(Settings.IndexOf(setting) <= 0)" />
-                        <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => MoveSettingDraft(setting, 1))" Disabled="@(Settings.IndexOf(setting) >= Settings.Count - 1)" />
+                        <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => MoveSettingDraft(setting, -1))" Disabled="@(!CanMoveSetting(setting, -1))" />
+                        <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => MoveSettingDraft(setting, 1))" Disabled="@(!CanMoveSetting(setting, 1))" />
                         <RadzenButton Icon="delete" Text="Delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Click="@DeleteSelectedSettingDraft" />
                     </div>
                 </div>
@@ -182,19 +182,6 @@ else
                                     <RadzenButton Text="Add Value" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="() => AddEnumValueAsync(setting.Metadata)" />
                                 </div>
                             }
-                            else
-                            {
-                            <div class="col-md-6">
-                                <RadzenFormField Text="Allowed Values JSON" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Metadata.AllowedValuesJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
-                                </RadzenFormField>
-                            </div>
-                            <div class="col-md-6">
-                                <RadzenFormField Text="Value Mappings JSON" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.Metadata.ValueMappingsJson" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
-                                </RadzenFormField>
-                            </div>
-                            }
                             <div class="col-12 d-flex gap-4 flex-wrap">
                                 <div class="d-flex align-items-center gap-2">
                                     <RadzenCheckBox @bind-Value="setting.Metadata.IsRequired" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
@@ -204,17 +191,22 @@ else
                                     <RadzenCheckBox @bind-Value="setting.Metadata.CannotBeEmpty" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
                                     <span>Cannot Be Empty</span>
                                 </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <RadzenCheckBox @bind-Value="setting.Metadata.AutoAllocatePort" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
-                                    <span>Auto Allocate Port</span>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <RadzenCheckBox @bind-Value="setting.Metadata.ValidateRelatedPortsAvailability" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
-                                    <span>Validate Related Ports</span>
-                                </div>
+                                @if (IsPortSetting(setting))
+                                {
+                                    <div class="d-flex align-items-center gap-2">
+                                        <RadzenCheckBox @bind-Value="setting.Metadata.AutoAllocatePort" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
+                                        <span>Auto Allocate Port</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <RadzenCheckBox @bind-Value="setting.Metadata.ValidateRelatedPortsAvailability" @bind-Value:after="NotifyDraftChangedAsync" TValue="bool" />
+                                        <span>Validate Related Ports</span>
+                                    </div>
+                                }
                             </div>
                         </div>
 
+                        @if (IsPortSetting(setting))
+                        {
                         <div class="section-title">Port Mappings</div>
                         <div>
                             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -322,6 +314,7 @@ else
                                 }
                             }
                         </div>
+                        }
                     </RadzenStack>
                 </div>
             }
@@ -592,8 +585,46 @@ else
 
     private void MoveSettingDraft(GameTypeRevisionSettingDraft setting, int delta)
     {
-        MoveItem(Settings, setting, delta);
+        // The list is grouped by category, so reorder relative to the siblings in the
+        // same category. Moving against the global list can swap with an item in a
+        // different group, which looks like nothing happened.
+        var category = GetCategoryKey(setting);
+        var siblings = Settings
+            .Where(candidate => string.Equals(GetCategoryKey(candidate), category, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var siblingIndex = siblings.IndexOf(setting);
+        var targetSiblingIndex = siblingIndex + delta;
+        if (siblingIndex < 0 || targetSiblingIndex < 0 || targetSiblingIndex >= siblings.Count)
+        {
+            return;
+        }
+
+        var currentIndex = Settings.IndexOf(setting);
+        var targetIndex = Settings.IndexOf(siblings[targetSiblingIndex]);
+
+        Settings.RemoveAt(currentIndex);
+        Settings.Insert(targetIndex, setting);
+
         selectedSettingDraftId = setting.DraftId;
+        _ = NotifyDraftChangedAsync();
+    }
+
+    private static string GetCategoryKey(GameTypeRevisionSettingDraft setting)
+    {
+        return string.IsNullOrWhiteSpace(setting.Metadata.Category) ? "General" : setting.Metadata.Category!;
+    }
+
+    private bool CanMoveSetting(GameTypeRevisionSettingDraft setting, int delta)
+    {
+        var category = GetCategoryKey(setting);
+        var siblings = Settings
+            .Where(candidate => string.Equals(GetCategoryKey(candidate), category, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var siblingIndex = siblings.IndexOf(setting);
+        var targetIndex = siblingIndex + delta;
+        return siblingIndex >= 0 && targetIndex >= 0 && targetIndex < siblings.Count;
     }
 
     private void AddPortMappingDraft(GameTypeRevisionSettingDraft setting)
@@ -647,7 +678,7 @@ else
 
         return query
             .OrderBy(setting => setting.Metadata.Category ?? "General", StringComparer.OrdinalIgnoreCase)
-            .ThenBy(setting => setting.SettingKey, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(Settings.IndexOf)
             .GroupBy(setting => string.IsNullOrWhiteSpace(setting.Metadata.Category) ? "General" : setting.Metadata.Category!, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -977,24 +1008,6 @@ else
         }
     }
 
-    private static void MoveItem<T>(List<T> items, T item, int delta)
-    {
-        var currentIndex = items.IndexOf(item);
-        if (currentIndex < 0)
-        {
-            return;
-        }
-
-        var newIndex = currentIndex + delta;
-        if (newIndex < 0 || newIndex >= items.Count)
-        {
-            return;
-        }
-
-        items.RemoveAt(currentIndex);
-        items.Insert(newIndex, item);
-    }
-
     private string GetDefaultCategoryForNewSetting()
     {
         var selectedCategory = SelectedSetting?.Metadata.Category?.Trim();
@@ -1019,9 +1032,17 @@ else
 
     private static string GetDataTypeDisplayName(string? value)
     {
-        return string.Equals(value, "yesno", StringComparison.OrdinalIgnoreCase)
-            ? "yes/no"
-            : value ?? string.Empty;
+        if (string.Equals(value, "yesno", StringComparison.OrdinalIgnoreCase))
+        {
+            return "yes/no";
+        }
+
+        if (string.Equals(value, "servervariable", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Server Varible (Optional)";
+        }
+
+        return value ?? string.Empty;
     }
 
     private Task NotifyDraftChangedAsync()

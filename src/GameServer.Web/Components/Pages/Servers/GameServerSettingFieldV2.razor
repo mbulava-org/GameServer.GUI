@@ -31,6 +31,40 @@ else if (dataType == "enum")
                        class="w-100" />
     }
 }
+else if (dataType == "port")
+{
+    <div class="d-flex flex-column gap-1">
+        <RadzenNumeric TValue="int"
+                       Value="@PortValue"
+                       ValueChanged="@OnPortChanged"
+                       Min="1"
+                       Max="65535"
+                       class="w-100" />
+        @if (!string.IsNullOrWhiteSpace(ValidationMessage))
+        {
+            <div class="small text-danger">@ValidationMessage</div>
+        }
+    </div>
+}
+else if (dataType == ServerVariableSetting.DataType)
+{
+    <div class="d-flex flex-column gap-2">
+        <RadzenTextBox Value="@rawValue"
+                       ValueChanged="@OnServerVariableTextChanged"
+                       class="w-100" />
+        <div class="d-flex align-items-center gap-2">
+            <RadzenSwitch Value="@expandVariables"
+                          Change="@OnExpandVariablesChanged" />
+            <span class="small">@(expandVariables ? "Replace {Variables}" : "Literal text")</span>
+        </div>
+        @if (expandVariables)
+        {
+            <div class="small text-muted">
+                Available: @string.Join(", ", ServerVariableSetting.SupportedTokens.Select(token => $"{{{token}}}"))
+            </div>
+        }
+    </div>
+}
 else
 {
     <RadzenTextBox Value="@Value"
@@ -48,8 +82,18 @@ else
     [Parameter]
     public EventCallback<string?> ValueChanged { get; set; }
 
+    /// <summary>
+    /// Optional validation message rendered under the field, used for live port availability feedback.
+    /// </summary>
+    [Parameter]
+    public string? ValidationMessage { get; set; }
+
     private string dataType = string.Empty;
     private IReadOnlyList<EnumOption> enumOptions = [];
+    private string? rawValue;
+    private bool expandVariables;
+
+    private int PortValue => int.TryParse(Value, out var parsed) ? parsed : 0;
 
     private bool IsChecked => string.Equals(Value, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(Value, "yes", StringComparison.OrdinalIgnoreCase);
 
@@ -62,11 +106,30 @@ else
             : Definition.Metadata.DataType.Trim().ToLowerInvariant();
 
         enumOptions = GetEnumOptions(Definition);
+
+        (expandVariables, rawValue) = ServerVariableSetting.Decode(Value);
+    }
+
+    private Task OnServerVariableTextChanged(string? value)
+    {
+        rawValue = value;
+        return ValueChanged.InvokeAsync(ServerVariableSetting.Encode(expandVariables, rawValue));
+    }
+
+    private Task OnExpandVariablesChanged(bool value)
+    {
+        expandVariables = value;
+        return ValueChanged.InvokeAsync(ServerVariableSetting.Encode(expandVariables, rawValue));
     }
 
     private Task OnStringChanged(string? value)
     {
         return ValueChanged.InvokeAsync(value);
+    }
+
+    private Task OnPortChanged(int value)
+    {
+        return ValueChanged.InvokeAsync(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private Task OnBooleanChanged(bool value)

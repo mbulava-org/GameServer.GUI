@@ -3,7 +3,7 @@ using GameServer.Web.Models.V2;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions)
+public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions) : IGameServerV2ApiService
 {
     /// <summary>
     /// Gets the V2 GameServer list.
@@ -49,6 +49,36 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
 
         return await response.Content.ReadFromJsonAsync<GameServerValidationResult>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 GameServer validation response did not contain a payload.");
+    }
+
+    /// <summary>
+    /// Produces a dry-run preview of the Swarm service that would be created for a request.
+    /// </summary>
+    public async Task<GameServerDeploymentPreview> PreviewAsync(SaveGameServerRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsJsonAsync("api/v2/gameservers/preview", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerDeploymentPreview>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 GameServer preview response did not contain a payload.");
+    }
+
+    /// <summary>
+    /// Checks whether the supplied published ports are available for the given server.
+    /// </summary>
+    public async Task<GameServerPortAvailabilityResult> CheckPortAvailabilityAsync(GameServerPortAvailabilityRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsJsonAsync("api/v2/gameservers/ports/availability", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerPortAvailabilityResult>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 GameServer port availability response did not contain a payload.");
     }
 
     /// <summary>

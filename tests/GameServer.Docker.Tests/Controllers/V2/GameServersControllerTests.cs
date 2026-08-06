@@ -51,7 +51,7 @@ public class GameServersControllerTests
 
         var service = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, service, validationService);
+        var commandService = new GameServerCommandService(serverRepository.Object, service, validationService, new GameServerSpecBuilder());
         var controller = new GameServersController(service, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -79,7 +79,7 @@ public class GameServersControllerTests
 
         var service = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, service, validationService);
+        var commandService = new GameServerCommandService(serverRepository.Object, service, validationService, new GameServerSpecBuilder());
         var controller = new GameServersController(service, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -119,7 +119,7 @@ public class GameServersControllerTests
 
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService);
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder());
         var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act

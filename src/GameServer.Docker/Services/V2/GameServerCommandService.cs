@@ -11,7 +11,8 @@ namespace GameServer.Docker.Services.V2;
 public sealed class GameServerCommandService(
     IGameServerRepository repository,
     GameServerQueryService queryService,
-    GameServerValidationService validationService)
+    GameServerValidationService validationService,
+    GameServerSpecBuilder specBuilder)
 {
     /// <summary>
     /// Validates a V2 GameServer request.
@@ -20,6 +21,28 @@ public sealed class GameServerCommandService(
     {
         ArgumentNullException.ThrowIfNull(request);
         return validationService.ValidateAsync(request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Produces a dry-run preview of the Swarm service that would be created for a request,
+    /// without persisting anything or contacting Docker.
+    /// </summary>
+    public async Task<GameServerDeploymentPreviewDto> PreviewAsync(SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var resolution = await validationService.ResolveAsync(request, cancellationToken).ConfigureAwait(false);
+        return specBuilder.Build(request, resolution);
+    }
+
+    /// <summary>
+    /// Performs a point-in-time availability check for individual published ports so the
+    /// editor can validate port changes as they are made.
+    /// </summary>
+    public Task<GameServerPortAvailabilityResultDto> CheckPortAvailabilityAsync(GameServerPortAvailabilityRequestDto request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return validationService.CheckPortAvailabilityAsync(request, cancellationToken);
     }
 
     /// <summary>

@@ -3,7 +3,7 @@ using GameServer.Web.Models.V2;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions)
+public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions) : IGameTypeV2ApiService
 {
     /// <summary>
     /// Gets the V2 GameType list.

@@ -63,7 +63,7 @@ public class GameServerCommandServiceTests
             serviceOperations.Object,
             new PortAllocation { StartPort = 2000, EndPort = 100000 },
             new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), NullLogger<VolumeSetupResolver>.Instance));
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService);
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder());
 
         var request = new SaveGameServerRequestDto
         {

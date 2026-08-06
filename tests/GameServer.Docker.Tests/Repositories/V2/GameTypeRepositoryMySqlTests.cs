@@ -124,38 +124,21 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task InitializeDatabaseAsync_WhenPreMigrationLegacySchemaExists_ShouldReconcileToBaselineAndAllowCreates()
+    public async Task InitializeDatabaseAsync_ShouldApplyAllMigrationsAndBeIdempotent()
     {
         ArgumentNullException.ThrowIfNull(_repository);
         ArgumentNullException.ThrowIfNull(_context);
 
-        // Simulate a database created before EF migrations were adopted: only the legacy GameTypes table
-        // with an ImageReference column and no __EFMigrationsHistory table.
-        await _context.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE `GameTypes` (`Id` int NOT NULL AUTO_INCREMENT, `Key` varchar(200) NOT NULL, `DisplayName` varchar(200) NOT NULL, `Description` longtext NULL, `ImageReference` varchar(500) NOT NULL, `ThumbnailUrl` longtext NULL, `DocumentationUrl` longtext NULL, `IsActive` tinyint(1) NOT NULL, `CurrentRevisionId` int NULL, `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), `UpdatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (`Id`), UNIQUE KEY `IX_GameTypes_Key` (`Key`));");
-        await _context.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE `GameTypeRevisions` (`Id` int NOT NULL AUTO_INCREMENT, `GameTypeId` int NOT NULL, `VersionTag` varchar(200) NOT NULL, `ImageDigest` longtext NULL, `EnableTTY` tinyint(1) NOT NULL, `Notes` longtext NULL, `IsPublished` tinyint(1) NOT NULL, `CreatedAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (`Id`), KEY `IX_GameTypeRevisions_GameTypeId` (`GameTypeId`));");
-        await _context.Database.ExecuteSqlRawAsync(
-            "CREATE UNIQUE INDEX `IX_GameTypeRevisions_GameTypeId_VersionTag` ON `GameTypeRevisions` (`GameTypeId`, `VersionTag`);");
-        await _context.Database.ExecuteSqlRawAsync(
-            "INSERT INTO `GameTypes` (`Key`, `DisplayName`, `ImageReference`, `IsActive`) VALUES ('minecraft', 'Minecraft', 'itzg/minecraft-server', 1);");
-
         await _repository.InitializeDatabaseAsync();
-        // Running twice must be a no-op after the baseline is recorded.
+        // Running twice must be a no-op once all migrations are recorded.
         await _repository.InitializeDatabaseAsync();
 
-        var hasLegacyImageReferenceColumn = await _context.Database
-            .SqlQueryRaw<int>("SELECT 1 AS `Value` FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'GameTypes' AND column_name = 'ImageReference' LIMIT 1")
-            .AnyAsync();
+        var appliedMigrations = (await _context.Database.GetAppliedMigrationsAsync()).ToList();
+        Assert.Equal(_context.Database.GetMigrations(), appliedMigrations);
+        Assert.Empty(await _context.Database.GetPendingMigrationsAsync());
 
-        var revisionHasImageReference = await _context.Database
-            .SqlQueryRaw<int>("SELECT 1 AS `Value` FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'GameTypeRevisions' AND column_name = 'ImageReference' LIMIT 1")
-            .AnyAsync();
-
-        var preservedGameTypeCount = await _context.GameTypes.CountAsync();
-
-        Assert.False(hasLegacyImageReferenceColumn);
-        Assert.True(revisionHasImageReference);
-        Assert.Equal(1, preservedGameTypeCount);
+        // Mount type defaults come from the model's HasData seed, applied by the migrations.
+        Assert.True(await _context.MountTypeConfigs.AnyAsync(x => x.Key == "volume"));
+        Assert.True(await _context.MountTypeConfigs.AnyAsync(x => x.Key == "nfs"));
     }
 }

@@ -58,6 +58,44 @@ public sealed class GameServersController(GameServerQueryService queryService, G
     }
 
     /// <summary>
+    /// Produces a dry-run preview of the Swarm service that would be created for a request.
+    /// </summary>
+    [HttpPost("preview")]
+    [ProducesResponseType(200, Type = typeof(GameServerDeploymentPreviewDto))]
+    [ProducesResponseType(400)]
+    public async Task<ActionResult<GameServerDeploymentPreviewDto>> Preview([FromBody] SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var preview = await commandService.PreviewAsync(request, cancellationToken);
+            return Ok(preview);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Checks whether the supplied published ports are available for the given server.
+    /// </summary>
+    [HttpPost("ports/availability")]
+    [ProducesResponseType(200, Type = typeof(GameServerPortAvailabilityResultDto))]
+    [ProducesResponseType(400)]
+    public async Task<ActionResult<GameServerPortAvailabilityResultDto>> CheckPortAvailability([FromBody] GameServerPortAvailabilityRequestDto request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var availability = await commandService.CheckPortAvailabilityAsync(request, cancellationToken);
+            return Ok(availability);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Creates a V2 GameServer.
     /// </summary>
     [HttpPost]

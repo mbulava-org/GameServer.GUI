@@ -43,6 +43,17 @@ public sealed class GameServerValidationService
     /// </summary>
     public async Task<GameServerValidationResultDto> ValidateAsync(SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
     {
+        var resolution = await ResolveAsync(request, cancellationToken).ConfigureAwait(false);
+        return resolution.Result;
+    }
+
+    /// <summary>
+    /// Performs the same work as <see cref="ValidateAsync"/> but also returns the intermediate
+    /// resolution context (game type, revision and effective setting values) so callers such as
+    /// the deployment preview can build a service spec without duplicating the logic.
+    /// </summary>
+    public async Task<GameServerResolutionContext> ResolveAsync(SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -59,7 +70,10 @@ public sealed class GameServerValidationService
         if (revisionContext is null)
         {
             issues.Add(CreateIssue("RevisionNotFound", $"GameTypeRevision '{request.GameTypeRevisionId}' was not found.", "gameTypeRevisionId"));
-            return CreateResult(issues, request.DockerVolumeOptions, request.NetworkOptions);
+            return new GameServerResolutionContext
+            {
+                Result = CreateResult(issues, request.DockerVolumeOptions, request.NetworkOptions)
+            };
         }
 
         var revision = revisionContext.Revision;
@@ -73,15 +87,21 @@ public sealed class GameServerValidationService
 
         await ValidateResolvedPortsAsync(resolvedPorts, request.ServerId, issues, cancellationToken).ConfigureAwait(false);
 
-        return new GameServerValidationResultDto
+        return new GameServerResolutionContext
         {
-            IsValid = issues.All(issue => !issue.IsBlocking),
-            Issues = issues,
-            ResolvedPorts = resolvedPorts,
-            ResolvedVolumes = resolvedVolumes,
-            ResolvedWebHosts = resolvedWebHosts,
-            DockerVolumeOptions = request.DockerVolumeOptions,
-            NetworkOptions = request.NetworkOptions
+            GameType = revisionContext.GameType,
+            Revision = revision,
+            EffectiveSettings = effectiveSettings,
+            Result = new GameServerValidationResultDto
+            {
+                IsValid = issues.All(issue => !issue.IsBlocking),
+                Issues = issues,
+                ResolvedPorts = resolvedPorts,
+                ResolvedVolumes = resolvedVolumes,
+                ResolvedWebHosts = resolvedWebHosts,
+                DockerVolumeOptions = request.DockerVolumeOptions,
+                NetworkOptions = request.NetworkOptions
+            }
         };
     }
 
@@ -466,6 +486,31 @@ public sealed class GameServerValidationService
         ArgumentNullException.ThrowIfNull(issues);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var occupiedPorts = await GetOccupiedPortsAsync(currentServerId, cancellationToken).ConfigureAwait(false);
+
+        foreach (var port in resolvedPorts)
+        {
+            var scope = $"ports:{port.ContainerPort}/{port.Protocol}";
+            if (port.ContainerPort < portAllocation.StartPort || port.ContainerPort > portAllocation.EndPort)
+            {
+                issues.Add(CreateIssue("PortOutsideAllocationRange", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is outside the configured allocation range.", scope));
+                continue;
+            }
+
+            if (occupiedPorts.Contains(BuildPortKey(port.ContainerPort, port.Protocol)))
+            {
+                issues.Add(CreateIssue("PortUnavailable", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is already in use by another managed server.", scope));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the set of published ports currently occupied by other managed services.
+    /// Ports belonging to <paramref name="currentServerId"/> are excluded so a server does
+    /// not conflict with itself when its configuration is edited.
+    /// </summary>
+    private async Task<HashSet<string>> GetOccupiedPortsAsync(string? currentServerId, CancellationToken cancellationToken)
+    {
         var services = await serviceOperations.ListServicesAsync($"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}", cancellationToken: cancellationToken).ConfigureAwait(false);
         var occupiedPorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -484,21 +529,64 @@ public sealed class GameServerValidationService
             }
         }
 
-        foreach (var port in resolvedPorts)
-        {
-            var scope = $"ports:{port.ContainerPort}/{port.Protocol}";
-            if (port.ContainerPort < portAllocation.StartPort || port.ContainerPort > portAllocation.EndPort)
-            {
-                issues.Add(CreateIssue("PortOutsideAllocationRange", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is outside the configured allocation range.", scope));
-                continue;
-            }
-
-            if (occupiedPorts.Contains(BuildPortKey(port.ContainerPort, port.Protocol)))
-            {
-                issues.Add(CreateIssue("PortUnavailable", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is already in use by another managed server.", scope));
-            }
-        }
+        return occupiedPorts;
     }
+
+    /// <summary>
+    /// Performs a lightweight, point-in-time availability check for individual published ports.
+    /// Used by the Create/Edit Server editor to validate port changes as they are made without
+    /// running a full validation pass.
+    /// </summary>
+    public async Task<GameServerPortAvailabilityResultDto> CheckPortAvailabilityAsync(
+        GameServerPortAvailabilityRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+                    var results = new List<GameServerPortAvailabilityDto>();
+                    if (request.Ports.Count == 0)
+                    {
+                        return new GameServerPortAvailabilityResultDto { Ports = results };
+                    }
+
+                    var occupiedPorts = await GetOccupiedPortsAsync(request.ServerId, cancellationToken).ConfigureAwait(false);
+                    var requestedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var duplicateKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var port in request.Ports)
+                    {
+                        if (!requestedKeys.Add(BuildPortKey(port.Port, port.Protocol)))
+                        {
+                            duplicateKeys.Add(BuildPortKey(port.Port, port.Protocol));
+                        }
+                    }
+
+                    foreach (var port in request.Ports)
+                    {
+                        var key = BuildPortKey(port.Port, port.Protocol);
+
+                        var (isAvailable, reason) =
+                            port.Port < portAllocation.StartPort || port.Port > portAllocation.EndPort
+                                ? (false, $"Port '{key}' is outside the configured allocation range ({portAllocation.StartPort}-{portAllocation.EndPort}).")
+                                : duplicateKeys.Contains(key)
+                                    ? (false, $"Port '{key}' is used more than once by this server.")
+                                    : occupiedPorts.Contains(key)
+                                        ? (false, $"Port '{key}' is already in use by another managed server.")
+                                        : (true, (string?)null);
+
+                        results.Add(new GameServerPortAvailabilityDto
+                        {
+                            PortId = port.PortId,
+                            Port = port.Port,
+                            Protocol = port.Protocol,
+                            IsAvailable = isAvailable,
+                            Reason = reason
+                        });
+                    }
+
+                    return new GameServerPortAvailabilityResultDto { Ports = results };
+                }
 
     private List<GameServerResolvedVolumeDto> ResolveVolumes(
         GameTypeRevisionModel revision,
@@ -733,4 +821,19 @@ public sealed class GameServerValidationService
     }
 
     private sealed record RevisionContext(GameTypeModel GameType, GameTypeRevisionModel Revision);
+}
+
+/// <summary>
+/// Intermediate resolution output shared between validation and deployment preview.
+/// </summary>
+public sealed record GameServerResolutionContext
+{
+    public GameTypeModel? GameType { get; init; }
+
+    public GameTypeRevisionModel? Revision { get; init; }
+
+    public IReadOnlyDictionary<string, string?> EffectiveSettings { get; init; } =
+        new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+    public GameServerValidationResultDto Result { get; init; } = new();
 }

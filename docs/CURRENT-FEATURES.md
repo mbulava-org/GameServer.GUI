@@ -169,14 +169,15 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 The application uses a single V2 persistence layer for game type and server configuration:
 
 #### V2 persistence
-- `Data/V2/GameServerV2DbContext`
+- `Data/V2/GameServerV2DbContext` — owns the model and `HasData` seed data
+- `Data/V2/SqliteGameServerV2DbContext` · `Data/V2/MySqlGameServerV2DbContext` — provider-specific migration sets
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
-- provider-aware configuration supporting SQLite (default), MySQL (supported), and PostgreSQL (planned)
-- **SQLite is the current default; MySQL is supported.** PostgreSQL support exists in code but is not fully implemented and should be considered coming soon. The `src/GameServer.DB.PostgreSql` project and `scripts/Deploy-V2PostgresDatabase.ps1` are prepared for future completion.
+- **Schema is managed entirely by EF Core migrations.** Pending migrations are applied automatically at startup; the operation is idempotent and no custom schema repair runs at runtime.
+- **SQLite is the default; MySQL is supported.** PostgreSQL is experimental — its schema is deployed by the `src/GameServer.DB.PostgreSql` project and `scripts/Deploy-V2PostgresDatabase.ps1` rather than by EF migrations.
 - normalized schema with:
-  - `GameType` owning a fixed `ImageReference`
-  - `GameTypeRevision` owning tag-based deployable templates
+  - `GameType` owning catalog identity
+  - `GameTypeRevision` owning tag-based deployable templates, including `ImageReference`
   - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
   - derived Web Host state resolved from revision Web Host definitions + server settings instead of being stored
 
@@ -187,6 +188,9 @@ The application uses a single V2 persistence layer for game type and server conf
 - Setting-to-port relationships are modeled through unified port mapping rules rather than duplicated link fields.
 - V2 revision volume usage categories now use `config`, `saves`, `backups`, `gamefiles`, and `logs`.
 - V2 setting metadata now supports a `yesno` data type for literal `yes`/`no` values in addition to `boolean` for `true`/`false` values.
+- V2 setting metadata supports a `servervariable` data type whose value can embed `{Token}` references to `GameServer` properties, toggled per server. See [V2 GameType Settings & Metadata](guides/V2-GameType-Settings-And-Metadata.md).
+- Enum settings are authored as value/display pairs and serialized into `AllowedValuesJson` and `ValueMappingsJson`.
+- The server editor exposes a **Deployment Preview** tab and performs **live published-port availability checks** that gate saving. See [Deployment Preview & Port Validation](guides/V2-Deployment-Preview-And-Port-Validation.md).
 
 #### V2 editor Web Host rules
 - The V2 Web Hosts tab now guides authors toward relative, lowercase path segments and supports runtime placeholders such as `{serverId}`, `{name}`, `{serviceName}`, and `{gameType}`.
@@ -619,7 +623,11 @@ Base URL: Configured in `appsettings.json` under `GameServerDockerApi:BaseUri`
     "BaseUri": "http://192.168.10.50:5163/"
   },
   "ConnectionStrings": {
-    "GameServerDb": "Data Source=gameserver.db"
+    "GameServerV2Db": "Data Source=./data/gameserver-v2.db"
+  },
+  "V2Database": {
+    "Provider": "Sqlite",
+    "ConnectionStringName": "GameServerV2Db"
   },
   "Logging": {
     "LogLevel": {

@@ -5,9 +5,9 @@
 @using GameServer.Web.Models.V2
 @using Radzen
 @using Radzen.Blazor
-@inject Services.V2.GameServerV2ApiService GameServerApiV2
-@inject Services.V2.GameTypeV2ApiService GameTypeApiV2
-@inject Services.V2.MountTypeConfigApiService MountTypeConfigApi
+@inject Services.V2.IGameServerV2ApiService GameServerApiV2
+@inject Services.V2.IGameTypeV2ApiService GameTypeApiV2
+@inject Services.V2.IMountTypeConfigApiService MountTypeConfigApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 
@@ -100,8 +100,14 @@
                                             Data="@gameTypes"
                                             TextProperty="DisplayName"
                                             ValueProperty="Key"
+                                            AllowClear="true"
+                                            Placeholder="Select a game type..."
                                             class="w-100" />
                         </RadzenFormField>
+                        @if (string.IsNullOrWhiteSpace(selectedGameTypeKey))
+                        {
+                            <small class="text-danger">A game type must be selected before continuing.</small>
+                        }
                     </div>
                     <div class="mb-3">
                         <RadzenFormField Text="Revision" Variant="Variant.Outlined" class="w-100">
@@ -112,7 +118,7 @@
                                             TextProperty="Label"
                                             ValueProperty="Id"
                                             class="w-100"
-                                            Disabled="@(!availableRevisions.Any())" />
+                                            Disabled="@(string.IsNullOrWhiteSpace(selectedGameTypeKey) || !availableRevisions.Any())" />
                         </RadzenFormField>
                     </div>
                     @if (selectedGameType is not null)
@@ -141,9 +147,9 @@
                     </div>
                     <div class="mb-3">
                         <RadzenFormField Text="Service Name" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextBox @bind-Value="draft.ServiceName" class="w-100" />
+                            <RadzenTextBox Value="@ComputedServiceName" ReadOnly="true" Disabled="true" class="w-100" />
                         </RadzenFormField>
-                        <small class="text-muted">Leave blank to let the backend generate a service name.</small>
+                        <small class="text-muted">Generated automatically from the selected game type and the server id.</small>
                     </div>
                 </RadzenCard>
 
@@ -219,6 +225,20 @@
                                                    class="w-100"
                                                    Disabled="@isAutoCalculated" />
                                 </RadzenFormField>
+                                @{
+                                    var availability = GetPortAvailability(port);
+                                }
+                                @if (availability is not null)
+                                {
+                                    @if (availability.IsAvailable)
+                                    {
+                                        <div class="small text-success mt-1">Port is available.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="small text-danger mt-1">@availability.Reason</div>
+                                    }
+                                }
                             </div>
                         }
                     }
@@ -266,6 +286,7 @@
                                                                 </label>
                                                                 <GameServerSettingFieldV2 Definition="definition"
                                                                                           Value="@GetSettingValue(definition)"
+                                                                                          ValidationMessage="@GetSettingValidationMessage(definition)"
                                                                                           ValueChanged="@(value => SetSettingValue(definition.SettingKey, value))" />
                                                                 @if (!string.IsNullOrWhiteSpace(definition.Description))
                                                                 {
@@ -350,6 +371,14 @@
                                 </div>
                             </div>
                         </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="Deployment Preview">
+                            <div class="p-3">
+                                <GameServerDeploymentPreviewV2 Preview="@deploymentPreview"
+                                                               IsLoading="@isPreviewLoading"
+                                                               OnRefresh="@LoadDeploymentPreviewAsync" />
+                            </div>
+                        </RadzenTabsItem>
                     </Tabs>
                 </RadzenTabs>
             </div>
@@ -382,11 +411,14 @@
     private readonly List<RevisionOption> availableRevisions = [];
     private GameServerEditorDraft draft = new();
     private GameServerValidationResult? validationResult;
+    private GameServerDeploymentPreview? deploymentPreview;
+    private bool isPreviewLoading;
     private GameTypeDetail? selectedGameType;
     private string? selectedGameTypeKey;
     private bool isLoading = true;
     private bool isSaving;
     private int selectedTabIndex;
+    private const int DeploymentPreviewTabIndex = 2;
 
     // Volume mount type selections (keyed by GameTypeVolume.Id)
     private readonly List<MountTypeConfig> mountTypeOptions = [];
@@ -394,6 +426,14 @@
 
     // Published port selections (keyed by GameTypePort.Id)
     private readonly Dictionary<int, int> publishedPortSelections = new();
+
+    // Published port values as originally loaded, so reverting a port is never flagged unavailable.
+    private readonly Dictionary<int, int> originalPublishedPorts = new();
+
+    // Live availability results (keyed by GameTypePort.Id)
+    private readonly Dictionary<int, GameServerPortAvailability> portAvailability = new();
+    private bool isCheckingPorts;
+    private int portCheckToken;
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
@@ -411,7 +451,15 @@
 
     private bool CanSave =>
         !string.IsNullOrWhiteSpace(draft.Name)
-        && draft.GameTypeRevisionId > 0;
+        && !string.IsNullOrWhiteSpace(selectedGameTypeKey)
+        && draft.GameTypeRevisionId > 0
+        && !HasUnavailablePort
+        && !isCheckingPorts;
+
+    private string ComputedServiceName =>
+        string.IsNullOrWhiteSpace(selectedGameTypeKey) || string.IsNullOrWhiteSpace(draft.ServerId)
+            ? string.Empty
+            : $"{selectedGameTypeKey}-{draft.ServerId}";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -446,6 +494,7 @@
 
                 draft = new GameServerEditorDraft
                 {
+                    ServerId = server.ServerId,
                     Name = server.Name,
                     Description = server.Description,
                     GameTypeRevisionId = server.GameTypeRevisionId,
@@ -472,13 +521,12 @@
 
             gameTypes.AddRange(await GameTypeApiV2.GetListAsync(includeInactive: true));
             await LoadMountTypesAsync();
-            selectedGameTypeKey = gameTypes.FirstOrDefault()?.Key;
-            draft = new GameServerEditorDraft();
-
-            if (!string.IsNullOrWhiteSpace(selectedGameTypeKey))
+            selectedGameTypeKey = null;
+            selectedGameType = null;
+            draft = new GameServerEditorDraft
             {
-                selectedGameType = await GameTypeApiV2.GetByKeyAsync(selectedGameTypeKey);
-            }
+                ServerId = Guid.NewGuid().ToString("N")
+            };
 
             RefreshRevisionOptions();
             EnsureRevisionSelected();
@@ -565,12 +613,62 @@
     private void EnsurePortsInitialized()
     {
         publishedPortSelections.Clear();
+        originalPublishedPorts.Clear();
+        portAvailability.Clear();
+
         foreach (var port in CurrentRevisionPorts)
         {
-            publishedPortSelections[port.Id] = port.ContainerPort;
+            // Prefer the value already stored on the owning port-type setting so an existing
+            // server round-trips its configured ports instead of falling back to the defaults.
+            publishedPortSelections[port.Id] = TryGetPortSettingValue(port) ?? port.ContainerPort;
+            originalPublishedPorts[port.Id] = publishedPortSelections[port.Id];
         }
 
         RecalculateAutoPortsFromAll();
+        SyncPortSettingsFromPublishedPorts();
+    }
+
+    /// <summary>
+    /// Returns the port-type setting definition whose primary direct mapping targets the port.
+    /// </summary>
+    private GameTypeSettingDefinition? FindPrimarySettingForPort(GameTypePort port)
+    {
+        return CurrentSettingDefinitions.FirstOrDefault(definition =>
+            definition.Metadata?.PortMappings.Any(mapping =>
+                mapping.TargetContainerPort == port.ContainerPort
+                && string.Equals(mapping.TargetProtocol, port.Protocol, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)) == true);
+    }
+
+    private int? TryGetPortSettingValue(GameTypePort port)
+    {
+        var definition = FindPrimarySettingForPort(port);
+        if (definition is null)
+        {
+            return null;
+        }
+
+        var value = draft.SettingValues.TryGetValue(definition.SettingKey, out var stored) ? stored : definition.DefaultValue;
+        return int.TryParse(value, out var parsed) && parsed is > 0 and <= 65535 ? parsed : null;
+    }
+
+    /// <summary>
+    /// Pushes the current published port values back into the port-type settings that own them
+    /// so the saved request and the deployment preview reflect the edited ports.
+    /// </summary>
+    private void SyncPortSettingsFromPublishedPorts()
+    {
+        foreach (var port in CurrentRevisionPorts)
+        {
+            var definition = FindPrimarySettingForPort(port);
+            if (definition is null)
+            {
+                continue;
+            }
+
+            draft.SettingValues[definition.SettingKey] =
+                GetPublishedPort(port).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
     }
 
     private int GetPublishedPort(GameTypePort port)
@@ -578,11 +676,14 @@
         return publishedPortSelections.TryGetValue(port.Id, out var published) ? published : port.ContainerPort;
     }
 
-    private void OnPublishedPortChanged(GameTypePort port, int value)
+    private async Task OnPublishedPortChanged(GameTypePort port, int value)
     {
         publishedPortSelections[port.Id] = value;
         validationResult = null;
+        deploymentPreview = null;
         RecalculateAutoPortsFrom(port);
+        SyncPortSettingsFromPublishedPorts();
+        await CheckPortAvailabilityAsync();
     }
 
     private bool IsAutoCalculatedPort(GameTypePort port)
@@ -674,17 +775,134 @@
         return draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue;
     }
 
-    private Task SetSettingValue(string settingKey, string? value)
+    private async Task SetSettingValue(string settingKey, string? value)
     {
         if (string.IsNullOrWhiteSpace(settingKey))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         draft.SettingValues[settingKey] = value;
         validationResult = null;
-        return Task.CompletedTask;
+        deploymentPreview = null;
+
+        // A port typed on the Settings tab must drive the same recalculation and availability
+        // pipeline as the Port Mappings panel so both views stay consistent.
+        var port = FindPortForSetting(settingKey);
+        if (port is not null && int.TryParse(value, out var parsedPort) && parsedPort is > 0 and <= 65535)
+        {
+            publishedPortSelections[port.Id] = parsedPort;
+            RecalculateAutoPortsFrom(port);
+            SyncPortSettingsFromPublishedPorts();
+            await CheckPortAvailabilityAsync();
+        }
     }
+
+    /// <summary>
+    /// Finds the revision port whose primary direct mapping belongs to the given setting.
+    /// </summary>
+    private GameTypePort? FindPortForSetting(string settingKey)
+    {
+        var definition = CurrentSettingDefinitions.FirstOrDefault(candidate =>
+            string.Equals(candidate.SettingKey, settingKey, StringComparison.OrdinalIgnoreCase));
+
+        var primaryMapping = definition?.Metadata?.PortMappings.FirstOrDefault(mapping =>
+            string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase));
+
+        if (primaryMapping is null)
+        {
+            return null;
+        }
+
+        return CurrentRevisionPorts.FirstOrDefault(port =>
+            port.ContainerPort == primaryMapping.TargetContainerPort
+            && string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Checks availability for every published port that differs from its originally loaded value.
+    /// Ports restored to their original value are always treated as available.
+    /// </summary>
+    private async Task CheckPortAvailabilityAsync()
+    {
+        var token = ++portCheckToken;
+
+        var changedPorts = CurrentRevisionPorts
+            .Where(port => !originalPublishedPorts.TryGetValue(port.Id, out var original) || original != GetPublishedPort(port))
+            .ToList();
+
+        foreach (var port in CurrentRevisionPorts.Except(changedPorts))
+        {
+            portAvailability.Remove(port.Id);
+        }
+
+        if (changedPorts.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            isCheckingPorts = true;
+            var result = await GameServerApiV2.CheckPortAvailabilityAsync(new GameServerPortAvailabilityRequest
+            {
+                ServerId = isEditMode ? ServerId : draft.ServerId,
+                Ports = changedPorts
+                    .Select(port => new GameServerPortAvailabilityRequestPort
+                    {
+                        PortId = port.Id,
+                        Port = GetPublishedPort(port),
+                        Protocol = port.Protocol
+                    })
+                    .ToList()
+            });
+
+            // Ignore responses superseded by a newer edit.
+            if (token != portCheckToken)
+            {
+                return;
+            }
+
+            foreach (var entry in result.Ports)
+            {
+                portAvailability[entry.PortId] = entry;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Port check failed", ex.Message);
+        }
+        finally
+        {
+            if (token == portCheckToken)
+            {
+                isCheckingPorts = false;
+            }
+        }
+    }
+
+    private GameServerPortAvailability? GetPortAvailability(GameTypePort port)
+    {
+        return portAvailability.TryGetValue(port.Id, out var availability) ? availability : null;
+    }
+
+    /// <summary>
+    /// Returns the availability message for the setting that owns a port, used to surface
+    /// port conflicts inline on the Settings tab.
+    /// </summary>
+    private string? GetSettingValidationMessage(GameTypeSettingDefinition definition)
+    {
+        var port = FindPortForSetting(definition.SettingKey);
+        if (port is null)
+        {
+            return null;
+        }
+
+        var availability = GetPortAvailability(port);
+        return availability is null || availability.IsAvailable ? null : availability.Reason;
+    }
+
+    private bool HasUnavailablePort => portAvailability.Values.Any(availability => !availability.IsAvailable);
 
     private async Task ValidateAsync()
     {
@@ -733,11 +951,11 @@
     {
         return new SaveGameServerRequest
         {
-            ServerId = isEditMode ? ServerId : null,
+            ServerId = isEditMode ? ServerId : draft.ServerId,
             Name = draft.Name,
             Description = draft.Description,
             GameTypeRevisionId = draft.GameTypeRevisionId,
-            ServiceName = string.IsNullOrWhiteSpace(draft.ServiceName) ? null : draft.ServiceName,
+            ServiceName = string.IsNullOrWhiteSpace(ComputedServiceName) ? null : ComputedServiceName,
             Status = string.IsNullOrWhiteSpace(draft.Status) ? null : draft.Status,
             Settings = CurrentSettingDefinitions
                 .Select(definition => new GameServerSetting
@@ -771,14 +989,16 @@
             return null;
         }
 
-        var serviceName = !string.IsNullOrWhiteSpace(draft.ServiceName)
-            ? draft.ServiceName
+        var serviceName = !string.IsNullOrWhiteSpace(ComputedServiceName)
+            ? ComputedServiceName
             : !string.IsNullOrWhiteSpace(draft.Name)
                 ? draft.Name.Replace(' ', '-').ToLowerInvariant()
                 : "<service-name>";
 
         return config.VolumeNameFormat
             .Replace("{ServiceName}", serviceName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{gameTypeKey}", selectedGameTypeKey ?? "<game-type-key>", StringComparison.OrdinalIgnoreCase)
+            .Replace("{serverId}", string.IsNullOrWhiteSpace(draft.ServerId) ? "<server-id>" : draft.ServerId, StringComparison.OrdinalIgnoreCase)
             .Replace("{Usage}", volume.Usage, StringComparison.OrdinalIgnoreCase)
             .Replace("{Source}", volume.Source.Replace('/', '-'), StringComparison.OrdinalIgnoreCase)
             .Replace("{MountType}", mountTypeKey, StringComparison.OrdinalIgnoreCase);
@@ -809,10 +1029,37 @@
         Navigation.NavigateTo("/gameservers-v2");
     }
 
-    private Task OnSelectedTabChanged(int index)
+    private async Task OnSelectedTabChanged(int index)
     {
         selectedTabIndex = index;
-        return Task.CompletedTask;
+
+        if (index == DeploymentPreviewTabIndex && deploymentPreview is null && !isPreviewLoading)
+        {
+            await LoadDeploymentPreviewAsync();
+        }
+    }
+
+    private async Task LoadDeploymentPreviewAsync()
+    {
+        if (draft.GameTypeRevisionId <= 0)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Preview unavailable", "Select a game type and revision first.");
+            return;
+        }
+
+        try
+        {
+            isPreviewLoading = true;
+            deploymentPreview = await GameServerApiV2.PreviewAsync(BuildSaveRequest());
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Preview failed", ex.Message);
+        }
+        finally
+        {
+            isPreviewLoading = false;
+        }
     }
 
     private static string BuildRevisionLabel(GameTypeRevision revision)
@@ -825,6 +1072,8 @@
 
     private sealed class GameServerEditorDraft
     {
+        public string ServerId { get; set; } = string.Empty;
+
         public string Name { get; set; } = string.Empty;
 
         public string? Description { get; set; }

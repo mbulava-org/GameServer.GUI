@@ -109,7 +109,7 @@ public sealed class GameServerDeploymentService(
         }
 
         return volumeSetupResolver
-            .ResolveForCreate(server.ServerId, gameType.Key, revision.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server))
+            .ResolveForCreate(server.ServerId, gameType.Key, revision.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision))
             .ToList();
     }
 
@@ -120,19 +120,33 @@ public sealed class GameServerDeploymentService(
         string layout)
     {
         return volumeSetupResolver
-            .ResolveForUpdate(server.ServerId, gameType.Key, revision.Volumes, server.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server))
+            .ResolveForUpdate(server.ServerId, gameType.Key, revision.Volumes, server.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision))
             .ToList();
     }
 
-    private static IReadOnlyDictionary<string, string?> BuildSettingValues(GameServerModel server)
+    private static IReadOnlyDictionary<string, string?> BuildSettingValues(
+        GameServerModel server,
+        GameType gameType,
+        GameTypeRevision revision)
     {
+        var tokenValues = ServerVariableExpander.BuildTokenValues(server, gameType, revision);
+
+        var serverVariableKeys = revision.SettingDefinitions
+            .Where(definition => string.Equals(definition.Metadata?.DataType, ServerVariableExpander.ServerVariableDataType, StringComparison.OrdinalIgnoreCase))
+            .Select(definition => definition.SettingKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var setting in server.Settings)
         {
-            if (!string.IsNullOrWhiteSpace(setting.SettingKey))
+            if (string.IsNullOrWhiteSpace(setting.SettingKey))
             {
-                values[setting.SettingKey] = setting.Value;
+                continue;
             }
+
+            values[setting.SettingKey] = serverVariableKeys.Contains(setting.SettingKey)
+                ? ServerVariableExpander.Resolve(setting.Value, tokenValues)
+                : setting.Value;
         }
 
         return values;

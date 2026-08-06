@@ -163,14 +163,16 @@ public class MyHub : Hub
 - `NodeAgentDiscoveryService` - Agent discovery/health tracking via push-based registration and UDP announcements
 
 **Persistence:**
-- `GameServerV2DbContext` is the only persistence implementation.
-- V2 provider selection is configuration-driven and supports SQLite, MySQL, and PostgreSQL.
-- **SQLite is the current default for V2.** It is the best-tested local option and requires no external server.
-- **MySQL is supported and can be selected via configuration.**
-- **PostgreSQL support exists in code but is not fully implemented or production-ready.** It is planned and should be considered coming soon; the `GameServer.DB.PostgreSql` project and `pgpac` tooling are prepared for future completion.
+- `GameServerV2DbContext` is the only persistence implementation and the single source of the V2 model.
+- Each relational provider has its own `DbContext` subclass (`SqliteGameServerV2DbContext`, `MySqlGameServerV2DbContext`) so EF Core keeps a separate, provider-correct migration set for each.
+- **Schema management is owned entirely by EF Core migrations.** There is no hand-rolled schema creation or repair at runtime; pending migrations are applied on startup and the operation is idempotent.
+- **SQLite is the default provider.** It requires no external server and is the best-tested local option.
+- **MySQL is supported** and selected via configuration.
+- **PostgreSQL is experimental.** Its schema is deployed out-of-band by the `GameServer.DB.PostgreSql` project and `pgpac` tooling rather than by EF migrations; startup verifies the schema exists and fails fast with deployment guidance if it does not.
+- Seed data (such as the built-in mount types) is declared with `HasData` in the model and delivered by the migrations.
 - The V2 schema is normalized around:
-  - `GameType` owning a fixed `ImageReference`
-  - `GameTypeRevision` owning version-tagged deployable templates
+  - `GameType` owning catalog identity (key, display name, type)
+  - `GameTypeRevision` owning the version-tagged deployable template, including its `ImageReference`
   - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
 - `GameServerPorts` and resolved Web Host state are not persisted in V2; `GameServerVolumes` are persisted as immutable per-server snapshots resolved from `GameTypeVolume` templates plus `MountTypeConfig` entries.
 
@@ -220,16 +222,19 @@ public class MyHub : Hub
 The application uses a single V2 persistence layer.
 
 #### V2 persistence
-- `Data/V2/GameServerV2DbContext`
+- `Data/V2/GameServerV2DbContext` — owns the model and seed data
+- `Data/V2/SqliteGameServerV2DbContext` — SQLite migration set (`Data/V2/Migrations/SqliteMigrations`)
+- `Data/V2/MySqlGameServerV2DbContext` — MySQL migration set (`Data/V2/Migrations/MySqlMigrations`)
 - `Repositories/V2/IGameTypeRepository`
 - `Repositories/V2/IGameServerRepository`
-- provider-aware: **SQLite (default)**, MySQL (supported), or PostgreSQL (planned) based on configuration
+- provider-aware: **SQLite (default)** or MySQL via EF migrations; PostgreSQL is experimental
 - PostgreSQL is backed by the dedicated `GameServer.DB.PostgreSql` project and `scripts/Deploy-V2PostgresDatabase.ps1`
 - follows the normalized schema documented in `docs/reference/V2-Database-Diagram.md`
+- see [Database Setup & Migrations](guides/DATABASE-INITIALIZATION.md) for configuration and how to add a migration
 
 #### V2 schema ownership rules
-- `GameType` owns the fixed Docker image reference and catalog metadata.
-- `GameTypeRevision` owns the tagged deployable template.
+- `GameType` owns catalog identity and metadata.
+- `GameTypeRevision` owns the tagged deployable template, including the Docker image reference.
 - `GameServer` stores only server-specific deployment intent and references `GameTypeRevisionId`.
 - `GameServerSettings` stores desired per-server values.
 - `GameServerPorts` and resolved Web Host state are derived and are not persisted in V2. `GameServerVolumes` are persisted as immutable snapshots resolved from `GameTypeVolume` templates and `MountTypeConfig` entries.

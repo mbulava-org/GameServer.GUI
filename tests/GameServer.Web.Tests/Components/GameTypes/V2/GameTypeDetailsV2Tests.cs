@@ -19,6 +19,9 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
     public GameTypeDetailsV2Tests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+
+        // GameTypeDetailsV2 injects MountTypeConfigApiService, so it must always be resolvable.
+        Services.AddSingleton(CreateMountTypeConfigApiService());
     }
 
     [Fact]
@@ -414,7 +417,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         Services.AddSingleton(CreateApiService(detail));
     }
 
-    private GameTypeV2ApiService CreateApiService(GameTypeDetail detail)
+    private IGameTypeV2ApiService CreateApiService(GameTypeDetail detail)
     {
         return CreateApiService(request =>
         {
@@ -427,7 +430,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         });
     }
 
-    private GameTypeV2ApiService CreateApiService(Func<HttpRequestMessage, HttpResponseMessage> responder)
+    private IGameTypeV2ApiService CreateApiService(Func<HttpRequestMessage, HttpResponseMessage> responder)
     {
         var handler = new StubHttpMessageHandler(responder);
 
@@ -445,6 +448,32 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         };
 
         return new GameTypeV2ApiService(httpClientFactory.Object, options);
+    }
+
+    private static IMountTypeConfigApiService CreateMountTypeConfigApiService()
+    {
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(factory => factory.CreateClient(It.IsAny<string>()))
+            .Returns(() => new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/mounttypeconfigs")
+                {
+                    return CreateJsonResponse(new List<MountTypeConfig>());
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }))
+            {
+                BaseAddress = new Uri("http://localhost/")
+            });
+
+        var options = new GameServerDockerApi
+        {
+            BaseUri = "http://localhost/"
+        };
+
+        return new MountTypeConfigApiService(httpClientFactory.Object, options);
     }
 
     private static HttpResponseMessage CreateJsonResponse<T>(T payload, HttpStatusCode statusCode = HttpStatusCode.OK)

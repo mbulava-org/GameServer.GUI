@@ -170,6 +170,7 @@ namespace GameServer.Docker
                 builder.Services.AddScoped<RepositoriesV2.IMountTypeConfigRepository, RepositoriesV2.MountTypeConfigRepository>();
                 builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameServerValidationService>();
+                builder.Services.AddScoped<ServicesV2.GameServerSpecBuilder>();
                 builder.Services.AddScoped<ServicesV2.GameServerCommandService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();

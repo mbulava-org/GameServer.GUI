@@ -52,14 +52,11 @@ dotnet build
 
 ### Step 4: Initialize the Database
 
-The SQLite database will be created automatically on first run. To manually seed it:
+No manual step is required. On startup the API applies any pending EF Core migrations for the configured provider, creating the database on first run. Built-in seed data (such as the default mount types) ships with the migrations.
 
-```bash
-cd src/GameServer.Docker
-dotnet run -- --seed-database
-```
+The default provider is SQLite at `./data/gameserver-v2.db`. To use MySQL instead, set `V2Database:Provider` to `MySql` and supply `ConnectionStrings:GameServerV2MySqlDb`.
 
-**See [guides/DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md) for details.**
+**See [guides/DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md) for providers, configuration, and how to add migrations.**
 
 ### Step 5: Run the API Service
 
@@ -692,13 +689,14 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Understand the system design
 - **[CURRENT-FEATURES.md](CURRENT-FEATURES.md)** - See all features
 - **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - How agents register with the Primary Service
-- **[GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md)** - Create custom game types
+- **[V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md)** - Create custom game types
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribute to the project
 
 ### Advanced Topics
 
-- **Adding Custom Game Types** - [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md)
-- **Port Relationships** - [Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md)
+- **Adding Custom Game Types** - [V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md)
+- **Setting Data Types** - [V2 Settings & Metadata](guides/V2-GameType-Settings-And-Metadata.md)
+- **Port Mappings** - [V2 Ports & Web Hosts](guides/V2-Ports-And-WebHosts.md)
 - **Performance Tuning** - [Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md)
 - **Security** - [Agent Security](architecture/Agent-Security.md)
 

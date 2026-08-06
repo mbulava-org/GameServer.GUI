@@ -14,7 +14,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - 🔧 **Game Type System** - Extensible game server templates with metadata
 - 🌐 **Port Management** - Intelligent port mapping with automatic relationships
 - 🔐 **Agent-Based Architecture** - Secure node agents for distributed operations
-- 📦 **V2 Persistence** - SQLite (default), MySQL (supported), PostgreSQL (coming soon)
+- 📦 **V2 Persistence** - SQLite (default) and MySQL via EF Core migrations; PostgreSQL experimental
 - 🛠️ **RESTful API** - Full API access for automation
 
 ## 🏗️ Architecture
@@ -25,7 +25,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **Frontend:** Blazor Server, Radzen UI Components
 - **Real-Time:** SignalR for live updates
 - **Container Orchestration:** Docker Swarm
-- **Database:** V2 SQLite (default), MySQL (supported), or PostgreSQL (coming soon) via Entity Framework Core
+- **Database:** V2 schema via Entity Framework Core — SQLite (default) or MySQL, each with its own migration set; PostgreSQL experimental
 - **API Documentation:** OpenAPI/Swagger, Scalar
 - **Logging:** Serilog
 
@@ -71,12 +71,15 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **[Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md)** - Performance patterns
 
 ### 📖 Feature Guides
-- **[GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata system
-- **[GameType Editor Guide](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor UI
-- **[Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md)** - Port configuration
-- **[Database Guide](guides/DATABASE-INITIALIZATION.md)** - Database setup and seeding
+- **[V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md)** - Build a GameType end to end
+- **[V2 GameType Settings & Metadata](guides/V2-GameType-Settings-And-Metadata.md)** - Data types, enums, server variables
+- **[V2 GameType Editor Components](guides/V2-GameType-Editor-Components.md)** - Editor component breakdown
+- **[Database Setup & Migrations](guides/DATABASE-INITIALIZATION.md)** - Providers, configuration, EF migrations
 - **[V2 GameServer Lifecycle](guides/V2-GameServer-Lifecycle.md)** - Create, edit, and view V2 servers
+- **[Deployment Preview & Port Validation](guides/V2-Deployment-Preview-And-Port-Validation.md)** - Dry-run specs and live port conflict checks
 - **[V2 Ports & Web Hosts](guides/V2-Ports-And-WebHosts.md)** - Configure revision ports, port mappings, and web hosts
+- **[V2 Volume Setup](guides/V2-Volume-Setup.md)** - Revision volumes and resolution
+- **[Mount Type Configuration](guides/Volume-Setup-Configuration.md)** - Mount type keys, drivers, and templates
 - **[Terminal & Console](guides/Terminal-And-Console.md)** - Interactive terminal and TTY console
 - **[File Manager](guides/File-Manager.md)** - Browse and edit server files
 - **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - Push-based agent registration and heartbeats
@@ -118,10 +121,14 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 Detailed guides for specific features and subsystems:
 
 - **[Quick Start](QUICK-START.md)** · **[Agent README](../src/GameServer.Docker.Agent/README.md)** - Deploy and configure Node Agents
-- **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Database setup
-- **[GameType-Metadata-Complete-Guide.md](guides/GameType-Metadata-Complete-Guide.md)** - Extended metadata
-- **[GameType-Editor-Complete-Functionality-Guide.md](guides/GameType-Editor-Complete-Functionality-Guide.md)** - GameType editor
-- **[Port-Mapping-Integration-Guide.md](guides/Port-Mapping-Integration-Guide.md)** - Port relationships
+- **[DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md)** - Providers, configuration, and EF Core migrations
+- **[V2-GameType-Assembly-Instructions.md](guides/V2-GameType-Assembly-Instructions.md)** - Assembling a GameType
+- **[V2-GameType-Settings-And-Metadata.md](guides/V2-GameType-Settings-And-Metadata.md)** - Setting data types and metadata
+- **[V2-GameType-Editor-Components.md](guides/V2-GameType-Editor-Components.md)** - Editor component map
+- **[V2-GameServer-Lifecycle.md](guides/V2-GameServer-Lifecycle.md)** - Server create/edit/view flow
+- **[V2-Deployment-Preview-And-Port-Validation.md](guides/V2-Deployment-Preview-And-Port-Validation.md)** - Dry-run specs and port conflicts
+- **[V2-Ports-And-WebHosts.md](guides/V2-Ports-And-WebHosts.md)** - Ports, mappings, and web hosts
+- **[V2-Volume-Setup.md](guides/V2-Volume-Setup.md)** · **[Volume-Setup-Configuration.md](guides/Volume-Setup-Configuration.md)** - Volumes and mount types
 
 ### Reference (`reference/`)
 
@@ -129,7 +136,8 @@ Quick reference materials and API documentation:
 
 - **[QUICK-REFERENCE-CARD.md](reference/QUICK-REFERENCE-CARD.md)** - Common operations
 - **[CONSTANTS-AND-CONVENTIONS.md](reference/CONSTANTS-AND-CONVENTIONS.md)** - Coding standards
-- **[SQLite-GameType-Database-Schema.md](reference/SQLite-GameType-Database-Schema.md)** - Database schema
+- **[V2-Database-Diagram.md](reference/V2-Database-Diagram.md)** - Current V2 schema and relationships
+- **[Enum-Value-Mappings.md](reference/Enum-Value-Mappings.md)** - Enum value/display mapping reference
 - **[Game-Server-Port-Examples.json](reference/Game-Server-Port-Examples.json)** - Port examples
 
 ### Architecture (`architecture/`)
@@ -150,12 +158,14 @@ Deep dives into system architecture and design:
 | **Get started quickly** | [QUICK-START.md](QUICK-START.md) |
 | **Understand the architecture** | [ARCHITECTURE.md](ARCHITECTURE.md) ⚠️ **Required** |
 | **Add a new feature** | [CONTRIBUTING.md](CONTRIBUTING.md) + [ARCHITECTURE.md](ARCHITECTURE.md) |
-| **Add a new game type** | [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md) |
+| **Add a new game type** | [V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md) |
 | **Deploy to production** | [Quick Start](QUICK-START.md) |
 | **Fix a performance issue** | [Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md) |
 | **Understand coding standards** | [Constants & Conventions](reference/CONSTANTS-AND-CONVENTIONS.md) |
-| **Set up the database** | [Database Guide](guides/DATABASE-INITIALIZATION.md) |
-| **Configure port mappings** | [Port Mapping Guide](guides/Port-Mapping-Integration-Guide.md) |
+| **Set up the database** | [Database Setup & Migrations](guides/DATABASE-INITIALIZATION.md) |
+| **Add an EF migration** | [Database Setup & Migrations](guides/DATABASE-INITIALIZATION.md) |
+| **Configure port mappings** | [V2 Ports & Web Hosts](guides/V2-Ports-And-WebHosts.md) |
+| **Preview a deployment** | [Deployment Preview & Port Validation](guides/V2-Deployment-Preview-And-Port-Validation.md) |
 | **Write tests** | [Testing Guide](TESTING-QUICK-REFERENCE.md) |
 | **Manage V2 servers** | [V2 GameServer Lifecycle](guides/V2-GameServer-Lifecycle.md) |
 | **Use terminal/console** | [Terminal & Console](guides/Terminal-And-Console.md) |
@@ -189,15 +199,16 @@ filters.Add("label", ServiceLabels.Managed);
 filters.Add("label", "gameserver.docker.managed");
 ```
 
-### Extended Metadata System
+### Setting Metadata System
 
-GameTypes support rich metadata for settings:
-- **Data Types:** `string`, `number`, `boolean`, `enum`, `port`
-- **Validation:** Min/Max values, allowed values
-- **Port Relationships:** Offset, Fixed, Multiplier
-- **UI Rendering:** Categories, descriptions, defaults
+GameType revisions define settings with rich metadata:
+- **Data Types:** `string`, `number`, `boolean`, `enum`, `port`, `servervariable`
+- **Validation:** required/non-empty flags, regex patterns, allowed values
+- **Enums:** edited as value/display pairs, persisted to `AllowedValuesJson` and `ValueMappingsJson`
+- **Server Variables:** `{Token}` expansion with a per-server on/off toggle
+- **Port Mappings:** one primary direct mapping plus related offset/multiplier mappings
 
-**See [GameType Metadata Guide](guides/GameType-Metadata-Complete-Guide.md) for details.**
+**See [V2 GameType Settings & Metadata](guides/V2-GameType-Settings-And-Metadata.md) for details.**
 
 ### Performance Patterns
 
@@ -325,6 +336,7 @@ We welcome contributions! Please follow these steps:
    - [ARCHITECTURE.md](ARCHITECTURE.md) - Architecture questions
    - [QUICK-REFERENCE-CARD.md](reference/QUICK-REFERENCE-CARD.md) - Common operations
    - [CURRENT-FEATURES.md](CURRENT-FEATURES.md) - Feature availability
+   - [DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md) - Database and migration questions
 
 2. **Search existing issues** - Your question might already be answered
 
@@ -353,7 +365,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
   - Container attach (`/hubs/attach`)
 - ✅ Per-user interactive exec shell preserved at `/hubs/terminal`
 - ✅ NSwag-generated REST client aligned with current V2 API surface
-- ✅ V2 repository initialization handles SQLite/MySQL legacy-schema repair
+- ✅ V2 schema managed entirely by provider-specific EF Core migrations (SQLite + MySQL)
+- ✅ Deployment preview and live published-port conflict validation in the server editor
+- ✅ `servervariable` setting type with `{Token}` expansion
+- ✅ Structured enum value/display editing for GameType settings
 
 ### Roadmap
 

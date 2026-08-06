@@ -3,7 +3,7 @@ using GameServer.Web.Models.V2;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions)
+public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions) : IMountTypeConfigApiService
 {
     /// <summary>
     /// Gets all mount-type configurations.
