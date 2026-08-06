@@ -182,15 +182,9 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
             Usage = volume.Usage,
             VolumeName = volume.VolumeName,
             ContainerPath = volume.ContainerPath,
-            Source = volume.Source,
             MountType = volume.MountType.ToString().ToLowerInvariant(),
             ReadOnly = volume.ReadOnly,
-            Driver = volume.Driver,
             DriverOptionsJson = volume.DriverOptionsJson,
-            OwnerUid = volume.OwnerUid,
-            OwnerGid = volume.OwnerGid,
-            Permissions = volume.Permissions,
-            EnsureNfsPathExists = volume.EnsureNfsPathExists,
             IsProvisioned = volume.IsProvisioned,
             CreatedAt = volume.CreatedAt
         };

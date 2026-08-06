@@ -177,11 +177,8 @@ public class GameServerV2DbContext : DbContext
             entity.HasIndex(e => new { e.GameServerId, e.ContainerPath }).IsUnique();
             entity.Property(e => e.Usage).IsRequired().HasMaxLength(100);
             entity.Property(e => e.ContainerPath).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.Source).IsRequired().HasMaxLength(500);
             entity.Property(e => e.VolumeName).IsRequired().HasMaxLength(500);
             entity.Property(e => e.MountType).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.Driver).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.Permissions).HasMaxLength(10);
 
             entity.HasOne(e => e.GameServer)
                 .WithMany(e => e.Volumes)
@@ -309,7 +306,7 @@ public class GameServerV2DbContext : DbContext
                     Key = "nfs",
                     DisplayName = "NFS volume",
                     VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}",
-                    OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
+                    OptionsJson = "{\"Driver\":\"local\",\"NfsOptions\":\"addr=host.docker.internal,rw\",\"NfsRoot\":\"/exported/path\",\"DevicePathFormat\":\"{gameTypeKey}/{serverId}/{Source}\",\"LocalPath\":\"/data/nfs\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,
                     UpdatedAt = SeedTimestamp

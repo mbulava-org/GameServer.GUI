@@ -4,6 +4,7 @@ using GameServer.Docker.Constants;
 using GameServer.Docker.Interfaces;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
+using GameServer.Docker.Services.V2.MountTypeHandlers;
 using Microsoft.Extensions.Options;
 using GameServerModel = GameServer.Docker.Models.V2.GameServer;
 
@@ -18,7 +19,7 @@ public sealed class GameServerDeploymentService(
     IGameServerRepository gameServerRepository,
     IGameTypeRepository gameTypeRepository,
     IVolumeSetupResolver volumeSetupResolver,
-    INfsVolumePreparationService nfsVolumePreparationService,
+    IMountTypeHandlerFactory mountTypeHandlerFactory,
     IServiceOperations serviceOperations,
     ILogger<GameServerDeploymentService> logger)
 {
@@ -35,11 +36,24 @@ public sealed class GameServerDeploymentService(
 
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
 
-        var volumes = ResolveServerVolumes(server, gameType, revision, volumeBindingLayout);
+        List<GameServerVolume> volumes;
+        if (server.Volumes.Count > 0)
+        {
+            // Already-persisted snapshots were provisioned during the initial deploy.
+            volumes = server.Volumes.ToList();
+        }
+        else
+        {
+            var resolutions = await volumeSetupResolver
+                .ResolveForCreateAsync(server.ServerId, gameType.Key, revision.Volumes, volumeBindingLayout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision), cancellationToken)
+                .ConfigureAwait(false);
 
-        // Prepare NFS-backed target folders (create + ownership/permissions) on the API host
-        // before asking the agent to create the service.
-        await nfsVolumePreparationService.PrepareAsync(volumes, cancellationToken).ConfigureAwait(false);
+            // Provision each volume (one-time host-side work for NFS targets, no-op for named
+            // volumes) on the API host before asking the agent to create the service.
+            await ProvisionVolumesAsync(resolutions, cancellationToken).ConfigureAwait(false);
+
+            volumes = resolutions.Select(r => r.Snapshot).ToList();
+        }
 
         var parameters = BuildCreateParameters(server, revision, volumes);
 
@@ -76,11 +90,12 @@ public sealed class GameServerDeploymentService(
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
 
         var layout = volumeBindingLayout ?? "standard";
-        var newVolumes = ResolveNewServerVolumes(server, gameType, revision, layout);
+        var newResolutions = await ResolveNewServerVolumesAsync(server, gameType, revision, layout, cancellationToken).ConfigureAwait(false);
+        var newVolumes = newResolutions.Select(r => r.Snapshot).ToList();
         var allVolumes = server.Volumes.Concat(newVolumes).ToList();
 
-        // Prepare newly introduced NFS-backed target folders before updating the service.
-        await nfsVolumePreparationService.PrepareAsync(newVolumes, cancellationToken).ConfigureAwait(false);
+        // Provision newly introduced volumes before updating the service.
+        await ProvisionVolumesAsync(newResolutions, cancellationToken).ConfigureAwait(false);
 
         var parameters = BuildUpdateParameters(server, revision, allVolumes, imageReference);
         await serviceOperations.UpdateServiceAsync(server.ServiceName, parameters, cancellationToken).ConfigureAwait(false);
@@ -97,31 +112,31 @@ public sealed class GameServerDeploymentService(
         logger.LogInformation("Updated V2 GameServer {ServerId} service deployment", serverId);
     }
 
-    private List<GameServerVolume> ResolveServerVolumes(
+    private async Task<List<VolumeSetupResolution>> ResolveNewServerVolumesAsync(
         GameServerModel server,
         GameType gameType,
         GameTypeRevision revision,
-        string layout)
+        string layout,
+        CancellationToken cancellationToken)
     {
-        if (server.Volumes.Count > 0)
-        {
-            return server.Volumes.ToList();
-        }
+        var resolved = await volumeSetupResolver
+            .ResolveForUpdateAsync(server.ServerId, gameType.Key, revision.Volumes, server.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision), cancellationToken)
+            .ConfigureAwait(false);
 
-        return volumeSetupResolver
-            .ResolveForCreate(server.ServerId, gameType.Key, revision.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision))
-            .ToList();
+        return resolved.ToList();
     }
 
-    private List<GameServerVolume> ResolveNewServerVolumes(
-        GameServerModel server,
-        GameType gameType,
-        GameTypeRevision revision,
-        string layout)
+    private async Task ProvisionVolumesAsync(
+        IReadOnlyList<VolumeSetupResolution> resolutions,
+        CancellationToken cancellationToken)
     {
-        return volumeSetupResolver
-            .ResolveForUpdate(server.ServerId, gameType.Key, revision.Volumes, server.Volumes, layout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision))
-            .ToList();
+        foreach (var resolution in resolutions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var handler = mountTypeHandlerFactory.GetHandler(resolution.Provisioning.MountType);
+            await handler.PrepareAsync(resolution.Provisioning, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static IReadOnlyDictionary<string, string?> BuildSettingValues(
@@ -231,47 +246,8 @@ public sealed class GameServerDeploymentService(
 
     private List<Mount> BuildDockerMounts(IReadOnlyList<GameServerVolume> volumes)
     {
-        return volumes.Select(volume =>
-        {
-            var mountType = volume.MountType.ToString().ToLowerInvariant();
-            Mount? mount = null;
-
-            if (!string.IsNullOrWhiteSpace(volume.DriverOptionsJson))
-            {
-                try
-                {
-                    var options = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(volume.DriverOptionsJson);
-                    mount = new Mount
-                    {
-                        Type = mountType,
-                        Source = volume.Source,
-                        Target = volume.ContainerPath,
-                        ReadOnly = volume.ReadOnly,
-                        VolumeOptions = new VolumeOptions
-                        {
-                            DriverConfig = new Driver
-                            {
-                                Name = volume.Driver,
-                                Options = options ?? []
-                            }
-                        }
-                    };
-                }
-                catch (System.Text.Json.JsonException ex)
-                {
-                    logger.LogWarning(ex, "Failed to deserialize driver options for volume {ContainerPath}", volume.ContainerPath);
-                }
-            }
-
-            mount ??= new Mount
-            {
-                Type = mountType,
-                Source = volume.Source,
-                Target = volume.ContainerPath,
-                ReadOnly = volume.ReadOnly
-            };
-
-            return mount;
-        }).ToList();
+        return volumes
+            .Select(volume => mountTypeHandlerFactory.GetHandler(volume.MountType).BuildMount(volume))
+            .ToList();
     }
 }

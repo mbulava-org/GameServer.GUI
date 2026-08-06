@@ -1,6 +1,7 @@
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
 using GameServer.Docker.Services.V2;
+using GameServer.Docker.Services.V2.MountTypeHandlers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -42,6 +43,31 @@ public class VolumeSetupResolverTests
         }
     };
 
+    private static readonly MountTypeConfig NfsConfig = new()
+    {
+        Key = "nfs",
+        DisplayName = "NFS volume",
+        Options = new Dictionary<string, string>
+        {
+            ["Driver"] = "local",
+            ["NfsOptions"] = "addr=host.docker.internal,rw",
+            ["NfsRoot"] = "/exported/path",
+            ["DevicePathFormat"] = "{gameTypeKey}/{serverId}/{Source}",
+            ["LocalPath"] = "/data/nfs",
+            ["SourcePathTemplate"] = "{gameTypeKey}_{serverId}_{Source}"
+        }
+    };
+
+    private static IMountTypeHandlerFactory CreateHandlerFactory()
+    {
+        var handlers = new IMountTypeHandler[]
+        {
+            new VolumeMountTypeHandler(NullLogger<VolumeMountTypeHandler>.Instance),
+            new NfsMountTypeHandler(NullLogger<NfsMountTypeHandler>.Instance)
+        };
+        return new MountTypeHandlerFactory(handlers);
+    }
+
     private static VolumeSetupResolver CreateResolver(MountTypeConfig? config = null)
     {
         var effectiveConfig = config ?? VolumeConfig;
@@ -51,68 +77,77 @@ public class VolumeSetupResolverTests
             .ReturnsAsync((string key, CancellationToken _) =>
                 string.Equals(key, "volume", StringComparison.OrdinalIgnoreCase) ? VolumeConfig :
                 string.Equals(key, "bind", StringComparison.OrdinalIgnoreCase) ? BindConfig :
+                string.Equals(key, "nfs", StringComparison.OrdinalIgnoreCase) ? NfsConfig :
                 string.Equals(key, "tmpfs", StringComparison.OrdinalIgnoreCase) ? TmpfsConfig : effectiveConfig);
-        return new VolumeSetupResolver(repository.Object, NullLogger<VolumeSetupResolver>.Instance);
+        return new VolumeSetupResolver(repository.Object, CreateHandlerFactory(), NullLogger<VolumeSetupResolver>.Instance);
     }
 
     [Fact]
-    public void ResolveForCreate_ShouldThrowNotImplementedException()
+    public async Task ResolveForCreateAsync_ShouldResolveSnapshots()
     {
         var resolver = CreateResolver();
         var revisionVolume = new GameTypeVolume
         {
             Source = "/data/worlds",
-            Usage = "worlds"
+            Usage = "worlds",
+            MountType = "volume"
         };
 
-        Assert.Throws<NotImplementedException>(
-            () => resolver.ResolveForCreate("srv1", "minecraft", [revisionVolume]));
+        var resolved = await resolver.ResolveForCreateAsync("srv1", "minecraft", [revisionVolume]);
+
+        var resolution = Assert.Single(resolved);
+        var snapshot = resolution.Snapshot;
+        Assert.Equal("/data/worlds", snapshot.ContainerPath);
+        Assert.Equal("volume", snapshot.MountType);
+        Assert.Equal("minecraft_srv1_data-worlds", snapshot.VolumeName);
     }
 
     [Fact]
-    public void ResolveForUpdate_ShouldThrowNotImplementedException()
+    public async Task ResolveForUpdateAsync_ShouldReturnOnlyNewSnapshots()
     {
         var resolver = CreateResolver();
         var existing = new GameServerVolume
         {
             ContainerPath = "/data/worlds",
-            Source = "/old/worlds",
             Usage = "worlds"
         };
         var revisionVolumes = new List<GameTypeVolume>
         {
-            new() { Source = "/data/worlds", Usage = "worlds" },
-            new() { Source = "/data/config", Usage = "config" }
+            new() { Source = "/data/worlds", Usage = "worlds", MountType = "volume" },
+            new() { Source = "/data/config", Usage = "config", MountType = "volume" }
         };
 
-        Assert.Throws<NotImplementedException>(
-            () => resolver.ResolveForUpdate("srv1", "minecraft", revisionVolumes, [existing]));
+        var resolved = await resolver.ResolveForUpdateAsync("srv1", "minecraft", revisionVolumes, [existing]);
+
+        var resolution = Assert.Single(resolved);
+        Assert.Equal("/data/config", resolution.Snapshot.ContainerPath);
     }
 
     [Fact]
-    public void BuildMountConfigs_ShouldProduceAgentMountConfigs()
+    public async Task ResolveForCreateAsync_ShouldBakeNfsDriverOptionsFromMountType()
     {
         var resolver = CreateResolver();
-        var resolved = new List<GameServerVolume>
+        var revisionVolume = new GameTypeVolume
         {
-            new()
-            {
-                ContainerPath = "/data/worlds",
-                Source = "/minecraft_srv1_/data/worlds",
-                Usage = "worlds",
-                MountType = "volume",
-                ReadOnly = true,
-                Driver = "local"
-            }
+            Source = "/data/worlds",
+            Usage = "worlds",
+            MountType = "nfs",
+            EnsureNfsPathExists = true
         };
 
-        var mounts = resolver.BuildMountConfigs(resolved);
+        var resolved = await resolver.ResolveForCreateAsync("srv1", "minecraft", [revisionVolume]);
 
-        Assert.Single(mounts);
-        dynamic mount = mounts[0];
-        Assert.Equal("volume", (string)mount.Type);
-        Assert.Equal("/data/worlds", (string)mount.Target);
-        Assert.True((bool)mount.ReadOnly);
-        Assert.Equal("local", (string?)mount.DriverName);
+        var resolution = Assert.Single(resolved);
+        var snapshot = resolution.Snapshot;
+        Assert.Equal("nfs", snapshot.MountType);
+
+        var options = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(snapshot.DriverOptionsJson!);
+        Assert.NotNull(options);
+        Assert.Equal("nfs", options!["type"]);
+        Assert.Equal("addr=host.docker.internal,rw", options["o"]);
+        Assert.Equal(":/exported/path/minecraft/srv1/data-worlds", options["device"]);
+
+        // Provisioning-only data lives on the transient spec, not the persisted snapshot.
+        Assert.True(resolution.Provisioning.EnsureNfsPathExists);
     }
 }

@@ -221,15 +221,9 @@ public sealed class GameServerSpecBuilder
                 Usage = volume.Usage,
                 VolumeName = volume.VolumeName,
                 ContainerPath = volume.ContainerPath,
-                Source = volume.Source,
                 MountType = volume.MountType,
                 ReadOnly = volume.ReadOnly,
-                Driver = volume.Driver,
-                DriverOptionsJson = volume.DriverOptionsJson,
-                OwnerUid = volume.OwnerUid,
-                OwnerGid = volume.OwnerGid,
-                Permissions = volume.Permissions,
-                EnsureNfsPathExists = volume.EnsureNfsPathExists
+                DriverOptionsJson = volume.DriverOptionsJson
             })
             .ToList();
     }
@@ -239,7 +233,7 @@ public sealed class GameServerSpecBuilder
         var mount = new Mount
         {
             Type = volume.MountType,
-            Source = volume.Source,
+            Source = volume.VolumeName,
             Target = volume.ContainerPath,
             ReadOnly = volume.ReadOnly
         };
@@ -256,7 +250,7 @@ public sealed class GameServerSpecBuilder
             {
                 DriverConfig = new Driver
                 {
-                    Name = volume.Driver,
+                    Name = "local",
                     Options = options ?? []
                 }
             };

@@ -151,16 +151,8 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Driver")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("DriverOptionsJson")
                         .HasColumnType("TEXT");
-
-                    b.Property<bool>("EnsureNfsPathExists")
-                        .HasColumnType("INTEGER");
 
                     b.Property<int>("GameServerId")
                         .HasColumnType("INTEGER");
@@ -173,23 +165,8 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("OwnerGid")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("OwnerUid")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Permissions")
-                        .HasMaxLength(10)
-                        .HasColumnType("TEXT");
-
                     b.Property<bool>("ReadOnly")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("Usage")
                         .IsRequired()
@@ -647,7 +624,7 @@ namespace GameServer.Docker.Data.V2.Migrations.SqliteMigrations
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayName = "NFS volume",
                             IsActive = true,
-                            OptionsJson = "{\"Driver\":\"local\",\"DriverOptionsJson\":\"{\\\"type\\\":\\\"nfs\\\",\\\"device\\\":\\\":/exported/path\\\",\\\"o\\\":\\\"addr=host.docker.internal,rw\\\"}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
+                            OptionsJson = "{\"Driver\":\"local\",\"NfsOptions\":\"addr=host.docker.internal,rw\",\"NfsRoot\":\"/exported/path\",\"DevicePathFormat\":\"{gameTypeKey}/{serverId}/{Source}\",\"LocalPath\":\"/data/nfs\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"true\"}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}"
                         });

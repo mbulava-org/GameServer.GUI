@@ -152,16 +152,10 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             GameServerId = gameServerId,
             Usage = model.Usage,
             ContainerPath = model.ContainerPath,
-            Source = model.Source,
             VolumeName = model.VolumeName,
             MountType = model.MountType.ToString().ToLowerInvariant(),
             ReadOnly = model.ReadOnly,
-            Driver = model.Driver,
             DriverOptionsJson = model.DriverOptionsJson,
-            OwnerUid = model.OwnerUid,
-            OwnerGid = model.OwnerGid,
-            Permissions = model.Permissions,
-            EnsureNfsPathExists = model.EnsureNfsPathExists,
             IsProvisioned = model.IsProvisioned,
             CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt
         };
@@ -175,16 +169,10 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             GameServerId = entity.GameServerId,
             Usage = entity.Usage,
             ContainerPath = entity.ContainerPath,
-            Source = entity.Source,
             VolumeName = entity.VolumeName,
             MountType = entity.MountType,
             ReadOnly = entity.ReadOnly,
-            Driver = entity.Driver,
             DriverOptionsJson = entity.DriverOptionsJson,
-            OwnerUid = entity.OwnerUid,
-            OwnerGid = entity.OwnerGid,
-            Permissions = entity.Permissions,
-            EnsureNfsPathExists = entity.EnsureNfsPathExists,
             IsProvisioned = entity.IsProvisioned,
             CreatedAt = entity.CreatedAt
         };

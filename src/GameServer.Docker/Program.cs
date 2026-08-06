@@ -175,9 +175,9 @@ namespace GameServer.Docker
                 builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
                 builder.Services.AddScoped<ServicesV2.IVolumeSetupResolver, ServicesV2.VolumeSetupResolver>();
-                builder.Services.Configure<GameServer.Docker.Configurations.NfsPreparationOptions>(
-                    builder.Configuration.GetSection(GameServer.Docker.Configurations.NfsPreparationOptions.SectionName));
-                builder.Services.AddScoped<ServicesV2.INfsVolumePreparationService, ServicesV2.NfsVolumePreparationService>();
+                builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandler, ServicesV2.MountTypeHandlers.VolumeMountTypeHandler>();
+                builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandler, ServicesV2.MountTypeHandlers.NfsMountTypeHandler>();
+                builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandlerFactory, ServicesV2.MountTypeHandlers.MountTypeHandlerFactory>();
                 builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
                     new ServicesV2Detection.GameTypeSetupDetectionService(
                         sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),

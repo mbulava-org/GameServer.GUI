@@ -1,51 +1,61 @@
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Repositories.V2;
+using GameServer.Docker.Services.V2.MountTypeHandlers;
 using Microsoft.Extensions.Logging;
 
 namespace GameServer.Docker.Services.V2;
 
 /// <summary>
+/// Pairs a persisted <see cref="GameServerVolume"/> snapshot with the transient
+/// <see cref="VolumeProvisioningSpec"/> used to provision it. The snapshot is what gets stored;
+/// the spec is discarded after the one-time provisioning completes.
+/// </summary>
+public sealed record VolumeSetupResolution
+{
+    public required GameServerVolume Snapshot { get; init; }
+
+    public required VolumeProvisioningSpec Provisioning { get; init; }
+}
+
+/// <summary>
 /// Resolves GameType volume definitions and mount-type configuration templates into per-server
 /// mount snapshots. Existing snapshots are never mutated; only newly introduced container
-/// paths are resolved when a server is updated.
-/// Note: BuildMountConfigs returns anonymous objects rather than referencing the Agent project
-/// directly to avoid an assembly reference cycle.
+/// paths are resolved when a server is updated. The concrete driver options baked into each
+/// snapshot are produced by the mount-type provider for the volume.
 /// </summary>
 public interface IVolumeSetupResolver
 {
     /// <summary>
-    /// Returns the full set of resolved <see cref="GameServerVolume"/> snapshots for an initial
+    /// Returns the full set of resolved snapshots (with provisioning specs) for an initial
     /// server create request.
     /// </summary>
-    IReadOnlyList<GameServerVolume> ResolveForCreate(
+    Task<IReadOnlyList<VolumeSetupResolution>> ResolveForCreateAsync(
         string serverId,
         string gameTypeKey,
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         string layout = "standard",
         IReadOnlyDictionary<string, string>? driverOverrides = null,
-        IReadOnlyDictionary<string, string?>? settingValues = null);
+        IReadOnlyDictionary<string, string?>? settingValues = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns only newly introduced <see cref="GameServerVolume"/> snapshots not already
-    /// represented by <paramref name="existingVolumes"/>. Existing snapshots are ignored.
+    /// Returns only newly introduced resolutions not already represented by
+    /// <paramref name="existingVolumes"/>. Existing snapshots are ignored.
     /// </summary>
-    IReadOnlyList<GameServerVolume> ResolveForUpdate(
+    Task<IReadOnlyList<VolumeSetupResolution>> ResolveForUpdateAsync(
         string serverId,
         string gameTypeKey,
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         IReadOnlyList<GameServerVolume> existingVolumes,
         string layout = "standard",
         IReadOnlyDictionary<string, string>? driverOverrides = null,
-        IReadOnlyDictionary<string, string?>? settingValues = null);
-
-    /// <summary>
-    /// Transforms resolved snapshots into agent mount requests.
-    /// </summary>
-    IReadOnlyList<object> BuildMountConfigs(IReadOnlyList<GameServerVolume> volumes);
+        IReadOnlyDictionary<string, string?>? settingValues = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class VolumeSetupResolver(
     IMountTypeConfigRepository mountTypeConfigRepository,
+    IMountTypeHandlerFactory mountTypeHandlerFactory,
     ILogger<VolumeSetupResolver> logger)
     : IVolumeSetupResolver
 {
@@ -65,82 +75,76 @@ public sealed class VolumeSetupResolver(
         return config;
     }
 
-    public IReadOnlyList<GameServerVolume> ResolveForCreate(
+    public async Task<IReadOnlyList<VolumeSetupResolution>> ResolveForCreateAsync(
         string serverId,
         string gameTypeKey,
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         string layout = "standard",
         IReadOnlyDictionary<string, string>? driverOverrides = null,
-        IReadOnlyDictionary<string, string?>? settingValues = null)
+        IReadOnlyDictionary<string, string?>? settingValues = null,
+        CancellationToken cancellationToken = default)
     {
-        // Volume/mount resolution during service create/update is temporarily disabled while the
-        // mount-type configuration data model and UI are validated. Revisit once the mount-type
-        // configuration (including VolumeNameFormat) is confirmed correct.
-        throw new NotImplementedException(
-            "Volume/mount resolution for game server create/update is not yet implemented.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameTypeKey);
+        ArgumentNullException.ThrowIfNull(revisionVolumes);
+
+        var normalizedLayout = NormalizeLayout(layout);
+        var overrides = driverOverrides ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var resolved = new List<VolumeSetupResolution>(revisionVolumes.Count);
+        foreach (var definition in revisionVolumes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var config = await GetMountTypeConfigAsync(definition.MountType).ConfigureAwait(false);
+            resolved.Add(ResolveSingle(
+                config,
+                serverId,
+                gameTypeKey,
+                definition,
+                normalizedLayout,
+                overrides,
+                settingValues));
+        }
+
+        return resolved;
     }
 
-    public IReadOnlyList<GameServerVolume> ResolveForUpdate(
+    public async Task<IReadOnlyList<VolumeSetupResolution>> ResolveForUpdateAsync(
         string serverId,
         string gameTypeKey,
         IReadOnlyList<GameTypeVolume> revisionVolumes,
         IReadOnlyList<GameServerVolume> existingVolumes,
         string layout = "standard",
         IReadOnlyDictionary<string, string>? driverOverrides = null,
-        IReadOnlyDictionary<string, string?>? settingValues = null)
+        IReadOnlyDictionary<string, string?>? settingValues = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(existingVolumes);
 
-        var resolved = ResolveForCreate(serverId, gameTypeKey, revisionVolumes, layout, driverOverrides, settingValues);
+        var resolved = await ResolveForCreateAsync(
+            serverId,
+            gameTypeKey,
+            revisionVolumes,
+            layout,
+            driverOverrides,
+            settingValues,
+            cancellationToken).ConfigureAwait(false);
+
         var existingPaths = existingVolumes
             .Select(v => v.ContainerPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return resolved.Where(r => !existingPaths.Contains(r.ContainerPath)).ToList();
+        return resolved.Where(r => !existingPaths.Contains(r.Snapshot.ContainerPath)).ToList();
     }
 
-    public IReadOnlyList<object> BuildMountConfigs(IReadOnlyList<GameServerVolume> volumes)
-    {
-        ArgumentNullException.ThrowIfNull(volumes);
-
-        return volumes
-            .Select(volume =>
-            {
-                var mountType = volume.MountType.ToString().ToLowerInvariant();
-                var driverName = (string?)null;
-                if (string.Equals(mountType, "volume", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Swarm named-volume driver is separate from mount config options.
-                    driverName = volume.Driver;
-                }
-
-                return (object)new
-                {
-                    Type = mountType,
-                    Source = volume.Source,
-                    Target = volume.ContainerPath,
-                    ReadOnly = volume.ReadOnly,
-                    DriverName = driverName,
-                    VolumeOptions = !string.IsNullOrWhiteSpace(volume.DriverOptionsJson)
-                        ? DeserializeDriverOptions(volume.DriverOptionsJson)
-                        : null,
-                    OwnerUid = volume.OwnerUid,
-                    OwnerGid = volume.OwnerGid,
-                    Permissions = volume.Permissions,
-                    EnsureNfsPathExists = volume.EnsureNfsPathExists
-                };
-            })
-            .ToList();
-    }
-
-    private GameServerVolume ResolveSingle(
+    private VolumeSetupResolution ResolveSingle(
         MountTypeConfig config,
         string serverId,
         string gameTypeKey,
         GameTypeVolume definition,
         string layout,
         IReadOnlyDictionary<string, string> driverOverrides,
-        int displayOrder,
         IReadOnlyDictionary<string, string?>? settingValues)
     {
         var mountType = definition.MountType;
@@ -156,33 +160,47 @@ public sealed class VolumeSetupResolver(
         // The calculated SourcePathTemplate becomes the docker volume name / folder under /data.
         var volumeName = ResolveVolumeName(config, serverId, gameTypeKey, sourceToken, definition);
 
-        var source = volumeName;
-        var driver = config.GetOption("Driver").NullIfEmpty() ?? "local";
-        var driverOptions = ResolveDriverOptions(config, sourceToken, volumeName, driverOverrides, isLocalLayout);
-
         var ownerUid = ResolveOwnerValue(definition.OwnerUidVariable, definition.OwnerUid, settingValues)
             ?? ParseInt(config.GetOption("DefaultOwnerUid"));
         var ownerGid = ResolveOwnerValue(definition.OwnerGidVariable, definition.OwnerGid, settingValues)
             ?? ParseInt(config.GetOption("DefaultOwnerGid"));
 
-        return new GameServerVolume
+        var spec = new VolumeProvisioningSpec
+        {
+            MountType = mountType,
+            VolumeName = volumeName,
+            ContainerPath = containerPath,
+            ReadOnly = definition.ReadOnly,
+            SourceToken = sourceToken,
+            ServerId = serverId,
+            GameTypeKey = gameTypeKey,
+            Config = config,
+            IsLocalLayout = isLocalLayout,
+            DriverOverrides = driverOverrides,
+            OwnerUid = ownerUid,
+            OwnerGid = ownerGid,
+            Permissions = definition.Permissions ?? config.GetOption("DefaultPermissions"),
+            EnsureNfsPathExists = definition.EnsureNfsPathExists
+        };
+
+        // Each mount-type provider finalizes the concrete driver options baked into the snapshot.
+        var handler = mountTypeHandlerFactory.GetHandler(mountType);
+        var driverOptions = handler.BuildDriverOptions(spec);
+
+        var snapshot = new GameServerVolume
         {
             GameServerId = 0,
             Usage = definition.Usage,
             ContainerPath = containerPath,
-            Source = source,
             VolumeName = volumeName,
             MountType = mountType,
             ReadOnly = definition.ReadOnly,
-            Driver = driver,
             DriverOptionsJson = driverOptions,
-            OwnerUid = ownerUid,
-            OwnerGid = ownerGid,
-            Permissions = definition.Permissions ?? config.GetOption("DefaultPermissions"),
-            EnsureNfsPathExists = definition.EnsureNfsPathExists,
             IsProvisioned = false,
             CreatedAt = DateTime.UtcNow
         };
+
+        return new VolumeSetupResolution { Snapshot = snapshot, Provisioning = spec };
     }
 
     private static int? ParseInt(string? value) =>
@@ -257,67 +275,11 @@ public sealed class VolumeSetupResolver(
             .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? ResolveDriverOptions(
-        MountTypeConfig config,
-        string sourceToken,
-        string volumeName,
-        IReadOnlyDictionary<string, string> driverOverrides,
-        bool isLocalLayout)
-    {
-        var driverOptionsJson = config.GetOption("DriverOptionsJson");
-        if (isLocalLayout || string.IsNullOrWhiteSpace(driverOptionsJson))
-        {
-            return null;
-        }
-
-        // Replace tokens before serialization so resolved values are concrete.
-        // {Target} resolves to the calculated SourcePathTemplate value (the volume name).
-        var json = driverOptionsJson
-            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Target}", volumeName, StringComparison.OrdinalIgnoreCase);
-
-        if (driverOverrides.Count == 0)
-        {
-            return json;
-        }
-
-        Dictionary<string, string>? opts;
-        try
-        {
-            opts = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)
-                ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return json;
-        }
-
-        foreach (var entry in driverOverrides)
-        {
-            opts[entry.Key] = entry.Value;
-        }
-
-        return System.Text.Json.JsonSerializer.Serialize(opts);
-    }
-
     private static string NormalizeLayout(string layout)
     {
         return string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase)
             ? "local"
             : "standard";
-    }
-
-    private static Dictionary<string, string>? DeserializeDriverOptions(string json)
-    {
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-        }
-        catch (System.Text.Json.JsonException ex)
-        {
-            // Log and return null; validation should prevent invalid JSON reaching here.
-            return null;
-        }
     }
 }
 

@@ -3,6 +3,7 @@ using System;
 using GameServer.Docker.Data.V2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
 {
     [DbContext(typeof(MySqlGameServerV2DbContext))]
-    partial class MySqlGameServerV2DbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806170857_AddGameServerVolumeLocalPath")]
+    partial class AddGameServerVolumeLocalPath
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -147,8 +150,16 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Driver")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<string>("DriverOptionsJson")
                         .HasColumnType("longtext");
+
+                    b.Property<bool>("EnsureNfsPathExists")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<int>("GameServerId")
                         .HasColumnType("int");
@@ -156,13 +167,32 @@ namespace GameServer.Docker.Data.V2.Migrations.MySqlMigrations
                     b.Property<bool>("IsProvisioned")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("LocalPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("MountType")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<int?>("OwnerGid")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OwnerUid")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Permissions")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
                     b.Property<bool>("ReadOnly")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<string>("Usage")
                         .IsRequired()

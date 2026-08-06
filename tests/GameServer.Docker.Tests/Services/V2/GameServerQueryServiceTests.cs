@@ -110,7 +110,7 @@ public class GameServerQueryServiceTests
                         Id = 1,
                         Usage = "world",
                         ContainerPath = "/data",
-                        Source = "/srv/gameservers/minecraft_srv-1/data",
+                        VolumeName = "minecraft_srv-1_data",
                         MountType = "volume",
                         CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                     }

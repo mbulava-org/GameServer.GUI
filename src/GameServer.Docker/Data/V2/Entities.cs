@@ -329,13 +329,9 @@ public class GameServerVolumeEntity
     [MaxLength(500)]
     public string ContainerPath { get; set; } = string.Empty;
 
-    [Required]
-    [MaxLength(500)]
-    public string Source { get; set; } = string.Empty;
-
     /// <summary>
     /// Calculated docker volume name (from the mount type's SourcePathTemplate). Also the
-    /// name of the folder created under /data for NFS mounts and the {Target} token value.
+    /// {Source} value for the Docker mount and the folder name for provisioned backends.
     /// </summary>
     [Required]
     [MaxLength(500)]
@@ -347,24 +343,11 @@ public class GameServerVolumeEntity
 
     public bool ReadOnly { get; set; }
 
-    [Required]
-    [MaxLength(200)]
-    public string Driver { get; set; } = "local";
-
-    public string? DriverOptionsJson { get; set; }
-
-    public int? OwnerUid { get; set; }
-
-    public int? OwnerGid { get; set; }
-
-    [MaxLength(10)]
-    public string? Permissions { get; set; }
-
     /// <summary>
-    /// When true, the NFS target directory is ensured to exist (and default permissions
-    /// pre-applied where provided) before the container starts. Only meaningful for nfs mounts.
+    /// Fully resolved Docker driver options (type/o/device, etc.). Everything required to build
+    /// the Docker mount is contained here; provisioning-only values are not persisted.
     /// </summary>
-    public bool EnsureNfsPathExists { get; set; }
+    public string? DriverOptionsJson { get; set; }
 
     public bool IsProvisioned { get; set; }
 

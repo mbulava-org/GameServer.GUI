@@ -82,7 +82,7 @@ public sealed class GameServerValidationService
         var effectiveSettings = BuildEffectiveSettings(request, revision, issues);
         var resolvedPorts = ResolvePorts(revision, effectiveSettings, issues);
         ValidateResolvedPorts(resolvedPorts, request.ServerId, issues, cancellationToken);
-        var resolvedVolumes = ResolveVolumes(revision, request.ServerId, request.VolumeBindingLayout, issues);
+        var resolvedVolumes = await ResolveVolumesAsync(revision, request.ServerId, request.VolumeBindingLayout, issues, cancellationToken).ConfigureAwait(false);
         var resolvedWebHosts = ResolveWebHosts(revisionContext.Revision.WebHosts, effectiveSettings, issues);
 
         await ValidateResolvedPortsAsync(resolvedPorts, request.ServerId, issues, cancellationToken).ConfigureAwait(false);
@@ -588,11 +588,12 @@ public sealed class GameServerValidationService
                     return new GameServerPortAvailabilityResultDto { Ports = results };
                 }
 
-    private List<GameServerResolvedVolumeDto> ResolveVolumes(
+    private async Task<List<GameServerResolvedVolumeDto>> ResolveVolumesAsync(
         GameTypeRevisionModel revision,
         string? serverId,
         string layout,
-        List<GameServerValidationIssueDto> issues)
+        List<GameServerValidationIssueDto> issues,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(revision);
         ArgumentNullException.ThrowIfNull(issues);
@@ -605,25 +606,26 @@ public sealed class GameServerValidationService
             ValidateVolumeDefinition(definition, revision.Volumes, layout, issues);
         }
 
-        IReadOnlyList<GameServer.Docker.Models.V2.GameServerVolume> resolvedSnapshots;
+        IReadOnlyList<GameServer.Docker.Services.V2.VolumeSetupResolution> resolvedSnapshots;
         try
         {
-            resolvedSnapshots = volumeSetupResolver.ResolveForCreate(
+            resolvedSnapshots = await volumeSetupResolver.ResolveForCreateAsync(
                 serverId ?? Guid.NewGuid().ToString("N"),
                 revision.GameType?.Key ?? "unknown",
                 revision.Volumes,
-                layout);
+                layout,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
-        catch (NotImplementedException)
+        catch (InvalidOperationException)
         {
-            // Volume/mount resolution is temporarily disabled while the mount-type
-            // configuration data model and UI are validated. Skip resolved-volume output
-            // until this is re-enabled.
+            // Mount-type configuration could not be resolved (for example, a referenced mount
+            // type is missing). Skip resolved-volume output rather than failing validation.
             return result;
         }
 
-        foreach (var volume in resolvedSnapshots)
+        foreach (var resolution in resolvedSnapshots)
         {
+            var volume = resolution.Snapshot;
             if (!containerPaths.Add(volume.ContainerPath))
             {
                 issues.Add(CreateIssue(
@@ -638,15 +640,9 @@ public sealed class GameServerValidationService
                 Usage = volume.Usage,
                 VolumeName = volume.VolumeName,
                 ContainerPath = volume.ContainerPath,
-                Source = volume.Source,
                 MountType = volume.MountType.ToString().ToLowerInvariant(),
                 ReadOnly = volume.ReadOnly,
-                Driver = volume.Driver,
                 DriverOptionsJson = volume.DriverOptionsJson,
-                OwnerUid = volume.OwnerUid,
-                OwnerGid = volume.OwnerGid,
-                Permissions = volume.Permissions,
-                EnsureNfsPathExists = volume.EnsureNfsPathExists,
                 IsProvisioned = volume.IsProvisioned,
                 CreatedAt = volume.CreatedAt
             });

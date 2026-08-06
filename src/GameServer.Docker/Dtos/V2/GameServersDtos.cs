@@ -122,23 +122,11 @@ public sealed record GameServerResolvedVolumeDto
 
     public string ContainerPath { get; init; } = string.Empty;
 
-    public string Source { get; init; } = string.Empty;
-
     public string MountType { get; init; } = "volume";
 
     public bool ReadOnly { get; init; }
 
-    public string Driver { get; init; } = "local";
-
     public string? DriverOptionsJson { get; init; }
-
-    public int? OwnerUid { get; init; }
-
-    public int? OwnerGid { get; init; }
-
-    public string? Permissions { get; init; }
-
-    public bool EnsureNfsPathExists { get; init; }
 
     public bool IsProvisioned { get; init; }
 

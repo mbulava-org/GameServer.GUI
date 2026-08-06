@@ -330,10 +330,10 @@
         }
 
         // The {Source} token is a normalized copy of the container source: drop a leading '/',
-        // then replace any remaining '/' with '-'. The calculated template value is the volume name.
+        // then replace any remaining '/' with '-'. The Volume Name Format defines the resolved volume name.
         var sourceToken = NormalizeSourceToken(previewSource);
 
-        var template = config.Options is not null && config.Options.TryGetValue("SourcePathTemplate", out var t) ? t : string.Empty;
+        var template = config.VolumeNameFormat ?? string.Empty;
 
         return template
             .Replace("{gameTypeKey}", previewGameTypeKey, StringComparison.OrdinalIgnoreCase)
