@@ -170,19 +170,36 @@ namespace GameServer.Docker.Agent.Services
                 _isManagerNode = info.Swarm?.ControlAvailable ?? false;
 
                 // ===== AGENT URL CONFIGURATION =====
-                // CRITICAL: In Docker Swarm overlay networks, we must use the TASK hostname,
-                // not the Docker node hostname. The task hostname is how other services reach us.
+                // CRITICAL: The Primary Service reaches the agent across the shared overlay
+                // network. Neither the Docker node hostname (e.g. "dev-docker-000", not
+                // resolvable across nodes) nor the SignalR connection's remote IP (which in
+                // Swarm is often a routing-mesh/load-balancer address, e.g. a service VIP like
+                // 10.0.4.6 rather than the task IP 10.0.4.223) are reliable. We inspect this
+                // container's own overlay endpoint and prefer a Docker-assigned DNS name (which
+                // the embedded DNS resolves regardless of the task IP), falling back to the IP.
                 //
-                // Docker Swarm sets the container's hostname to the task name, which looks like:
-                // gameserver-agent.1.abcd1234efgh5678
-                //
-                // Environment.MachineName returns this task hostname in .NET
-                // 
-                // WRONG: info.Name (returns Docker node hostname like "newdev-docker-004")
-                // RIGHT: Environment.MachineName (returns task hostname in Swarm)
+                // Resolution order:
+                //   1. AGENT_HOST env var (explicit override)
+                //   2. This container's DNS name / IP on its shared overlay network
+                //   3. Environment.MachineName (task hostname) as a last resort
 
-                var agentHost = Environment.GetEnvironmentVariable("AGENT_HOST") ?? Environment.MachineName;
                 var agentPort = Environment.GetEnvironmentVariable("AGENT_PORT") ?? "8080";
+                var agentHost = Environment.GetEnvironmentVariable("AGENT_HOST");
+
+                if (string.IsNullOrWhiteSpace(agentHost))
+                {
+                    agentHost = await ResolveOverlayHostAsync(cancellationToken);
+                }
+
+                if (string.IsNullOrWhiteSpace(agentHost))
+                {
+                    _logger.LogWarning(
+                        "Could not resolve an overlay network IP for the agent. Falling back to hostname '{Hostname}', " +
+                        "which may not be reachable from the Primary Service across nodes.",
+                        Environment.MachineName);
+                    agentHost = Environment.MachineName;
+                }
+
                 _agentUrl = $"http://{agentHost}:{agentPort}";
 
                 _logger.LogInformation(
@@ -203,6 +220,123 @@ namespace GameServer.Docker.Agent.Services
                 _logger.LogError(ex, "Failed to initialize agent information from Docker daemon");
                 throw;
             }
+        }
+
+        // Docker-managed infrastructure networks that are never the shared overlay used to
+        // reach the agent. Any other attached network exposing an IP is the shared overlay.
+        private static readonly HashSet<string> InfrastructureNetworks = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "ingress",
+            "bridge",
+            "host",
+            "none",
+            "docker_gwbridge"
+        };
+
+        /// <summary>
+        /// Resolves the host (DNS name preferred, IP address as fallback) that the Primary
+        /// Service should use to reach this agent on the shared overlay network. Docker node
+        /// hostnames are not resolvable across nodes and Swarm routing-mesh source IPs are not
+        /// reliable, so we inspect this container's own overlay endpoint. A DNS name is preferred
+        /// because Docker's embedded DNS on the overlay resolves it regardless of the task's IP.
+        /// </summary>
+        private async Task<string?> ResolveOverlayHostAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                // The container hostname (HOSTNAME / Environment.MachineName) is the container ID
+                // in Docker, which Docker inspect accepts.
+                var selfId = Environment.GetEnvironmentVariable("HOSTNAME");
+                if (string.IsNullOrWhiteSpace(selfId))
+                {
+                    selfId = Environment.MachineName;
+                }
+
+                var container = await _dockerClient.Containers.InspectContainerAsync(selfId, cancellationToken);
+
+                var networks = container?.NetworkSettings?.Networks;
+                if (networks is null || networks.Count == 0)
+                {
+                    _logger.LogWarning("Agent container '{ContainerId}' has no attached networks to resolve a host from", selfId);
+                    return null;
+                }
+
+                // Pick the first attached network that exposes a usable IP and is not a Docker
+                // infrastructure network (ingress, bridge, host, none, docker_gwbridge). This is
+                // the shared overlay network the Primary Service and game services live on.
+                var overlay = networks
+                    .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value?.IPAddress)
+                        && !InfrastructureNetworks.Contains(kvp.Key))
+                    .Select(kvp => new { Network = kvp.Key, Endpoint = kvp.Value! })
+                    .FirstOrDefault();
+
+                if (overlay is null)
+                {
+                    _logger.LogWarning(
+                        "Could not find a non-infrastructure overlay network on agent container '{ContainerId}'. " +
+                        "Attached networks: {Networks}",
+                        selfId,
+                        string.Join(", ", networks.Keys));
+
+                    return null;
+                }
+
+                // Prefer a DNS name Docker assigned on this overlay (container name, hostname,
+                // short id, network aliases). These are resolvable by the Primary Service via
+                // Docker's embedded DNS and are stable even if the task IP changes.
+                var dnsName = SelectPreferredDnsName(overlay.Endpoint.DNSNames, overlay.Endpoint.Aliases);
+
+                _logger.LogInformation(
+                    "Resolved agent overlay endpoint on network '{Network}': IP={IpAddress}, DNSNames=[{DnsNames}], Aliases=[{Aliases}], Selected={Selected}",
+                    overlay.Network,
+                    overlay.Endpoint.IPAddress,
+                    overlay.Endpoint.DNSNames is null ? string.Empty : string.Join(", ", overlay.Endpoint.DNSNames),
+                    overlay.Endpoint.Aliases is null ? string.Empty : string.Join(", ", overlay.Endpoint.Aliases),
+                    dnsName ?? overlay.Endpoint.IPAddress);
+
+                // Fall back to the IP address if no DNS name is available.
+                return dnsName ?? overlay.Endpoint.IPAddress;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve agent host from the overlay network");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Chooses the most reachable DNS name for the agent from the names Docker assigned on the
+        /// overlay network. Prefers the fully-qualified task name (which contains dots) so it is
+        /// unique across replicas, otherwise the first available name.
+        /// </summary>
+        private static string? SelectPreferredDnsName(IList<string>? dnsNames, IList<string>? aliases)
+        {
+            var candidates = new List<string>();
+
+            if (dnsNames is not null)
+            {
+                candidates.AddRange(dnsNames);
+            }
+
+            if (aliases is not null)
+            {
+                candidates.AddRange(aliases);
+            }
+
+            var usable = candidates
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Select(n => n.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (usable.Count == 0)
+            {
+                return null;
+            }
+
+            // Prefer a name containing a dot (e.g. the Swarm task name "svc.1.abc123"), which is
+            // unique per task, then fall back to the first available name.
+            return usable.FirstOrDefault(n => n.Contains('.')) ?? usable[0];
         }
 
         private async Task ConnectAndRegisterAsync(CancellationToken cancellationToken)
