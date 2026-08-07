@@ -55,7 +55,7 @@ public sealed class GameServerSpecBuilder
             ? $"{gameTypeKey}-{serverId}"
             : request.ServiceName;
 
-        var environment = BuildEnvironment(resolution);
+        var environment = BuildEnvironment(request, resolution);
         var ports = BuildPorts(resolution.Result.ResolvedPorts);
         var volumes = BuildVolumes(resolution.Result.ResolvedVolumes, notices);
 
@@ -139,13 +139,15 @@ public sealed class GameServerSpecBuilder
         };
     }
 
-    private static List<GameServerPreviewEnvironmentVariableDto> BuildEnvironment(GameServerResolutionContext resolution)
+    private static List<GameServerPreviewEnvironmentVariableDto> BuildEnvironment(SaveGameServerRequestDto request, GameServerResolutionContext resolution)
     {
         var revision = resolution.Revision;
         if (revision is null)
         {
             return [];
         }
+
+        var tokens = BuildPreviewTokens(request, resolution);
 
         return revision.SettingDefinitions
             .Where(definition => !string.IsNullOrWhiteSpace(definition.SettingKey))
@@ -161,7 +163,6 @@ public sealed class GameServerSpecBuilder
 
                 if (isServerVariable)
                 {
-                    var tokens = BuildPreviewTokens(resolution);
                     effectiveValue = ServerVariableExpander.Resolve(effectiveValue, tokens);
                 }
 
@@ -179,11 +180,22 @@ public sealed class GameServerSpecBuilder
             .ToList();
     }
 
-    private static Dictionary<string, string?> BuildPreviewTokens(GameServerResolutionContext resolution)
+    private static Dictionary<string, string?> BuildPreviewTokens(SaveGameServerRequestDto request, GameServerResolutionContext resolution)
     {
+        var gameTypeKey = resolution.GameType?.Key;
+        var serverId = string.IsNullOrWhiteSpace(request.ServerId) ? "<generated-on-save>" : request.ServerId;
+        var serviceName = string.IsNullOrWhiteSpace(request.ServiceName)
+            ? $"{gameTypeKey ?? "unknown"}-{serverId}"
+            : request.ServiceName;
+
         return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["GameTypeKey"] = resolution.GameType?.Key,
+            ["ServerId"] = serverId,
+            ["Name"] = request.Name,
+            ["ServiceName"] = serviceName,
+            ["Description"] = request.Description,
+            ["Status"] = request.Status,
+            ["GameTypeKey"] = gameTypeKey,
             ["RevisionVersionTag"] = resolution.Revision?.VersionTag,
             ["RevisionImageReference"] = resolution.Revision?.ImageReference
         };
