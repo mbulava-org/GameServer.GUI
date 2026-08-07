@@ -216,6 +216,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         var entity = MapRevisionToEntity(revision);
         entity.GameTypeId = gameType.Id;
         context.GameTypeRevisions.Add(entity);
+        gameType.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
 
         logger.LogInformation("Added V2 GameType revision {GameTypeKey}:{VersionTag}", gameTypeKey, revision.VersionTag);
@@ -332,6 +333,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             EnabledWhen = x.EnabledWhen,
             DisplayOrder = x.DisplayOrder
         }).ToList();
+
+        entity.GameType.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync();
 
