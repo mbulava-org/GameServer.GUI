@@ -128,6 +128,12 @@ public sealed record GameServerResolvedVolumeDto
 
     public string? DriverOptionsJson { get; init; }
 
+    public int? OwnerUid { get; init; }
+
+    public int? OwnerGid { get; init; }
+
+    public string? Permissions { get; init; }
+
     public bool IsProvisioned { get; init; }
 
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;

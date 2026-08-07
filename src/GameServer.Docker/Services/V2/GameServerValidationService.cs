@@ -661,6 +661,9 @@ public sealed class GameServerValidationService
                 MountType = volume.MountType.ToString().ToLowerInvariant(),
                 ReadOnly = volume.ReadOnly,
                 DriverOptionsJson = volume.DriverOptionsJson,
+                OwnerUid = resolution.Provisioning.OwnerUid,
+                OwnerGid = resolution.Provisioning.OwnerGid,
+                Permissions = resolution.Provisioning.Permissions,
                 IsProvisioned = volume.IsProvisioned,
                 CreatedAt = volume.CreatedAt
             });

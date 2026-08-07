@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Docker.DotNet.Models;
+using GameServer.Docker.Configurations;
 using GameServer.Docker.Constants;
 using GameServer.Docker.Dtos.V2;
 
@@ -17,16 +18,18 @@ namespace GameServer.Docker.Services.V2;
 /// </summary>
 public sealed class GameServerSpecBuilder
 {
-    /// <summary>
-    /// Overlay network every managed game server service is attached to.
-    /// </summary>
-    public const string OverlayNetworkName = "gameserver_overlay";
-
     private static readonly JsonSerializerOptions RawJsonOptions = new()
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    private readonly NetworkOptions _networkOptions;
+
+    public GameServerSpecBuilder(NetworkOptions networkOptions)
+    {
+        _networkOptions = networkOptions ?? throw new ArgumentNullException(nameof(networkOptions));
+    }
 
     /// <summary>
     /// Produces the deployment preview for a save request resolution.
@@ -65,15 +68,31 @@ public sealed class GameServerSpecBuilder
             [ServiceLabels.ServerId] = serverId
         };
 
-        var networks = new List<GameServerPreviewNetworkDto>
+        var networks = new List<GameServerPreviewNetworkDto>();
+
+        // Attach the GameServer network only when one is configured.
+        if (!string.IsNullOrWhiteSpace(_networkOptions.NetworkName))
         {
-            new()
+            networks.Add(new()
             {
-                Name = OverlayNetworkName,
+                Name = _networkOptions.NetworkName,
                 Driver = "overlay",
                 Description = "Shared overlay network for all managed game server services."
-            }
-        };
+            });
+        }
+
+        // Attach the load balancer network only when one or more web hosts are enabled.
+        var hasEnabledWebHosts = resolution.Result.ResolvedWebHosts.Count > 0;
+        if (hasEnabledWebHosts && !string.IsNullOrWhiteSpace(_networkOptions.LoadBalancerNetwork))
+        {
+            networks.Add(new()
+            {
+                Name = _networkOptions.LoadBalancerNetwork,
+                Driver = "overlay",
+                Description = "Load balancer network for reverse proxy discovery of web hosts."
+            });
+        }
+
 
         var parameters = new ServiceCreateParameters
         {
@@ -91,7 +110,9 @@ public sealed class GameServerSpecBuilder
                         Mounts = volumes.Select(ToMount).ToList(),
                         TTY = revision.EnableTTY
                     },
-                    Networks = [new NetworkAttachmentConfig { Target = OverlayNetworkName }]
+                    Networks = networks
+                        .Select(network => new NetworkAttachmentConfig { Target = network.Name })
+                        .ToList()
                 },
                 EndpointSpec = new EndpointSpec
                 {
@@ -235,7 +256,10 @@ public sealed class GameServerSpecBuilder
                 ContainerPath = volume.ContainerPath,
                 MountType = volume.MountType,
                 ReadOnly = volume.ReadOnly,
-                DriverOptionsJson = volume.DriverOptionsJson
+                DriverOptionsJson = volume.DriverOptionsJson,
+                OwnerUid = volume.OwnerUid,
+                OwnerGid = volume.OwnerGid,
+                Permissions = volume.Permissions
             })
             .ToList();
     }

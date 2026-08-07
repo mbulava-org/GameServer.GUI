@@ -100,4 +100,10 @@ public sealed record GameServerPreviewVolumeDto
     public bool ReadOnly { get; init; }
 
     public string? DriverOptionsJson { get; init; }
+
+    public int? OwnerUid { get; init; }
+
+    public int? OwnerGid { get; init; }
+
+    public string? Permissions { get; init; }
 }

@@ -85,13 +85,9 @@ public sealed record GameServerPreviewVolume
 
     public string ContainerPath { get; init; } = string.Empty;
 
-    public string Source { get; init; } = string.Empty;
-
     public string MountType { get; init; } = string.Empty;
 
     public bool ReadOnly { get; init; }
-
-    public string Driver { get; init; } = string.Empty;
 
     public string? DriverOptionsJson { get; init; }
 
@@ -100,6 +96,4 @@ public sealed record GameServerPreviewVolume
     public int? OwnerGid { get; init; }
 
     public string? Permissions { get; init; }
-
-    public bool EnsureNfsPathExists { get; init; }
 }

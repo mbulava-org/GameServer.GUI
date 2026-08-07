@@ -268,7 +268,10 @@ public sealed class VolumeSetupResolver(
             return "tmpfs";
         }
 
-        var template = config.GetOption("SourcePathTemplate") ?? string.Empty;
+        // Prefer the first-class VolumeNameFormat; fall back to the legacy SourcePathTemplate option.
+        var template = config.VolumeNameFormat.NullIfEmpty()
+            ?? config.GetOption("SourcePathTemplate")
+            ?? string.Empty;
         return template
             .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
             .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)

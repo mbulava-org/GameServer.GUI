@@ -171,9 +171,7 @@ else
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="Usage" Title="Usage" Width="110px" />
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="VolumeName" Title="Volume Name" />
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="ContainerPath" Title="Container Path" />
-                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="Source" Title="Source" />
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="MountType" Title="Mount" Width="100px" />
-                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="Driver" Title="Driver" Width="100px" />
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Ownership" Width="140px">
                         <Template Context="volume">
                             @(volume.OwnerUid?.ToString() ?? "—"):@(volume.OwnerGid?.ToString() ?? "—")

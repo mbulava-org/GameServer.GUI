@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GameServer.Docker.Configurations;
 using GameServer.Docker.Dtos.V2;
 using GameServer.Docker.Models.V2;
 using GameServer.Docker.Services.V2;
@@ -10,7 +11,7 @@ public sealed class GameServerSpecBuilderTests
     [Fact]
     public void Build_WhenRevisionMissing_ShouldReturnNoticeAndNoSpec()
     {
-        var preview = new GameServerSpecBuilder().Build(
+        var preview = new GameServerSpecBuilder(NewNetworkOptions()).Build(
             new SaveGameServerRequestDto { Name = "Test" },
             new GameServerResolutionContext());
 
@@ -84,14 +85,47 @@ public sealed class GameServerSpecBuilderTests
     }
 
     [Fact]
-    public void Build_ShouldAttachTheSharedOverlayNetwork()
+    public void Build_ShouldAttachTheConfiguredGameServerNetwork()
     {
         var preview = BuildPreview();
 
-        Assert.Equal(GameServerSpecBuilder.OverlayNetworkName, Assert.Single(preview.Networks).Name);
+        Assert.Equal("gameserver_overlay", Assert.Single(preview.Networks).Name);
     }
 
-    private static GameServerDeploymentPreviewDto BuildPreview()
+    [Fact]
+    public void Build_WhenNetworkNameNull_ShouldNotAttachGameServerNetwork()
+    {
+        var preview = BuildPreview(networkOptions: new NetworkOptions { NetworkName = null, LoadBalancerNetwork = "traefik-public" });
+
+        Assert.Empty(preview.Networks);
+    }
+
+    [Fact]
+    public void Build_WhenWebHostsEnabled_ShouldAttachLoadBalancerNetwork()
+    {
+        var preview = BuildPreview(
+            networkOptions: new NetworkOptions { NetworkName = "gameserver_overlay", LoadBalancerNetwork = "traefik-public" },
+            resolvedWebHosts: [new GameServerResolvedWebHostDto { Name = "web", ContainerPort = 8080 }]);
+
+        Assert.Contains(preview.Networks, network => network.Name == "gameserver_overlay");
+        Assert.Contains(preview.Networks, network => network.Name == "traefik-public");
+    }
+
+    [Fact]
+    public void Build_WhenNoWebHostsEnabled_ShouldNotAttachLoadBalancerNetwork()
+    {
+        var preview = BuildPreview(
+            networkOptions: new NetworkOptions { NetworkName = "gameserver_overlay", LoadBalancerNetwork = "traefik-public" });
+
+        Assert.DoesNotContain(preview.Networks, network => network.Name == "traefik-public");
+    }
+
+    private static NetworkOptions NewNetworkOptions() =>
+        new() { NetworkName = "gameserver_overlay", LoadBalancerNetwork = "traefik-public" };
+
+    private static GameServerDeploymentPreviewDto BuildPreview(
+        NetworkOptions? networkOptions = null,
+        IReadOnlyList<GameServerResolvedWebHostDto>? resolvedWebHosts = null)
     {
         var request = new SaveGameServerRequestDto
         {
@@ -143,6 +177,7 @@ public sealed class GameServerSpecBuilderTests
             Result = new GameServerValidationResultDto
             {
                 IsValid = true,
+                ResolvedWebHosts = resolvedWebHosts?.ToList() ?? [],
                 ResolvedPorts =
                 [
                     new GameServerResolvedPortDto { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 },
@@ -151,6 +186,6 @@ public sealed class GameServerSpecBuilderTests
             }
         };
 
-        return new GameServerSpecBuilder().Build(request, resolution);
+        return new GameServerSpecBuilder(networkOptions ?? NewNetworkOptions()).Build(request, resolution);
     }
 }
