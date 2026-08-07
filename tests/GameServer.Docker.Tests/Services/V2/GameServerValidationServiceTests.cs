@@ -103,7 +103,8 @@ public class GameServerValidationServiceTests
             gameTypeRepository.Object,
             serviceOperations.Object,
             new PortAllocation { StartPort = 2000, EndPort = 100000 },
-            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.Docker.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance));
+            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.Docker.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance),
+            Mock.Of<IMountTypeConfigRepository>());
     }
 
     private static GameType CreateRevision()

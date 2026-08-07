@@ -24,17 +24,20 @@ public sealed class GameServerValidationService
     private readonly IGameTypeRepository gameTypeRepository;
     private readonly IServiceOperations serviceOperations;
     private readonly IVolumeSetupResolver volumeSetupResolver;
+    private readonly IMountTypeConfigRepository mountTypeConfigRepository;
     private readonly GameServer.Docker.Configurations.PortAllocation portAllocation;
 
     public GameServerValidationService(
         IGameTypeRepository gameTypeRepository,
         IServiceOperations serviceOperations,
         PortAllocation portAllocation,
-        IVolumeSetupResolver volumeSetupResolver)
+        IVolumeSetupResolver volumeSetupResolver,
+        IMountTypeConfigRepository mountTypeConfigRepository)
     {
         this.gameTypeRepository = gameTypeRepository;
         this.serviceOperations = serviceOperations;
         this.volumeSetupResolver = volumeSetupResolver;
+        this.mountTypeConfigRepository = mountTypeConfigRepository;
         this.portAllocation = portAllocation;
     }
 
@@ -109,10 +112,18 @@ public sealed class GameServerValidationService
     {
         ArgumentNullException.ThrowIfNull(issues);
 
-        if (!string.Equals(layout, "standard", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase))
+        // An empty/unset layout is treated as the default. Mount behavior is now driven per-volume
+        // by each volume's configured MountType, so 'per-volume' is also accepted.
+        if (string.IsNullOrWhiteSpace(layout))
         {
-            issues.Add(CreateIssue("VolumeLayoutInvalid", "Volume binding layout must be 'standard' or 'local'.", "volumeBindingLayout"));
+            return;
+        }
+
+        if (!string.Equals(layout, "standard", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(layout, "local", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(layout, "per-volume", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add(CreateIssue("VolumeLayoutInvalid", "Volume binding layout must be 'standard', 'local', or 'per-volume'.", "volumeBindingLayout"));
         }
     }
 
@@ -601,9 +612,16 @@ public sealed class GameServerValidationService
         var result = new List<GameServerResolvedVolumeDto>();
         var containerPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Mount types are validated against the configured MountTypeConfig entries so that any
+        // provisioned mount type (e.g. 'nfs') is accepted rather than a hardcoded allowlist.
+        var configuredMountTypes = await mountTypeConfigRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        var knownMountTypes = new HashSet<string>(
+            (configuredMountTypes ?? Array.Empty<GameServer.Docker.Models.V2.MountTypeConfig>()).Select(config => config.Key),
+            StringComparer.OrdinalIgnoreCase);
+
         foreach (var definition in revision.Volumes)
         {
-            ValidateVolumeDefinition(definition, revision.Volumes, layout, issues);
+            ValidateVolumeDefinition(definition, revision.Volumes, knownMountTypes, issues);
         }
 
         IReadOnlyList<GameServer.Docker.Services.V2.VolumeSetupResolution> resolvedSnapshots;
@@ -654,11 +672,12 @@ public sealed class GameServerValidationService
     private static void ValidateVolumeDefinition(
         GameTypeVolumeModel definition,
         IReadOnlyList<GameTypeVolumeModel> allDefinitions,
-        string layout,
+        IReadOnlySet<string> knownMountTypes,
         List<GameServerValidationIssueDto> issues)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(allDefinitions);
+        ArgumentNullException.ThrowIfNull(knownMountTypes);
         ArgumentNullException.ThrowIfNull(issues);
 
         var scope = $"volumes:{definition.Source}";
@@ -669,12 +688,7 @@ public sealed class GameServerValidationService
             return;
         }
 
-        var knownMountTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "volume", "bind", "tmpfs"
-        };
-
-        if (!knownMountTypes.Contains(definition.MountType))
+        if (!string.IsNullOrWhiteSpace(definition.MountType) && knownMountTypes.Count > 0 && !knownMountTypes.Contains(definition.MountType))
         {
             issues.Add(CreateIssue("VolumeMountTypeInvalid", $"Mount type '{definition.MountType}' is not supported.", $"{scope}:mountType", isBlocking: false));
         }
