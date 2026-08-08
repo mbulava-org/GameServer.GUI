@@ -256,9 +256,9 @@ jobs:
 
           | Setting | Value |
           | ------- | ----- |
-          | **Version** | `${{ steps.config.outputs.new_version }}` |
-          | **Build Number** | `${{ env.VERSION_BUILD }}` |
-          | **Semantic Base** | `${{ env.SEMANTIC_VERSION }}` |
+          | **Version** | ${{ steps.config.outputs.new_version }} |
+          | **Build Number** | ${{ env.VERSION_BUILD }} |
+          | **Semantic Base** | ${{ env.SEMANTIC_VERSION }} |
           | **Run Number** | ${{ github.run_number }} |
           | **.NET Version** | ${{ env.DOTNET_VERSION }} |
 
