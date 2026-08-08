@@ -247,10 +247,10 @@ jobs:
             echo "  ⏭️  Client push skipped (no changes, not forced)"
           fi
 
-       - name: Write build summary
-         id: build-summary
-         run: |
-           cat >> $GITHUB_STEP_SUMMARY <<EOF
+      - name: Write build summary
+        id: build-summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
           
           ## 🏗️ Build Configuration
 
