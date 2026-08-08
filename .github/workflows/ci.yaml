@@ -247,6 +247,34 @@ jobs:
             echo "  ⏭️  Client push skipped (no changes, not forced)"
           fi
 
+       - name: Write build summary
+         id: build-summary
+         run: |
+           cat >> $GITHUB_STEP_SUMMARY <<EOF
+          
+          ## 🏗️ Build Configuration
+
+          | Setting | Value |
+          | ------- | ----- |
+          | **Version** | `${{ steps.config.outputs.new_version }}` |
+          | **Build Number** | `${{ env.VERSION_BUILD }}` |
+          | **Semantic Base** | `${{ env.SEMANTIC_VERSION }}` |
+          | **Run Number** | ${{ github.run_number }} |
+          | **.NET Version** | ${{ env.DOTNET_VERSION }} |
+
+          ---
+
+          ## 📦 Push Decisions
+
+          | Project | Changed | Force | **Will Push** |
+          | ------- | ------- | ----- | ------------- |
+          | Backend (GameServer.Docker) | ${{ steps.detect-project-changes.outputs.backend_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_backend }}`** |
+          | Agent (GameServer.Docker.Agent) | ${{ steps.detect-project-changes.outputs.agent_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_agent }}`** |
+          | Web (GameServer.Web) | ${{ steps.detect-project-changes.outputs.web_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_web }}`** |
+          | Client (GameServer.Docker.Client) | ${{ steps.detect-project-changes.outputs.client_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_client }}`** |
+          | Tests | ${{ steps.detect-project-changes.outputs.tests_changed }} | — | _(runs always)_ |
+          EOF
+
   test:
     needs: [setup]
     runs-on: ubuntu-latest

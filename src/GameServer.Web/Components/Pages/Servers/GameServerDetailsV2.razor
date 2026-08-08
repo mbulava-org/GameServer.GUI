@@ -76,7 +76,7 @@
                 <RadzenButton Text="Refresh"
                               Icon="refresh"
                               ButtonStyle="ButtonStyle.Light"
-                              Click="@LoadAsync" />
+                              Click="@OnRefresh" />
             </div>
         </div>
 
@@ -328,10 +328,11 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        await LoadAsync();
+        await LoadServerDataAsync();
+        _ = RunValidationInBackgroundAsync();
     }
 
-    private async Task LoadAsync()
+    private async Task LoadServerDataAsync()
     {
         if (string.IsNullOrWhiteSpace(ServerId))
         {
@@ -349,7 +350,6 @@
             cachedGameTypeThumbnailUrl = server is null
                 ? null
                 : await ThumbnailCacheService.GetCachedThumbnailUrlAsync(server.GameTypeThumbnailUrl);
-            validationPreview = server is null ? null : await GameServerApiV2.ValidateAsync(BuildValidationRequest(server));
         }
         catch (HttpRequestException ex)
         {
@@ -359,6 +359,31 @@
         {
             isLoading = false;
         }
+    }
+
+    private async Task RunValidationInBackgroundAsync()
+    {
+        if (server is null)
+        {
+            return;
+        }
+
+        try
+        {
+            validationPreview = await GameServerApiV2.ValidateAsync(BuildValidationRequest(server));
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (HttpRequestException)
+        {
+            // Silently ignore validation failures; the page still shows server data.
+        }
+    }
+
+    private async Task OnRefresh()
+    {
+        validationPreview = null;
+        await LoadServerDataAsync();
+        _ = RunValidationInBackgroundAsync();
     }
 
     private void GoBack()
