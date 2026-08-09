@@ -220,16 +220,16 @@
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.CreatedAt)"
-                                                TItem="GameServerResolvedVolume"
-                                                AllowSorting="true">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="ContainerPath" Title="Container Path" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Source" Title="Source" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Usage" Title="Usage" Width="140px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="MountType" Title="Type" Width="100px" />
-                                    </Columns>
-                                </RadzenDataGrid>
+<RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.CreatedAt)"
+                TItem="GameServerResolvedVolume"
+                AllowSorting="true">
+    <Columns>
+        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="ContainerPath" Title="Container Path" />
+        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="VolumeName" Title="Volume Name" />
+        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Usage" Title="Usage" Width="140px" />
+        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="MountType" Title="Type" Width="100px" />
+    </Columns>
+</RadzenDataGrid>
                             }
                         </RadzenCard>
                     </div>
