@@ -3,6 +3,10 @@
 @rendermode InteractiveServer
 @using System.Text.Json
 @using GameServer.Web.Models.V2
+@using GameServer.Docker.Client.Interfaces
+@using GameServer.Docker.Client.Services
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
 @using Radzen
 @using Radzen.Blazor
 @inject Services.V2.IGameServerV2ApiService GameServerApiV2
@@ -10,6 +14,7 @@
 @inject Services.V2.IMountTypeConfigApiService MountTypeConfigApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
+@inject IOptions<GameServerDockerApi> ApiConfig
 
 <PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</PageTitle>
 
@@ -379,6 +384,36 @@
                                                                OnRefresh="@LoadDeploymentPreviewAsync" />
                             </div>
                         </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="Terminal">
+                            <div class="p-3">
+                                @if (isEditMode)
+                                {
+                                    <ContainerTerminal ContainerId="@terminalContainerId" AutoConnect="false" />
+                                }
+                                else
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
+                                        Terminal is only available for existing servers. Save the server first, then open the Terminal tab.
+                                    </RadzenAlert>
+                                }
+                            </div>
+                        </RadzenTabsItem>
+
+                        <RadzenTabsItem Text="Resource Monitor">
+                            <div class="p-3">
+                                @if (isEditMode && !string.IsNullOrWhiteSpace(ServerId))
+                                {
+                                    <ResourceMonitorTab ServerId="@ServerId" />
+                                }
+                                else
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
+                                        Resource monitoring is only available for existing servers. Save the server first, then open the Resource Monitor tab.
+                                    </RadzenAlert>
+                                }
+                            </div>
+                        </RadzenTabsItem>
                     </Tabs>
                 </RadzenTabs>
             </div>
@@ -419,6 +454,8 @@
     private bool isSaving;
     private int selectedTabIndex;
     private const int DeploymentPreviewTabIndex = 2;
+    private const int TerminalTabIndex = 3;
+    private const int ResourceMonitorTabIndex = 4;
 
     // Volume mount type selections (keyed by GameTypeVolume.Id)
     private readonly List<MountTypeConfig> mountTypeOptions = [];
@@ -434,6 +471,12 @@
     private readonly Dictionary<int, GameServerPortAvailability> portAvailability = new();
     private bool isCheckingPorts;
     private int portCheckToken;
+
+    // Terminal / resource monitor state
+    private string? terminalContainerId;
+    private IResourceMonitoringClient? resourceClient;
+    private ServerResourceUsage? latestResourceData;
+    private List<ResourceMonitorLogEntry> resourceLogs = new();
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
@@ -1060,6 +1103,138 @@
         {
             isPreviewLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Returns the first live container ID from the deployment preview so the Terminal tab can connect.
+    /// If the server is already loaded in edit mode, attempt to fetch containers and pick one.
+    /// </summary>
+    private async Task EnsureTerminalContainerIdAsync()
+    {
+        if (terminalContainerId is not null)
+        {
+            return;
+        }
+
+        // Try to get container ID from the deployment preview
+        if (deploymentPreview?.Containers?.Any() == true)
+        {
+            terminalContainerId = deploymentPreview.Containers.First().Id;
+            StateHasChanged();
+            return;
+        }
+
+        // Fallback: fetch running containers for the server and use the first one
+        if (!string.IsNullOrWhiteSpace(ServerId))
+        {
+            try
+            {
+                var serverDetail = await GameServerApiV2.GetByServerIdAsync(ServerId);
+                terminalContainerId = serverDetail?.Containers?.FirstOrDefault()?.Id;
+                StateHasChanged();
+            }
+            catch
+            {
+                // Best-effort – Terminal component will handle missing ID gracefully.
+            }
+        }
+    }
+
+    // ---- Resource monitoring helpers ----
+
+    private async Task StartResourceMonitoringAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(ServerId) && resourceClient is null)
+        {
+            var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
+            var wsUri = baseUri.Replace("https://", "wss://").Replace("http://", "ws://");
+            var hubUrl = $"{wsUri}/hubs/resources";
+
+            resourceClient = new ResourceMonitoringClient(hubUrl);
+            resourceClient.ResourceUpdateReceived += OnResourceData;
+            resourceClient.ErrorReceived += OnResourceError;
+
+            try
+            {
+                await resourceClient.ConnectAsync(CancellationToken.None);
+                await resourceClient.SubscribeToServerAsync(ServerId, 5, CancellationToken.None);
+                AddResourceLog("INFO", $"Subscribed to resource updates for server {ServerId}");
+            }
+            catch (Exception ex)
+            {
+                AddResourceLog("ERROR", $"Failed to initialize resource monitor: {ex.Message}");
+            }
+        }
+    }
+
+    private void StopResourceMonitoringAsync()
+    {
+        if (resourceClient != null)
+        {
+            resourceClient.ResourceUpdateReceived -= OnResourceData;
+            resourceClient.ErrorReceived -= OnResourceError;
+            resourceClient = null;
+        }
+    }
+
+    private void OnResourceData(object? sender, ServerResourceUsage usage)
+    {
+        InvokeAsync(() =>
+        {
+            latestResourceData = usage;
+            AddResourceLog("DATA", $"CPU: {(usage.CpuUsagePercent ?? 0):F1}% · Memory: {(usage.MemoryUsagePercent ?? 0):F1}%");
+            StateHasChanged();
+        });
+    }
+
+    private void OnResourceError(object? sender, string error)
+    {
+        InvokeAsync(() =>
+        {
+            AddResourceLog("ERROR", error);
+            StateHasChanged();
+        });
+    }
+
+    private void AddResourceLog(string type, string message)
+    {
+        resourceLogs.Insert(0, new ResourceMonitorLogEntry
+        {
+            Timestamp = DateTime.Now,
+            Type = type,
+            Message = message
+        });
+
+        if (resourceLogs.Count > 100)
+        {
+            resourceLogs.RemoveAt(resourceLogs.Count - 1);
+        }
+    }
+
+    private static string FormatResourceBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = Math.Abs(bytes);
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:F1} {sizes[order]}";
+    }
+
+    private static string BuildResourceBarHtml(double percentage, string colorClass)
+    {
+        var clamped = Math.Clamp(percentage, 0, 100);
+        return $"<div class='resource-bar-bg' style='height:8px;border-radius:4px;background:#333;overflow:hidden;margin-top:4px;'><div class='{colorClass}' style='height:100%;width:{clamped}%;background-currentColor;'></div></div>";
+    }
+
+    private sealed record ResourceMonitorLogEntry
+    {
+        public DateTime Timestamp { get; set; }
+        public string Type { get; set; } = "";
+        public string Message { get; set; } = "";
     }
 
     private static string BuildRevisionLabel(GameTypeRevision revision)
