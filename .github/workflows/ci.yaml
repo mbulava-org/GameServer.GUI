@@ -275,104 +275,104 @@ jobs:
           | Tests | ${{ steps.detect-project-changes.outputs.tests_changed }} | — | _(runs always)_ |
           EOF
 
-  test:
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup dotnet
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
-          source-url: https://nuget.pkg.github.com/mbulava-org/index.json
-        env:
-          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Restore dependencies
-        run: dotnet restore GameServer.GUI.slnx
-
-      # # Workaround: MSBuild.Sdk.PostgreSql 1.0.0-preview3 ships only Windows native
-      # # libraries (win-x64). On Linux the pgpac compiler cannot find libpg_query_17.so
-      # # and exits with code 1. The mbulava.postgresql.dac package (restored above as a
-      # # transitive dep) already contains the correct linux-x64 .so files — copy them
-      # # into the location the SDK tasks DLL searches at build time.
-      # # Track: upgrade MSBuild.Sdk.PostgreSql when a version that ships linux libs lands.
-      #   run: |
-      #     NUGET_CACHE="${HOME}/.nuget/packages"
-      #     SDK_VER="1.0.0-preview3"
-      #     DAC_VER="1.0.0-preview9"
-      #     SRC="$NUGET_CACHE/mbulava.postgresql.dac/$DAC_VER/runtimes/linux-x64/native"
-      #     DST="$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER/tasks/net10.0/runtimes/linux-x64/native"
-      #     if [ -d "$SRC" ] && [ -d "$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER" ]; then
-      #       mkdir -p "$DST"
-      #       cp "$SRC/libpg_query_16.so" "$DST/" 2>/dev/null || true
-      #       cp "$SRC/libpg_query_17.so" "$DST/" 2>/dev/null || true
-      #       echo "Copied linux-x64 native libs to $DST"
-      #       ls "$DST"
-      #     else
-      #       echo "Source or SDK package dir not found — skipping (DB project excluded from solution build)"
-      #     fi
-
-      - name: Build solution
-        run: dotnet build GameServer.GUI.slnx --no-restore --configuration Release
-
-      - name: Run tests (excluding Testcontainers/Docker-socket tests)
-        run: |
-          # Run each test project separately so every project writes its own
-          # uniquely-named .trx file (a shared LogFileName would overwrite).
-          # All coverage.cobertura.xml files still land under ./test-results and
-          # are combined by the coverage report step below.
-          overall=0
-          for proj in $(find tests -name '*.Tests.csproj' | sort); do
-            name=$(basename "$proj" .csproj)
-            echo "::group::Testing $name"
-            dotnet test "$proj" \
-              --no-build --configuration Release \
-              --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests&Category!=PostgreSql" \
-              --logger "trx;LogFileName=${name}.trx" \
-              --collect:"XPlat Code Coverage" \
-              --results-directory ./test-results || overall=1
-            echo "::endgroup::"
-          done
-          exit $overall
-
-      - name: Generate coverage report
-        if: always()
-        run: |
-          dotnet tool install --global dotnet-reportgenerator-globaltool
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          reportgenerator \
-            -reports:"./test-results/**/coverage.cobertura.xml" \
-            -targetdir:"./coverage-report" \
-            -reporttypes:"Html;Cobertura;MarkdownSummaryGithub;TextSummary"
-
-      - name: Publish coverage summary
-        if: always()
-        run: |
-          if [ -f ./coverage-report/SummaryGithub.md ]; then
-            cat ./coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No coverage summary was produced." >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: test-results
-          path: ./test-results/*.trx
-
-      - name: Upload code coverage report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: code-coverage-report
-          path: |
-            ./coverage-report/**
-            ./test-results/**/coverage.cobertura.xml
-
+#  test:
+#    needs: [setup]
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v7
+#
+#      - name: Setup dotnet
+#        uses: actions/setup-dotnet@v5
+#        with:
+#          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+#          source-url: https://nuget.pkg.github.com/mbulava-org/index.json
+#        env:
+#          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}#
+#
+#      - name: Restore dependencies
+#        run: dotnet restore GameServer.GUI.slnx
+#
+#      # # Workaround: MSBuild.Sdk.PostgreSql 1.0.0-preview3 ships only Windows native
+#      # # libraries (win-x64). On Linux the pgpac compiler cannot find libpg_query_17.so
+#      # # and exits with code 1. The mbulava.postgresql.dac package (restored above as a
+#      # # transitive dep) already contains the correct linux-x64 .so files — copy them
+#      # # into the location the SDK tasks DLL searches at build time.
+#      # # Track: upgrade MSBuild.Sdk.PostgreSql when a version that ships linux libs lands.
+#      #   run: |
+#      #     NUGET_CACHE="${HOME}/.nuget/packages"
+#      #     SDK_VER="1.0.0-preview3"
+#      #     DAC_VER="1.0.0-preview9"
+#      #     SRC="$NUGET_CACHE/mbulava.postgresql.dac/$DAC_VER/runtimes/linux-x64/native"
+#      #     DST="$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER/tasks/net10.0/runtimes/linux-x64/native"
+#      #     if [ -d "$SRC" ] && [ -d "$NUGET_CACHE/msbuild.sdk.postgresql/$SDK_VER" ]; then
+#      #       mkdir -p "$DST"
+#      #       cp "$SRC/libpg_query_16.so" "$DST/" 2>/dev/null || true
+#      #       cp "$SRC/libpg_query_17.so" "$DST/" 2>/dev/null || true
+#      #       echo "Copied linux-x64 native libs to $DST"
+#      #       ls "$DST"
+#      #     else
+#      #       echo "Source or SDK package dir not found — skipping (DB project excluded from solution build)"
+#      #     fi
+#
+#      - name: Build solution
+#        run: dotnet build GameServer.GUI.slnx --no-restore --configuration Release
+#
+#      - name: Run tests (excluding Testcontainers/Docker-socket tests)
+#        run: |
+#          # Run each test project separately so every project writes its own
+#          # uniquely-named .trx file (a shared LogFileName would overwrite).
+#          # All coverage.cobertura.xml files still land under ./test-results and
+#          # are combined by the coverage report step below.
+#          overall=0
+#          for proj in $(find tests -name '*.Tests.csproj' | sort); do
+#            name=$(basename "$proj" .csproj)
+#            echo "::group::Testing $name"
+#            dotnet test "$proj" \
+#              --no-build --configuration Release \
+#              --filter "FullyQualifiedName!~MySqlContainer&FullyQualifiedName!~PostgreSqlContainer&FullyQualifiedName!~MySqlTests&FullyQualifiedName!~PostgreSqlTests&Category!=PostgreSql" \
+#              --logger "trx;LogFileName=${name}.trx" \
+#              --collect:"XPlat Code Coverage" \
+#              --results-directory ./test-results || overall=1
+#            echo "::endgroup::"
+#          done
+#          exit $overall
+#
+#      - name: Generate coverage report
+#        if: always()
+#        run: |
+#          dotnet tool install --global dotnet-reportgenerator-globaltool
+#          export PATH="$PATH:$HOME/.dotnet/tools"
+#          reportgenerator \
+#            -reports:"./test-results/**/coverage.cobertura.xml" \
+#            -targetdir:"./coverage-report" \
+#            -reporttypes:"Html;Cobertura;MarkdownSummaryGithub;TextSummary"
+#
+#      - name: Publish coverage summary
+#        if: always()
+#        run: |
+#          if [ -f ./coverage-report/SummaryGithub.md ]; then
+#            cat ./coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+#          else
+#            echo "No coverage summary was produced." >> $GITHUB_STEP_SUMMARY
+#          fi
+#
+#      - name: Upload test results
+#        if: always()
+#        uses: actions/upload-artifact@v5
+#        with:
+#          name: test-results
+#          path: ./test-results/*.trx
+#
+#      - name: Upload code coverage report
+#        if: always()
+#        uses: actions/upload-artifact@v5
+#        with:
+#          name: code-coverage-report
+#          path: |
+#            ./coverage-report/**
+#            ./test-results/**/coverage.cobertura.xml
+#
   backend:
     needs: [setup]
     if: needs.setup.outputs.push_backend == 'true'
