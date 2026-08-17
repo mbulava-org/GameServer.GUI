@@ -17,7 +17,7 @@ public class GameTypeRepositoryPostgreSqlTests : IAsyncLifetime
     private GameServerV2DbContext? _context;
     private GameTypeRepository? _repository;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _container = new PostgreSqlBuilder()
             .WithImage("postgres:17")
@@ -35,7 +35,7 @@ public class GameTypeRepositoryPostgreSqlTests : IAsyncLifetime
         _repository = new GameTypeRepository(_context, Mock.Of<ILogger<GameTypeRepository>>());
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_context is not null)
         {

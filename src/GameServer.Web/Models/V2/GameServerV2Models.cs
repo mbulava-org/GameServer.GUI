@@ -37,6 +37,18 @@ public sealed record GameServerListItem
     public string? RevisionImageReference { get; init; }
 
     public List<GameServerResolvedPort> ResolvedPorts { get; init; } = [];
+
+    /// <summary>
+    /// Running containers for this server (when available).
+    /// </summary>
+    public List<GameServerContainer> Containers { get; init; } = [];
+}
+
+public sealed record GameServerContainer
+{
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
 }
 
 public sealed record GameServerDetail
@@ -90,6 +102,11 @@ public sealed record GameServerDetail
     public List<GameServerConfigurationOption> NetworkOptions { get; init; } = [];
 
     public List<GameServerValidationIssue> ConfigurationRules { get; init; } = [];
+
+    /// <summary>
+    /// Running containers for this server (when available).
+    /// </summary>
+    public List<GameServerContainer> Containers { get; init; } = [];
 }
 
 public sealed record GameServerSetting

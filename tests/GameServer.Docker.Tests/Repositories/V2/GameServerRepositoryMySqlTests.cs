@@ -17,7 +17,7 @@ public class GameServerRepositoryMySqlTests : IAsyncLifetime
     private GameServerRepository? _gameServerRepository;
     private int _revisionId;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _container = new MySqlBuilder()
             .WithImage("mysql:8.4")
@@ -60,7 +60,7 @@ public class GameServerRepositoryMySqlTests : IAsyncLifetime
         _revisionId = gameType.Revisions.Single().Id;
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_context is not null)
         {

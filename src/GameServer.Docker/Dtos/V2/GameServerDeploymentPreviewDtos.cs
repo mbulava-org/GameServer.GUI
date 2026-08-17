@@ -29,6 +29,11 @@ public sealed record GameServerDeploymentPreviewDto
 
     public List<GameServerPreviewVolumeDto> Volumes { get; init; } = [];
 
+    /// <summary>
+    /// Preview list of containers that would be created for the service. Used by the UI to pick a terminal target.
+    /// </summary>
+    public List<GameServerPreviewContainerDto> Containers { get; init; } = [];
+
     public List<GameServerValidationIssueDto> Issues { get; init; } = [];
 
     /// <summary>
@@ -40,6 +45,13 @@ public sealed record GameServerDeploymentPreviewDto
     /// Indented JSON of the exact <c>ServiceCreateParameters</c> that would be sent to Docker.
     /// </summary>
     public string RawServiceSpecJson { get; init; } = string.Empty;
+}
+
+public sealed record GameServerPreviewContainerDto
+{
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
 }
 
 public sealed record GameServerPreviewNetworkDto

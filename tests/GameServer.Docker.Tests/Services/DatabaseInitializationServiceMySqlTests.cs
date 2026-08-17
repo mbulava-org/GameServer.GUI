@@ -16,7 +16,7 @@ public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
     private MySqlGameServerV2DbContext? _context;
     private V2Repositories.GameTypeRepository? _v2Repository;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _container = new MySqlBuilder()
             .WithImage("mysql:8.4")
@@ -34,7 +34,7 @@ public class DatabaseInitializationServiceMySqlTests : IAsyncLifetime
         _v2Repository = new V2Repositories.GameTypeRepository(_context, Mock.Of<ILogger<V2Repositories.GameTypeRepository>>());
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_context is not null)
         {

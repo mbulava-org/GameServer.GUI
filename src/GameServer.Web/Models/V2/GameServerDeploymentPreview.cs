@@ -34,6 +34,11 @@ public sealed record GameServerDeploymentPreview
     public List<string> Notices { get; init; } = [];
 
     public string RawServiceSpecJson { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Preview list of containers that would be created for the service. Used by the UI to pick a terminal target.
+    /// </summary>
+    public List<GameServerPreviewContainer> Containers { get; init; } = [];
 }
 
 public sealed record GameServerPreviewNetwork
@@ -43,6 +48,13 @@ public sealed record GameServerPreviewNetwork
     public string Driver { get; init; } = string.Empty;
 
     public string? Description { get; init; }
+}
+
+public sealed record GameServerPreviewContainer
+{
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
 }
 
 public sealed record GameServerPreviewEnvironmentVariable

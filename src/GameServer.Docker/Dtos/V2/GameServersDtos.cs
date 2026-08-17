@@ -37,6 +37,18 @@ public sealed record GameServerListItemDto
     public string? RevisionImageReference { get; init; }
 
     public List<GameServerResolvedPortDto> ResolvedPorts { get; init; } = [];
+
+    /// <summary>
+    /// Running containers for this server (when available).
+    /// </summary>
+    public List<GameServerContainerDto> Containers { get; init; } = [];
+}
+
+public sealed record GameServerContainerDto
+{
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
 }
 
 public sealed record GameServerDetailDto
