@@ -374,7 +374,7 @@ jobs:
             ./test-results/**/coverage.cobertura.xml
 
   backend:
-    needs: [setup, test]
+    needs: [setup]
     if: needs.setup.outputs.push_backend == 'true'
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
@@ -390,7 +390,7 @@ jobs:
       target_repo: 'gameserver-docker'
 
   agent-backend:
-    needs: [setup, test]
+    needs: [setup]
     if: needs.setup.outputs.push_agent == 'true'
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
@@ -418,7 +418,7 @@ jobs:
   #     disable_tests: false
 
   web-gui:
-    needs: [setup, test]
+    needs: [setup]
     if: needs.setup.outputs.push_web == 'true'
     uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
     secrets: inherit
