@@ -137,4 +137,23 @@ public sealed class GameServersController(GameServerQueryService queryService, G
             return NotFound();
         }
     }
+
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    [HttpDelete("{serverId}")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> Delete(string serverId, [FromQuery] bool softDelete = true, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await commandService.DeleteAsync(serverId, softDelete, cancellationToken);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
 }

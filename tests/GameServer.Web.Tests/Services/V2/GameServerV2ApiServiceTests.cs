@@ -117,6 +117,29 @@ public class GameServerV2ApiServiceTests
         Assert.Equal("Stopped", result.Status);
     }
 
+    [Fact]
+    public async Task DeleteAsync_WhenApiReturnsNoContent_ShouldSucceed()
+    {
+        // Arrange
+        var requestUriCaptured = string.Empty;
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Delete && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1")
+            {
+                requestUriCaptured = request.RequestUri.ToString();
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        // Act
+        await service.DeleteAsync("srv-1", softDelete: true);
+
+        // Assert
+        Assert.Contains("/api/v2/gameservers/srv-1?softDelete=True", requestUriCaptured);
+    }
+
     private static GameServerV2ApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();

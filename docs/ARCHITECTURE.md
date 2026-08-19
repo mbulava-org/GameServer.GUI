@@ -182,7 +182,7 @@ public class MyHub : Hub
 - Container operations always go through agents (logs, exec, stats, attach)
 - V2 persistence is the only active persistence layer
 
-### 2. GameServer.Docker.Agent (Node Agents)
+### 2. GameServer.Docker.Agent (Docker Node Agents)
 
 **Purpose:** Container-level operations on each Swarm node
 
@@ -198,11 +198,40 @@ public class MyHub : Hub
   - `GetContainerStats(containerId)` - Snapshot stats
 
 **Discovery:**
-- Agents register with central API via labels
-- `NodeAgentDiscoveryService` maintains agent list
+- Agents register with central API via `/hubs/agentregistration`
+- `AgentRegistryService` maintains agent list and container→agent mappings
 - `GetAgentForContainerAsync(containerId)` finds the right agent
 
-### 3. GameServer.Web (Blazor Frontend)
+### 3. GameServer.Windows.Agent (Windows Host Agents)
+
+**Purpose:** SteamCMD CLI operations and native Windows game server process lifecycle
+
+**Deployment:** Runs as a Windows Service or Console application on dedicated Windows hosts
+
+**Provides:**
+- **SteamCMD Management**:
+  - Auto-downloads and extracts `steamcmd.exe` from Valve CDN if missing
+  - `POST /api/steamcmd/install` - Install or update game server App IDs
+  - `POST /api/steamcmd/workshop/download` - Download Steam Workshop items
+  - `GET /api/steamcmd/apps/{appId}/status` - Status and executable file inspection
+- **Native Process Supervision & Win32 Job Objects**:
+  - `POST /api/servers/start` - Launch server within a Win32 Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`)
+  - `POST /api/servers/{id}/stop` - Graceful shutdown (Ctrl-C / stdin / RCON) with timeout and process-tree kill fallback
+  - `POST /api/servers/{id}/restart` - Restart server process
+  - `POST /api/servers/{id}/command` - Send standard input commands or Source RCON commands
+- **Real-Time Streaming (`/hubs/windowsagent` and `/hubs/nodeagent`)**:
+  - `StreamServerLogs(serverId, ...)` - Live stream from circular log ring buffer
+  - `StreamServerStats(serverId, ...)` - Process CPU and RAM telemetry
+  - `StreamHostStats(...)` - Host memory, CPU, and disk storage metrics
+- **Host Diagnostics & File Management**:
+  - `GET /api/ports/check` - Inspect active TCP/UDP listeners using `IPGlobalProperties`
+  - `GET /api/files` & `POST /api/files/backups/{serverId}` - File browsing, config editing, and zip backup archives
+
+**Registration:**
+- Pushes registration to Primary Service at `/hubs/agentregistration` with `HostType = "windows"`
+- Sends periodic heartbeats with active server IDs
+
+### 4. GameServer.Web (Blazor Frontend)
 
 **Purpose:** User interface
 
@@ -378,11 +407,17 @@ src/
 ?   ?   ??? NodeAgentDiscoveryService.cs # Agent discovery / container→agent lookup
 ?   ??? Repositories/V2/            # V2 data persistence
 ?
-??? GameServer.Docker.Agent/        # Node Agent (runs on each node)
+??? GameServer.Docker.Agent/        # Node Agent (runs on each Swarm node)
 ?   ??? Controllers/                # Container operations REST API
 ?   ??? Hubs/                       # Container operations SignalR
 ?   ??? Services/                   # Container operations
 ?       ??? ContainerService.cs     # Direct Docker client (local only)
+?
+??? GameServer.Windows.Agent/       # Windows Host Agent (runs on Windows hosts)
+?   ??? Controllers/                # SteamCMD, Process, Files, Ports REST API
+?   ??? Hubs/                       # WindowsAgentHub SignalR (/hubs/windowsagent)
+?   ??? Native/                     # Win32 Job Objects & WindowsProcessHelper
+?   ??? Services/                   # SteamCmdService, GameProcessManager, RconClient
 ?
 ??? GameServer.Docker.Client/       # Client library
 ?   ??? Services/
@@ -479,6 +514,8 @@ docker ps  # Run on each node
 ## Documentation Files
 
 - **This file** - Architecture overview and patterns (READ FIRST!)
+- `docs/guides/Windows-Agent-Setup-And-Communication.md` - Windows Agent setup, SteamCMD lifecycle, and Primary API communication
+- `docs/guides/Agent-Registration-Flow.md` - Push-based agent registration flow
 - `docs/MULTI-NODE-LOGS-FIX.md` - Multi-node log streaming explanation
 - `docs/Container-Console-Client-Implementation.md` - Console client usage
 - `docs/Agent-Fixes-Applied.md` - Node Agent implementation details

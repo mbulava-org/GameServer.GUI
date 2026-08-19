@@ -70,15 +70,15 @@ public class VolumeSetupResolverTests
 
     private static VolumeSetupResolver CreateResolver(MountTypeConfig? config = null)
     {
-        var effectiveConfig = config ?? VolumeConfig;
+        var effectiveVolumeConfig = config?.Key == "volume" ? config : VolumeConfig;
         var repository = new Mock<GameServer.Docker.Repositories.V2.IMountTypeConfigRepository>();
         repository
             .Setup(x => x.GetByKeyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string key, CancellationToken _) =>
-                string.Equals(key, "volume", StringComparison.OrdinalIgnoreCase) ? VolumeConfig :
-                string.Equals(key, "bind", StringComparison.OrdinalIgnoreCase) ? BindConfig :
-                string.Equals(key, "nfs", StringComparison.OrdinalIgnoreCase) ? NfsConfig :
-                string.Equals(key, "tmpfs", StringComparison.OrdinalIgnoreCase) ? TmpfsConfig : effectiveConfig);
+                string.Equals(key, "volume", StringComparison.OrdinalIgnoreCase) ? effectiveVolumeConfig :
+                string.Equals(key, "bind", StringComparison.OrdinalIgnoreCase) ? (config?.Key == "bind" ? config : BindConfig) :
+                string.Equals(key, "nfs", StringComparison.OrdinalIgnoreCase) ? (config?.Key == "nfs" ? config : NfsConfig) :
+                string.Equals(key, "tmpfs", StringComparison.OrdinalIgnoreCase) ? (config?.Key == "tmpfs" ? config : TmpfsConfig) : (config ?? VolumeConfig));
         return new VolumeSetupResolver(repository.Object, CreateHandlerFactory(), NullLogger<VolumeSetupResolver>.Instance);
     }
 
@@ -149,5 +149,60 @@ public class VolumeSetupResolverTests
 
         // Provisioning-only data lives on the transient spec, not the persisted snapshot.
         Assert.True(resolution.Provisioning.EnsureNfsPathExists);
+    }
+
+    [Fact]
+    public async Task ResolveForCreateAsync_WhenOwnerVariablesProvided_ShouldResolveUidAndGid()
+    {
+        var resolver = CreateResolver();
+        var revisionVolume = new GameTypeVolume
+        {
+            Source = "/data",
+            Usage = "world",
+            MountType = "volume",
+            OwnerUidVariable = "UID",
+            OwnerGidVariable = "GID"
+        };
+
+        var settings = new Dictionary<string, string?>
+        {
+            ["UID"] = "1001",
+            ["GID"] = "1002"
+        };
+
+        var resolved = await resolver.ResolveForCreateAsync("srv1", "minecraft", [revisionVolume], settingValues: settings);
+
+        var resolution = Assert.Single(resolved);
+        Assert.Equal(1001, resolution.Provisioning.OwnerUid);
+        Assert.Equal(1002, resolution.Provisioning.OwnerGid);
+    }
+
+    [Fact]
+    public async Task ResolveForCreateAsync_WhenServerNameProvided_ShouldReplaceServerNameToken()
+    {
+        var customConfig = new MountTypeConfig
+        {
+            Key = "volume",
+            DisplayName = "Docker volume",
+            VolumeNameFormat = "{serverName}_{Usage}"
+        };
+
+        var resolver = CreateResolver(customConfig);
+        var revisionVolume = new GameTypeVolume
+        {
+            Source = "/data",
+            Usage = "world",
+            MountType = "volume"
+        };
+
+        var settings = new Dictionary<string, string?>
+        {
+            ["Name"] = "My Cool Server"
+        };
+
+        var resolved = await resolver.ResolveForCreateAsync("srv1", "minecraft", [revisionVolume], settingValues: settings);
+
+        var resolution = Assert.Single(resolved);
+        Assert.Equal("my-cool-server_world", resolution.Snapshot.VolumeName);
     }
 }

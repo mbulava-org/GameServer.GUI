@@ -93,6 +93,20 @@ public sealed class GameServerCommandService(
             ?? throw new InvalidOperationException("Failed to reload updated V2 GameServer.");
     }
 
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    public async Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var existing = await repository.GetByServerIdAsync(serverId).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
+
+        await repository.DeleteAsync(existing.ServerId, softDelete).ConfigureAwait(false);
+    }
+
     private static SaveGameServerRequestDto NormalizeForCreate(SaveGameServerRequestDto request)
     {
         ArgumentNullException.ThrowIfNull(request);

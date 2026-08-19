@@ -158,7 +158,7 @@ public sealed class VolumeSetupResolver(
         var containerPath = NormalizeContainerPath(definition.Source);
 
         // The calculated SourcePathTemplate becomes the docker volume name / folder under /data.
-        var volumeName = ResolveVolumeName(config, serverId, gameTypeKey, sourceToken, definition);
+        var volumeName = ResolveVolumeName(config, serverId, gameTypeKey, sourceToken, definition, settingValues);
 
         var ownerUid = ResolveOwnerValue(definition.OwnerUidVariable, definition.OwnerUid, settingValues)
             ?? ParseInt(config.GetOption("DefaultOwnerUid"));
@@ -260,7 +260,8 @@ public sealed class VolumeSetupResolver(
         string serverId,
         string gameTypeKey,
         string sourceToken,
-        GameTypeVolume definition)
+        GameTypeVolume definition,
+        IReadOnlyDictionary<string, string?>? settingValues)
     {
         // tmpfs mounts do not have a host source/volume.
         if (string.Equals(definition.MountType, "tmpfs", StringComparison.OrdinalIgnoreCase))
@@ -272,10 +273,24 @@ public sealed class VolumeSetupResolver(
         var template = config.VolumeNameFormat.NullIfEmpty()
             ?? config.GetOption("SourcePathTemplate")
             ?? string.Empty;
+
+        var serverName = (settingValues is not null && settingValues.TryGetValue("Name", out var nameVal) && !string.IsNullOrWhiteSpace(nameVal))
+            ? nameVal
+            : serverId;
+
+        var serviceName = (settingValues is not null && settingValues.TryGetValue("ServiceName", out var svcVal) && !string.IsNullOrWhiteSpace(svcVal))
+            ? svcVal
+            : $"{gameTypeKey}-{serverId}";
+
         return template
+            .Replace("{ServiceName}", serviceName, StringComparison.OrdinalIgnoreCase)
             .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
             .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase);
+            .Replace("{serverName}", serverName.Replace(' ', '-').ToLowerInvariant(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Name}", serverName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Usage}", definition.Usage, StringComparison.OrdinalIgnoreCase)
+            .Replace("{MountType}", definition.MountType, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeLayout(string layout)

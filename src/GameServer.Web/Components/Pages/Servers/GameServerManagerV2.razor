@@ -179,6 +179,23 @@
                             <span>@server.UpdatedAt.ToLocalTime().ToString("g")</span>
                         </Template>
                     </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameServerListItem" Title="Actions" Width="140px" Sortable="false" Filterable="false">
+                        <Template Context="server">
+                            <div class="d-flex gap-2 justify-content-end" @onclick:stopPropagation="true">
+                                <RadzenButton Icon="edit"
+                                              Size="ButtonSize.Small"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => EditServer(server))"
+                                              title="Edit" />
+                                <RadzenButton Icon="delete"
+                                              Size="ButtonSize.Small"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Click="@(() => DeleteServerAsync(server))"
+                                              title="Delete" />
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
                 </Columns>
             </RadzenDataGrid>
         </RadzenCard>
@@ -247,6 +264,28 @@
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private void EditServer(GameServerListItem server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(server.ServerId)}/edit");
+    }
+
+    private async Task DeleteServerAsync(GameServerListItem server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        try
+        {
+            await GameServerApiV2.DeleteAsync(server.ServerId);
+            await LoadAsync();
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Game server '{server.Name}' was deleted.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
         }
     }
 

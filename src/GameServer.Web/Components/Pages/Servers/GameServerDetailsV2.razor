@@ -73,6 +73,10 @@
                               Icon="edit"
                               ButtonStyle="ButtonStyle.Primary"
                               Click='@(() => Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(ServerId)}/edit"))' />
+                <RadzenButton Text="Delete"
+                              Icon="delete"
+                              ButtonStyle="ButtonStyle.Danger"
+                              Click="@DeleteServerAsync" />
                 <RadzenButton Text="Refresh"
                               Icon="refresh"
                               ButtonStyle="ButtonStyle.Light"
@@ -384,6 +388,25 @@
         validationPreview = null;
         await LoadServerDataAsync();
         _ = RunValidationInBackgroundAsync();
+    }
+
+    private async Task DeleteServerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId))
+        {
+            return;
+        }
+
+        try
+        {
+            await GameServerApiV2.DeleteAsync(ServerId);
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Server '{server?.Name ?? ServerId}' was deleted.");
+            Navigation.NavigateTo("/gameservers-v2");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
+        }
     }
 
     private void GoBack()
