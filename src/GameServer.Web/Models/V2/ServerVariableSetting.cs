@@ -2,7 +2,7 @@ namespace GameServer.Web.Models.V2;
 
 /// <summary>
 /// UI-side encoding helpers for the "Server Varible (Optional)" setting data type.
-/// Mirrors <c>GameServer.Docker.Services.V2.ServerVariableExpander</c>, which performs the
+/// Mirrors <c>GameServer.API.Services.V2.ServerVariableExpander</c>, which performs the
 /// actual token substitution at deployment time.
 /// </summary>
 public static class ServerVariableSetting

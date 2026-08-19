@@ -1,7 +1,7 @@
 @page "/signalr-test"
 @rendermode InteractiveServer
-@using GameServer.Docker.Client.Interfaces
-@using GameServer.Docker.Client.Services
+@using GameServer.API.Client.Interfaces
+@using GameServer.API.Client.Services
 @using Microsoft.Extensions.Options
 @using GameServer.Web.Configurations
 @inject IOptions<GameServerDockerApi> ApiConfig
@@ -389,7 +389,7 @@
     private int updateInterval = 2;
     
     private List<LogMessage> logMessages = new();
-    private GameServer.Docker.Client.Interfaces.ServerResourceUsage? latestData;
+    private GameServer.API.Client.Interfaces.ServerResourceUsage? latestData;
     
     protected override void OnInitialized()
     {
@@ -627,7 +627,7 @@
     }
     
     // Event Handlers
-    private void OnResourceUpdate(object? sender, GameServer.Docker.Client.Interfaces.ServerResourceUsage usage)
+    private void OnResourceUpdate(object? sender, GameServer.API.Client.Interfaces.ServerResourceUsage usage)
     {
         InvokeAsync(() =>
         {

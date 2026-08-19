@@ -153,9 +153,9 @@ jobs:
           TESTS_CHANGED="false"
 
 
-          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker/'; then
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.API/'; then
             BACKEND_CHANGED="true"
-            echo "::notice::✅ GameServer.Docker project has changes"
+            echo "::notice::✅ GameServer.API project has changes"
           fi
 
           # Check GameServer.Docker.Agent (agent-backend)
@@ -170,10 +170,10 @@ jobs:
             echo "::notice::✅ GameServer.Web project has changes"
           fi
 
-          # Check GameServer.Docker.Client
-          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker\.Client/'; then
+          # Check GameServer.API.Client
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.API\.Client/'; then
             CLIENT_CHANGED="true"
-            echo "::notice::✅ GameServer.Docker.Client project has changes"
+            echo "::notice::✅ GameServer.API.Client project has changes"
           fi
 
           # Check any test projects
@@ -191,10 +191,10 @@ jobs:
 
           # Summary
           echo "📊 Project Change Detection Summary:"
-          echo "  - Backend (GameServer.Docker): $BACKEND_CHANGED"
+          echo "  - Backend (GameServer.API): $BACKEND_CHANGED"
           echo "  - Agent (GameServer.Docker.Agent): $AGENT_CHANGED"
           echo "  - Web (GameServer.Web): $WEB_CHANGED"
-          echo "  - Client (GameServer.Docker.Client): $CLIENT_CHANGED"
+          echo "  - Client (GameServer.API.Client): $CLIENT_CHANGED"
           echo "  - Tests: $TESTS_CHANGED"
 
       - name: Calculate push decisions
@@ -268,10 +268,10 @@ jobs:
 
           | Project | Changed | Force | **Will Push** |
           | ------- | ------- | ----- | ------------- |
-          | Backend (GameServer.Docker) | ${{ steps.detect-project-changes.outputs.backend_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_backend }}`** |
+          | Backend (GameServer.API) | ${{ steps.detect-project-changes.outputs.backend_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_backend }}`** |
           | Agent (GameServer.Docker.Agent) | ${{ steps.detect-project-changes.outputs.agent_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_agent }}`** |
           | Web (GameServer.Web) | ${{ steps.detect-project-changes.outputs.web_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_web }}`** |
-          | Client (GameServer.Docker.Client) | ${{ steps.detect-project-changes.outputs.client_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_client }}`** |
+          | Client (GameServer.API.Client) | ${{ steps.detect-project-changes.outputs.client_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_client }}`** |
           | Tests | ${{ steps.detect-project-changes.outputs.tests_changed }} | — | _(runs always)_ |
           EOF
 
@@ -381,7 +381,7 @@ jobs:
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
       semantic_version: ${{ needs.setup.outputs.new_version }}
-      docker_context: './src/GameServer.Docker'
+      docker_context: './src/GameServer.API'
       primary_branch: ${{ needs.setup.outputs.primary_branch }}
       push_output: ${{ needs.setup.outputs.push_backend == 'true' }}
       push_branch: true

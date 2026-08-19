@@ -1,5 +1,5 @@
-using GameServer.Docker.Client;
-using GameServer.Docker.Client.Extensions;
+using GameServer.API.Client;
+using GameServer.API.Client.Extensions;
 using GameServer.Web.Components;
 using GameServer.Web.Services;
 using Microsoft.Extensions.FileProviders;
