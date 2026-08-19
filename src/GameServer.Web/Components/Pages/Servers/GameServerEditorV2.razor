@@ -52,6 +52,14 @@
                               Icon="arrow_back"
                               ButtonStyle="ButtonStyle.Light"
                               Click="@GoBack" />
+                @if (isEditMode)
+                {
+                    <RadzenButton Text="Delete"
+                                  Icon="delete"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Click="@DeleteServerAsync"
+                                  Disabled="@isSaving" />
+                }
                 <RadzenButton Text="Validate"
                               Icon="rule"
                               ButtonStyle="ButtonStyle.Secondary"
@@ -142,7 +150,10 @@
                     <h5 class="mb-3">Basic Information</h5>
                     <div class="mb-3">
                         <RadzenFormField Text="Server Name" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextBox @bind-Value="draft.Name" class="w-100" />
+                            <RadzenTextBox Value="@draft.Name"
+                                           ValueChanged="@OnServerNameChanged"
+                                           @oninput="@(e => OnServerNameInput(e.Value?.ToString()))"
+                                           class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="mb-3">
@@ -1023,6 +1034,22 @@
         validationResult = null;
     }
 
+    private void OnServerNameInput(string? value)
+    {
+        draft.Name = value ?? string.Empty;
+        validationResult = null;
+        deploymentPreview = null;
+        StateHasChanged();
+    }
+
+    private void OnServerNameChanged(string value)
+    {
+        draft.Name = value ?? string.Empty;
+        validationResult = null;
+        deploymentPreview = null;
+        StateHasChanged();
+    }
+
     private string? ComputeVolumeName(GameTypeVolume volume)
     {
         var mountTypeKey = GetVolumeMountType(volume);
@@ -1031,6 +1058,10 @@
         {
             return null;
         }
+
+        var serverName = !string.IsNullOrWhiteSpace(draft.Name)
+            ? draft.Name
+            : "<server-name>";
 
         var serviceName = !string.IsNullOrWhiteSpace(ComputedServiceName)
             ? ComputedServiceName
@@ -1042,9 +1073,35 @@
             .Replace("{ServiceName}", serviceName, StringComparison.OrdinalIgnoreCase)
             .Replace("{gameTypeKey}", selectedGameTypeKey ?? "<game-type-key>", StringComparison.OrdinalIgnoreCase)
             .Replace("{serverId}", string.IsNullOrWhiteSpace(draft.ServerId) ? "<server-id>" : draft.ServerId, StringComparison.OrdinalIgnoreCase)
+            .Replace("{serverName}", serverName.Replace(' ', '-').ToLowerInvariant(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Name}", serverName, StringComparison.OrdinalIgnoreCase)
             .Replace("{Usage}", volume.Usage, StringComparison.OrdinalIgnoreCase)
             .Replace("{Source}", volume.Source.Replace('/', '-'), StringComparison.OrdinalIgnoreCase)
             .Replace("{MountType}", mountTypeKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task DeleteServerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId))
+        {
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            await GameServerApiV2.DeleteAsync(ServerId);
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Server '{draft.Name}' was deleted.");
+            Navigation.NavigateTo("/gameservers-v2");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
     }
 
     private async Task LoadMountTypesAsync()

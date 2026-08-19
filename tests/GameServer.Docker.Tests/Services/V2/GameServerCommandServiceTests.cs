@@ -85,6 +85,38 @@ public class GameServerCommandServiceTests
         Assert.StartsWith("gameserver-", result.ServiceName, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task DeleteAsync_WhenServerExists_ShouldCallRepositoryDelete()
+    {
+        // Arrange
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository
+            .Setup(x => x.GetByServerIdAsync("srv-1"))
+            .ReturnsAsync(new GameServerModel
+            {
+                Id = 5,
+                ServerId = "srv-1",
+                Name = "Minecraft Survival"
+            });
+
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        var serviceOperations = new Mock<IServiceOperations>();
+        var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+        var validationService = new GameServerValidationService(
+            gameTypeRepository.Object,
+            serviceOperations.Object,
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.Docker.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance),
+            Mock.Of<IMountTypeConfigRepository>());
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.Docker.Configurations.NetworkOptions()));
+
+        // Act
+        await commandService.DeleteAsync("srv-1", softDelete: true);
+
+        // Assert
+        serverRepository.Verify(x => x.DeleteAsync("srv-1", true), Times.Once);
+    }
+
     private static GameTypeModel CreateGameType()
     {
         return new GameTypeModel

@@ -15,14 +15,14 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var serversTask = gameServerRepository.GetAllAsync(includeDeleted);
-        var gameTypesTask = gameTypeRepository.GetAllAsync(includeInactive: true);
-        await Task.WhenAll(serversTask, gameTypesTask);
-
+        var servers = await gameServerRepository.GetAllAsync(includeDeleted).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var revisionIndex = BuildRevisionIndex(await gameTypesTask.ConfigureAwait(false));
-        return (await serversTask.ConfigureAwait(false))
+        var gameTypes = await gameTypeRepository.GetAllAsync(includeInactive: true).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var revisionIndex = BuildRevisionIndex(gameTypes);
+        return servers
             .Select(server => MapListItem(server, ResolveRevisionContext(server.GameTypeRevisionId, revisionIndex)))
             .ToList();
     }
@@ -35,19 +35,18 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var serverTask = gameServerRepository.GetByServerIdAsync(serverId);
-        var gameTypesTask = gameTypeRepository.GetAllAsync(includeInactive: true);
-        await Task.WhenAll(serverTask, gameTypesTask);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var server = await serverTask.ConfigureAwait(false);
+        var server = await gameServerRepository.GetByServerIdAsync(serverId).ConfigureAwait(false);
         if (server is null)
         {
             return null;
         }
 
-        var revisionIndex = BuildRevisionIndex(await gameTypesTask.ConfigureAwait(false));
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var gameTypes = await gameTypeRepository.GetAllAsync(includeInactive: true).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var revisionIndex = BuildRevisionIndex(gameTypes);
         return MapDetail(server, ResolveRevisionContext(server.GameTypeRevisionId, revisionIndex));
     }
 

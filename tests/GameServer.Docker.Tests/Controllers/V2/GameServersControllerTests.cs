@@ -134,6 +134,54 @@ public class GameServersControllerTests
         Assert.IsType<GameServerValidationResultDto>(okResult.Value);
     }
 
+    [Fact]
+    public async Task Delete_WhenServerExists_ShouldReturnNoContent()
+    {
+        // Arrange
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository
+            .Setup(x => x.GetByServerIdAsync("srv-1"))
+            .ReturnsAsync(new GameServerModel { Id = 1, ServerId = "srv-1" });
+        serverRepository
+            .Setup(x => x.DeleteAsync("srv-1", true))
+            .Returns(Task.CompletedTask);
+
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+        var validationService = CreateValidationService(gameTypeRepository);
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.Docker.Configurations.NetworkOptions()));
+        var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
+
+        // Act
+        var result = await controller.Delete("srv-1", softDelete: true);
+
+        // Assert
+        Assert.IsType<NoContentResult>(result);
+        serverRepository.Verify(x => x.DeleteAsync("srv-1", true), Times.Once);
+    }
+
+    [Fact]
+    public async Task Delete_WhenServerDoesNotExist_ShouldReturnNotFound()
+    {
+        // Arrange
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository
+            .Setup(x => x.GetByServerIdAsync("missing"))
+            .ReturnsAsync((GameServerModel?)null);
+
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+        var validationService = CreateValidationService(gameTypeRepository);
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.Docker.Configurations.NetworkOptions()));
+        var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
+
+        // Act
+        var result = await controller.Delete("missing", softDelete: true);
+
+        // Assert
+        Assert.IsType<NotFoundResult>(result);
+    }
+
     private static GameServerValidationService CreateValidationService(Mock<IGameTypeRepository> gameTypeRepository)
     {
         var serviceOperations = new Mock<IServiceOperations>();

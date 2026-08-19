@@ -41,4 +41,9 @@ public interface IGameServerV2ApiService
     /// Updates a V2 GameServer.
     /// </summary>
     Task<GameServerDetail> UpdateAsync(string serverId, SaveGameServerRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default);
 }

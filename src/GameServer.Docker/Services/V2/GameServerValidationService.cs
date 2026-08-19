@@ -85,7 +85,7 @@ public sealed class GameServerValidationService
         var effectiveSettings = BuildEffectiveSettings(request, revision, issues);
         var resolvedPorts = ResolvePorts(revision, effectiveSettings, issues);
         ValidateResolvedPorts(resolvedPorts, request.ServerId, issues, cancellationToken);
-        var resolvedVolumes = await ResolveVolumesAsync(revision, request.ServerId, request.VolumeBindingLayout, issues, cancellationToken).ConfigureAwait(false);
+        var resolvedVolumes = await ResolveVolumesAsync(revision, request.ServerId, request.VolumeBindingLayout, effectiveSettings, issues, cancellationToken).ConfigureAwait(false);
         var resolvedWebHosts = ResolveWebHosts(revisionContext.Revision.WebHosts, effectiveSettings, issues);
 
         await ValidateResolvedPortsAsync(resolvedPorts, request.ServerId, issues, cancellationToken).ConfigureAwait(false);
@@ -603,10 +603,12 @@ public sealed class GameServerValidationService
         GameTypeRevisionModel revision,
         string? serverId,
         string layout,
+        IReadOnlyDictionary<string, string?> effectiveSettings,
         List<GameServerValidationIssueDto> issues,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(revision);
+        ArgumentNullException.ThrowIfNull(effectiveSettings);
         ArgumentNullException.ThrowIfNull(issues);
 
         var result = new List<GameServerResolvedVolumeDto>();
@@ -632,6 +634,8 @@ public sealed class GameServerValidationService
                 revision.GameType?.Key ?? "unknown",
                 revision.Volumes,
                 layout,
+                driverOverrides: null,
+                settingValues: effectiveSettings,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidOperationException)

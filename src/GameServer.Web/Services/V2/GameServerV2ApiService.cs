@@ -112,6 +112,18 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
             ?? throw new InvalidOperationException("The V2 GameServer update response did not contain a payload.");
     }
 
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    public async Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.DeleteAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}?softDelete={softDelete}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     private HttpClient CreateClient()
     {
         var baseUri = apiOptions.BaseUri;
