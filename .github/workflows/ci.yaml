@@ -332,6 +332,7 @@ jobs:
               --no-build --configuration Release \
               --logger "trx;LogFileName=${name}.trx" \
               --collect:"XPlat Code Coverage" \
+              -p:TestingPlatformDotnetTestSupport=true \
               --results-directory ./test-results || overall=1
             echo "::endgroup::"
           done
