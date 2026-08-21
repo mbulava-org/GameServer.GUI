@@ -33,7 +33,7 @@ The application does not create the V2 PostgreSQL schema with EF migrations. Dep
 
 ## Database Diagram
 
-The diagram below is aligned with the current V2 entities in `src/GameServer.Docker/Data/V2/Entities.cs` and the SQL files in this project.
+The diagram below is aligned with the current V2 entities in `src/GameServer.API/Data/V2/Entities.cs` and the SQL files in this project.
 
 ```mermaid
 erDiagram

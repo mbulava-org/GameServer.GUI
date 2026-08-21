@@ -15,23 +15,23 @@ ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
 COPY ["./src/GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
-COPY ["./src/GameServer.Docker.Client/GameServer.Docker.Client.csproj", "GameServer.Docker.Client/"]
-COPY ["./src/GameServer.Docker.Client/nswag.json", "GameServer.Docker.Client/"]
-COPY ["./src/GameServer.Docker/GameServer.Docker.csproj", "GameServer.Docker/"]
+COPY ["./src/GameServer.API.Client/GameServer.API.Client.csproj", "GameServer.API.Client/"]
+COPY ["./src/GameServer.API.Client/nswag.json", "GameServer.API.Client/"]
+COPY ["./src/GameServer.API/GameServer.API.csproj", "GameServer.API/"]
 
-RUN dotnet restore "GameServer.Docker/GameServer.Docker.csproj"	
-RUN dotnet restore "GameServer.Docker.Client/GameServer.Docker.Client.csproj"	
+RUN dotnet restore "GameServer.API/GameServer.API.csproj"	
+RUN dotnet restore "GameServer.API.Client/GameServer.API.Client.csproj"	
 RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
 
 COPY ["./src/GameServer.Web/", "GameServer.Web/"]
-COPY ["./src/GameServer.Docker.Client/", "GameServer.Docker.Client/"]
-COPY ["./src/GameServer.Docker/", "GameServer.Docker/"]
+COPY ["./src/GameServer.API.Client/", "GameServer.API.Client/"]
+COPY ["./src/GameServer.API/", "GameServer.API/"]
 
-# Build GameServer.Docker first (required for NSwag code generation)
-RUN dotnet build "GameServer.Docker/GameServer.Docker.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
+# Build GameServer.API first (required for NSwag code generation)
+RUN dotnet build "GameServer.API/GameServer.API.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
 
-# Build GameServer.Docker.Client (NSwag will generate client code from GameServer.Docker API)
-RUN dotnet build "GameServer.Docker.Client/GameServer.Docker.Client.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
+# Build GameServer.API.Client (NSwag will generate client code from GameServer.API API)
+RUN dotnet build "GameServer.API.Client/GameServer.API.Client.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER
 
 # Build GameServer.Web (final application)
 RUN dotnet build "GameServer.Web/GameServer.Web.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
