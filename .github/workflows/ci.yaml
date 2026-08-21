@@ -318,22 +318,21 @@ jobs:
       - name: Build solution
         run: dotnet build GameServer.GUI.slnx --no-restore --configuration Release
 
-      - name: Run tests (excluding Testcontainers/Docker-socket tests)
+      - name: Run Tests
         run: |
           # Run each test project separately so every project writes its own
           # uniquely-named .trx file (a shared LogFileName would overwrite).
-          # All coverage.cobertura.xml files still land under ./test-results and
+          # All .cobertura.xml files still land under ./test-results and
           # are combined by the coverage report step below.
           overall=0
           for proj in $(find tests -name '*.Tests.csproj' | sort); do
             name=$(basename "$proj" .csproj)
             echo "::group::Testing $name"
-            dotnet test "$proj" \
+            dotnet test --project "$proj" \
               --no-build --configuration Release \
-              --logger "trx;LogFileName=${name}.trx" \
-              --collect:"XPlat Code Coverage" \
-              -p:TestingPlatformDotnetTestSupport=true \
-              --results-directory ./test-results || overall=1
+              --coverage --coverage-output-format cobertura \
+              --results-directory ./test-results \
+              -- --report-xunit-trx --report-xunit-trx-filename "${name}.trx" || overall=1
             echo "::endgroup::"
           done
           exit $overall
@@ -344,7 +343,7 @@ jobs:
           dotnet tool install --global dotnet-reportgenerator-globaltool
           export PATH="$PATH:$HOME/.dotnet/tools"
           reportgenerator \
-            -reports:"./test-results/**/coverage.cobertura.xml" \
+            -reports:"./test-results/**/*.cobertura.xml;./test-results/*.cobertura.xml" \
             -targetdir:"./coverage-report" \
             -reporttypes:"Html;Cobertura;MarkdownSummaryGithub;TextSummary"
 
@@ -371,7 +370,8 @@ jobs:
           name: code-coverage-report
           path: |
             ./coverage-report/**
-            ./test-results/**/coverage.cobertura.xml
+            ./test-results/**/*.cobertura.xml
+            ./test-results/*.cobertura.xml
 #
   backend:
     needs: [setup]

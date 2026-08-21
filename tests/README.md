@@ -66,11 +66,7 @@ dotnet test tests/GameServer.Integration.Tests
 
 ### Run with Code Coverage
 ```bash
-# Install dotnet-coverage tool (one-time)
-dotnet tool install -g dotnet-coverage
-
-# Run tests with coverage
-dotnet-coverage collect -f cobertura -o coverage.cobertura.xml dotnet test
+dotnet test --coverage --coverage-output-format cobertura
 ```
 
 ### Run Tests in Watch Mode
