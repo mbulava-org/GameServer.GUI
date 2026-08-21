@@ -12,7 +12,8 @@ public sealed class GameServerCommandService(
     IGameServerRepository repository,
     GameServerQueryService queryService,
     GameServerValidationService validationService,
-    GameServerSpecBuilder specBuilder)
+    GameServerSpecBuilder specBuilder,
+    GameServerDeploymentService deploymentService)
 {
     /// <summary>
     /// Validates a V2 GameServer request.
@@ -59,6 +60,8 @@ public sealed class GameServerCommandService(
 
         var created = await repository.CreateAsync(MapToModel(normalizedRequest)).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+
+        await deploymentService.DeployAsync(created.ServerId, normalizedRequest.VolumeBindingLayout, cancellationToken).ConfigureAwait(false);
 
         return await queryService.GetByServerIdAsync(created.ServerId, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Failed to reload created V2 GameServer.");

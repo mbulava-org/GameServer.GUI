@@ -51,7 +51,7 @@ public class GameServersControllerTests
 
         var service = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, service, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, service, validationService);
         var controller = new GameServersController(service, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -79,7 +79,7 @@ public class GameServersControllerTests
 
         var service = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, service, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, service, validationService);
         var controller = new GameServersController(service, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -119,7 +119,7 @@ public class GameServersControllerTests
 
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, queryService, validationService);
         var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -149,7 +149,7 @@ public class GameServersControllerTests
         var gameTypeRepository = new Mock<IGameTypeRepository>();
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, queryService, validationService);
         var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -172,7 +172,7 @@ public class GameServersControllerTests
         var gameTypeRepository = new Mock<IGameTypeRepository>();
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = CreateValidationService(gameTypeRepository);
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, queryService, validationService);
         var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
 
         // Act
@@ -195,6 +195,35 @@ public class GameServersControllerTests
             new PortAllocation { StartPort = 2000, EndPort = 100000 },
             new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance),
             Mock.Of<IMountTypeConfigRepository>());
+    }
+
+    private static GameServerCommandService CreateCommandService(
+        Mock<IGameServerRepository> serverRepository,
+        Mock<IGameTypeRepository> gameTypeRepository,
+        GameServerQueryService queryService,
+        GameServerValidationService validationService)
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+        var mountTypeConfigRepo = Mock.Of<IMountTypeConfigRepository>();
+        var mountTypeHandlerFactory = new Mock<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>();
+        var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
+        var serviceOperations = new Mock<IServiceOperations>();
+        var deploymentService = new GameServerDeploymentService(
+            serverRepository.Object,
+            gameTypeRepository.Object,
+            volumeResolver,
+            mountTypeHandlerFactory.Object,
+            serviceOperations.Object,
+            validationService,
+            specBuilder,
+            NullLogger<GameServerDeploymentService>.Instance);
+
+        return new GameServerCommandService(
+            serverRepository.Object,
+            queryService,
+            validationService,
+            specBuilder,
+            deploymentService);
     }
 }
 

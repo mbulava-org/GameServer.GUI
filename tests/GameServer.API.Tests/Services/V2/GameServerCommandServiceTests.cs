@@ -57,14 +57,35 @@ public class GameServerCommandServiceTests
             .Setup(x => x.ListServicesAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
+        var mountTypeConfigRepo = Mock.Of<IMountTypeConfigRepository>();
+        var mountTypeHandlerFactory = new Mock<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>();
+        var mountTypeHandler = new Mock<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandler>();
+        mountTypeHandlerFactory.Setup(x => x.GetHandler(It.IsAny<string>())).Returns(mountTypeHandler.Object);
+        mountTypeHandler.Setup(x => x.BuildMount(It.IsAny<GameServer.API.Models.V2.GameServerVolume>())).Returns(new Docker.DotNet.Models.Mount());
+
+        serviceOperations
+            .Setup(x => x.CreateServiceAsync(It.IsAny<Docker.DotNet.Models.ServiceCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Docker.DotNet.Models.ServiceCreateResponse { ID = "srv-service-123" });
+
+        var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = new GameServerValidationService(
             gameTypeRepository.Object,
             serviceOperations.Object,
             new PortAllocation { StartPort = 2000, EndPort = 100000 },
-            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance),
-            Mock.Of<IMountTypeConfigRepository>());
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+            volumeResolver,
+            mountTypeConfigRepo);
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+        var deploymentService = new GameServerDeploymentService(
+            serverRepository.Object,
+            gameTypeRepository.Object,
+            volumeResolver,
+            mountTypeHandlerFactory.Object,
+            serviceOperations.Object,
+            validationService,
+            specBuilder,
+            NullLogger<GameServerDeploymentService>.Instance);
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, specBuilder, deploymentService);
 
         var request = new SaveGameServerRequestDto
         {
@@ -81,8 +102,8 @@ public class GameServerCommandServiceTests
 
         // Assert
         Assert.Equal("Minecraft Survival", result.Name);
-        Assert.Equal("Stopped", result.Status);
         Assert.StartsWith("gameserver-", result.ServiceName, StringComparison.Ordinal);
+        serviceOperations.Verify(x => x.CreateServiceAsync(It.IsAny<Docker.DotNet.Models.ServiceCreateParameters>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -101,14 +122,27 @@ public class GameServerCommandServiceTests
 
         var gameTypeRepository = new Mock<IGameTypeRepository>();
         var serviceOperations = new Mock<IServiceOperations>();
+        var mountTypeConfigRepo = Mock.Of<IMountTypeConfigRepository>();
+        var mountTypeHandlerFactory = new Mock<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>();
+        var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
         var validationService = new GameServerValidationService(
             gameTypeRepository.Object,
             serviceOperations.Object,
             new PortAllocation { StartPort = 2000, EndPort = 100000 },
-            new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance),
-            Mock.Of<IMountTypeConfigRepository>());
-        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, new GameServerSpecBuilder(new GameServer.API.Configurations.NetworkOptions()));
+            volumeResolver,
+            mountTypeConfigRepo);
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+        var deploymentService = new GameServerDeploymentService(
+            serverRepository.Object,
+            gameTypeRepository.Object,
+            volumeResolver,
+            mountTypeHandlerFactory.Object,
+            serviceOperations.Object,
+            validationService,
+            specBuilder,
+            NullLogger<GameServerDeploymentService>.Instance);
+        var commandService = new GameServerCommandService(serverRepository.Object, queryService, validationService, specBuilder, deploymentService);
 
         // Act
         await commandService.DeleteAsync("srv-1", softDelete: true);

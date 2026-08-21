@@ -1,6 +1,7 @@
 using Docker.DotNet.Models;
 using GameServer.API.Configurations;
 using GameServer.API.Constants;
+using GameServer.API.Dtos.V2;
 using GameServer.API.Interfaces;
 using GameServer.API.Models.V2;
 using GameServer.API.Repositories.V2;
@@ -21,6 +22,8 @@ public sealed class GameServerDeploymentService(
     IVolumeSetupResolver volumeSetupResolver,
     IMountTypeHandlerFactory mountTypeHandlerFactory,
     IServiceOperations serviceOperations,
+    GameServerValidationService validationService,
+    GameServerSpecBuilder specBuilder,
     ILogger<GameServerDeploymentService> logger)
 {
     /// <summary>
@@ -36,34 +39,46 @@ public sealed class GameServerDeploymentService(
 
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
 
-        List<GameServerVolume> volumes;
-        if (server.Volumes.Count > 0)
+        var saveRequest = new SaveGameServerRequestDto
         {
-            // Already-persisted snapshots were provisioned during the initial deploy.
-            volumes = server.Volumes.ToList();
-        }
-        else
-        {
-            var resolutions = await volumeSetupResolver
-                .ResolveForCreateAsync(server.ServerId, gameType.Key, revision.Volumes, volumeBindingLayout, driverOverrides: null, settingValues: BuildSettingValues(server, gameType, revision), cancellationToken)
-                .ConfigureAwait(false);
+            ServerId = server.ServerId,
+            Name = server.Name,
+            Description = server.Description,
+            GameTypeRevisionId = server.GameTypeRevisionId,
+            ServiceName = server.ServiceName,
+            Status = server.Status,
+            VolumeBindingLayout = volumeBindingLayout,
+            Settings = server.Settings
+                .Select(s => new GameServerSettingDto
+                {
+                    SettingKey = s.SettingKey,
+                    Value = s.Value
+                })
+                .ToList()
+        };
 
-            // Provision each volume (one-time host-side work for NFS targets, no-op for named
-            // volumes) on the API host before asking the agent to create the service.
-            await ProvisionVolumesAsync(resolutions, cancellationToken).ConfigureAwait(false);
+        var resolutionContext = await validationService.ResolveAsync(saveRequest, cancellationToken).ConfigureAwait(false);
 
-            volumes = resolutions.Select(r => r.Snapshot).ToList();
-        }
+        var effectiveSettings = BuildSettingValues(server, gameType, revision);
+        var resolutions = await volumeSetupResolver
+            .ResolveForCreateAsync(server.ServerId, gameType.Key, revision.Volumes, volumeBindingLayout, driverOverrides: null, settingValues: effectiveSettings, cancellationToken)
+            .ConfigureAwait(false);
 
-        var parameters = BuildCreateParameters(server, revision, volumes);
+        // Provision each volume (one-time host-side work for NFS targets, no-op for named
+        // volumes) on the API host before asking the agent to create the service.
+        await ProvisionVolumesAsync(resolutions, cancellationToken).ConfigureAwait(false);
+
+        var parameters = specBuilder.BuildCreateParameters(saveRequest, resolutionContext);
 
         var response = await serviceOperations.CreateServiceAsync(parameters, cancellationToken).ConfigureAwait(false);
+
+        var volumes = resolutions.Select(r => r.Snapshot with { IsProvisioned = true }).ToList();
 
         server = server with
         {
             Status = "Running",
             LastDeployedAt = DateTime.UtcNow,
-            Volumes = volumes.Select(v => v with { IsProvisioned = true }).ToList()
+            Volumes = volumes
         };
 
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
@@ -184,38 +199,6 @@ public sealed class GameServerDeploymentService(
         }
 
         return match;
-    }
-
-    private ServiceCreateParameters BuildCreateParameters(
-        GameServerModel server,
-        GameTypeRevision revision,
-        IReadOnlyList<GameServerVolume> volumes)
-    {
-        var labels = new Dictionary<string, string>
-        {
-            [ServiceLabels.Managed] = ServiceLabels.ManagedValue,
-            [ServiceLabels.ServerId] = server.ServerId
-        };
-
-        return new ServiceCreateParameters
-        {
-            Service = new ServiceSpec
-            {
-                Name = server.ServiceName,
-                Labels = labels,
-                TaskTemplate = new TaskSpec
-                {
-                    ContainerSpec = new ContainerSpec
-                    {
-                        Image = revision.ImageReference,
-                        Labels = labels,
-                        Mounts = BuildDockerMounts(volumes),
-                        TTY = revision.EnableTTY
-                    },
-                    Networks = [new NetworkAttachmentConfig { Target = "gameserver_overlay" }]
-                }
-            }
-        };
     }
 
     private ServiceUpdateParameters BuildUpdateParameters(

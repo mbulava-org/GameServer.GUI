@@ -168,6 +168,93 @@ public sealed class GameServerPagesV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameServerEditorV2_Edit_ShouldPopulateFieldsAndSettings()
+    {
+        // Arrange
+        RegisterApis(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Existing Server",
+                    Description = "Server description",
+                    GameTypeKey = "minecraft",
+                    GameTypeRevisionId = 10,
+                    RevisionVersionTag = "1.21.2",
+                    ServiceName = "minecraft-srv-1",
+                    Status = "Running",
+                    Settings = [new GameServerSetting { SettingKey = "SERVER_PORT", Value = "25565" }]
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gametypes")
+            {
+                return CreateJsonResponse(new List<GameTypeListItem>
+                {
+                    new() { Key = "minecraft", DisplayName = "Minecraft", CurrentRevisionId = 10, CurrentVersionTag = "1.21.2" }
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gametypes/minecraft")
+            {
+                return CreateJsonResponse(new GameTypeDetail
+                {
+                    Key = "minecraft",
+                    DisplayName = "Minecraft",
+                    CurrentRevisionId = 10,
+                    Revisions =
+                    [
+                        new GameTypeRevision
+                        {
+                            Id = 10,
+                            VersionTag = "1.21.2",
+                            ImageReference = "itzg/minecraft-server",
+                            SettingDefinitions =
+                            [
+                                new GameTypeSettingDefinition
+                                {
+                                    SettingKey = "SERVER_PORT",
+                                    DefaultValue = "25565",
+                                    Metadata = new GameTypeSettingMetadata { DataType = "port", IsRequired = true, Category = "Network" }
+                                }
+                            ]
+                        }
+                    ]
+                });
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/port-availability")
+            {
+                return CreateJsonResponse(new GameServerPortAvailabilityResult
+                {
+                    Ports = [new GameServerPortAvailability { Port = 25565, IsAvailable = true }]
+                });
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/validate")
+            {
+                return CreateJsonResponse(new GameServerValidationResult { IsValid = true, Issues = [] });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var cut = Render<GameServerEditorV2>(parameters => parameters.Add(p => p.ServerId, "srv-1"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Edit Existing Server", cut.Markup);
+            Assert.Contains("Existing Server", cut.Markup);
+            Assert.Contains("Save Changes", cut.Markup);
+            Assert.Contains("SERVER_PORT", cut.Markup);
+        });
+    }
+
     private void RegisterApis(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         Services.AddSingleton<NotificationService>();

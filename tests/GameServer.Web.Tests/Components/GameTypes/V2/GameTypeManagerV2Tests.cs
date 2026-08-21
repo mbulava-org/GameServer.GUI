@@ -81,6 +81,22 @@ public sealed class GameTypeManagerV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameTypeManagerV2_WhenEmpty_ShouldRenderHeaderAndNewButton()
+    {
+        RegisterApi((request, _) => request.Method == HttpMethod.Get
+            ? CreateJsonResponse(new List<GameTypeListItem>())
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var cut = Render<GameTypeManagerV2>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Game Types V2", cut.Markup);
+            Assert.Contains("Add Game Type", cut.Markup);
+        });
+    }
+
     private void RegisterApi(Func<HttpRequestMessage, HashSet<string>, HttpResponseMessage> responder)
     {
         var deletedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

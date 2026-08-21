@@ -202,7 +202,7 @@ public sealed class NfsMountTypeHandler(
         var startInfo = new ProcessStartInfo
         {
             FileName = "chmod",
-            Arguments = $"{Convert.ToString(mode, 8)} {path}",
+            Arguments = $"-R {Convert.ToString(mode, 8)} \"{path}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true
@@ -234,7 +234,7 @@ public sealed class NfsMountTypeHandler(
         var startInfo = new ProcessStartInfo
         {
             FileName = "chown",
-            Arguments = $"{owner} {path}",
+            Arguments = $"-R {owner} \"{path}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true

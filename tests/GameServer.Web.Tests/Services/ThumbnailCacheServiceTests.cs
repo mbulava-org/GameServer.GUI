@@ -59,9 +59,90 @@ public sealed class ThumbnailCacheServiceTests
         try
         {
             var sourceUrl = "/images/local-thumbnail.png";
-            var result = await service.GetCachedThumbnailUrlAsync(sourceUrl);
+            var result = await service.GetCachedThumbnailUrlAsync(sourceUrl, TestContext.Current.CancellationToken);
 
             Assert.Equal(sourceUrl, result);
+        }
+        finally
+        {
+            if (Directory.Exists(options.CacheDirectory))
+            {
+                Directory.Delete(options.CacheDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetCachedThumbnailUrlAsync_WhenNullOrWhitespace_ShouldReturnNull(string? sourceUrl)
+    {
+        var service = CreateService((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)), out var options);
+
+        try
+        {
+            var result = await service.GetCachedThumbnailUrlAsync(sourceUrl, TestContext.Current.CancellationToken);
+            Assert.Null(result);
+        }
+        finally
+        {
+            if (Directory.Exists(options.CacheDirectory))
+            {
+                Directory.Delete(options.CacheDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetCachedThumbnailUrlAsync_WhenHttpFails_ShouldFallbackToOriginalUrl()
+    {
+        var service = CreateService((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)), out var options);
+
+        try
+        {
+            var sourceUrl = "https://example.com/missing.png";
+            var result = await service.GetCachedThumbnailUrlAsync(sourceUrl, TestContext.Current.CancellationToken);
+            Assert.Equal(sourceUrl, result);
+        }
+        finally
+        {
+            if (Directory.Exists(options.CacheDirectory))
+            {
+                Directory.Delete(options.CacheDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("image/jpeg", ".jpg")]
+    [InlineData("image/gif", ".gif")]
+    [InlineData("image/webp", ".webp")]
+    [InlineData("image/svg+xml", ".svg")]
+    [InlineData("image/avif", ".avif")]
+    [InlineData("application/octet-stream", ".png")] // uri has .png
+    [InlineData("unknown/type", ".jpg")] // fallback
+    public async Task GetCachedThumbnailUrlAsync_ShouldResolveCorrectFileExtension(string mediaType, string expectedExtension)
+    {
+        var url = mediaType == "application/octet-stream"
+            ? "https://example.com/custom.png"
+            : "https://example.com/image-no-ext";
+
+        var service = CreateService((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([0x01, 0x02])
+            };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
+            return Task.FromResult(response);
+        }, out var options);
+
+        try
+        {
+            var result = await service.GetCachedThumbnailUrlAsync(url, TestContext.Current.CancellationToken);
+            Assert.NotNull(result);
+            Assert.EndsWith(expectedExtension, result, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

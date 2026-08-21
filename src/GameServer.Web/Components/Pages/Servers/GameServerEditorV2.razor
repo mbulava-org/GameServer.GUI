@@ -60,11 +60,6 @@
                                   Click="@DeleteServerAsync"
                                   Disabled="@isSaving" />
                 }
-                <RadzenButton Text="Validate"
-                              Icon="rule"
-                              ButtonStyle="ButtonStyle.Secondary"
-                              Click="@ValidateAsync"
-                              Disabled="@isSaving" />
                 <RadzenButton Text="@(isEditMode ? "Save Changes" : "Create Server")"
                               Icon="save"
                               ButtonStyle="ButtonStyle.Primary"
@@ -396,35 +391,23 @@
                             </div>
                         </RadzenTabsItem>
 
-                        <RadzenTabsItem Text="Terminal">
-                            <div class="p-3">
-                                @if (isEditMode)
-                                {
+                        @if (isEditMode)
+                        {
+                            <RadzenTabsItem Text="Terminal">
+                                <div class="p-3">
                                     <ContainerTerminal ContainerId="@terminalContainerId" AutoConnect="false" />
-                                }
-                                else
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
-                                        Terminal is only available for existing servers. Save the server first, then open the Terminal tab.
-                                    </RadzenAlert>
-                                }
-                            </div>
-                        </RadzenTabsItem>
+                                </div>
+                            </RadzenTabsItem>
 
-                        <RadzenTabsItem Text="Resource Monitor">
-                            <div class="p-3">
-                                @if (isEditMode && !string.IsNullOrWhiteSpace(ServerId))
-                                {
-                                    <ResourceMonitorTab ServerId="@ServerId" />
-                                }
-                                else
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
-                                        Resource monitoring is only available for existing servers. Save the server first, then open the Resource Monitor tab.
-                                    </RadzenAlert>
-                                }
-                            </div>
-                        </RadzenTabsItem>
+                            <RadzenTabsItem Text="Resource Monitor">
+                                <div class="p-3">
+                                    @if (!string.IsNullOrWhiteSpace(ServerId))
+                                    {
+                                        <ResourceMonitorTab ServerId="@ServerId" />
+                                    }
+                                </div>
+                            </RadzenTabsItem>
+                        }
                     </Tabs>
                 </RadzenTabs>
             </div>
@@ -1076,8 +1059,14 @@
             .Replace("{serverName}", serverName.Replace(' ', '-').ToLowerInvariant(), StringComparison.OrdinalIgnoreCase)
             .Replace("{Name}", serverName, StringComparison.OrdinalIgnoreCase)
             .Replace("{Usage}", volume.Usage, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Source}", volume.Source.Replace('/', '-'), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Source}", NormalizeSourceToken(volume.Source), StringComparison.OrdinalIgnoreCase)
             .Replace("{MountType}", mountTypeKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeSourceToken(string containerSource)
+    {
+        var value = (containerSource ?? string.Empty).Replace('\\', '/').Trim('/');
+        return value.Replace('/', '-');
     }
 
     private async Task DeleteServerAsync()

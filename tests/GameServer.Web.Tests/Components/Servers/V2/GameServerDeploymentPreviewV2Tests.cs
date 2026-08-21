@@ -57,6 +57,35 @@ public sealed class GameServerDeploymentPreviewV2Tests : BunitContext
         Assert.Contains("\"ServiceSpec\"", cut.Markup);
     }
 
+    [Fact]
+    public void WithPreview_ShouldRenderVolumeOwnershipAndPermissionsColumns()
+    {
+        var preview = CreatePreview() with
+        {
+            Volumes =
+            [
+                new GameServerPreviewVolume
+                {
+                    VolumeName = "minecraft-data",
+                    ContainerPath = "/data",
+                    MountType = "nfs",
+                    OwnerUid = 1000,
+                    OwnerGid = 1000,
+                    Permissions = "0775"
+                }
+            ]
+        };
+
+        var cut = Render<GameServerDeploymentPreviewV2>(parameters => parameters
+            .Add(p => p.Preview, preview));
+
+        Assert.Contains("minecraft-data", cut.Markup);
+        Assert.Contains("/data", cut.Markup);
+        Assert.Contains("1000:1000", cut.Markup);
+        Assert.Contains("0775", cut.Markup);
+        Assert.DoesNotContain("ReadOnly", cut.Markup);
+    }
+
     private static GameServerDeploymentPreview CreatePreview()
     {
         return new GameServerDeploymentPreview

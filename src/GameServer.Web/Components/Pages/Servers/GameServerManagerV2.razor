@@ -19,7 +19,7 @@
         <div class="d-flex gap-2 align-items-center">
             <RadzenCheckBox @bind-Value="includeDeleted" TValue="bool" Change="@(_ => LoadAsync())" />
             <span>Include deleted</span>
-            <RadzenButton Text="New V2 Server"
+            <RadzenButton Text="New Server"
                           Icon="add"
                           ButtonStyle="ButtonStyle.Primary"
                           Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
@@ -50,7 +50,8 @@
     else
     {
         <RadzenCard>
-            <RadzenDataGrid Data="@servers"
+            <RadzenDataGrid @ref="grid"
+                            Data="@servers"
                             TItem="GameServerListItem"
                             AllowSorting="true"
                             AllowFiltering="true"
@@ -238,7 +239,8 @@
 </style>
 
 @code {
-    private readonly List<GameServerListItem> servers = [];
+    private List<GameServerListItem> servers = [];
+    private RadzenDataGrid<GameServerListItem>? grid;
     private readonly Dictionary<string, string> cachedThumbnailUrls = new(StringComparer.Ordinal);
     private bool includeDeleted;
     private bool isLoading = true;
@@ -253,17 +255,22 @@
         try
         {
             isLoading = true;
-            servers.Clear();
-            servers.AddRange(await GameServerApiV2.GetListAsync(includeDeleted));
-            await CacheThumbnailUrlsAsync(servers.Select(static server => server.GameTypeThumbnailUrl));
+            StateHasChanged();
+            var items = await GameServerApiV2.GetListAsync(includeDeleted);
+            servers = items.ToList();
+            isLoading = false;
+            StateHasChanged();
+            if (grid is not null)
+            {
+                await grid.Reload();
+            }
+            _ = CacheThumbnailUrlsAsync(servers.Select(static server => server.GameTypeThumbnailUrl));
         }
         catch (HttpRequestException ex)
         {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
-        }
-        finally
-        {
             isLoading = false;
+            StateHasChanged();
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Load failed", ex.Message);
         }
     }
 
@@ -317,18 +324,26 @@
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        cachedThumbnailUrls.Clear();
         if (sourceUrls.Count == 0)
         {
             return;
         }
 
-        var cacheEntries = await Task.WhenAll(sourceUrls.Select(async url =>
-            new KeyValuePair<string, string>(url, (await ThumbnailCacheService.GetCachedThumbnailUrlAsync(url)) ?? url)));
-
-        foreach (var cacheEntry in cacheEntries)
+        try
         {
-            cachedThumbnailUrls[cacheEntry.Key] = cacheEntry.Value;
+            var cacheEntries = await Task.WhenAll(sourceUrls.Select(async url =>
+                new KeyValuePair<string, string>(url, (await ThumbnailCacheService.GetCachedThumbnailUrlAsync(url)) ?? url)));
+
+            foreach (var cacheEntry in cacheEntries)
+            {
+                cachedThumbnailUrls[cacheEntry.Key] = cacheEntry.Value;
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Non-critical background thumbnail cache failure
         }
     }
 

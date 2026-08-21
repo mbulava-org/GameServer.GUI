@@ -32,6 +32,98 @@ public sealed class GameServerSpecBuilder
     }
 
     /// <summary>
+    /// Builds the Docker Swarm <see cref="ServiceCreateParameters"/> for a save request resolution.
+    /// </summary>
+    public ServiceCreateParameters BuildCreateParameters(SaveGameServerRequestDto request, GameServerResolutionContext resolution)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(resolution);
+
+        if (resolution.Revision is null)
+        {
+            throw new InvalidOperationException("The selected GameType revision could not be resolved.");
+        }
+
+        var revision = resolution.Revision;
+        var gameTypeKey = resolution.GameType?.Key ?? "unknown";
+        var serverId = string.IsNullOrWhiteSpace(request.ServerId) ? "<generated-on-save>" : request.ServerId;
+        var serviceName = string.IsNullOrWhiteSpace(request.ServiceName)
+            ? $"{gameTypeKey}-{serverId}"
+            : request.ServiceName;
+
+        var environment = BuildEnvironment(request, resolution);
+        var ports = BuildPorts(resolution.Result.ResolvedPorts);
+        var volumes = BuildVolumes(resolution.Result.ResolvedVolumes, []);
+
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [ServiceLabels.Managed] = ServiceLabels.ManagedValue,
+            [ServiceLabels.ServerId] = serverId
+        };
+
+        var networks = new List<GameServerPreviewNetworkDto>();
+
+        // Attach the GameServer network only when one is configured.
+        if (!string.IsNullOrWhiteSpace(_networkOptions.NetworkName))
+        {
+            networks.Add(new()
+            {
+                Name = _networkOptions.NetworkName,
+                Driver = "overlay",
+                Description = "Shared overlay network for all managed game server services."
+            });
+        }
+
+        // Attach the load balancer network only when one or more web hosts are enabled.
+        var hasEnabledWebHosts = resolution.Result.ResolvedWebHosts.Count > 0;
+        if (hasEnabledWebHosts && !string.IsNullOrWhiteSpace(_networkOptions.LoadBalancerNetwork))
+        {
+            networks.Add(new()
+            {
+                Name = _networkOptions.LoadBalancerNetwork,
+                Driver = "overlay",
+                Description = "Load balancer network for reverse proxy discovery of web hosts."
+            });
+        }
+
+        return new ServiceCreateParameters
+        {
+            Service = new ServiceSpec
+            {
+                Name = serviceName,
+                Labels = labels,
+                TaskTemplate = new TaskSpec
+                {
+                    ContainerSpec = new ContainerSpec
+                    {
+                        Image = revision.ImageReference,
+                        Labels = labels,
+                        Env = environment.Select(entry => $"{entry.Key}={entry.Value}").ToList(),
+                        Mounts = volumes.Select(ToMount).ToList(),
+                        TTY = revision.EnableTTY
+                    },
+                    Networks = networks
+                        .Select(network => new NetworkAttachmentConfig { Target = network.Name })
+                        .ToList()
+                },
+                EndpointSpec = new EndpointSpec
+                {
+                    Ports = ports
+                        .Where(port => port.Published)
+                        .Select(port => new PortConfig
+                        {
+                            Protocol = port.Protocol,
+                            TargetPort = (uint)port.ContainerPort,
+                            PublishedPort = (uint)port.PublishedPort,
+                            PublishMode = "ingress"
+                        })
+                        .ToList()
+                }
+            }
+        };
+    }
+
+    /// <summary>
     /// Produces the deployment preview for a save request resolution.
     /// </summary>
     public GameServerDeploymentPreviewDto Build(SaveGameServerRequestDto request, GameServerResolutionContext resolution)
@@ -93,42 +185,7 @@ public sealed class GameServerSpecBuilder
             });
         }
 
-
-        var parameters = new ServiceCreateParameters
-        {
-            Service = new ServiceSpec
-            {
-                Name = serviceName,
-                Labels = labels,
-                TaskTemplate = new TaskSpec
-                {
-                    ContainerSpec = new ContainerSpec
-                    {
-                        Image = revision.ImageReference,
-                        Labels = labels,
-                        Env = environment.Select(entry => $"{entry.Key}={entry.Value}").ToList(),
-                        Mounts = volumes.Select(ToMount).ToList(),
-                        TTY = revision.EnableTTY
-                    },
-                    Networks = networks
-                        .Select(network => new NetworkAttachmentConfig { Target = network.Name })
-                        .ToList()
-                },
-                EndpointSpec = new EndpointSpec
-                {
-                    Ports = ports
-                        .Where(port => port.Published)
-                        .Select(port => new PortConfig
-                        {
-                            Protocol = port.Protocol,
-                            TargetPort = (uint)port.ContainerPort,
-                            PublishedPort = (uint)port.PublishedPort,
-                            PublishMode = "ingress"
-                        })
-                        .ToList()
-                }
-            }
-        };
+        var parameters = BuildCreateParameters(request, resolution);
 
         if (environment.Count == 0)
         {
