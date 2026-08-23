@@ -345,6 +345,7 @@ public sealed class GameServerValidationService
             {
                 ContainerPort = port.ContainerPort,
                 Protocol = port.Protocol,
+                PublishedPort = port.ContainerPort,
                 AdvertisedPort = port.AdvertisedPort,
                 Description = port.Description,
                 DisplayOrder = port.DisplayOrder
@@ -367,11 +368,11 @@ public sealed class GameServerValidationService
 
                 if (portLookup.TryGetValue(BuildPortKey(reqPort.ContainerPort, reqPort.Protocol), out var portIndex))
                 {
-                    resolvedPorts[portIndex] = resolvedPorts[portIndex] with { ContainerPort = reqPort.PublishedPort };
+                    resolvedPorts[portIndex] = resolvedPorts[portIndex] with { PublishedPort = reqPort.PublishedPort };
                 }
                 else if (resolvedPorts.Count == 1)
                 {
-                    resolvedPorts[0] = resolvedPorts[0] with { ContainerPort = reqPort.PublishedPort };
+                    resolvedPorts[0] = resolvedPorts[0] with { PublishedPort = reqPort.PublishedPort };
                 }
             }
         }
@@ -424,7 +425,7 @@ public sealed class GameServerValidationService
                         continue;
                     }
 
-                    resolvedPorts[resolvedPortIndex] = resolvedPorts[resolvedPortIndex] with { ContainerPort = derivedPort.Value };
+                    resolvedPorts[resolvedPortIndex] = resolvedPorts[resolvedPortIndex] with { PublishedPort = derivedPort.Value };
                 }
             }
             else
@@ -450,7 +451,7 @@ public sealed class GameServerValidationService
 
                 if (targetIndex.HasValue)
                 {
-                    resolvedPorts[targetIndex.Value] = resolvedPorts[targetIndex.Value] with { ContainerPort = basePort };
+                    resolvedPorts[targetIndex.Value] = resolvedPorts[targetIndex.Value] with { PublishedPort = basePort };
                 }
             }
         }
@@ -524,20 +525,20 @@ public sealed class GameServerValidationService
 
         foreach (var port in resolvedPorts)
         {
-            if (port.ContainerPort < 1024 || port.ContainerPort > 65535)
+            if (port.PublishedPort < 1024 || port.PublishedPort > 65535)
             {
-                issues.Add(CreateIssue("ResolvedPortRangeInvalid", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is outside the allowed range.", $"ports:{port.ContainerPort}/{port.Protocol}"));
+                issues.Add(CreateIssue("ResolvedPortRangeInvalid", $"Published port '{port.PublishedPort}/{port.Protocol}' is outside the allowed range.", $"ports:{port.ContainerPort}/{port.Protocol}"));
             }
         }
 
         var duplicates = resolvedPorts
-            .GroupBy(port => BuildPortKey(port.ContainerPort, port.Protocol), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(port => BuildPortKey(port.PublishedPort, port.Protocol), StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
             .Select(group => group.Key);
 
         foreach (var duplicate in duplicates)
         {
-            issues.Add(CreateIssue("ResolvedPortDuplicate", $"Resolved port '{duplicate}' is duplicated within the server configuration.", $"ports:{duplicate}"));
+            issues.Add(CreateIssue("ResolvedPortDuplicate", $"Published port '{duplicate}' is duplicated within the server configuration.", $"ports:{duplicate}"));
         }
     }
 
@@ -556,15 +557,15 @@ public sealed class GameServerValidationService
         foreach (var port in resolvedPorts)
         {
             var scope = $"ports:{port.ContainerPort}/{port.Protocol}";
-            if (port.ContainerPort < portAllocation.StartPort || port.ContainerPort > portAllocation.EndPort)
+            if (port.PublishedPort < portAllocation.StartPort || port.PublishedPort > portAllocation.EndPort)
             {
-                issues.Add(CreateIssue("PortOutsideAllocationRange", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is outside the configured allocation range.", scope));
+                issues.Add(CreateIssue("PortOutsideAllocationRange", $"Published port '{port.PublishedPort}/{port.Protocol}' is outside the configured allocation range.", scope));
                 continue;
             }
 
-            if (occupiedPorts.Contains(BuildPortKey(port.ContainerPort, port.Protocol)))
+            if (occupiedPorts.Contains(BuildPortKey(port.PublishedPort, port.Protocol)))
             {
-                issues.Add(CreateIssue("PortUnavailable", $"Resolved port '{port.ContainerPort}/{port.Protocol}' is already in use by another managed server.", scope));
+                issues.Add(CreateIssue("PortUnavailable", $"Published port '{port.PublishedPort}/{port.Protocol}' is already in use by another managed server.", scope));
             }
         }
     }

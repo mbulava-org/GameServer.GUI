@@ -466,6 +466,7 @@
 
     // Published port selections (keyed by GameTypePort.Id)
     private readonly Dictionary<int, int> publishedPortSelections = new();
+    private List<GameServerPort>? initialServerPorts;
 
     // Published port values as originally loaded, so reverting a port is never flagged unavailable.
     private readonly Dictionary<int, int> originalPublishedPorts = new();
@@ -529,8 +530,11 @@
                     draft = new();
                     selectedGameType = null;
                     selectedGameTypeKey = null;
+                    initialServerPorts = null;
                     return;
                 }
+
+                initialServerPorts = server.Ports;
 
                 draft = new GameServerEditorDraft
                 {
@@ -667,9 +671,12 @@
 
         foreach (var port in CurrentRevisionPorts)
         {
-            // Prefer the value already stored on the owning port-type setting so an existing
-            // server round-trips its configured ports instead of falling back to the defaults.
-            publishedPortSelections[port.Id] = TryGetPortSettingValue(port) ?? port.ContainerPort;
+            var savedPort = initialServerPorts?.FirstOrDefault(p =>
+                p.ContainerPort == port.ContainerPort && string.Equals(p.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase));
+
+            publishedPortSelections[port.Id] = (savedPort != null && savedPort.PublishedPort > 0)
+                ? savedPort.PublishedPort
+                : (TryGetPortSettingValue(port) ?? port.ContainerPort);
             originalPublishedPorts[port.Id] = publishedPortSelections[port.Id];
         }
 

@@ -88,11 +88,16 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
             GameTypeThumbnailUrl = revisionContext?.GameType.ThumbnailUrl,
             RevisionVersionTag = revisionContext?.Revision.VersionTag,
             RevisionImageReference = revisionContext?.Revision.ImageReference,
-            ResolvedPorts = revisionContext?.Revision.Ports
-                .OrderBy(port => port.DisplayOrder)
-                .Select(MapResolvedPort)
-                .ToList()
-                ?? []
+            Ports = server.Ports
+                .OrderBy(port => port.ContainerPort)
+                .Select(port => new GameServerPortDto
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = port.PublishedPort
+                })
+                .ToList(),
+            ResolvedPorts = MapResolvedPorts(server, revisionContext)
         };
     }
 
@@ -129,11 +134,16 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
                     Value = setting.Value
                 })
                 .ToList(),
-            ResolvedPorts = revisionContext?.Revision.Ports
-                .OrderBy(port => port.DisplayOrder)
-                .Select(MapResolvedPort)
-                .ToList()
-                ?? [],
+            Ports = server.Ports
+                .OrderBy(port => port.ContainerPort)
+                .Select(port => new GameServerPortDto
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = port.PublishedPort
+                })
+                .ToList(),
+            ResolvedPorts = MapResolvedPorts(server, revisionContext),
             ResolvedVolumes = server.Volumes
                 .OrderBy(volume => volume.CreatedAt)
                 .Select(MapServerVolume)
@@ -158,18 +168,36 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
         };
     }
 
-    private static GameServerResolvedPortDto MapResolvedPort(GameServer.API.Models.V2.GameTypePort port)
+    private static List<GameServerResolvedPortDto> MapResolvedPorts(GameServerModel server, RevisionContext? revisionContext)
     {
-        ArgumentNullException.ThrowIfNull(port);
-
-        return new GameServerResolvedPortDto
+        if (revisionContext?.Revision?.Ports == null)
         {
-            ContainerPort = port.ContainerPort,
-            Protocol = port.Protocol,
-            AdvertisedPort = port.AdvertisedPort,
-            Description = port.Description,
-            DisplayOrder = port.DisplayOrder
-        };
+            return [];
+        }
+
+        var savedPorts = server.Ports ?? [];
+
+        return revisionContext.Revision.Ports
+            .OrderBy(port => port.DisplayOrder)
+            .Select(port =>
+            {
+                var savedPort = savedPorts.FirstOrDefault(p =>
+                    p.ContainerPort == port.ContainerPort && string.Equals(p.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase))
+                    ?? savedPorts.FirstOrDefault(p => string.Equals(p.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase));
+
+                var publishedPort = (savedPort != null && savedPort.PublishedPort > 0) ? savedPort.PublishedPort : port.ContainerPort;
+
+                return new GameServerResolvedPortDto
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = publishedPort,
+                    AdvertisedPort = port.AdvertisedPort,
+                    Description = port.Description,
+                    DisplayOrder = port.DisplayOrder
+                };
+            })
+            .ToList();
     }
 
     private static GameServerResolvedVolumeDto MapServerVolume(GameServer.API.Models.V2.GameServerVolume volume)

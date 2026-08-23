@@ -169,4 +169,69 @@ public class GameServerQueryServiceTests
         Assert.Empty(result.NetworkOptions);
         Assert.Empty(result.ConfigurationRules);
     }
+
+    [Fact]
+    public async Task GetByServerIdAsync_WhenServerHasCustomPublishedPort_ShouldProjectCustomPort()
+    {
+        // Arrange
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository
+            .Setup(x => x.GetByServerIdAsync("srv-1"))
+            .ReturnsAsync(new GameServerModel
+            {
+                Id = 1,
+                ServerId = "srv-1",
+                Name = "Minecraft Survival",
+                GameTypeRevisionId = 10,
+                ServiceName = "minecraft-survival",
+                Status = "Running",
+                Ports =
+                [
+                    new GameServer.API.Models.V2.GameServerPort
+                    {
+                        Id = 1,
+                        ContainerPort = 25565,
+                        Protocol = "tcp",
+                        PublishedPort = 26000
+                    }
+                ]
+            });
+
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        gameTypeRepository
+            .Setup(x => x.GetAllAsync(true))
+            .ReturnsAsync(
+            [
+                new GameTypeModel
+                {
+                    Id = 2,
+                    Key = "minecraft",
+                    DisplayName = "Minecraft",
+                    Revisions =
+                    [
+                        new GameTypeRevisionModel
+                        {
+                            Id = 10,
+                            Ports =
+                            [
+                                new GameTypePortModel { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 0 }
+                            ]
+                        }
+                    ]
+                }
+            ]);
+
+        var service = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+
+        // Act
+        var result = await service.GetByServerIdAsync("srv-1");
+
+        // Assert
+        Assert.NotNull(result);
+        var resolvedPort = Assert.Single(result.ResolvedPorts);
+        Assert.Equal(25565, resolvedPort.ContainerPort);
+        Assert.Equal(26000, resolvedPort.PublishedPort);
+        var savedPort = Assert.Single(result.Ports);
+        Assert.Equal(26000, savedPort.PublishedPort);
+    }
 }

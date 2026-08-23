@@ -259,7 +259,16 @@
                                                 TItem="GameServerResolvedPort"
                                                 AllowSorting="true">
                                     <Columns>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="ContainerPort" Title="Port" Width="120px" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="ContainerPort" Title="Container Port" Width="140px" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Title="Published Port (Ingress)" Width="180px">
+                                            <Template Context="port">
+                                                <span>@port.PublishedPort</span>
+                                                @if (port.PublishedPort != port.ContainerPort)
+                                                {
+                                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Custom" Style="margin-left: 6px;" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Protocol" Title="Protocol" Width="120px" />
                                         <RadzenDataGridColumn TItem="GameServerResolvedPort" Title="Advertised" Width="120px">
                                             <Template Context="port">
@@ -626,6 +635,14 @@
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = server.Status,
+            Ports = server.Ports
+                .Select(port => new GameServerPort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = port.PublishedPort
+                })
+                .ToList(),
             Settings = server.Settings
                 .Select(setting => new GameServerSetting
                 {

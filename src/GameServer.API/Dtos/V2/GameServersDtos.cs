@@ -38,6 +38,8 @@ public sealed record GameServerListItemDto
 
     public List<GameServerResolvedPortDto> ResolvedPorts { get; init; } = [];
 
+    public List<GameServerPortDto> Ports { get; init; } = [];
+
     /// <summary>
     /// Running containers for this server (when available).
     /// </summary>
@@ -91,6 +93,8 @@ public sealed record GameServerDetailDto
 
     public List<GameServerSettingDto> Settings { get; init; } = [];
 
+    public List<GameServerPortDto> Ports { get; init; } = [];
+
     public List<GameServerResolvedPortDto> ResolvedPorts { get; init; } = [];
 
     public List<GameServerResolvedVolumeDto> ResolvedVolumes { get; init; } = [];
@@ -118,6 +122,8 @@ public sealed record GameServerResolvedPortDto
     public int ContainerPort { get; init; }
 
     public string Protocol { get; init; } = string.Empty;
+
+    public int PublishedPort { get; init; }
 
     public bool AdvertisedPort { get; init; }
 

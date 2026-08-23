@@ -295,7 +295,7 @@ public sealed class GameServerSpecBuilder
                     ?? revisionPorts.FirstOrDefault(p => string.Equals(p.Protocol, resolvedPort.Protocol, StringComparison.OrdinalIgnoreCase));
 
                 var containerPort = revisionPort?.ContainerPort ?? resolvedPort.ContainerPort;
-                var publishedPort = resolvedPort.ContainerPort;
+                var publishedPort = resolvedPort.PublishedPort;
 
                 return new GameServerPreviewPortDto
                 {

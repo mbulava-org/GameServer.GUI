@@ -154,7 +154,7 @@
         FontSize = 14,
         FontFamily = "'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace",
         Scrollback = 5000,
-        AllowTransparency = false,
+        AllowTransparency = false
     };
 
     private bool isConnected = false;
@@ -317,7 +317,8 @@
         {
             if (terminal != null && isJavaScriptAvailable)
             {
-                await terminal.Write(data);
+                var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
+                await terminal.Write(normalized);
             }
         });
     }
