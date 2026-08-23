@@ -14,16 +14,19 @@ namespace GameServer.API.Services
         private readonly ILogger<TerminalSessionManager> _logger;
         private readonly IHubContext<ContainerConsoleHub> _hubContext;
         private readonly INodeAgentDiscovery _nodeAgentDiscovery;
+        private readonly IServiceProvider _serviceProvider;
         private readonly ConcurrentDictionary<string, TerminalSession> _sessions = new();
 
         public TerminalSessionManager(
             ILogger<TerminalSessionManager> logger,
             IHubContext<ContainerConsoleHub> hubContext,
-            INodeAgentDiscovery nodeAgentDiscovery)
+            INodeAgentDiscovery nodeAgentDiscovery,
+            IServiceProvider serviceProvider)
         {
             _logger = logger;
             _hubContext = hubContext;
             _nodeAgentDiscovery = nodeAgentDiscovery;
+            _serviceProvider = serviceProvider;
         }
 
         public async Task<(bool Success, string? Error)> StartSessionAsync(
@@ -33,20 +36,45 @@ namespace GameServer.API.Services
         {
             try
             {
-                _logger.LogInformation("Starting terminal session for connection {ConnectionId}, container {ContainerId}", 
-                    connectionId, containerId);
+                var targetContainerId = containerId;
+                _logger.LogInformation("Starting terminal session for connection {ConnectionId}, target {TargetId}", 
+                    connectionId, targetContainerId);
 
                 // Find the agent
-                var agent = await _nodeAgentDiscovery.GetAgentForContainerAsync(containerId);
+                var agent = await _nodeAgentDiscovery.GetAgentForContainerAsync(targetContainerId);
                 if (agent == null)
                 {
-                    return (false, "Container not found or agent unavailable");
+                    // Attempt to resolve targetContainerId as a ServerId
+                    try
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var monitor = scope.ServiceProvider.GetService<IServerResourceMonitor>();
+                        if (monitor != null)
+                        {
+                            var snapshot = await monitor.GetSnapshotAsync(targetContainerId);
+                            var resolvedId = snapshot?.ContainerIds.FirstOrDefault() ?? snapshot?.RealTimeStats?.ContainerId;
+                            if (!string.IsNullOrWhiteSpace(resolvedId))
+                            {
+                                targetContainerId = resolvedId;
+                                agent = await _nodeAgentDiscovery.GetAgentForContainerAsync(targetContainerId);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to resolve container from server ID {ServerId}", targetContainerId);
+                    }
+                }
+
+                if (agent == null)
+                {
+                    return (false, $"Container '{targetContainerId}' not found or node agent unavailable");
                 }
 
                 // Build WebSocket URL
                 var wsUrl = agent.InternalUrl.Replace("http://", "ws://").Replace("https://", "wss://");
                 var shellCmd = Uri.EscapeDataString(shell);
-                var agentWsUrl = $"{wsUrl}/containers/{containerId}/exec/ws?cmd={shellCmd}&tty=true";
+                var agentWsUrl = $"{wsUrl}/containers/{targetContainerId}/exec/ws?cmd={shellCmd}&tty=true";
 
                 _logger.LogInformation("Connecting to agent at {Url}", agentWsUrl);
 
@@ -60,7 +88,7 @@ namespace GameServer.API.Services
                 var session = new TerminalSession
                 {
                     ConnectionId = connectionId,
-                    ContainerId = containerId,
+                    ContainerId = targetContainerId,
                     Shell = shell,
                     AgentUrl = agent.InternalUrl,
                     WebSocket = clientWebSocket,

@@ -43,6 +43,14 @@ public sealed class GameServerEditorV2Tests : BunitContext
             .Setup(api => api.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
+        gameServerApi
+            .Setup(api => api.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        gameServerApi
+            .Setup(api => api.PreviewAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerDeploymentPreview { ServiceName = "minecraft-srv-1", Issues = [], Notices = [] });
+
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IGameServerV2ApiService>(gameServerApi.Object);
@@ -107,6 +115,26 @@ public sealed class GameServerEditorV2Tests : BunitContext
 
             var saveButton = cut.FindAll("button").First(button => button.TextContent.Contains("Save Changes"));
             Assert.True(saveButton.HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_WhenServerNameUpdated_ShouldTriggerLiveValidation()
+    {
+        // Arrange
+        var cut = RenderEditor();
+        cut.WaitForAssertion(() => Assert.NotEmpty(FindPortMappingInputs(cut)));
+
+        // Act
+        var nameInput = cut.Find("input.rz-textbox");
+        nameInput.Input("My Renamed Server");
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            gameServerApi.Verify(
+                api => api.ValidateAsync(It.Is<SaveGameServerRequest>(req => req.Name == "My Renamed Server"), It.IsAny<CancellationToken>()),
+                Times.AtLeastOnce());
         });
     }
 

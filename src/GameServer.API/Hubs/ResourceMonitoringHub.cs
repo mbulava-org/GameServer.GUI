@@ -217,52 +217,43 @@ namespace GameServer.API.Hubs
             try
             {
                 var updateCounter = 0;
-                var lastSentTime = DateTime.UtcNow;
-
                 await foreach (var usage in _resourceAggregator.StreamResourceUsageAsync(session.ServerId!, session.IntervalSeconds, cancellationToken))
                 {
                     updateCounter++;
 
-                    // Check if enough time has passed based on the configured interval
-                    var timeSinceLastSent = DateTime.UtcNow - lastSentTime;
-                    if (timeSinceLastSent >= TimeSpan.FromSeconds(session.IntervalSeconds))
+                    try
                     {
+                        await clientProxy.SendAsync(
+                            "ResourceUpdate",
+                            usage,
+                            cancellationToken);
+
+                        _logger.LogTrace("Sent resource update for server {ServerId} to {ConnectionId} (update #{Count})",
+                            session.ServerId, session.ConnectionId, updateCounter);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Client disconnected, stop streaming
+                        _logger.LogInformation("Client {ConnectionId} disconnected, stopping stream for server {ServerId}",
+                            session.ConnectionId, session.ServerId);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error sending resource update to client {ConnectionId}", session.ConnectionId);
+                        
+                        // Try to send error, but don't fail if client is gone
                         try
                         {
                             await clientProxy.SendAsync(
-                                "ResourceUpdate",
-                                usage,
+                                "Error",
+                                $"Error sending update: {ex.Message}",
                                 cancellationToken);
-
-                            lastSentTime = DateTime.UtcNow;
-
-                            _logger.LogTrace("Sent resource update for server {ServerId} to {ConnectionId} (update #{Count})",
-                                session.ServerId, session.ConnectionId, updateCounter);
                         }
                         catch (ObjectDisposedException)
                         {
-                            // Client disconnected, stop streaming
-                            _logger.LogInformation("Client {ConnectionId} disconnected, stopping stream for server {ServerId}",
-                                session.ConnectionId, session.ServerId);
+                            _logger.LogDebug("Client {ConnectionId} disconnected before error could be sent", session.ConnectionId);
                             break;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error sending resource update to client {ConnectionId}", session.ConnectionId);
-                            
-                            // Try to send error, but don't fail if client is gone
-                            try
-                            {
-                                await clientProxy.SendAsync(
-                                    "Error",
-                                    $"Error sending update: {ex.Message}",
-                                    cancellationToken);
-                            }
-                            catch (ObjectDisposedException)
-                            {
-                                _logger.LogDebug("Client {ConnectionId} disconnected before error could be sent", session.ConnectionId);
-                                break;
-                            }
                         }
                     }
                 }

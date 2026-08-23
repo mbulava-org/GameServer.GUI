@@ -153,13 +153,14 @@ namespace GameServer.Docker.Agent.Controllers
                 using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
                 _logger.LogInformation("WebSocket connection established for container {ContainerId}", id);
 
-                // Create a multiplexed stream for Docker attach
+                // Create a multiplexed stream for Docker attach including previous logs
                 var parameters = new ContainerAttachParameters
                 {
                     Stream = true,
                     Stdin = true,
                     Stdout = true,
-                    Stderr = true
+                    Stderr = true,
+                    Logs = true
                 };
 
                 var dockerClient = HttpContext.RequestServices.GetRequiredService<IDockerClient>();
@@ -229,22 +230,19 @@ namespace GameServer.Docker.Agent.Controllers
                 while (true)
                 {
                     var result = await stream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken);
-                    if (result.Count == 0)
-                        break;
-                    
+                    if (result.Count == 0) break;
+
                     output.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
                 }
 
-                // Get exit code
-                var execInspect = await dockerClient.Exec.InspectContainerExecAsync(execCreateResponse.ID, cancellationToken);
+                // Inspect to get exit code
+                var inspect = await dockerClient.Exec.InspectContainerExecAsync(execCreateResponse.ID, cancellationToken);
 
-                var response = new Models.ExecResponse
+                return Ok(new Models.ExecResponse
                 {
-                    ExitCode = (int)execInspect.ExitCode,
+                    ExitCode = (int)inspect.ExitCode,
                     Output = output.ToString()
-                };
-
-                return Ok(response);
+                });
             }
             catch (DockerContainerNotFoundException)
             {
@@ -254,7 +252,7 @@ namespace GameServer.Docker.Agent.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing command in container {ContainerId}", id);
-                return Problem(detail: ex.Message, statusCode: 500);
+                return StatusCode(500, new Models.ErrorResponse { Error = ex.Message });
             }
         }
 
@@ -273,8 +271,10 @@ namespace GameServer.Docker.Agent.Controllers
                 return;
             }
 
+            var command = (cmd != null && cmd.Length > 0) ? cmd : new[] { "/bin/sh" };
+
             _logger.LogInformation("WebSocket exec request for container {ContainerId}: {Command}",
-                id, string.Join(" ", cmd ?? Array.Empty<string>()));
+                id, string.Join(" ", command));
 
             try
             {
@@ -286,7 +286,7 @@ namespace GameServer.Docker.Agent.Controllers
                 // Create exec instance with stdin/stdout/stderr
                 var execCreateParams = new ContainerExecCreateParameters
                 {
-                    Cmd = cmd,
+                    Cmd = command,
                     AttachStdout = true,
                     AttachStderr = true,
                     AttachStdin = true,   // Enable stdin for interactive session

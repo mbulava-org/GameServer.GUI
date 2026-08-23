@@ -1,12 +1,14 @@
 @page "/gameservers-v2/new"
 @page "/gameservers-v2/{ServerId}/edit"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 @using System.Text.Json
 @using GameServer.Web.Models.V2
 @using GameServer.Web.Components.Server
 @using GameServer.API.Client.Interfaces
 @using GameServer.API.Client.Services
 @using Microsoft.Extensions.Options
+@using Microsoft.Extensions.Logging
 @using GameServer.Web.Configurations
 @using Radzen
 @using Radzen.Blazor
@@ -16,6 +18,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IOptions<GameServerDockerApi> ApiConfig
+@inject ILogger<GameServerEditorV2> Logger
 
 <PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server")</PageTitle>
 
@@ -172,7 +175,11 @@
                     </div>
                     <div class="mb-3">
                         <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextArea @bind-Value="draft.Description" Rows="4" class="w-100" />
+                            <RadzenTextArea Value="@draft.Description"
+                                            ValueChanged="@OnDescriptionChanged"
+                                            @oninput="@(e => OnDescriptionInput(e.Value?.ToString()))"
+                                            Rows="4"
+                                            class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="mb-3">
@@ -250,6 +257,7 @@
                                     <RadzenNumeric TValue="int"
                                                    Value="@GetPublishedPort(port)"
                                                    ValueChanged="@(value => OnPublishedPortChanged(port, value))"
+                                                   Change="@(value => OnPublishedPortChanged(port, value))"
                                                    Min="1"
                                                    Max="65535"
                                                    class="w-100"
@@ -547,6 +555,7 @@
                 EnsureRevisionSelected();
                 EnsureSettingsInitialized();
                 EnsurePortsInitialized();
+                TriggerLiveValidation();
                 return;
             }
 
@@ -584,18 +593,22 @@
         draft.GameTypeRevisionId = 0;
         draft.SettingValues.Clear();
         validationResult = null;
+        deploymentPreview = null;
         RefreshRevisionOptions();
         EnsureRevisionSelected();
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
+        TriggerLiveValidation();
     }
 
     private Task OnRevisionChanged(int? revisionId)
     {
         draft.GameTypeRevisionId = revisionId ?? 0;
         validationResult = null;
+        deploymentPreview = null;
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
+        TriggerLiveValidation();
         return Task.CompletedTask;
     }
 
@@ -668,7 +681,16 @@
             definition.Metadata?.PortMappings.Any(mapping =>
                 mapping.TargetContainerPort == port.ContainerPort
                 && string.Equals(mapping.TargetProtocol, port.Protocol, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)) == true);
+                && (string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(mapping.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase))) == true)
+            ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
+                string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+                && (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0)
+                && int.TryParse(definition.DefaultValue, out var defPort)
+                && defPort == port.ContainerPort)
+            ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
+                string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+                && (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0));
     }
 
     private int? TryGetPortSettingValue(GameTypePort port)
@@ -709,12 +731,16 @@
 
     private async Task OnPublishedPortChanged(GameTypePort port, int value)
     {
+        if (value <= 0 || value > 65535)
+        {
+            return;
+        }
+
         publishedPortSelections[port.Id] = value;
-        validationResult = null;
-        deploymentPreview = null;
         RecalculateAutoPortsFrom(port);
         SyncPortSettingsFromPublishedPorts();
         await CheckPortAvailabilityAsync();
+        TriggerLiveValidation();
     }
 
     private bool IsAutoCalculatedPort(GameTypePort port)
@@ -725,7 +751,8 @@
             def.Metadata?.PortMappings.Any(pm =>
                 pm.TargetContainerPort == port.ContainerPort
                 && string.Equals(pm.TargetProtocol, port.Protocol, StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(pm.MappingRole, "Related", StringComparison.OrdinalIgnoreCase)
+                    || (!string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(pm.RelationType)))
             ) == true);
     }
 
@@ -758,7 +785,8 @@
             var primaryMapping = portMappings.FirstOrDefault(pm =>
                 pm.TargetContainerPort == sourcePort.ContainerPort
                 && string.Equals(pm.TargetProtocol, sourcePort.Protocol, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase));
+                && (string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pm.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase)));
 
             if (primaryMapping is null)
             {
@@ -767,7 +795,8 @@
 
             // Now recalculate all related (non-Direct) ports in this setting
             foreach (var relatedMapping in portMappings.Where(pm =>
-                !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)))
+                !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(pm.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase)))
             {
                 var targetPort = CurrentRevisionPorts.FirstOrDefault(p =>
                     p.ContainerPort == relatedMapping.TargetContainerPort
@@ -814,8 +843,6 @@
         }
 
         draft.SettingValues[settingKey] = value;
-        validationResult = null;
-        deploymentPreview = null;
 
         // A port typed on the Settings tab must drive the same recalculation and availability
         // pipeline as the Port Mappings panel so both views stay consistent.
@@ -827,6 +854,8 @@
             SyncPortSettingsFromPublishedPorts();
             await CheckPortAvailabilityAsync();
         }
+
+        TriggerLiveValidation();
     }
 
     /// <summary>
@@ -837,17 +866,29 @@
         var definition = CurrentSettingDefinitions.FirstOrDefault(candidate =>
             string.Equals(candidate.SettingKey, settingKey, StringComparison.OrdinalIgnoreCase));
 
-        var primaryMapping = definition?.Metadata?.PortMappings.FirstOrDefault(mapping =>
-            string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase));
-
-        if (primaryMapping is null)
+        if (definition is null)
         {
             return null;
         }
 
-        return CurrentRevisionPorts.FirstOrDefault(port =>
-            port.ContainerPort == primaryMapping.TargetContainerPort
-            && string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+        var primaryMapping = definition.Metadata?.PortMappings.FirstOrDefault(mapping =>
+            string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mapping.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase));
+
+        if (primaryMapping is not null)
+        {
+            return CurrentRevisionPorts.FirstOrDefault(port =>
+                port.ContainerPort == primaryMapping.TargetContainerPort
+                && string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(definition.DefaultValue, out var defPort))
+        {
+            return CurrentRevisionPorts.FirstOrDefault(port => port.ContainerPort == defPort);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -935,6 +976,58 @@
 
     private bool HasUnavailablePort => portAvailability.Values.Any(availability => !availability.IsAvailable);
 
+    private CancellationTokenSource? liveValidationCts;
+
+    private void TriggerLiveValidation()
+    {
+        liveValidationCts?.Cancel();
+        liveValidationCts?.Dispose();
+        liveValidationCts = new CancellationTokenSource();
+        var token = liveValidationCts.Token;
+
+        _ = RunLiveValidationAsync(token);
+    }
+
+    private async Task RunLiveValidationAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(300, token);
+
+            if (draft.GameTypeRevisionId <= 0)
+            {
+                validationResult = null;
+                deploymentPreview = null;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var request = BuildSaveRequest();
+            var valTask = GameServerApiV2.ValidateAsync(request, token);
+            var prevTask = GameServerApiV2.PreviewAsync(request, token);
+
+            await Task.WhenAll(valTask, prevTask);
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            validationResult = await valTask;
+            deploymentPreview = await prevTask;
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during continuous user input
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Live validation failed");
+        }
+    }
+
     private async Task ValidateAsync()
     {
         try
@@ -1008,22 +1101,34 @@
     private void SetVolumeMountType(GameTypeVolume volume, string? value)
     {
         volumeMountTypeSelections[volume.Id] = value ?? volume.MountType;
-        validationResult = null;
+        TriggerLiveValidation();
     }
 
     private void OnServerNameInput(string? value)
     {
         draft.Name = value ?? string.Empty;
-        validationResult = null;
-        deploymentPreview = null;
+        TriggerLiveValidation();
         StateHasChanged();
     }
 
     private void OnServerNameChanged(string value)
     {
         draft.Name = value ?? string.Empty;
-        validationResult = null;
-        deploymentPreview = null;
+        TriggerLiveValidation();
+        StateHasChanged();
+    }
+
+    private void OnDescriptionInput(string? value)
+    {
+        draft.Description = value;
+        TriggerLiveValidation();
+        StateHasChanged();
+    }
+
+    private void OnDescriptionChanged(string? value)
+    {
+        draft.Description = value;
+        TriggerLiveValidation();
         StateHasChanged();
     }
 
@@ -1161,6 +1266,13 @@
         return string.IsNullOrWhiteSpace(revision.VersionTag)
             ? $"Revision {revision.Id}"
             : $"{revision.VersionTag} ({revision.ImageReference})";
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        liveValidationCts?.Cancel();
+        liveValidationCts?.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     private sealed class GameServerEditorDraft

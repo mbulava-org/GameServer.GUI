@@ -15,13 +15,16 @@ namespace GameServer.API.Hubs
     {
         private readonly ILogger<ContainerAttachHub> _logger;
         private readonly IContainerAttachAggregator _attachAggregator;
+        private readonly IServerResourceMonitor _serverResourceMonitor;
 
         public ContainerAttachHub(
             ILogger<ContainerAttachHub> logger,
-            IContainerAttachAggregator attachAggregator)
+            IContainerAttachAggregator attachAggregator,
+            IServerResourceMonitor serverResourceMonitor)
         {
             _logger = logger;
             _attachAggregator = attachAggregator;
+            _serverResourceMonitor = serverResourceMonitor;
         }
 
         /// <summary>
@@ -108,13 +111,28 @@ namespace GameServer.API.Hubs
             return JsonSerializer.Serialize(new AttachStreamMessage(kind, payload));
         }
 
-        private static async Task<string?> ResolveContainerIdFromServerAsync(string serverId, CancellationToken cancellationToken)
+        private async Task<string?> ResolveContainerIdFromServerAsync(string serverId, CancellationToken cancellationToken)
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            // Resolve through the agent discovery is not directly available in the hub without
-            // injecting NodeAgentDiscovery; for now rely on the caller providing the containerId.
-            // Returning null here causes the hub to ask the client to provide the containerId.
-            await Task.CompletedTask;
+            if (string.IsNullOrWhiteSpace(serverId))
+            {
+                return null;
+            }
+
+            try
+            {
+                var snapshot = await _serverResourceMonitor.GetSnapshotAsync(serverId, cancellationToken).ConfigureAwait(false);
+                var containerId = snapshot?.ContainerIds.FirstOrDefault() ?? snapshot?.RealTimeStats?.ContainerId;
+                if (!string.IsNullOrWhiteSpace(containerId))
+                {
+                    _logger.LogInformation("Resolved container {ContainerId} for server {ServerId}", containerId, serverId);
+                    return containerId;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve container ID for server {ServerId}", serverId);
+            }
+
             return null;
         }
     }

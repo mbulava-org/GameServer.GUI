@@ -66,5 +66,19 @@ namespace GameServer.API.Models
         
         // Container-level data availability
         public bool HasRealTimeStats => RealTimeStats != null;
+
+        // Flat properties mirrored for Client deserialization
+        public double? CpuUsagePercent => RealTimeStats?.CpuUsagePercent;
+        public long? MemoryUsageBytes => RealTimeStats != null ? (long)RealTimeStats.MemoryUsageBytes : null;
+        public long? MemoryLimitBytes => RealTimeStats != null ? (long)RealTimeStats.MemoryLimitBytes : ServiceMemoryLimitPerReplica;
+        public double? MemoryUsagePercent => RealTimeStats?.MemoryUsagePercent;
+        public long? NetworkRxBytes => RealTimeStats?.NetworkRxBytes;
+        public long? NetworkTxBytes => RealTimeStats?.NetworkTxBytes;
+        public long? BlockReadBytes => RealTimeStats?.BlockReadBytes;
+        public long? BlockWriteBytes => RealTimeStats?.BlockWriteBytes;
+        public string? ContainerId => RealTimeStats?.ContainerId ?? ContainerIds.FirstOrDefault();
+        public string? NodeName => null;
+        public int? Replicas => DesiredReplicas;
+        public int? HealthyReplicas => RunningReplicas;
     }
 }

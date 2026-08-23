@@ -116,6 +116,7 @@
 </style>
 
 @code {
+    [Parameter] public string? ServerId { get; set; }
     [Parameter] public string? ContainerId { get; set; }
     [Parameter] public bool AutoConnect { get; set; } = false;
     [Parameter] public string Shell { get; set; } = "/bin/sh";
@@ -158,26 +159,31 @@
 
     private bool isConnected = false;
     private bool isConnecting = false;
+    private bool isJavaScriptAvailable = false;
     private string? sessionId;
     private CancellationTokenSource? cts;
     private IContainerTerminalClient? terminalClient;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && AutoConnect && !string.IsNullOrEmpty(ContainerId))
+        if (firstRender)
         {
-            await Task.Delay(500); // Wait for terminal to initialize
-            await ConnectAsync();
+            isJavaScriptAvailable = true;
+            if (AutoConnect && (!string.IsNullOrEmpty(ContainerId) || !string.IsNullOrEmpty(ServerId)))
+            {
+                await Task.Delay(500); // Wait for terminal to initialize
+                await ConnectAsync();
+            }
         }
     }
 
     private async Task OnTerminalReady()
     {
-        if (terminal == null) return;
+        if (terminal == null || !isJavaScriptAvailable) return;
 
         await terminal.WriteLine("\x1b[1;32m=== Container Interactive Terminal ===\x1b[0m");
         await terminal.WriteLine($"\x1b[36mShell: {Shell}\x1b[0m");
-        await terminal.WriteLine($"\x1b[36mContainer: {ContainerId ?? "Unknown"}\x1b[0m");
+        await terminal.WriteLine($"\x1b[36mTarget: {ContainerId ?? ServerId ?? "Unknown"}\x1b[0m");
         await terminal.WriteLine("");
         
         if (!AutoConnect)
@@ -188,9 +194,10 @@
 
     private async Task ConnectAsync()
     {
-        if (string.IsNullOrEmpty(ContainerId))
+        var targetId = !string.IsNullOrWhiteSpace(ContainerId) ? ContainerId : ServerId;
+        if (string.IsNullOrEmpty(targetId))
         {
-            await WriteError("Error: No container ID provided");
+            await WriteError("Error: No server or container ID provided");
             return;
         }
 
@@ -204,7 +211,7 @@
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
             var hubUrl = $"{baseUri}/hubs/terminal";
 
-            Logger.LogInformation("Connecting to terminal hub at {HubUrl} for container {ContainerId}", hubUrl, ContainerId);
+            Logger.LogInformation("Connecting to terminal hub at {HubUrl} for target {TargetId}", hubUrl, targetId);
 
             cts = new CancellationTokenSource();
 
@@ -212,7 +219,7 @@
             WireTerminalEvents();
 
             await terminalClient.ConnectAsync(cts.Token);
-            var sessionStarted = await terminalClient.StartExecSessionAsync(ContainerId, Shell, cts.Token);
+            var sessionStarted = await terminalClient.StartExecSessionAsync(targetId, Shell, cts.Token);
 
             if (!sessionStarted)
             {
@@ -304,35 +311,48 @@
         terminalClient.Disconnected += OnTerminalDisconnected;
     }
 
-    private async void OnTerminalOutput(object? sender, string data)
+    private void OnTerminalOutput(object? sender, string data)
     {
-        if (terminal != null)
+        InvokeAsync(async () =>
         {
-            await terminal.Write(data);
-        }
+            if (terminal != null && isJavaScriptAvailable)
+            {
+                await terminal.Write(data);
+            }
+        });
     }
 
-    private async void OnTerminalError(object? sender, string error)
+    private void OnTerminalError(object? sender, string error)
     {
-        await WriteError($"Error: {error}");
+        InvokeAsync(async () =>
+        {
+            await WriteError($"Error: {error}");
+        });
     }
 
     private void OnTerminalSessionStarted(object? sender, string sid)
     {
-        sessionId = sid;
-        Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
+        InvokeAsync(() =>
+        {
+            sessionId = sid;
+            Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
+            StateHasChanged();
+        });
     }
 
-    private async void OnTerminalDisconnected(object? sender, string message)
+    private void OnTerminalDisconnected(object? sender, string message)
     {
-        isConnected = false;
-        await WriteInfo($"Disconnected: {message}");
-        await InvokeAsync(StateHasChanged);
+        InvokeAsync(async () =>
+        {
+            isConnected = false;
+            await WriteInfo($"Disconnected: {message}");
+            StateHasChanged();
+        });
     }
 
     private async Task ClearTerminal()
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
         {
             await terminal.Clear();
             await terminal.WriteLine("\x1b[1;32m=== Terminal Cleared ===\x1b[0m\n");
@@ -341,24 +361,25 @@
 
     private async Task WriteSuccess(string message)
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
             await terminal.WriteLine($"\x1b[1;32m{message}\x1b[0m");
     }
 
     private async Task WriteError(string message)
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
             await terminal.WriteLine($"\x1b[1;31m{message}\x1b[0m");
     }
 
     private async Task WriteInfo(string message)
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
             await terminal.WriteLine($"\x1b[1;36m{message}\x1b[0m");
     }
 
     public async ValueTask DisposeAsync()
     {
+        isJavaScriptAvailable = false;
         cts?.Cancel();
         cts?.Dispose();
 
