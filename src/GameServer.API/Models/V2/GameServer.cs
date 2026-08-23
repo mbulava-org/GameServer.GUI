@@ -29,6 +29,8 @@ public sealed record GameServer
     public List<GameServerSetting> Settings { get; init; } = [];
 
     public List<GameServerVolume> Volumes { get; init; } = [];
+
+    public List<GameServerPort> Ports { get; init; } = [];
 }
 
 public sealed record GameServerSetting
@@ -38,4 +40,15 @@ public sealed record GameServerSetting
     public string SettingKey { get; init; } = string.Empty;
 
     public string? Value { get; init; }
+}
+
+public sealed record GameServerPort
+{
+    public int Id { get; init; }
+
+    public int ContainerPort { get; init; }
+
+    public string Protocol { get; init; } = "tcp";
+
+    public int PublishedPort { get; init; }
 }

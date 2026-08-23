@@ -1087,6 +1087,14 @@
             GameTypeRevisionId = draft.GameTypeRevisionId,
             ServiceName = string.IsNullOrWhiteSpace(ComputedServiceName) ? null : ComputedServiceName,
             Status = string.IsNullOrWhiteSpace(draft.Status) ? null : draft.Status,
+            Ports = CurrentRevisionPorts
+                .Select(port => new GameServerPort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = GetPublishedPort(port)
+                })
+                .ToList(),
             Settings = CurrentSettingDefinitions
                 .Select(definition => new GameServerSetting
                 {

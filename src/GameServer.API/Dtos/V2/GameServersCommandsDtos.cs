@@ -16,12 +16,23 @@ public sealed record SaveGameServerRequestDto
 
     public List<GameServerSettingDto> Settings { get; init; } = [];
 
+    public List<GameServerPortDto> Ports { get; init; } = [];
+
     [Obsolete("Use VolumeBindingLayout instead.")]
     public List<GameServerConfigurationOptionDto> DockerVolumeOptions { get; init; } = [];
 
     public string VolumeBindingLayout { get; init; } = "standard";
 
     public List<GameServerConfigurationOptionDto> NetworkOptions { get; init; } = [];
+}
+
+public sealed record GameServerPortDto
+{
+    public int ContainerPort { get; init; }
+
+    public string Protocol { get; init; } = "tcp";
+
+    public int PublishedPort { get; init; }
 }
 
 public sealed record GameServerValidationResultDto

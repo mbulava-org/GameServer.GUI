@@ -83,7 +83,7 @@ public sealed class GameServerValidationService
         revision.GameType = revisionContext.GameType;
 
         var effectiveSettings = BuildEffectiveSettings(request, revision, issues);
-        var resolvedPorts = ResolvePorts(revision, effectiveSettings, issues);
+        var resolvedPorts = ResolvePorts(revision, request.Ports, effectiveSettings, issues);
         ValidateResolvedPorts(resolvedPorts, request.ServerId, issues, cancellationToken);
         var resolvedVolumes = await ResolveVolumesAsync(revision, request.ServerId, request.VolumeBindingLayout, effectiveSettings, issues, cancellationToken).ConfigureAwait(false);
         var resolvedWebHosts = ResolveWebHosts(revisionContext.Revision.WebHosts, effectiveSettings, issues);
@@ -331,6 +331,7 @@ public sealed class GameServerValidationService
 
     private static List<GameServerResolvedPortDto> ResolvePorts(
         GameTypeRevisionModel revision,
+        IReadOnlyList<GameServerPortDto>? requestPorts,
         IReadOnlyDictionary<string, string?> effectiveSettings,
         List<GameServerValidationIssueDto> issues)
     {
@@ -354,6 +355,26 @@ public sealed class GameServerValidationService
             .OrderBy(port => port.DisplayOrder)
             .Select((definition, index) => new { definition, index })
             .ToDictionary(item => BuildPortKey(item.definition.ContainerPort, item.definition.Protocol), item => item.index, StringComparer.OrdinalIgnoreCase);
+
+        if (requestPorts != null)
+        {
+            foreach (var reqPort in requestPorts)
+            {
+                if (reqPort.PublishedPort <= 0 || reqPort.PublishedPort > 65535)
+                {
+                    continue;
+                }
+
+                if (portLookup.TryGetValue(BuildPortKey(reqPort.ContainerPort, reqPort.Protocol), out var portIndex))
+                {
+                    resolvedPorts[portIndex] = resolvedPorts[portIndex] with { ContainerPort = reqPort.PublishedPort };
+                }
+                else if (resolvedPorts.Count == 1)
+                {
+                    resolvedPorts[0] = resolvedPorts[0] with { ContainerPort = reqPort.PublishedPort };
+                }
+            }
+        }
 
         foreach (var definition in revision.SettingDefinitions)
         {

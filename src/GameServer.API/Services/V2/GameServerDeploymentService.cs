@@ -48,6 +48,14 @@ public sealed class GameServerDeploymentService(
             ServiceName = server.ServiceName,
             Status = server.Status,
             VolumeBindingLayout = volumeBindingLayout,
+            Ports = server.Ports
+                .Select(p => new GameServerPortDto
+                {
+                    ContainerPort = p.ContainerPort,
+                    Protocol = p.Protocol,
+                    PublishedPort = p.PublishedPort
+                })
+                .ToList(),
             Settings = server.Settings
                 .Select(s => new GameServerSettingDto
                 {
@@ -217,6 +225,14 @@ public sealed class GameServerDeploymentService(
             ServiceName = server.ServiceName,
             Status = server.Status,
             VolumeBindingLayout = volumeBindingLayout ?? "standard",
+            Ports = server.Ports
+                .Select(p => new GameServerPortDto
+                {
+                    ContainerPort = p.ContainerPort,
+                    Protocol = p.Protocol,
+                    PublishedPort = p.PublishedPort
+                })
+                .ToList(),
             Settings = server.Settings
                 .Select(s => new GameServerSettingDto
                 {

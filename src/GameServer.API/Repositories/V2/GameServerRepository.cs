@@ -55,7 +55,13 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 SettingKey = x.SettingKey,
                 Value = x.Value
             }).ToList(),
-            Volumes = server.Volumes.Select(MapVolumeToEntity).ToList()
+            Volumes = server.Volumes.Select(MapVolumeToEntity).ToList(),
+            Ports = server.Ports.Select(x => new DataV2.GameServerPortEntity
+            {
+                ContainerPort = x.ContainerPort,
+                Protocol = x.Protocol,
+                PublishedPort = x.PublishedPort
+            }).ToList()
         };
 
         context.GameServers.Add(entity);
@@ -95,6 +101,18 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 GameServerId = entity.Id,
                 SettingKey = setting.SettingKey,
                 Value = setting.Value
+            });
+        }
+
+        entity.Ports.Clear();
+        foreach (var port in server.Ports)
+        {
+            entity.Ports.Add(new DataV2.GameServerPortEntity
+            {
+                GameServerId = entity.Id,
+                ContainerPort = port.ContainerPort,
+                Protocol = port.Protocol,
+                PublishedPort = port.PublishedPort
             });
         }
 
@@ -142,6 +160,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
         return context.GameServers
             .Include(x => x.Settings)
             .Include(x => x.Volumes)
+            .Include(x => x.Ports)
             .AsSplitQuery()
             .AsQueryable();
     }
@@ -224,7 +243,14 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 SettingKey = x.SettingKey,
                 Value = x.Value
             }).ToList(),
-            Volumes = entity.Volumes.OrderBy(x => x.CreatedAt).Select(MapVolumeToModel).ToList()
+            Volumes = entity.Volumes.OrderBy(x => x.CreatedAt).Select(MapVolumeToModel).ToList(),
+            Ports = entity.Ports.OrderBy(x => x.ContainerPort).Select(x => new GameServer.API.Models.V2.GameServerPort
+            {
+                Id = x.Id,
+                ContainerPort = x.ContainerPort,
+                Protocol = x.Protocol,
+                PublishedPort = x.PublishedPort
+            }).ToList()
         };
     }
 }

@@ -290,7 +290,8 @@ public sealed class GameServerSpecBuilder
             .OrderBy(port => port.DisplayOrder)
             .Select((resolvedPort, index) =>
             {
-                var revisionPort = (index < revisionPorts.Count ? revisionPorts[index] : null)
+                var revisionPort = revisionPorts.FirstOrDefault(p => p.DisplayOrder == resolvedPort.DisplayOrder)
+                    ?? (index < revisionPorts.Count ? revisionPorts[index] : null)
                     ?? revisionPorts.FirstOrDefault(p => string.Equals(p.Protocol, resolvedPort.Protocol, StringComparison.OrdinalIgnoreCase));
 
                 var containerPort = revisionPort?.ContainerPort ?? resolvedPort.ContainerPort;

@@ -217,6 +217,14 @@ public sealed class GameServerCommandService(
                     SettingKey = setting.SettingKey,
                     Value = setting.Value
                 })
+                .ToList(),
+            Ports = request.Ports
+                .Select(port => new GameServer.API.Models.V2.GameServerPort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = port.PublishedPort
+                })
                 .ToList()
         };
     }

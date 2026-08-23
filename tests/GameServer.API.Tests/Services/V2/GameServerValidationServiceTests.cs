@@ -212,5 +212,53 @@ public class GameServerValidationServiceTests
         var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
         Assert.Equal(26000, resolvedPort.ContainerPort);
     }
+
+    [Fact]
+    public async Task ResolveAsync_WhenRequestContainsExplicitPorts_ShouldResolvePortFromRequestPorts()
+    {
+        var gameType = new GameType
+        {
+            Id = 1,
+            Key = "minecraft",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 1,
+                    Ports =
+                    [
+                        new GameTypePort
+                        {
+                            ContainerPort = 25565,
+                            Protocol = "tcp",
+                            AdvertisedPort = true,
+                            DisplayOrder = 1
+                        }
+                    ],
+                    SettingDefinitions = []
+                }
+            ]
+        };
+
+        var service = CreateService(gameType, services: []);
+
+        var resolution = await service.ResolveAsync(new SaveGameServerRequestDto
+        {
+            Name = "Server",
+            GameTypeRevisionId = 1,
+            Ports =
+            [
+                new GameServerPortDto
+                {
+                    ContainerPort = 25565,
+                    Protocol = "tcp",
+                    PublishedPort = 26500
+                }
+            ]
+        });
+
+        var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
+        Assert.Equal(26500, resolvedPort.ContainerPort);
+    }
 }
 
