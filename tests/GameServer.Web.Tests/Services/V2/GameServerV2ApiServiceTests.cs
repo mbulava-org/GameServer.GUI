@@ -140,6 +140,98 @@ public class GameServerV2ApiServiceTests
         Assert.Contains("/api/v2/gameservers/srv-1?softDelete=True", requestUriCaptured);
     }
 
+    [Fact]
+    public async Task StartAsync_WhenApiReturnsPayload_ShouldDeserializeDetail()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/start")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Minecraft Survival",
+                    Status = "Running"
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.StartAsync("srv-1");
+        Assert.Equal("srv-1", result.ServerId);
+        Assert.Equal("Running", result.Status);
+    }
+
+    [Fact]
+    public async Task StopAsync_WhenApiReturnsPayload_ShouldDeserializeDetail()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/stop")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Minecraft Survival",
+                    Status = "Stopped"
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.StopAsync("srv-1");
+        Assert.Equal("srv-1", result.ServerId);
+        Assert.Equal("Stopped", result.Status);
+    }
+
+    [Fact]
+    public async Task RestartAsync_WhenApiReturnsPayload_ShouldDeserializeDetail()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/restart")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Minecraft Survival",
+                    Status = "Running"
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.RestartAsync("srv-1");
+        Assert.Equal("srv-1", result.ServerId);
+        Assert.Equal("Running", result.Status);
+    }
+
+    [Fact]
+    public async Task RedeployAsync_WhenApiReturnsPayload_ShouldDeserializeDetail()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/redeploy")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Minecraft Survival",
+                    Status = "Running"
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.RedeployAsync("srv-1");
+        Assert.Equal("srv-1", result.ServerId);
+        Assert.Equal("Running", result.Status);
+    }
+
     private static GameServerV2ApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();

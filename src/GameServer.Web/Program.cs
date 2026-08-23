@@ -88,6 +88,7 @@ namespace GameServer.Web
                 builder.Services.AddScoped<Services.V2.IGameServerV2ApiService, Services.V2.GameServerV2ApiService>();
                 builder.Services.AddScoped<Services.V2.IGameTypeV2ApiService, Services.V2.GameTypeV2ApiService>();
                 builder.Services.AddScoped<Services.V2.IMountTypeConfigApiService, Services.V2.MountTypeConfigApiService>();
+                builder.Services.AddScoped<Services.V2.IGameServerFilesApiService, Services.V2.GameServerFilesApiService>();
 
                 //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";

@@ -68,6 +68,7 @@ namespace GameServer.Docker.Agent.Models
         public List<MountConfig>? Mounts { get; set; }
         public ResourcesConfig? Resources { get; set; }
         public bool ForceUpdate { get; set; }
+        public ulong? Replicas { get; set; }
     }
 
     /// <summary>

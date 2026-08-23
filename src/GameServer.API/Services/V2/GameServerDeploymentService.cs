@@ -87,6 +87,110 @@ public sealed class GameServerDeploymentService(
     }
 
     /// <summary>
+    /// Starts the Swarm service for a V2 GameServer (or deploys it if it does not yet exist).
+    /// </summary>
+    public async Task StartAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var server = await gameServerRepository.GetByServerIdAsync(serverId)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
+
+        var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            var updateParams = new ServiceUpdateParameters
+            {
+                Service = new ServiceSpec
+                {
+                    Name = server.ServiceName,
+                    Mode = new ServiceMode
+                    {
+                        Replicated = new ReplicatedService { Replicas = 1 }
+                    }
+                }
+            };
+            await serviceOperations.UpdateServiceAsync(server.ServiceName, updateParams, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await DeployAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        server = server with { Status = "Running" };
+        await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+        logger.LogInformation("Started V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
+    }
+
+    /// <summary>
+    /// Stops the Swarm service for a V2 GameServer by scaling replicas to 0.
+    /// </summary>
+    public async Task StopAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var server = await gameServerRepository.GetByServerIdAsync(serverId)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
+
+        var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            var updateParams = new ServiceUpdateParameters
+            {
+                Service = new ServiceSpec
+                {
+                    Name = server.ServiceName,
+                    Mode = new ServiceMode
+                    {
+                        Replicated = new ReplicatedService { Replicas = 0 }
+                    }
+                }
+            };
+            await serviceOperations.UpdateServiceAsync(server.ServiceName, updateParams, cancellationToken).ConfigureAwait(false);
+        }
+
+        server = server with { Status = "Stopped" };
+        await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+        logger.LogInformation("Stopped V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
+    }
+
+    /// <summary>
+    /// Restarts the Swarm service for a V2 GameServer by forcing a container recreation.
+    /// </summary>
+    public async Task RestartAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var server = await gameServerRepository.GetByServerIdAsync(serverId)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
+
+        var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
+            var updateParams = BuildUpdateParameters(server, gameType, revision, server.Volumes, null);
+            await serviceOperations.UpdateServiceAsync(server.ServiceName, updateParams, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await DeployAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        server = server with { Status = "Running" };
+        await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+        logger.LogInformation("Restarted V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
+    }
+
+    /// <summary>
     /// Updates the Swarm service for a V2 GameServer, preserving existing volume snapshots
     /// and applying only newly introduced mounts.
     /// </summary>
@@ -104,25 +208,53 @@ public sealed class GameServerDeploymentService(
 
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
 
+        var saveRequest = new SaveGameServerRequestDto
+        {
+            ServerId = server.ServerId,
+            Name = server.Name,
+            Description = server.Description,
+            GameTypeRevisionId = server.GameTypeRevisionId,
+            ServiceName = server.ServiceName,
+            Status = server.Status,
+            VolumeBindingLayout = volumeBindingLayout ?? "standard",
+            Settings = server.Settings
+                .Select(s => new GameServerSettingDto
+                {
+                    SettingKey = s.SettingKey,
+                    Value = s.Value
+                })
+                .ToList()
+        };
+
+        var resolutionContext = await validationService.ResolveAsync(saveRequest, cancellationToken).ConfigureAwait(false);
+
         var layout = volumeBindingLayout ?? "standard";
         var newResolutions = await ResolveNewServerVolumesAsync(server, gameType, revision, layout, cancellationToken).ConfigureAwait(false);
-        var newVolumes = newResolutions.Select(r => r.Snapshot).ToList();
+        var newVolumes = newResolutions.Select(r => r.Snapshot with { IsProvisioned = true }).ToList();
         var allVolumes = server.Volumes.Concat(newVolumes).ToList();
 
         // Provision newly introduced volumes before updating the service.
         await ProvisionVolumesAsync(newResolutions, cancellationToken).ConfigureAwait(false);
 
-        var parameters = BuildUpdateParameters(server, revision, allVolumes, imageReference);
-        await serviceOperations.UpdateServiceAsync(server.ServiceName, parameters, cancellationToken).ConfigureAwait(false);
-
-        if (newVolumes.Count > 0)
+        var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (existingServices.Any(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase)))
         {
-            server = server with
-            {
-                Volumes = allVolumes
-            };
-            await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+            var parameters = BuildUpdateParameters(server, gameType, revision, allVolumes, imageReference, resolutionContext);
+            await serviceOperations.UpdateServiceAsync(server.ServiceName, parameters, cancellationToken).ConfigureAwait(false);
         }
+        else
+        {
+            var createParams = specBuilder.BuildCreateParameters(saveRequest, resolutionContext);
+            await serviceOperations.CreateServiceAsync(createParams, cancellationToken).ConfigureAwait(false);
+        }
+
+        server = server with
+        {
+            Status = "Running",
+            LastDeployedAt = DateTime.UtcNow,
+            Volumes = allVolumes
+        };
+        await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
 
         logger.LogInformation("Updated V2 GameServer {ServerId} service deployment", serverId);
     }
@@ -203,20 +335,35 @@ public sealed class GameServerDeploymentService(
 
     private ServiceUpdateParameters BuildUpdateParameters(
         GameServerModel server,
+        GameType gameType,
         GameTypeRevision revision,
         IReadOnlyList<GameServerVolume> volumes,
-        string? imageReference)
+        string? imageReference,
+        GameServerResolutionContext? resolutionContext = null)
     {
+        var image = imageReference 
+            ?? (!string.IsNullOrWhiteSpace(revision.VersionTag) ? $"{revision.ImageReference}:{revision.VersionTag}" : revision.ImageReference);
+
+        var env = BuildSettingValues(server, gameType, revision)
+            .Where(kv => kv.Value != null)
+            .Select(kv => $"{kv.Key}={kv.Value}")
+            .ToList();
+
         return new ServiceUpdateParameters
         {
             Service = new ServiceSpec
             {
                 Name = server.ServiceName,
+                Mode = new ServiceMode
+                {
+                    Replicated = new ReplicatedService { Replicas = 1 }
+                },
                 TaskTemplate = new TaskSpec
                 {
                     ContainerSpec = new ContainerSpec
                     {
-                        Image = imageReference ?? revision.ImageReference,
+                        Image = image,
+                        Env = env,
                         Mounts = BuildDockerMounts(volumes),
                         TTY = revision.EnableTTY
                     },

@@ -164,6 +164,13 @@ namespace GameServer.Docker.Agent.Controllers
                     currentSpec.TaskTemplate.ForceUpdate = service.Spec.TaskTemplate.ForceUpdate + 1;
                 }
 
+                if (request.Replicas.HasValue)
+                {
+                    currentSpec.Mode ??= new ServiceMode();
+                    currentSpec.Mode.Replicated ??= new ReplicatedService();
+                    currentSpec.Mode.Replicated.Replicas = request.Replicas.Value;
+                }
+
                 var updateParams = new ServiceUpdateParameters
                 {
                     Service = currentSpec,

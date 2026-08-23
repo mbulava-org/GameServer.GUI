@@ -92,8 +92,65 @@ public sealed class GameServerCommandService(
         var updated = await repository.UpdateAsync(MapToModel(normalizedRequest, existing.Id)).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (existing.LastDeployedAt.HasValue)
+        {
+            await deploymentService.UpdateDeploymentAsync(updated.ServerId, volumeBindingLayout: normalizedRequest.VolumeBindingLayout, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
         return await queryService.GetByServerIdAsync(updated.ServerId, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Failed to reload updated V2 GameServer.");
+    }
+
+    /// <summary>
+    /// Starts the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetailDto> StartAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await deploymentService.StartAsync(serverId, cancellationToken).ConfigureAwait(false);
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
+    }
+
+    /// <summary>
+    /// Stops the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetailDto> StopAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await deploymentService.StopAsync(serverId, cancellationToken).ConfigureAwait(false);
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
+    }
+
+    /// <summary>
+    /// Restarts the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetailDto> RestartAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await deploymentService.RestartAsync(serverId, cancellationToken).ConfigureAwait(false);
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
+    }
+
+    /// <summary>
+    /// Redeploys and updates the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetailDto> RedeployAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await deploymentService.UpdateDeploymentAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
     /// <summary>

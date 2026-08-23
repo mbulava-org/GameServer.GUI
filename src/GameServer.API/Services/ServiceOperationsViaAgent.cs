@@ -110,7 +110,8 @@ namespace GameServer.API.Services
                     : null,
                 Mounts = ConvertMounts(parameters.Service.TaskTemplate?.ContainerSpec?.Mounts),
                 Resources = ConvertResources(parameters.Service.TaskTemplate?.Resources),
-                ForceUpdate = parameters.Service.TaskTemplate?.ForceUpdate > 0
+                ForceUpdate = parameters.Service.TaskTemplate?.ForceUpdate > 0,
+                Replicas = (ulong?)parameters.Service.Mode?.Replicated?.Replicas
             };
 
             var httpClient = _httpClientFactory.CreateClient();

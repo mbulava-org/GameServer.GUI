@@ -139,6 +139,82 @@ public sealed class GameServersController(GameServerQueryService queryService, G
     }
 
     /// <summary>
+    /// Starts the Swarm service for a V2 GameServer.
+    /// </summary>
+    [HttpPost("{serverId}/start")]
+    [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<GameServerDetailDto>> Start(string serverId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var server = await commandService.StartAsync(serverId, cancellationToken);
+            return Ok(server);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Stops the Swarm service for a V2 GameServer.
+    /// </summary>
+    [HttpPost("{serverId}/stop")]
+    [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<GameServerDetailDto>> Stop(string serverId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var server = await commandService.StopAsync(serverId, cancellationToken);
+            return Ok(server);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Restarts the Swarm service for a V2 GameServer.
+    /// </summary>
+    [HttpPost("{serverId}/restart")]
+    [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<GameServerDetailDto>> Restart(string serverId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var server = await commandService.RestartAsync(serverId, cancellationToken);
+            return Ok(server);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Redeploys and updates the Swarm service for a V2 GameServer.
+    /// </summary>
+    [HttpPost("{serverId}/redeploy")]
+    [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<GameServerDetailDto>> Redeploy(string serverId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var server = await commandService.RedeployAsync(serverId, cancellationToken);
+            return Ok(server);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
     /// Deletes a V2 GameServer.
     /// </summary>
     [HttpDelete("{serverId}")]

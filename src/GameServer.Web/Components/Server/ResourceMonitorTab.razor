@@ -1,0 +1,327 @@
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
+@using GameServer.API.Client.Interfaces
+@using Radzen
+@using Radzen.Blazor
+@inject IOptions<GameServerDockerApi> ApiConfig
+@inject NotificationService NotificationService
+@inject ILogger<ResourceMonitorTab> Logger
+@implements IAsyncDisposable
+
+<div class="resource-monitor-container">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">Live Resource Usage</h5>
+            @if (isConnected)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Live Monitoring" Variant="Variant.Flat" />
+            }
+            else if (isConnecting)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" />
+            }
+            else
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" Variant="Variant.Flat" />
+            }
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            @if (latestUsage is not null)
+            {
+                <span class="text-muted small">Last update: @latestUsage.Timestamp.ToLocalTime().ToString("T")</span>
+            }
+            @if (!isConnected && !isConnecting)
+            {
+                <RadzenButton Icon="refresh" Text="Reconnect" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@ConnectAndSubscribeAsync" />
+            }
+        </div>
+    </div>
+
+    @if (latestUsage is null && isConnecting)
+    {
+        <div class="text-center py-5">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+            <p class="mt-3 text-muted">Connecting to resource stream for server @ServerId...</p>
+        </div>
+    }
+    else if (latestUsage is null && !isConnected)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
+            Resource usage data is currently unavailable. Ensure the game server container is running and the Node Agent is connected.
+            <div class="mt-2">
+                <RadzenButton Text="Retry Connection" Icon="refresh" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@ConnectAndSubscribeAsync" />
+            </div>
+        </RadzenAlert>
+    }
+    else
+    {
+        <div class="row g-3 mb-4">
+            <!-- CPU Card -->
+            <div class="col-lg-3 col-md-6">
+                <RadzenCard class="h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small text-uppercase fw-bold">CPU Usage</span>
+                        <RadzenIcon Icon="memory" Style="color: var(--rz-primary);" />
+                    </div>
+                    <div class="d-flex align-items-baseline gap-1 mb-2">
+                        <h2 class="mb-0 fw-bold">@((latestUsage?.CpuUsagePercent ?? 0).ToString("F1"))</h2>
+                        <span class="text-muted fs-5">%</span>
+                    </div>
+                    <RadzenProgressBar Value="@(Math.Clamp(latestUsage?.CpuUsagePercent ?? 0, 0, 100))"
+                                       Max="100"
+                                       ShowValue="false"
+                                       ProgressBarStyle="@GetCpuProgressStyle(latestUsage?.CpuUsagePercent ?? 0)"
+                                       Style="height: 8px;" />
+                </RadzenCard>
+            </div>
+
+            <!-- Memory Card -->
+            <div class="col-lg-3 col-md-6">
+                <RadzenCard class="h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small text-uppercase fw-bold">Memory Usage</span>
+                        <RadzenIcon Icon="developer_board" Style="color: var(--rz-info);" />
+                    </div>
+                    <div class="d-flex align-items-baseline gap-1 mb-2">
+                        <h2 class="mb-0 fw-bold">@FormatBytes(latestUsage?.MemoryUsageBytes ?? 0)</h2>
+                        @if ((latestUsage?.MemoryLimitBytes ?? 0) > 0)
+                        {
+                            <span class="text-muted small">/ @FormatBytes(latestUsage!.MemoryLimitBytes!.Value)</span>
+                        }
+                    </div>
+                    <RadzenProgressBar Value="@(Math.Clamp(latestUsage?.MemoryUsagePercent ?? 0, 0, 100))"
+                                       Max="100"
+                                       ShowValue="false"
+                                       ProgressBarStyle="@GetMemoryProgressStyle(latestUsage?.MemoryUsagePercent ?? 0)"
+                                       Style="height: 8px;" />
+                    <div class="d-flex justify-content-between mt-1 text-muted small">
+                        <span>@((latestUsage?.MemoryUsagePercent ?? 0).ToString("F1"))% used</span>
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <!-- Network I/O Card -->
+            <div class="col-lg-3 col-md-6">
+                <RadzenCard class="h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small text-uppercase fw-bold">Network I/O</span>
+                        <RadzenIcon Icon="swap_vert" Style="color: var(--rz-success);" />
+                    </div>
+                    <div class="mt-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted small"><RadzenIcon Icon="arrow_downward" Style="font-size: 0.9rem; color: var(--rz-success);" /> Rx (In)</span>
+                            <strong>@FormatBytes(latestUsage?.NetworkRxBytes ?? 0)</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small"><RadzenIcon Icon="arrow_upward" Style="font-size: 0.9rem; color: var(--rz-info);" /> Tx (Out)</span>
+                            <strong>@FormatBytes(latestUsage?.NetworkTxBytes ?? 0)</strong>
+                        </div>
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <!-- Block I/O Card -->
+            <div class="col-lg-3 col-md-6">
+                <RadzenCard class="h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small text-uppercase fw-bold">Disk I/O</span>
+                        <RadzenIcon Icon="storage" Style="color: var(--rz-warning);" />
+                    </div>
+                    <div class="mt-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted small">Read</span>
+                            <strong>@FormatBytes(latestUsage?.BlockReadBytes ?? 0)</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Write</span>
+                            <strong>@FormatBytes(latestUsage?.BlockWriteBytes ?? 0)</strong>
+                        </div>
+                    </div>
+                </RadzenCard>
+            </div>
+        </div>
+
+        <!-- Node & Container Details -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <RadzenCard class="p-3">
+                    <h6 class="mb-3">Container & Swarm Node</h6>
+                    <div class="row g-2 small">
+                        <div class="col-sm-4 text-muted">Node Name:</div>
+                        <div class="col-sm-8"><code>@(latestUsage?.NodeName ?? "Swarm Host")</code></div>
+                        <div class="col-sm-4 text-muted">Container ID:</div>
+                        <div class="col-sm-8 text-break"><code>@(latestUsage?.ContainerId ?? "Running in service")</code></div>
+                        <div class="col-sm-4 text-muted">Replicas:</div>
+                        <div class="col-sm-8">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@($"{latestUsage?.HealthyReplicas ?? latestUsage?.Replicas ?? 1} running")" Variant="Variant.Outlined" />
+                        </div>
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <div class="col-md-6">
+                <RadzenCard class="p-3">
+                    <h6 class="mb-3">Live Metrics Feed</h6>
+                    <div class="resource-log-stream" style="max-height: 120px; overflow-y: auto; font-family: monospace; font-size: 0.8rem;">
+                        @if (!activityLogs.Any())
+                        {
+                            <span class="text-muted">Listening for live resource updates...</span>
+                        }
+                        else
+                        {
+                            @foreach (var log in activityLogs)
+                            {
+                                <div class="mb-1 text-muted">
+                                    <span class="text-secondary">[@log.Timestamp.ToString("HH:mm:ss")]</span> @log.Message
+                                </div>
+                            }
+                        }
+                    </div>
+                </RadzenCard>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    private IResourceMonitoringClient? client;
+    private ServerResourceUsage? latestUsage;
+    private bool isConnected;
+    private bool isConnecting;
+    private readonly List<ActivityLogEntry> activityLogs = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ConnectAndSubscribeAsync();
+    }
+
+    private async Task ConnectAndSubscribeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId))
+        {
+            return;
+        }
+
+        try
+        {
+            isConnecting = true;
+            await DisconnectAsync();
+
+            var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
+            var wsUri = baseUri.Replace("https://", "wss://").Replace("http://", "ws://");
+            var hubUrl = $"{wsUri}/hubs/resources";
+
+            client = new GameServer.API.Client.Services.ResourceMonitoringClient(hubUrl);
+            client.ResourceUpdateReceived += OnResourceUpdate;
+            client.ErrorReceived += OnError;
+
+            await client.ConnectAsync(CancellationToken.None);
+            isConnected = true;
+            await client.SubscribeToServerAsync(ServerId, intervalSeconds: 2, CancellationToken.None);
+            AddLog($"Subscribed to resource updates for server {ServerId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to connect to ResourceMonitoringHub for server {ServerId}", ServerId);
+            isConnected = false;
+            AddLog($"Connection failed: {ex.Message}");
+        }
+        finally
+        {
+            isConnecting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnResourceUpdate(object? sender, ServerResourceUsage usage)
+    {
+        InvokeAsync(() =>
+        {
+            latestUsage = usage;
+            AddLog($"CPU: {(usage.CpuUsagePercent ?? 0):F1}% | RAM: {FormatBytes(usage.MemoryUsageBytes ?? 0)} ({usage.MemoryUsagePercent ?? 0:F1}%)");
+            StateHasChanged();
+        });
+    }
+
+    private void OnError(object? sender, string error)
+    {
+        InvokeAsync(() =>
+        {
+            AddLog($"Error: {error}");
+            StateHasChanged();
+        });
+    }
+
+    private void AddLog(string message)
+    {
+        activityLogs.Insert(0, new ActivityLogEntry(DateTime.Now, message));
+        if (activityLogs.Count > 50)
+        {
+            activityLogs.RemoveAt(activityLogs.Count - 1);
+        }
+    }
+
+    private static ProgressBarStyle GetCpuProgressStyle(double percent) =>
+        percent switch
+        {
+            > 85 => ProgressBarStyle.Danger,
+            > 65 => ProgressBarStyle.Warning,
+            _ => ProgressBarStyle.Primary
+        };
+
+    private static ProgressBarStyle GetMemoryProgressStyle(double percent) =>
+        percent switch
+        {
+            > 90 => ProgressBarStyle.Danger,
+            > 75 => ProgressBarStyle.Warning,
+            _ => ProgressBarStyle.Info
+        };
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0) return "0 B";
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private async Task DisconnectAsync()
+    {
+        if (client is not null)
+        {
+            try
+            {
+                client.ResourceUpdateReceived -= OnResourceUpdate;
+                client.ErrorReceived -= OnError;
+                await client.UnsubscribeAsync(CancellationToken.None);
+                await client.StopAsync(CancellationToken.None);
+                await client.DisposeAsync();
+            }
+            catch
+            {
+                // Best effort disconnect
+            }
+            finally
+            {
+                client = null;
+                isConnected = false;
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+    }
+
+    private sealed record ActivityLogEntry(DateTime Timestamp, string Message);
+}

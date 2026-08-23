@@ -43,6 +43,26 @@ public interface IGameServerV2ApiService
     Task<GameServerDetail> UpdateAsync(string serverId, SaveGameServerRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Starts the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> StartAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stops the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> StopAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Restarts the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> RestartAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Redeploys and updates the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> RedeployAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes a V2 GameServer.
     /// </summary>
     Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default);
