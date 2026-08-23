@@ -158,4 +158,59 @@ public class GameServerValidationServiceTests
             ]
         };
     }
+
+    [Fact]
+    public async Task ResolveAsync_WhenPortSettingHasNoExplicitPortMappings_ShouldResolvePortFromSettingValue()
+    {
+        var gameType = new GameType
+        {
+            Id = 1,
+            Key = "minecraft",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 1,
+                    Ports =
+                    [
+                        new GameTypePort
+                        {
+                            ContainerPort = 25565,
+                            Protocol = "tcp",
+                            AdvertisedPort = true,
+                            DisplayOrder = 1
+                        }
+                    ],
+                    SettingDefinitions =
+                    [
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "SERVER_PORT",
+                            DefaultValue = "25565",
+                            DisplayOrder = 1,
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                DataType = "port",
+                                IsRequired = true,
+                                PortMappings = []
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var service = CreateService(gameType, services: []);
+
+        var resolution = await service.ResolveAsync(new SaveGameServerRequestDto
+        {
+            Name = "Server",
+            GameTypeRevisionId = 1,
+            Settings = [new GameServerSettingDto { SettingKey = "SERVER_PORT", Value = "26000" }]
+        });
+
+        var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
+        Assert.Equal(26000, resolvedPort.ContainerPort);
+    }
 }
+

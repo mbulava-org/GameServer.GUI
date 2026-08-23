@@ -694,6 +694,10 @@
                 && int.TryParse(definition.DefaultValue, out var defPort)
                 && defPort == port.ContainerPort)
             ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
+                (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0)
+                && int.TryParse(definition.DefaultValue, out var defPort2)
+                && defPort2 == port.ContainerPort)
+            ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
                 string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
                 && (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0));
     }
@@ -1073,6 +1077,8 @@
 
     private SaveGameServerRequest BuildSaveRequest()
     {
+        SyncPortSettingsFromPublishedPorts();
+
         return new SaveGameServerRequest
         {
             ServerId = isEditMode ? ServerId : draft.ServerId,

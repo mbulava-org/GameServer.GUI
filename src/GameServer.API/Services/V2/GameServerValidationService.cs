@@ -357,12 +357,16 @@ public sealed class GameServerValidationService
 
         foreach (var definition in revision.SettingDefinitions)
         {
-            if (definition.Metadata?.PortMappings.Count is not > 0)
+            if (!effectiveSettings.TryGetValue(definition.SettingKey, out var effectiveValue) || string.IsNullOrWhiteSpace(effectiveValue))
             {
                 continue;
             }
 
-            if (!effectiveSettings.TryGetValue(definition.SettingKey, out var effectiveValue) || string.IsNullOrWhiteSpace(effectiveValue))
+            var hasPortMappings = definition.Metadata?.PortMappings.Count > 0;
+            var isPortType = string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+                || (int.TryParse(definition.DefaultValue, out var dp) && revision.Ports.Any(p => p.ContainerPort == dp));
+
+            if (!hasPortMappings && !isPortType)
             {
                 continue;
             }
@@ -373,31 +377,60 @@ public sealed class GameServerValidationService
                 continue;
             }
 
-            var primaryMapping = definition.Metadata.PortMappings.FirstOrDefault(mapping => mapping.MappingRole == GameServer.API.Models.V2.GameTypeSettingPortMappingRole.Primary);
-            if (primaryMapping is null)
+            if (hasPortMappings)
             {
-                issues.Add(CreateIssue("PrimaryPortMappingMissing", $"Setting '{definition.SettingKey}' must define a primary port mapping.", $"settings:{definition.SettingKey}"));
-                continue;
+                var primaryMapping = definition.Metadata!.PortMappings.FirstOrDefault(mapping => mapping.MappingRole == GameServer.API.Models.V2.GameTypeSettingPortMappingRole.Primary);
+                if (primaryMapping is null)
+                {
+                    issues.Add(CreateIssue("PrimaryPortMappingMissing", $"Setting '{definition.SettingKey}' must define a primary port mapping.", $"settings:{definition.SettingKey}"));
+                    continue;
+                }
+
+                foreach (var mapping in definition.Metadata.PortMappings)
+                {
+                    if (!portLookup.TryGetValue(BuildPortKey(mapping.TargetContainerPort, mapping.TargetProtocol), out var resolvedPortIndex))
+                    {
+                        var referenceLabel = mapping.MappingRole == GameServer.API.Models.V2.GameTypeSettingPortMappingRole.Related
+                            ? "default related port"
+                            : "target port";
+                        issues.Add(CreateIssue("MappedPortMissing", $"Setting '{definition.SettingKey}' references missing {referenceLabel} '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.", $"settings:{definition.SettingKey}"));
+                        continue;
+                    }
+
+                    var derivedPort = DerivePortValue(mapping, primaryMapping, basePort, definition.SettingKey, issues);
+                    if (!derivedPort.HasValue)
+                    {
+                        continue;
+                    }
+
+                    resolvedPorts[resolvedPortIndex] = resolvedPorts[resolvedPortIndex] with { ContainerPort = derivedPort.Value };
+                }
             }
-
-            foreach (var mapping in definition.Metadata.PortMappings)
+            else
             {
-                if (!portLookup.TryGetValue(BuildPortKey(mapping.TargetContainerPort, mapping.TargetProtocol), out var resolvedPortIndex))
+                // Direct mapping fallback for port-type setting without explicit PortMappings: map to target revision port
+                int? targetIndex = null;
+                if (int.TryParse(definition.DefaultValue, out var defPort))
                 {
-                    var referenceLabel = mapping.MappingRole == GameServer.API.Models.V2.GameTypeSettingPortMappingRole.Related
-                        ? "default related port"
-                        : "target port";
-                    issues.Add(CreateIssue("MappedPortMissing", $"Setting '{definition.SettingKey}' references missing {referenceLabel} '{mapping.TargetContainerPort}/{mapping.TargetProtocol}'.", $"settings:{definition.SettingKey}"));
-                    continue;
+                    if (portLookup.TryGetValue(BuildPortKey(defPort, "tcp"), out var idxTcp))
+                    {
+                        targetIndex = idxTcp;
+                    }
+                    else if (portLookup.TryGetValue(BuildPortKey(defPort, "udp"), out var idxUdp))
+                    {
+                        targetIndex = idxUdp;
+                    }
                 }
 
-                var derivedPort = DerivePortValue(mapping, primaryMapping, basePort, definition.SettingKey, issues);
-                if (!derivedPort.HasValue)
+                if (!targetIndex.HasValue && resolvedPorts.Count == 1)
                 {
-                    continue;
+                    targetIndex = 0;
                 }
 
-                resolvedPorts[resolvedPortIndex] = resolvedPorts[resolvedPortIndex] with { ContainerPort = derivedPort.Value };
+                if (targetIndex.HasValue)
+                {
+                    resolvedPorts[targetIndex.Value] = resolvedPorts[targetIndex.Value] with { ContainerPort = basePort };
+                }
             }
         }
 
