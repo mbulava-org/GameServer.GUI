@@ -132,7 +132,16 @@
                         <code class="d-block text-break mb-2">@ResolvePreviewPath(selectedConfig, useLocal: false)</code>
 
                         <h6>Resolved Container Path</h6>
-                        <code class="d-block text-break">@ResolvePreviewContainerPath(selectedConfig)</code>
+                        <code class="d-block text-break mb-2">@ResolvePreviewContainerPath(selectedConfig)</code>
+
+                        @if (string.Equals(selectedConfig.Key, "nfs", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <h6>Resolved NFS Device Path (Docker Mount)</h6>
+                            <code class="d-block text-break mb-2">@ResolvePreviewNfsDevice(selectedConfig)</code>
+
+                            <h6>Resolved Local Provisioning Path (API File System)</h6>
+                            <code class="d-block text-break">@ResolvePreviewLocalPath(selectedConfig)</code>
+                        }
                     </RadzenCard>
 
                     <RadzenCard class="mb-3">
@@ -353,6 +362,37 @@
         var value = (containerSource ?? string.Empty).Replace('\\', '/');
         value = value.Trim('/');
         return value.Replace('/', '-');
+    }
+
+    private string? GetCurrentOption(string key) =>
+        optionRows.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.OrdinalIgnoreCase))?.Value;
+
+    private string ResolvePreviewNfsDevice(MountTypeConfig config)
+    {
+        var nfsRoot = (GetCurrentOption("NfsRoot") ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+        var deviceFormat = GetCurrentOption("DevicePathFormat") ?? "{gameTypeKey}/{serverId}/{Source}";
+        var sourceToken = NormalizeSourceToken(previewSource);
+        var relative = deviceFormat
+            .Replace("{gameTypeKey}", previewGameTypeKey, StringComparison.OrdinalIgnoreCase)
+            .Replace("{serverId}", previewServerId, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
+            .Trim('/');
+
+        return ":" + (string.IsNullOrEmpty(nfsRoot) ? relative : $"{nfsRoot}/{relative}");
+    }
+
+    private string ResolvePreviewLocalPath(MountTypeConfig config)
+    {
+        var localRoot = (GetCurrentOption("LocalPath") ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+        var deviceFormat = GetCurrentOption("DevicePathFormat") ?? "{gameTypeKey}/{serverId}/{Source}";
+        var sourceToken = NormalizeSourceToken(previewSource);
+        var relative = deviceFormat
+            .Replace("{gameTypeKey}", previewGameTypeKey, StringComparison.OrdinalIgnoreCase)
+            .Replace("{serverId}", previewServerId, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
+            .Trim('/');
+
+        return string.IsNullOrEmpty(localRoot) ? relative : $"{localRoot}/{relative}";
     }
 
     private void GoBack() => Navigation.NavigateTo("/");
