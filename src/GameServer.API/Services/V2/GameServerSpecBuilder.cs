@@ -4,6 +4,7 @@ using Docker.DotNet.Models;
 using GameServer.API.Configurations;
 using GameServer.API.Constants;
 using GameServer.API.Dtos.V2;
+using GameServer.API.Models.V2;
 
 namespace GameServer.API.Services.V2;
 
@@ -52,7 +53,7 @@ public sealed class GameServerSpecBuilder
             : request.ServiceName;
 
         var environment = BuildEnvironment(request, resolution);
-        var ports = BuildPorts(resolution.Result.ResolvedPorts);
+        var ports = BuildPorts(resolution.Result.ResolvedPorts, resolution.Revision);
         var volumes = BuildVolumes(resolution.Result.ResolvedVolumes, []);
 
         var labels = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -151,7 +152,7 @@ public sealed class GameServerSpecBuilder
             : request.ServiceName;
 
         var environment = BuildEnvironment(request, resolution);
-        var ports = BuildPorts(resolution.Result.ResolvedPorts);
+        var ports = BuildPorts(resolution.Result.ResolvedPorts, resolution.Revision);
         var volumes = BuildVolumes(resolution.Result.ResolvedVolumes, notices);
 
         var labels = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -279,18 +280,31 @@ public sealed class GameServerSpecBuilder
         };
     }
 
-    private static List<GameServerPreviewPortDto> BuildPorts(IReadOnlyList<GameServerResolvedPortDto> resolvedPorts)
+    private static List<GameServerPreviewPortDto> BuildPorts(
+        IReadOnlyList<GameServerResolvedPortDto> resolvedPorts,
+        GameTypeRevision? revision)
     {
+        var revisionPorts = revision?.Ports.OrderBy(p => p.DisplayOrder).ToList() ?? [];
+
         return resolvedPorts
             .OrderBy(port => port.DisplayOrder)
-            .Select(port => new GameServerPreviewPortDto
+            .Select((resolvedPort, index) =>
             {
-                ContainerPort = port.ContainerPort,
-                PublishedPort = port.ContainerPort,
-                Protocol = string.IsNullOrWhiteSpace(port.Protocol) ? "tcp" : port.Protocol.ToLowerInvariant(),
-                Published = port.AdvertisedPort,
-                PublishMode = port.AdvertisedPort ? "ingress" : "not published",
-                Description = port.Description
+                var revisionPort = (index < revisionPorts.Count ? revisionPorts[index] : null)
+                    ?? revisionPorts.FirstOrDefault(p => string.Equals(p.Protocol, resolvedPort.Protocol, StringComparison.OrdinalIgnoreCase));
+
+                var containerPort = revisionPort?.ContainerPort ?? resolvedPort.ContainerPort;
+                var publishedPort = resolvedPort.ContainerPort;
+
+                return new GameServerPreviewPortDto
+                {
+                    ContainerPort = containerPort,
+                    PublishedPort = publishedPort,
+                    Protocol = string.IsNullOrWhiteSpace(resolvedPort.Protocol) ? "tcp" : resolvedPort.Protocol.ToLowerInvariant(),
+                    Published = resolvedPort.AdvertisedPort,
+                    PublishMode = resolvedPort.AdvertisedPort ? "ingress" : "not published",
+                    Description = resolvedPort.Description
+                };
             })
             .ToList();
     }

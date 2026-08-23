@@ -239,6 +239,11 @@ public sealed class GameServerPagesV2Tests : BunitContext
                 return CreateJsonResponse(new GameServerValidationResult { IsValid = true, Issues = [] });
             }
 
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/preview")
+            {
+                return CreateJsonResponse(new GameServerDeploymentPreview { ServiceName = "minecraft-srv-1", Issues = [], Notices = [] });
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 

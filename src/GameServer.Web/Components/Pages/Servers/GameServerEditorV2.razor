@@ -265,12 +265,13 @@
                                 </RadzenFormField>
                                 @{
                                     var availability = GetPortAvailability(port);
+                                    var publishedPortNum = GetPublishedPort(port);
                                 }
                                 @if (availability is not null)
                                 {
                                     @if (availability.IsAvailable)
                                     {
-                                        <div class="small text-success mt-1">Port is available.</div>
+                                        <div class="small text-success mt-1">Port @publishedPortNum/@port.Protocol is available.</div>
                                     }
                                     else
                                     {
@@ -555,6 +556,7 @@
                 EnsureRevisionSelected();
                 EnsureSettingsInitialized();
                 EnsurePortsInitialized();
+                await CheckPortAvailabilityAsync();
                 TriggerLiveValidation();
                 return;
             }
@@ -572,6 +574,8 @@
             EnsureRevisionSelected();
             EnsureSettingsInitialized();
             EnsurePortsInitialized();
+            await CheckPortAvailabilityAsync();
+            TriggerLiveValidation();
         }
         catch (HttpRequestException ex)
         {
@@ -598,18 +602,19 @@
         EnsureRevisionSelected();
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
+        await CheckPortAvailabilityAsync();
         TriggerLiveValidation();
     }
 
-    private Task OnRevisionChanged(int? revisionId)
+    private async Task OnRevisionChanged(int? revisionId)
     {
         draft.GameTypeRevisionId = revisionId ?? 0;
         validationResult = null;
         deploymentPreview = null;
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
+        await CheckPortAvailabilityAsync();
         TriggerLiveValidation();
-        return Task.CompletedTask;
     }
 
     private void RefreshRevisionOptions()
@@ -892,24 +897,17 @@
     }
 
     /// <summary>
-    /// Checks availability for every published port that differs from its originally loaded value.
-    /// Ports restored to their original value are always treated as available.
+    /// Checks availability for all published ports against active servers and allocation rules.
+    /// Ensures that even default port values are validated immediately upon loading/selecting.
     /// </summary>
     private async Task CheckPortAvailabilityAsync()
     {
         var token = ++portCheckToken;
 
-        var changedPorts = CurrentRevisionPorts
-            .Where(port => !originalPublishedPorts.TryGetValue(port.Id, out var original) || original != GetPublishedPort(port))
-            .ToList();
-
-        foreach (var port in CurrentRevisionPorts.Except(changedPorts))
+        var portsToCheck = CurrentRevisionPorts.ToList();
+        if (portsToCheck.Count == 0)
         {
-            portAvailability.Remove(port.Id);
-        }
-
-        if (changedPorts.Count == 0)
-        {
+            portAvailability.Clear();
             return;
         }
 
@@ -919,7 +917,7 @@
             var result = await GameServerApiV2.CheckPortAvailabilityAsync(new GameServerPortAvailabilityRequest
             {
                 ServerId = isEditMode ? ServerId : draft.ServerId,
-                Ports = changedPorts
+                Ports = portsToCheck
                     .Select(port => new GameServerPortAvailabilityRequestPort
                     {
                         PortId = port.Id,
@@ -935,6 +933,7 @@
                 return;
             }
 
+            portAvailability.Clear();
             foreach (var entry in result.Ports)
             {
                 portAvailability[entry.PortId] = entry;
@@ -949,6 +948,7 @@
             if (token == portCheckToken)
             {
                 isCheckingPorts = false;
+                await InvokeAsync(StateHasChanged);
             }
         }
     }

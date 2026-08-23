@@ -82,6 +82,7 @@ public sealed class GameServerSpecBuilderTests
         var ports = spec.GetProperty("EndpointSpec").GetProperty("Ports");
         Assert.Equal(1, ports.GetArrayLength());
         Assert.Equal(25565u, ports[0].GetProperty("PublishedPort").GetUInt32());
+        Assert.Equal(25565u, ports[0].GetProperty("TargetPort").GetUInt32());
     }
 
     [Fact]
@@ -122,6 +123,54 @@ public sealed class GameServerSpecBuilderTests
 
     private static NetworkOptions NewNetworkOptions() =>
         new() { NetworkName = "gameserver_overlay", LoadBalancerNetwork = "traefik-public" };
+
+    [Fact]
+    public void Build_WhenPublishedPortDiffersFromContainerPort_ShouldSetTargetPortToContainerAndPublishedPortToPublished()
+    {
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "abc123",
+            Name = "My Server",
+            ServiceName = "minecraft-abc123",
+            GameTypeRevisionId = 7
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "minecraft" },
+            Revision = new GameTypeRevision
+            {
+                Id = 7,
+                VersionTag = "latest",
+                ImageReference = "itzg/minecraft-server:latest",
+                Ports =
+                [
+                    new GameTypePort { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 }
+                ]
+            },
+            Result = new GameServerValidationResultDto
+            {
+                IsValid = true,
+                ResolvedPorts =
+                [
+                    new GameServerResolvedPortDto { ContainerPort = 26000, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 }
+                ]
+            }
+        };
+
+        var preview = new GameServerSpecBuilder(NewNetworkOptions()).Build(request, resolution);
+
+        var port = Assert.Single(preview.Ports);
+        Assert.Equal(25565, port.ContainerPort);
+        Assert.Equal(26000, port.PublishedPort);
+
+        using var document = JsonDocument.Parse(preview.RawServiceSpecJson);
+        var spec = document.RootElement.GetProperty("Service");
+        var ports = spec.GetProperty("EndpointSpec").GetProperty("Ports");
+        Assert.Equal(1, ports.GetArrayLength());
+        Assert.Equal(25565u, ports[0].GetProperty("TargetPort").GetUInt32());
+        Assert.Equal(26000u, ports[0].GetProperty("PublishedPort").GetUInt32());
+    }
 
     private static GameServerDeploymentPreviewDto BuildPreview(
         NetworkOptions? networkOptions = null,
