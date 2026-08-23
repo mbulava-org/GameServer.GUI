@@ -45,7 +45,8 @@ namespace GameServer.Web
 
 
                 // Bind API client configuration directly from appsettings.json.
-                builder.Services.AddSingleton(builder.Configuration.GetSection("GameServerDockerApi").Get<Configurations.GameServerDockerApi>() ?? new Configurations.GameServerDockerApi());
+                builder.Services.Configure<Configurations.GameServerDockerApi>(builder.Configuration.GetSection("GameServerDockerApi"));
+                builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Configurations.GameServerDockerApi>>().Value);
 
                 // Add services to the container.
                 builder.Services.AddRazorComponents()
@@ -90,12 +91,14 @@ namespace GameServer.Web
                 builder.Services.AddScoped<Services.V2.IMountTypeConfigApiService, Services.V2.MountTypeConfigApiService>();
                 builder.Services.AddScoped<Services.V2.IGameServerFilesApiService, Services.V2.GameServerFilesApiService>();
 
-                //Simplification???
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
-                var wsBaseUrl = apiBaseUrl.Replace("https://", "wss://").Replace("http://", "ws://");
-                var consoleUri = wsBaseUrl + "hubs/attach";
-                var resourcesUri = wsBaseUrl + "hubs/resources";
-                var terminalUri = wsBaseUrl + "hubs/terminal";
+                if (!apiBaseUrl.EndsWith('/'))
+                {
+                    apiBaseUrl += "/";
+                }
+                var consoleUri = new Uri(new Uri(apiBaseUrl), "hubs/attach").ToString();
+                var resourcesUri = new Uri(new Uri(apiBaseUrl), "hubs/resources").ToString();
+                var terminalUri = new Uri(new Uri(apiBaseUrl), "hubs/terminal").ToString();
                 builder.Services.AddGameServerClients(apiBaseUrl, consoleUri, resourcesUri, terminalUri);
                 //{
                 //    builder.Services.AddContainerConsoleClient(consoleUri);

@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameServer.Web\GameServer.Web.csproj" />
+    <ProjectReference Include="..\..\src\GameServer.API.Client\GameServer.API.Client.csproj" />
   </ItemGroup>
 
 </Project>

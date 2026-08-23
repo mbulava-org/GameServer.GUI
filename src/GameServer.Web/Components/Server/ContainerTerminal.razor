@@ -5,7 +5,6 @@
 @using XtermBlazor
 @using Radzen
 @inject IOptions<GameServerDockerApi> ApiConfig
-@inject IContainerTerminalClient TerminalClient
 @inject NotificationService NotificationService
 @inject ILogger<ContainerTerminal> Logger
 @implements IAsyncDisposable
@@ -161,6 +160,7 @@
     private bool isConnecting = false;
     private string? sessionId;
     private CancellationTokenSource? cts;
+    private IContainerTerminalClient? terminalClient;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -208,10 +208,11 @@
 
             cts = new CancellationTokenSource();
 
+            terminalClient = new GameServer.API.Client.Services.ContainerTerminalClient(hubUrl);
             WireTerminalEvents();
 
-            await TerminalClient.ConnectAsync(cts.Token);
-            var sessionStarted = await TerminalClient.StartExecSessionAsync(ContainerId, Shell, cts.Token);
+            await terminalClient.ConnectAsync(cts.Token);
+            var sessionStarted = await terminalClient.StartExecSessionAsync(ContainerId, Shell, cts.Token);
 
             if (!sessionStarted)
             {
@@ -220,7 +221,7 @@
 
             isConnected = true;
             isConnecting = false;
-            sessionId = TerminalClient.ConnectionId;
+            sessionId = terminalClient.ConnectionId;
 
             await WriteSuccess($"Connected! Shell session active.\n");
 
@@ -255,12 +256,12 @@
 
     private async Task OnTerminalData(string data)
     {
-        if (!isConnected || !TerminalClient.IsConnected)
+        if (!isConnected || terminalClient is null || !terminalClient.IsConnected)
             return;
 
         try
         {
-            await TerminalClient.SendInputAsync(data);
+            await terminalClient.SendInputAsync(data);
         }
         catch (Exception ex)
         {
@@ -272,7 +273,10 @@
     {
         try
         {
-            await TerminalClient.DisconnectAsync();
+            if (terminalClient != null)
+            {
+                await terminalClient.DisconnectAsync();
+            }
         }
         catch { }
 
@@ -286,17 +290,18 @@
 
     private void WireTerminalEvents()
     {
-        TerminalClient.OutputReceived -= OnTerminalOutput;
-        TerminalClient.OutputReceived += OnTerminalOutput;
+        if (terminalClient is null) return;
+        terminalClient.OutputReceived -= OnTerminalOutput;
+        terminalClient.OutputReceived += OnTerminalOutput;
 
-        TerminalClient.ErrorReceived -= OnTerminalError;
-        TerminalClient.ErrorReceived += OnTerminalError;
+        terminalClient.ErrorReceived -= OnTerminalError;
+        terminalClient.ErrorReceived += OnTerminalError;
 
-        TerminalClient.SessionStarted -= OnTerminalSessionStarted;
-        TerminalClient.SessionStarted += OnTerminalSessionStarted;
+        terminalClient.SessionStarted -= OnTerminalSessionStarted;
+        terminalClient.SessionStarted += OnTerminalSessionStarted;
 
-        TerminalClient.Disconnected -= OnTerminalDisconnected;
-        TerminalClient.Disconnected += OnTerminalDisconnected;
+        terminalClient.Disconnected -= OnTerminalDisconnected;
+        terminalClient.Disconnected += OnTerminalDisconnected;
     }
 
     private async void OnTerminalOutput(object? sender, string data)
@@ -357,14 +362,17 @@
         cts?.Cancel();
         cts?.Dispose();
 
-        TerminalClient.OutputReceived -= OnTerminalOutput;
-        TerminalClient.ErrorReceived -= OnTerminalError;
-        TerminalClient.SessionStarted -= OnTerminalSessionStarted;
-        TerminalClient.Disconnected -= OnTerminalDisconnected;
-
-        if (TerminalClient is IAsyncDisposable disposable)
+        if (terminalClient != null)
         {
-            await disposable.DisposeAsync();
+            terminalClient.OutputReceived -= OnTerminalOutput;
+            terminalClient.ErrorReceived -= OnTerminalError;
+            terminalClient.SessionStarted -= OnTerminalSessionStarted;
+            terminalClient.Disconnected -= OnTerminalDisconnected;
+
+            if (terminalClient is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
         }
     }
 }

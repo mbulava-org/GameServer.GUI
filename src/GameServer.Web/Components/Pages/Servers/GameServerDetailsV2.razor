@@ -1,6 +1,7 @@
 @page "/gameservers-v2/{ServerId}"
 @rendermode InteractiveServer
 @using GameServer.Web.Models.V2
+@using GameServer.Web.Components.Server
 @using Radzen
 @using Radzen.Blazor
 @inject Services.V2.IGameServerV2ApiService GameServerApiV2
@@ -8,14 +9,14 @@
 @inject NavigationManager Navigation
 @inject Services.IThumbnailCacheService ThumbnailCacheService
 
-<PageTitle>@(server?.Name ?? "Game Server V2")</PageTitle>
+<PageTitle>@(server?.Name ?? "Game Server")</PageTitle>
 
 <div class="container-fluid mt-4">
     @if (isLoading)
     {
         <div class="text-center py-5">
             <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
-            <p class="mt-3">Loading V2 game server...</p>
+            <p class="mt-3">Loading game server...</p>
         </div>
     }
     else if (server is null)
@@ -23,9 +24,9 @@
         <RadzenCard>
             <div class="text-center py-5">
                 <RadzenIcon Icon="error" Style="font-size: 4rem; color: var(--rz-danger);" />
-                <h4 class="mt-3">V2 Game Server Not Found</h4>
-                <p class="text-muted">The requested V2 game server could not be found.</p>
-                <RadzenButton Text="Back to V2 Servers"
+                <h4 class="mt-3">Game Server Not Found</h4>
+                <p class="text-muted">The requested game server could not be found.</p>
+                <RadzenButton Text="Back to Servers"
                               Icon="arrow_back"
                               ButtonStyle="ButtonStyle.Light"
                               Click="@GoBack" />
@@ -34,7 +35,7 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
             <div class="d-flex align-items-center gap-3 flex-wrap">
                 <RadzenButton Icon="arrow_back"
                               ButtonStyle="ButtonStyle.Light"
@@ -68,7 +69,27 @@
                     </div>
                 </div>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <RadzenButton Text="Start"
+                              Icon="play_arrow"
+                              ButtonStyle="ButtonStyle.Success"
+                              Disabled="@(isOperating || string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase))"
+                              Click="@StartServiceAsync" />
+                <RadzenButton Text="Stop"
+                              Icon="stop"
+                              ButtonStyle="ButtonStyle.Warning"
+                              Disabled="@(isOperating || !string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase))"
+                              Click="@StopServiceAsync" />
+                <RadzenButton Text="Restart"
+                              Icon="restart_alt"
+                              ButtonStyle="ButtonStyle.Info"
+                              Disabled="@isOperating"
+                              Click="@RestartServiceAsync" />
+                <RadzenButton Text="Update Service"
+                              Icon="system_update_alt"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Disabled="@isOperating"
+                              Click="@RedeployServiceAsync" />
                 <RadzenButton Text="Edit"
                               Icon="edit"
                               ButtonStyle="ButtonStyle.Primary"
@@ -76,13 +97,25 @@
                 <RadzenButton Text="Delete"
                               Icon="delete"
                               ButtonStyle="ButtonStyle.Danger"
+                              Disabled="@isOperating"
                               Click="@DeleteServerAsync" />
-                <RadzenButton Text="Refresh"
-                              Icon="refresh"
+                <RadzenButton Icon="refresh"
                               ButtonStyle="ButtonStyle.Light"
+                              Disabled="@isOperating"
                               Click="@OnRefresh" />
             </div>
         </div>
+
+        @if (isOperating)
+        {
+            <div class="gameserver-details-overlay">
+                <div class="gameserver-details-overlay-card">
+                    <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+                    <h4 class="mt-3 mb-1">@operationTitle</h4>
+                    <p class="text-muted mb-0">@operationSubtitle</p>
+                </div>
+            </div>
+        }
 
         @if (validationPreview is not null)
         {
@@ -139,17 +172,45 @@
             </div>
             <div class="col-lg-4">
                 <RadzenCard>
-                    <h5 class="mb-3">Future Extension Points</h5>
+                    <h5 class="mb-3">Containers & Host</h5>
+                    <div><strong>Containers:</strong> @(server.Containers.Count > 0 ? server.Containers.Count.ToString() : "0 (Stopped)")</div>
+                    @if (server.Containers.Any())
+                    {
+                        <div><strong>Primary Container:</strong> <code>@server.Containers.First().Id[..Math.Min(12, server.Containers.First().Id.Length)]</code></div>
+                    }
                     <div><strong>Docker Volume Options:</strong> @(validationPreview?.DockerVolumeOptions.Count ?? server.DockerVolumeOptions.Count)</div>
                     <div><strong>Network Options:</strong> @(validationPreview?.NetworkOptions.Count ?? server.NetworkOptions.Count)</div>
-                    <p class="small text-muted mt-3 mb-0">These sections are reserved for Docker volume, network, and rule configuration as the V2 editor expands.</p>
                 </RadzenCard>
             </div>
         </div>
 
         <RadzenTabs>
             <Tabs>
-                <RadzenTabsItem Text="Settings">
+                <RadzenTabsItem Text="Resource Monitor" Icon="monitoring">
+                    <div class="p-3">
+                        <ResourceMonitorTab ServerId="@ServerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Console / Logs" Icon="terminal">
+                    <div class="p-3">
+                        <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Terminal" Icon="code">
+                    <div class="p-3">
+                        <ContainerTerminal ServerId="@ServerId" ContainerId="@RunningContainerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="File Manager" Icon="folder">
+                    <div class="p-3">
+                        <ServerFileManager ServerId="@ServerId" Volumes="@CurrentResolvedVolumes" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Settings" Icon="tune">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Effective Settings</h5>
@@ -184,7 +245,7 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Ports">
+                <RadzenTabsItem Text="Ports" Icon="lan">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Ports</h5>
@@ -214,7 +275,7 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Volumes">
+                <RadzenTabsItem Text="Volumes" Icon="storage">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Volumes</h5>
@@ -224,22 +285,22 @@
                             }
                             else
                             {
-<RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.CreatedAt)"
-                TItem="GameServerResolvedVolume"
-                AllowSorting="true">
-    <Columns>
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="ContainerPath" Title="Container Path" />
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="VolumeName" Title="Volume Name" />
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Usage" Title="Usage" Width="140px" />
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="MountType" Title="Type" Width="100px" />
-    </Columns>
-</RadzenDataGrid>
+                                <RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.CreatedAt)"
+                                                TItem="GameServerResolvedVolume"
+                                                AllowSorting="true">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="ContainerPath" Title="Container Path" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="VolumeName" Title="Volume Name" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Usage" Title="Usage" Width="140px" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="MountType" Title="Type" Width="100px" />
+                                    </Columns>
+                                </RadzenDataGrid>
                             }
                         </RadzenCard>
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Web Hosts">
+                <RadzenTabsItem Text="Web Hosts" Icon="language">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Web Hosts</h5>
@@ -265,7 +326,7 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Configuration Rules">
+                <RadzenTabsItem Text="Configuration Rules" Icon="rule">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Validation and Configuration Rules</h5>
@@ -311,6 +372,41 @@
         font-size: 0.8rem;
         word-break: break-word;
     }
+
+    .gameserver-details-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+
+    .gameserver-details-overlay-card {
+        background: var(--rz-base-card-background-color, #ffffff);
+        color: var(--rz-text-color, #212529);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+        border-radius: 16px;
+        padding: 2.5rem 3rem;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+        text-align: center;
+        max-width: 440px;
+        width: 90%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: detailsFadeIn 0.2s ease-out;
+    }
+
+    @@keyframes detailsFadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
 </style>
 
 @code {
@@ -321,6 +417,11 @@
     private GameServerValidationResult? validationPreview;
     private string? cachedGameTypeThumbnailUrl;
     private bool isLoading = true;
+    private bool isOperating;
+    private string operationTitle = string.Empty;
+    private string operationSubtitle = string.Empty;
+
+    private string? RunningContainerId => server?.Containers?.FirstOrDefault()?.Id;
 
     private IReadOnlyList<GameServerResolvedPort> CurrentResolvedPorts => validationPreview?.ResolvedPorts ?? server?.ResolvedPorts ?? [];
 
@@ -390,6 +491,98 @@
         _ = RunValidationInBackgroundAsync();
     }
 
+    private async Task StartServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Starting Service...";
+            operationSubtitle = "Scaling service to 1 replica in Docker Swarm...";
+            var updated = await GameServerApiV2.StartAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Started", $"Server '{server.Name}' is now running.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Start failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
+    private async Task StopServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Stopping Service...";
+            operationSubtitle = "Scaling service to 0 replicas in Docker Swarm...";
+            var updated = await GameServerApiV2.StopAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Stopped", $"Server '{server.Name}' has been stopped.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Stop failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
+    private async Task RestartServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Restarting Service...";
+            operationSubtitle = "Forcing container restart in Docker Swarm...";
+            var updated = await GameServerApiV2.RestartAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Restarted", $"Server '{server.Name}' was restarted.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Restart failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
+    private async Task RedeployServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Updating Service...";
+            operationSubtitle = "Provisioning storage volumes and redeploying service in Docker Swarm...";
+            var updated = await GameServerApiV2.RedeployAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Updated", $"Server '{server.Name}' has been updated and redeployed.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Update failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
     private async Task DeleteServerAsync()
     {
         if (string.IsNullOrWhiteSpace(ServerId))
@@ -399,6 +592,9 @@
 
         try
         {
+            isOperating = true;
+            operationTitle = "Deleting Server...";
+            operationSubtitle = "Removing GameServer definition...";
             await GameServerApiV2.DeleteAsync(ServerId);
             NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Server '{server?.Name ?? ServerId}' was deleted.");
             Navigation.NavigateTo("/gameservers-v2");
@@ -406,6 +602,10 @@
         catch (HttpRequestException ex)
         {
             NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
         }
     }
 

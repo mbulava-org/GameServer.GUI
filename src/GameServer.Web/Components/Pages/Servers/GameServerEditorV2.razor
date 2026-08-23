@@ -19,7 +19,7 @@
 
 <PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server")</PageTitle>
 
-@if (isSaving || isOperating)
+@if (isSaving)
 {
     <div class="gameserver-saving-overlay">
         <div class="gameserver-saving-modal">
@@ -73,41 +73,17 @@
                               Click="@GoBack" />
                 @if (isEditMode)
                 {
-                    <RadzenButton Text="Start"
-                                  Icon="play_arrow"
-                                  ButtonStyle="ButtonStyle.Success"
-                                  Click="@StartServiceAsync"
-                                  Disabled="@(isSaving || isOperating || string.Equals(draft.Status, "Running", StringComparison.OrdinalIgnoreCase))"
-                                  title="Start Service" />
-                    <RadzenButton Text="Stop"
-                                  Icon="stop"
-                                  ButtonStyle="ButtonStyle.Warning"
-                                  Click="@StopServiceAsync"
-                                  Disabled="@(isSaving || isOperating || string.Equals(draft.Status, "Stopped", StringComparison.OrdinalIgnoreCase))"
-                                  title="Stop Service" />
-                    <RadzenButton Text="Restart"
-                                  Icon="restart_alt"
-                                  ButtonStyle="ButtonStyle.Light"
-                                  Click="@RestartServiceAsync"
-                                  Disabled="@(isSaving || isOperating)"
-                                  title="Restart Service" />
-                    <RadzenButton Text="Update Service"
-                                  Icon="cloud_sync"
-                                  ButtonStyle="ButtonStyle.Info"
-                                  Click="@UpdateServiceAsync"
-                                  Disabled="@(isSaving || isOperating)"
-                                  title="Apply configuration changes and update Swarm service" />
                     <RadzenButton Text="Delete"
                                   Icon="delete"
                                   ButtonStyle="ButtonStyle.Danger"
                                   Click="@DeleteServerAsync"
-                                  Disabled="@(isSaving || isOperating)" />
+                                  Disabled="@isSaving" />
                 }
                 <RadzenButton Text="@(isEditMode ? "Save Changes" : "Create Server")"
                               Icon="save"
                               ButtonStyle="ButtonStyle.Primary"
                               Click="@SaveAsync"
-                              Disabled="@(isSaving || isOperating || !CanSave)" />
+                              Disabled="@(isSaving || !CanSave)" />
             </div>
         </div>
 
@@ -426,36 +402,6 @@
                             </div>
                         </RadzenTabsItem>
 
-                        @if (isEditMode)
-                        {
-                            <RadzenTabsItem Text="Logs / Console">
-                                <div class="p-3">
-                                    <ContainerConsole ServerId="@ServerId" ContainerId="@terminalContainerId" AutoConnect="true" />
-                                </div>
-                            </RadzenTabsItem>
-
-                            <RadzenTabsItem Text="Terminal">
-                                <div class="p-3">
-                                    <ContainerTerminal ContainerId="@terminalContainerId" AutoConnect="false" />
-                                </div>
-                            </RadzenTabsItem>
-
-                            <RadzenTabsItem Text="Resource Monitor">
-                                <div class="p-3">
-                                    @if (!string.IsNullOrWhiteSpace(ServerId))
-                                    {
-                                        <ResourceMonitorTab ServerId="@ServerId" />
-                                    }
-                                </div>
-                            </RadzenTabsItem>
-
-                            <RadzenTabsItem Text="File Manager">
-                                <div class="p-3">
-                                    <ServerFileManager ServerId="@ServerId" Volumes="@GetEffectiveVolumes()" />
-                                </div>
-                            </RadzenTabsItem>
-                        }
-
                         <RadzenTabsItem Text="Deployment Preview">
                             <div class="p-3">
                                 <GameServerDeploymentPreviewV2 Preview="@deploymentPreview"
@@ -501,13 +447,9 @@
     private string? selectedGameTypeKey;
     private bool isLoading = true;
     private bool isSaving;
-    private bool isOperating;
     private string operationTitle = "Saving Server Changes...";
     private string operationSubtitle = "Provisioning volumes and deploying Docker Swarm service...";
     private int selectedTabIndex;
-    private const int DeploymentPreviewTabIndex = 2;
-    private const int TerminalTabIndex = 3;
-    private const int ResourceMonitorTabIndex = 4;
 
     // Volume mount type selections (keyed by GameTypeVolume.Id)
     private readonly List<MountTypeConfig> mountTypeOptions = [];
@@ -523,10 +465,6 @@
     private readonly Dictionary<int, GameServerPortAvailability> portAvailability = new();
     private bool isCheckingPorts;
     private int portCheckToken;
-
-    // Terminal / container state
-    private string? terminalContainerId;
-    private IReadOnlyList<GameServerResolvedVolume> loadedServerVolumes = [];
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
@@ -604,10 +542,6 @@
                 {
                     selectedGameType = await GameTypeApiV2.GetByKeyAsync(selectedGameTypeKey);
                 }
-
-                loadedServerVolumes = server.ResolvedVolumes ?? [];
-                terminalContainerId = server.Containers?.FirstOrDefault()?.Id;
-                await EnsureTerminalContainerIdAsync();
 
                 RefreshRevisionOptions();
                 EnsureRevisionSelected();
@@ -1164,105 +1098,6 @@
         _ => BadgeStyle.Light
     };
 
-    private async Task StartServiceAsync()
-    {
-        if (string.IsNullOrWhiteSpace(ServerId)) return;
-
-        try
-        {
-            isOperating = true;
-            operationTitle = "Starting Service...";
-            operationSubtitle = "Scaling service to 1 replica in Docker Swarm...";
-            var updated = await GameServerApiV2.StartAsync(ServerId);
-            draft.Status = updated.Status;
-            loadedServerVolumes = updated.ResolvedVolumes ?? [];
-            terminalContainerId = updated.Containers?.FirstOrDefault()?.Id;
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Started", $"Server '{draft.Name}' is now running.");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Start Failed", ex.Message);
-        }
-        finally
-        {
-            isOperating = false;
-        }
-    }
-
-    private async Task StopServiceAsync()
-    {
-        if (string.IsNullOrWhiteSpace(ServerId)) return;
-
-        try
-        {
-            isOperating = true;
-            operationTitle = "Stopping Service...";
-            operationSubtitle = "Scaling service to 0 replicas in Docker Swarm...";
-            var updated = await GameServerApiV2.StopAsync(ServerId);
-            draft.Status = updated.Status;
-            terminalContainerId = null;
-            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Service Stopped", $"Server '{draft.Name}' has been stopped.");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Stop Failed", ex.Message);
-        }
-        finally
-        {
-            isOperating = false;
-        }
-    }
-
-    private async Task RestartServiceAsync()
-    {
-        if (string.IsNullOrWhiteSpace(ServerId)) return;
-
-        try
-        {
-            isOperating = true;
-            operationTitle = "Restarting Service...";
-            operationSubtitle = "Forcing container recreation in Docker Swarm...";
-            var updated = await GameServerApiV2.RestartAsync(ServerId);
-            draft.Status = updated.Status;
-            loadedServerVolumes = updated.ResolvedVolumes ?? [];
-            terminalContainerId = updated.Containers?.FirstOrDefault()?.Id;
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Restarted", $"Server '{draft.Name}' has been restarted.");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Restart Failed", ex.Message);
-        }
-        finally
-        {
-            isOperating = false;
-        }
-    }
-
-    private async Task UpdateServiceAsync()
-    {
-        if (string.IsNullOrWhiteSpace(ServerId)) return;
-
-        try
-        {
-            isOperating = true;
-            operationTitle = "Updating Service...";
-            operationSubtitle = "Applying configuration changes and redeploying Swarm service...";
-            var updated = await GameServerApiV2.RedeployAsync(ServerId);
-            draft.Status = updated.Status;
-            loadedServerVolumes = updated.ResolvedVolumes ?? [];
-            terminalContainerId = updated.Containers?.FirstOrDefault()?.Id;
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Updated", $"Server '{draft.Name}' service configuration has been updated.");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Update Failed", ex.Message);
-        }
-        finally
-        {
-            isOperating = false;
-        }
-    }
-
     private async Task LoadMountTypesAsync()
     {
         try
@@ -1311,90 +1146,13 @@
         }
     }
 
-    /// <summary>
-    /// Returns the first live container ID from the deployment preview so the Terminal tab can connect.
-    /// If the server is already loaded in edit mode, attempt to fetch containers and pick one.
-    /// </summary>
-    private async Task EnsureTerminalContainerIdAsync()
-    {
-        if (terminalContainerId is not null)
-        {
-            return;
-        }
-
-        // Try to get container ID from the deployment preview
-        if (deploymentPreview?.Containers?.Any() == true)
-        {
-            terminalContainerId = deploymentPreview.Containers.First().Id;
-            StateHasChanged();
-            return;
-        }
-
-        // Fallback: fetch running containers for the server and use the first one
-        if (!string.IsNullOrWhiteSpace(ServerId))
-        {
-            try
-            {
-                var serverDetail = await GameServerApiV2.GetByServerIdAsync(ServerId);
-                terminalContainerId = serverDetail?.Containers?.FirstOrDefault()?.Id;
-                StateHasChanged();
-            }
-            catch
-            {
-                // Best-effort – Terminal component will handle missing ID gracefully.
-            }
-        }
-    }
-
     private async Task OnSelectedTabChanged(int index)
     {
         selectedTabIndex = index;
-        if (isEditMode)
+        if (index == 1)
         {
-            // Tab index in Edit Mode:
-            // 0: Settings
-            // 1: Logs / Console
-            // 2: Terminal
-            // 3: Resource Monitor
-            // 4: File Manager
-            // 5: Deployment Preview
-            if (index == 1 || index == 2)
-            {
-                await EnsureTerminalContainerIdAsync();
-            }
-            else if (index == 5)
-            {
-                await LoadDeploymentPreviewAsync();
-            }
+            await LoadDeploymentPreviewAsync();
         }
-        else
-        {
-            // Tab index in Create Mode:
-            // 0: Settings
-            // 1: Deployment Preview
-            if (index == 1)
-            {
-                await LoadDeploymentPreviewAsync();
-            }
-        }
-    }
-
-    private IReadOnlyList<GameServerResolvedVolume> GetEffectiveVolumes()
-    {
-        if (loadedServerVolumes.Any())
-        {
-            return loadedServerVolumes;
-        }
-
-        return CurrentRevisionVolumes
-            .Select(v => new GameServerResolvedVolume
-            {
-                ContainerPath = v.Source,
-                Usage = v.Usage,
-                VolumeName = string.Empty,
-                MountType = volumeMountTypeSelections.TryGetValue(v.Id, out var mt) ? mt : "volume"
-            })
-            .ToList();
     }
 
     private static string BuildRevisionLabel(GameTypeRevision revision)
