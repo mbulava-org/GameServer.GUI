@@ -80,7 +80,11 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
 
                 optionsBuilder.UseSqlite(
                     sqliteConnectionString,
-                    x => x.MigrationsAssembly(MigrationsAssemblyName));
+                    x =>
+                    {
+                        x.MigrationsAssembly(MigrationsAssemblyName);
+                        x.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                    });
                 break;
 
             case "mysql":
@@ -128,6 +132,7 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorNumbersToAdd: null);
             options.MigrationsAssembly(MigrationsAssemblyName);
+            options.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
         });
     }
 
@@ -148,6 +153,7 @@ public class GameServerV2DbContextFactory : IDesignTimeDbContextFactory<GameServ
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorCodesToAdd: null);
+            options.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
         });
     }
 

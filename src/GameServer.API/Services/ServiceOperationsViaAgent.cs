@@ -59,18 +59,25 @@ namespace GameServer.API.Services
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             var response = await httpClient.PostAsJsonAsync("/api/services", request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [CreateService] Raw JSON from agent: {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogInformation("📥 [CreateService] Agent response (Status {Status}): {Json}", response.StatusCode, rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var result = JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options);
-
-            if (result?.Success != true)
+            ServiceOperationResponse? result = null;
+            try
             {
-                _logger.LogError("❌ [CreateService] Failed response. JSON: {Json}", rawJson);
-                throw new Exception($"Failed to create service: {result?.Message}");
+                result = !string.IsNullOrWhiteSpace(rawJson) ? JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options) : null;
+            }
+            catch (JsonException)
+            {
+                // Non-JSON response
+            }
+
+            if (!response.IsSuccessStatusCode || result?.Success != true)
+            {
+                _logger.LogError("❌ [CreateService] Failed response from agent. Status: {Status}, Body: {Json}", response.StatusCode, rawJson);
+                var message = result?.Message ?? $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}: {rawJson}";
+                throw new InvalidOperationException($"Failed to create service: {message}");
             }
 
             _logger.LogInformation("✅ [CreateService] Service created: {ServiceId}", result.ServiceId);
@@ -111,18 +118,25 @@ namespace GameServer.API.Services
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             var response = await httpClient.PutAsJsonAsync($"/api/services/{serviceId}", request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [UpdateService] Raw JSON from agent: {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogInformation("📥 [UpdateService] Agent response (Status {Status}): {Json}", response.StatusCode, rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var result = JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options);
-
-            if (result?.Success != true)
+            ServiceOperationResponse? result = null;
+            try
             {
-                _logger.LogError("❌ [UpdateService] Failed response. JSON: {Json}", rawJson);
-                throw new Exception($"Failed to update service: {result?.Message}");
+                result = !string.IsNullOrWhiteSpace(rawJson) ? JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options) : null;
+            }
+            catch (JsonException)
+            {
+                // Non-JSON response
+            }
+
+            if (!response.IsSuccessStatusCode || result?.Success != true)
+            {
+                _logger.LogError("❌ [UpdateService] Failed response from agent. Status: {Status}, Body: {Json}", response.StatusCode, rawJson);
+                var message = result?.Message ?? $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}: {rawJson}";
+                throw new InvalidOperationException($"Failed to update service: {message}");
             }
 
             _logger.LogInformation("✅ [UpdateService] Service updated: {ServiceId}", serviceId);
@@ -142,18 +156,25 @@ namespace GameServer.API.Services
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             var response = await httpClient.DeleteAsync($"/api/services/{serviceId}", cancellationToken);
-            response.EnsureSuccessStatusCode();
-
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [RemoveService] Raw JSON from agent: {Json}", rawJson);
+            _logger.LogInformation("📥 [RemoveService] Agent response (Status {Status}): {Json}", response.StatusCode, rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var result = JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options);
-
-            if (result?.Success != true)
+            ServiceOperationResponse? result = null;
+            try
             {
-                _logger.LogError("❌ [RemoveService] Failed response. JSON: {Json}", rawJson);
-                throw new Exception($"Failed to delete service: {result?.Message}");
+                result = !string.IsNullOrWhiteSpace(rawJson) ? JsonSerializer.Deserialize<ServiceOperationResponse>(rawJson, options) : null;
+            }
+            catch (JsonException)
+            {
+                // Non-JSON response
+            }
+
+            if (!response.IsSuccessStatusCode || result?.Success != true)
+            {
+                _logger.LogError("❌ [RemoveService] Failed response from agent. Status: {Status}, Body: {Json}", response.StatusCode, rawJson);
+                var message = result?.Message ?? $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}: {rawJson}";
+                throw new InvalidOperationException($"Failed to delete service: {message}");
             }
 
             _logger.LogInformation("✅ [RemoveService] Service deleted: {ServiceId}", serviceId);

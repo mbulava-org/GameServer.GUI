@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using GameServer.API.Models.V2;
 
 namespace GameServer.API.Services.V2;
@@ -25,6 +27,11 @@ public static class ServerVariableExpander
     public const string LiteralPrefix = "@literal:";
 
     /// <summary>
+    /// Marker prefix for encoding a setting definition's default toggle state and dual on/off values.
+    /// </summary>
+    public const string DefinitionDefaultPrefix = "@svdef:";
+
+    /// <summary>
     /// Curated set of GameServer properties exposed as tokens.
     /// </summary>
     public static IReadOnlyList<string> SupportedTokens { get; } =
@@ -47,6 +54,12 @@ public static class ServerVariableExpander
         if (storedValue is null)
         {
             return (false, null);
+        }
+
+        if (storedValue.StartsWith(DefinitionDefaultPrefix, StringComparison.Ordinal))
+        {
+            var (defEnabled, onVal, offVal) = DecodeDefinitionDefault(storedValue);
+            return (defEnabled, defEnabled ? onVal : offVal);
         }
 
         if (storedValue.StartsWith(EnabledPrefix, StringComparison.Ordinal))
@@ -74,12 +87,80 @@ public static class ServerVariableExpander
 
         if (rawValue is not null
             && (rawValue.StartsWith(EnabledPrefix, StringComparison.Ordinal)
-                || rawValue.StartsWith(LiteralPrefix, StringComparison.Ordinal)))
+                || rawValue.StartsWith(LiteralPrefix, StringComparison.Ordinal)
+                || rawValue.StartsWith(DefinitionDefaultPrefix, StringComparison.Ordinal)))
         {
             return LiteralPrefix + rawValue;
         }
 
         return rawValue;
+    }
+
+    /// <summary>
+    /// Decodes a setting definition's default configuration string.
+    /// </summary>
+    public static (bool DefaultEnabled, string? OnValue, string? OffValue) DecodeDefinitionDefault(string? defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(defaultValue))
+        {
+            return (false, null, null);
+        }
+
+        if (defaultValue.StartsWith(DefinitionDefaultPrefix, StringComparison.Ordinal))
+        {
+            var json = defaultValue[DefinitionDefaultPrefix.Length..];
+            try
+            {
+                var payload = JsonSerializer.Deserialize<ServerVariableDefinitionDefaultPayload>(json);
+                if (payload is not null)
+                {
+                    return (payload.Enabled, payload.On, payload.Off);
+                }
+            }
+            catch (JsonException)
+            {
+                // Fallback on malformed json
+            }
+        }
+
+        if (defaultValue.StartsWith(EnabledPrefix, StringComparison.Ordinal))
+        {
+            return (true, defaultValue[EnabledPrefix.Length..], null);
+        }
+
+        if (defaultValue.StartsWith(LiteralPrefix, StringComparison.Ordinal))
+        {
+            return (false, null, defaultValue[LiteralPrefix.Length..]);
+        }
+
+        return (false, defaultValue, defaultValue);
+    }
+
+    /// <summary>
+    /// Encodes a setting definition's default configuration into a single string.
+    /// </summary>
+    public static string EncodeDefinitionDefault(bool defaultEnabled, string? onValue, string? offValue)
+    {
+        var payload = new ServerVariableDefinitionDefaultPayload
+        {
+            Enabled = defaultEnabled,
+            On = onValue,
+            Off = offValue
+        };
+
+        return DefinitionDefaultPrefix + JsonSerializer.Serialize(payload);
+    }
+
+    private sealed class ServerVariableDefinitionDefaultPayload
+    {
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; }
+
+        [JsonPropertyName("on")]
+        public string? On { get; set; }
+
+        [JsonPropertyName("off")]
+        public string? Off { get; set; }
     }
 
     /// <summary>

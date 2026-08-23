@@ -96,7 +96,7 @@ public sealed class GameServerSpecBuilder
                 {
                     ContainerSpec = new ContainerSpec
                     {
-                        Image = revision.ImageReference,
+                        Image = !string.IsNullOrWhiteSpace(revision.VersionTag) ? $"{revision.ImageReference}:{revision.VersionTag}" : revision.ImageReference,
                         Labels = labels,
                         Env = environment.Select(entry => $"{entry.Key}={entry.Value}").ToList(),
                         Mounts = volumes.Select(ToMount).ToList(),
@@ -325,7 +325,11 @@ public sealed class GameServerSpecBuilder
     {
         var mount = new Mount
         {
-            Type = volume.MountType,
+            Type = string.Equals(volume.MountType, "bind", StringComparison.OrdinalIgnoreCase)
+                ? "bind"
+                : string.Equals(volume.MountType, "tmpfs", StringComparison.OrdinalIgnoreCase)
+                    ? "tmpfs"
+                    : "volume",
             Source = volume.VolumeName,
             Target = volume.ContainerPath,
             ReadOnly = volume.ReadOnly

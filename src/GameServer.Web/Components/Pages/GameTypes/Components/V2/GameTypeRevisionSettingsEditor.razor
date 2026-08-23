@@ -111,11 +111,39 @@ else
                                     <RadzenTextBox @bind-Value="setting.SettingKey" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
                                 </RadzenFormField>
                             </div>
-                            <div class="col-md-6">
-                                <RadzenFormField Text="Default Value" Variant="Variant.Outlined" class="w-100">
-                                    <RadzenTextBox @bind-Value="setting.DefaultValue" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
-                                </RadzenFormField>
-                            </div>
+                            @if (string.Equals(setting.Metadata.DataType, "servervariable", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center gap-2 h-100 pt-2">
+                                        <RadzenSwitch Value="@GetServerVarDefaultEnabled(setting)"
+                                                      Change="@((bool val) => SetServerVarDefaultEnabledAsync(setting, val))" />
+                                        <span class="small">Default Control: @(GetServerVarDefaultEnabled(setting) ? "Enabled (Variables Active)" : "Disabled (Literal Text)")</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Default Value (When Enabled)" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox Value="@GetServerVarDefaultOn(setting)"
+                                                       ValueChanged="@((string? val) => SetServerVarDefaultOnAsync(setting, val))"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                    <div class="small text-muted mt-1">Tokens: @string.Join(", ", ServerVariableSetting.SupportedTokens.Select(t => $"{{{t}}}"))</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Default Value (When Disabled)" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox Value="@GetServerVarDefaultOff(setting)"
+                                                       ValueChanged="@((string? val) => SetServerVarDefaultOffAsync(setting, val))"
+                                                       class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="col-md-6">
+                                    <RadzenFormField Text="Default Value" Variant="Variant.Outlined" class="w-100">
+                                        <RadzenTextBox @bind-Value="setting.DefaultValue" @bind-Value:after="NotifyDraftChangedAsync" class="w-100" />
+                                    </RadzenFormField>
+                                </div>
+                            }
                             <div class="col-md-6">
                                 <RadzenFormField Text="Data Type" Variant="Variant.Outlined" class="w-100">
                                     <RadzenDropDown TValue="string"
@@ -1043,6 +1071,45 @@ else
         }
 
         return value ?? string.Empty;
+    }
+
+    private static bool GetServerVarDefaultEnabled(GameTypeRevisionSettingDraft setting)
+    {
+        var (enabled, _, _) = ServerVariableSetting.DecodeDefinitionDefault(setting.DefaultValue);
+        return enabled;
+    }
+
+    private static string? GetServerVarDefaultOn(GameTypeRevisionSettingDraft setting)
+    {
+        var (_, onVal, _) = ServerVariableSetting.DecodeDefinitionDefault(setting.DefaultValue);
+        return onVal;
+    }
+
+    private static string? GetServerVarDefaultOff(GameTypeRevisionSettingDraft setting)
+    {
+        var (_, _, offVal) = ServerVariableSetting.DecodeDefinitionDefault(setting.DefaultValue);
+        return offVal;
+    }
+
+    private Task SetServerVarDefaultEnabledAsync(GameTypeRevisionSettingDraft setting, bool enabled)
+    {
+        var (_, onVal, offVal) = ServerVariableSetting.DecodeDefinitionDefault(setting.DefaultValue);
+        setting.DefaultValue = ServerVariableSetting.EncodeDefinitionDefault(enabled, onVal, offVal);
+        return NotifyDraftChangedAsync();
+    }
+
+    private Task SetServerVarDefaultOnAsync(GameTypeRevisionSettingDraft setting, string? onVal)
+    {
+        var (enabled, _, offVal) = ServerVariableSetting.DecodeDefinitionDefault(setting.DefaultValue);
+        setting.DefaultValue = ServerVariableSetting.EncodeDefinitionDefault(enabled, onVal, offVal);
+        return NotifyDraftChangedAsync();
+    }
+
+    private Task SetServerVarDefaultOffAsync(GameTypeRevisionSettingDraft setting, string? offVal)
+    {
+        var (enabled, onVal, _) = ServerVariableSetting.DecodeDefinitionDefault(setting.DefaultValue);
+        setting.DefaultValue = ServerVariableSetting.EncodeDefinitionDefault(enabled, onVal, offVal);
+        return NotifyDraftChangedAsync();
     }
 
     private Task NotifyDraftChangedAsync()

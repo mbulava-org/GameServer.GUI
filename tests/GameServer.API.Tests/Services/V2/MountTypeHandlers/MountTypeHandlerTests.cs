@@ -196,7 +196,7 @@ public class NfsMountTypeHandlerTests
 
         var mount = handler.BuildMount(volume);
 
-        Assert.Equal("nfs", mount.Type);
+        Assert.Equal("volume", mount.Type);
         Assert.Equal("/data/worlds", mount.Target);
         Assert.Equal("minecraft_srv1_data-worlds", mount.Source);
         Assert.NotNull(mount.VolumeOptions?.DriverConfig);

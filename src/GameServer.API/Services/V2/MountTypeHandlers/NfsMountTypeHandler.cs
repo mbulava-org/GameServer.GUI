@@ -87,7 +87,7 @@ public sealed class NfsMountTypeHandler(
 
         var mount = new Mount
         {
-            Type = MountTypeKey,
+            Type = "volume",
             Source = volume.VolumeName,
             Target = volume.ContainerPath,
             ReadOnly = volume.ReadOnly

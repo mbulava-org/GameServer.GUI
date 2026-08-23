@@ -91,7 +91,29 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 // Configure middleware
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(options =>
+{
+    options.GetLevel = (httpContext, _, ex) =>
+    {
+        if (ex != null || httpContext.Response.StatusCode >= 500)
+        {
+            return Serilog.Events.LogEventLevel.Error;
+        }
+
+        if (httpContext.Response.StatusCode >= 400)
+        {
+            return Serilog.Events.LogEventLevel.Warning;
+        }
+
+        // Suppress 200 responses on /health endpoint to reduce log noise
+        if (httpContext.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
+        {
+            return Serilog.Events.LogEventLevel.Verbose;
+        }
+
+        return Serilog.Events.LogEventLevel.Information;
+    };
+});
 
 // Enable WebSockets for container console attach
 app.UseWebSockets(new WebSocketOptions

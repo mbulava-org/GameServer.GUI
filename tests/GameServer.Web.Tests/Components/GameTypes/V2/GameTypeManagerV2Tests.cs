@@ -92,7 +92,7 @@ public sealed class GameTypeManagerV2Tests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Game Types V2", cut.Markup);
+            Assert.Contains("Game Types", cut.Markup);
             Assert.Contains("Add Game Type", cut.Markup);
         });
     }

@@ -107,7 +107,23 @@ else
 
         enumOptions = GetEnumOptions(Definition);
 
-        (expandVariables, rawValue) = ServerVariableSetting.Decode(Value);
+        if (dataType == ServerVariableSetting.DataType)
+        {
+            var (defEnabled, defOn, defOff) = ServerVariableSetting.DecodeDefinitionDefault(Definition.DefaultValue);
+            if (string.IsNullOrEmpty(Value) || Value.StartsWith(ServerVariableSetting.DefinitionDefaultPrefix, StringComparison.Ordinal))
+            {
+                expandVariables = defEnabled;
+                rawValue = expandVariables ? defOn : defOff;
+            }
+            else
+            {
+                (expandVariables, rawValue) = ServerVariableSetting.Decode(Value);
+            }
+        }
+        else
+        {
+            (expandVariables, rawValue) = ServerVariableSetting.Decode(Value);
+        }
     }
 
     private Task OnServerVariableTextChanged(string? value)
@@ -118,6 +134,24 @@ else
 
     private Task OnExpandVariablesChanged(bool value)
     {
+        var (defEnabled, defOn, defOff) = ServerVariableSetting.DecodeDefinitionDefault(Definition.DefaultValue);
+        
+        // If the current raw value was equal to the previous default or empty, switch to the new default value
+        if (value)
+        {
+            if (string.IsNullOrEmpty(rawValue) || string.Equals(rawValue, defOff, StringComparison.Ordinal))
+            {
+                rawValue = defOn ?? rawValue;
+            }
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(rawValue) || string.Equals(rawValue, defOn, StringComparison.Ordinal))
+            {
+                rawValue = defOff ?? rawValue;
+            }
+        }
+
         expandVariables = value;
         return ValueChanged.InvokeAsync(ServerVariableSetting.Encode(expandVariables, rawValue));
     }

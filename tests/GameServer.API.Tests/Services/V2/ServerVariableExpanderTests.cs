@@ -48,6 +48,36 @@ public sealed class ServerVariableExpanderTests
         Assert.Equal("My Server [minecraft/latest] {Unknown}", resolved);
     }
 
+    [Fact]
+    public void DefinitionDefault_EncodeAndDecode_ShouldPreserveStateAndDualValues()
+    {
+        var encoded = ServerVariableExpander.EncodeDefinitionDefault(true, "{Name} Server", "Default Server");
+        var (enabled, onVal, offVal) = ServerVariableExpander.DecodeDefinitionDefault(encoded);
+
+        Assert.True(enabled);
+        Assert.Equal("{Name} Server", onVal);
+        Assert.Equal("Default Server", offVal);
+
+        var (decExpand, decRaw) = ServerVariableExpander.Decode(encoded);
+        Assert.True(decExpand);
+        Assert.Equal("{Name} Server", decRaw);
+    }
+
+    [Fact]
+    public void DefinitionDefault_WhenDisabledByDefault_DecodeShouldReturnOffValue()
+    {
+        var encoded = ServerVariableExpander.EncodeDefinitionDefault(false, "{Name} Server", "Static Server");
+        var (enabled, onVal, offVal) = ServerVariableExpander.DecodeDefinitionDefault(encoded);
+
+        Assert.False(enabled);
+        Assert.Equal("{Name} Server", onVal);
+        Assert.Equal("Static Server", offVal);
+
+        var (decExpand, decRaw) = ServerVariableExpander.Decode(encoded);
+        Assert.False(decExpand);
+        Assert.Equal("Static Server", decRaw);
+    }
+
     private static Models.V2.GameServer CreateServer()
     {
         return new Models.V2.GameServer

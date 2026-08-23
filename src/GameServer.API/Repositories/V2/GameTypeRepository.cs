@@ -235,6 +235,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 .ThenInclude(x => x.Metadata)
                     .ThenInclude(x => x!.PortMappings)
             .Include(x => x.WebHosts)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == revision.Id && x.GameType.Key == gameTypeKey);
 
         if (entity is null)
@@ -375,6 +376,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                         .ThenInclude(x => x!.PortMappings)
             .Include(x => x.Revisions)
                 .ThenInclude(x => x.WebHosts)
+            .AsSplitQuery()
             .AsQueryable();
     }
 
@@ -387,6 +389,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
                 .ThenInclude(x => x.Metadata)
                     .ThenInclude(x => x!.PortMappings)
             .Include(x => x.WebHosts)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id);
 
         return entity is null ? null : MapToModel(entity);

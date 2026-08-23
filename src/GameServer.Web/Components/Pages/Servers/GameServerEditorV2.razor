@@ -16,14 +16,25 @@
 @inject NavigationManager Navigation
 @inject IOptions<GameServerDockerApi> ApiConfig
 
-<PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</PageTitle>
+<PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server")</PageTitle>
+
+@if (isSaving)
+{
+    <div class="gameserver-saving-overlay">
+        <div class="gameserver-saving-modal">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+            <h5 class="mt-3 mb-1">@(isEditMode ? "Saving Server Changes..." : "Creating Game Server...")</h5>
+            <p class="text-muted small mb-0">Provisioning volumes and deploying Docker Swarm service...</p>
+        </div>
+    </div>
+}
 
 <div class="container-fluid mt-4">
     @if (isLoading)
     {
-        <div class="text-center py-5">
+        <div class="d-flex flex-column align-items-center justify-content-center py-5 my-5">
             <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
-            <p class="mt-3">Loading V2 editor...</p>
+            <p class="mt-3 text-muted">Loading editor...</p>
         </div>
     }
     else if (!isEditMode && !gameTypes.Any())
@@ -31,9 +42,9 @@
         <RadzenCard>
             <div class="text-center py-5">
                 <RadzenIcon Icon="inventory_2" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
-                <h4 class="mt-3">No V2 Game Types Available</h4>
-                <p class="text-muted">Create a V2 GameType revision before creating a V2 GameServer.</p>
-                <RadzenButton Text="Go to Game Types (V2)"
+                <h4 class="mt-3">No Game Types Available</h4>
+                <p class="text-muted">Create a GameType revision before creating a GameServer.</p>
+                <RadzenButton Text="Go to Game Types"
                               Icon="arrow_forward"
                               ButtonStyle="ButtonStyle.Primary"
                               Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
@@ -44,8 +55,8 @@
     {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
-                <h2 class="mb-1">@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</h2>
-                <p class="text-muted mb-0">Configure a V2 GameServer from a V2 GameType revision with backend validation previews.</p>
+                <h2 class="mb-1">@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server")</h2>
+                <p class="text-muted mb-0">Configure a GameServer from a GameType revision with backend validation previews.</p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <RadzenButton Text="Back"
@@ -1310,3 +1321,33 @@
 
     private sealed record RevisionOption(int Id, string Label);
 }
+
+<style>
+    .gameserver-saving-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        backdrop-filter: blur(4px);
+    }
+
+    .gameserver-saving-modal {
+        background: var(--rz-base-background-color, #ffffff);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+        border-radius: 12px;
+        padding: 2.5rem 3rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        min-width: 320px;
+        max-width: 450px;
+    }
+</style>

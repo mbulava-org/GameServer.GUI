@@ -27,19 +27,14 @@
 }
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-5">
         <RadzenFormField Text="Docker Image Reference" Variant="Variant.Outlined" class="w-100">
             <RadzenTextBox Value="@ImageReference" ValueChanged="@OnImageReferenceChanged" class="w-100" />
         </RadzenFormField>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <RadzenFormField Text="Version Tag" Variant="Variant.Outlined" class="w-100">
             <RadzenTextBox Value="@VersionTag" ValueChanged="@OnVersionTagChanged" class="w-100" />
-        </RadzenFormField>
-    </div>
-    <div class="col-md-4">
-        <RadzenFormField Text="Image Digest" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@ImageDigest" ValueChanged="@OnImageDigestChanged" class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-md-4 d-flex align-items-center">
@@ -74,7 +69,6 @@
                 </div>
             </Template>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="ImageDigest" Title="Digest" />
         <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="IsPublished" Title="Published" />
         <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="EnableTTY" Title="TTY" />
         <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="CreatedAt" Title="Created" />
@@ -119,12 +113,6 @@
     public EventCallback<string> VersionTagChanged { get; set; }
 
     [Parameter]
-    public string? ImageDigest { get; set; }
-
-    [Parameter]
-    public EventCallback<string?> ImageDigestChanged { get; set; }
-
-    [Parameter]
     public bool EnableTTY { get; set; }
 
     [Parameter]
@@ -166,8 +154,6 @@
     private Task OnImageReferenceChanged(string value) => ImageReferenceChanged.InvokeAsync(value);
 
     private Task OnVersionTagChanged(string value) => VersionTagChanged.InvokeAsync(value);
-
-    private Task OnImageDigestChanged(string? value) => ImageDigestChanged.InvokeAsync(value);
 
     private Task OnEnableTTYChanged(bool value) => EnableTTYChanged.InvokeAsync(value);
 

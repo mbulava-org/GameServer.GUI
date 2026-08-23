@@ -51,7 +51,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Game Servers V2", cut.Markup);
+            Assert.Contains("Game Servers", cut.Markup);
             Assert.Contains("Minecraft Survival", cut.Markup);
             Assert.Contains("25565/tcp", cut.Markup);
         });
@@ -158,7 +158,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Create Game Server V2", cut.Markup);
+            Assert.Contains("Create Game Server", cut.Markup);
             Assert.Contains("Create Server", cut.Markup);
 
             // No game type is selected by default, so the requirement is surfaced

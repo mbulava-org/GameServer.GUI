@@ -193,5 +193,16 @@ public class GameServerWebModelsTests
         Assert.Equal("@vars:Hello", ServerVariableSetting.Encode(true, "Hello"));
         Assert.Equal("@literal:@vars:Hello", ServerVariableSetting.Encode(false, "@vars:Hello"));
         Assert.Equal("Plain", ServerVariableSetting.Encode(false, "Plain"));
+
+        // Definition defaults
+        var encodedDef = ServerVariableSetting.EncodeDefinitionDefault(true, "{Name} Server", "Default Server");
+        var (defEnabled, onVal, offVal) = ServerVariableSetting.DecodeDefinitionDefault(encodedDef);
+        Assert.True(defEnabled);
+        Assert.Equal("{Name} Server", onVal);
+        Assert.Equal("Default Server", offVal);
+
+        var (defExpand, defRaw) = ServerVariableSetting.Decode(encodedDef);
+        Assert.True(defExpand);
+        Assert.Equal("{Name} Server", defRaw);
     }
 }

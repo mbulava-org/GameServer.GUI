@@ -401,9 +401,15 @@ namespace GameServer.Docker.Agent.Controllers
 
         private static Mount MapMountConfig(MountConfig m)
         {
+            var mountType = string.Equals(m.Type, "bind", StringComparison.OrdinalIgnoreCase)
+                ? "bind"
+                : string.Equals(m.Type, "tmpfs", StringComparison.OrdinalIgnoreCase)
+                    ? "tmpfs"
+                    : "volume";
+
             return new Mount
             {
-                Type = m.Type,
+                Type = mountType,
                 Source = m.Source,
                 Target = m.Target,
                 ReadOnly = m.ReadOnly,

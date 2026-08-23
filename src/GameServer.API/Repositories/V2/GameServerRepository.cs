@@ -142,6 +142,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
         return context.GameServers
             .Include(x => x.Settings)
             .Include(x => x.Volumes)
+            .AsSplitQuery()
             .AsQueryable();
     }
 
