@@ -300,7 +300,7 @@ public sealed class GameServerSpecBuilder
                 }
 
                 // Router configuration on websecure / https
-                labels[$"traefik.http.routers.{routerName}.rule"] = $"PathRegEx(`^/{expandedSegment}(/.*)?$`)";
+                labels[$"traefik.http.routers.{routerName}.rule"] = $"PathRegexp(`^/{expandedSegment}(/.*)?$`)";
                 labels[$"traefik.http.routers.{routerName}.entrypoints"] = _networkOptions.WebHostsAllowedEntryPoint;
                 if (!string.IsNullOrWhiteSpace(_networkOptions.CertificateResolverName))
                 {
