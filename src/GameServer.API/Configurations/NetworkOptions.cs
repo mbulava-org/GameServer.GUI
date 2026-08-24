@@ -17,7 +17,7 @@ namespace GameServer.API.Configurations
         /// Services with web hosts will be attached to this network for reverse proxy discovery.
         /// Default: "traefik-public"
         /// </summary>
-        public string? LoadBalancerNetwork { get; set; } = "traefik-public";
+        public string? LoadBalancerNetwork { get; set; } = "traefik_proxy";
 
         /// <summary>
         /// The load balancer provider to use for generating discovery labels.
@@ -25,5 +25,21 @@ namespace GameServer.API.Configurations
         /// Default: "traefik"
         /// </summary>
         public string LoadBalancerProvider { get; set; } = "traefik";
+
+        public string WebHostsAllowedEntryPoint { get; set; } = "websecure";
+
+        public string CertificateResolverName { get; set; } = "myresolver";
+
+        /// <summary>
+        /// Whether to generate response body URL rewriting middleware labels for WebHosts.
+        /// Default: true
+        /// </summary>
+        public bool EnableResponseBodyRewrite { get; set; } = true;
+
+        /// <summary>
+        /// The Traefik plugin name for response body rewriting (e.g., "rewritebody" or "rewrite-body").
+        /// Default: "rewritebody"
+        /// </summary>
+        public string ResponseBodyRewritePluginName { get; set; } = "rewritebody";
     }
 }

@@ -210,7 +210,7 @@ public class GameServerValidationServiceTests
         });
 
         var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
-        Assert.Equal(26000, resolvedPort.ContainerPort);
+        Assert.Equal(26000, resolvedPort.PublishedPort);
     }
 
     [Fact]
@@ -258,7 +258,7 @@ public class GameServerValidationServiceTests
         });
 
         var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
-        Assert.Equal(26500, resolvedPort.ContainerPort);
+        Assert.Equal(26500, resolvedPort.PublishedPort);
     }
 }
 

@@ -172,6 +172,93 @@ public sealed class GameServerSpecBuilderTests
         Assert.Equal(26000u, ports[0].GetProperty("PublishedPort").GetUInt32());
     }
 
+    [Fact]
+    public void Build_WithMultiplePublishedPorts_PublishesAllToIngress()
+    {
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "abc123",
+            Name = "MultiPort Server",
+            ServiceName = "minecraft-abc123",
+            GameTypeRevisionId = 7
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "minecraft" },
+            Revision = new GameTypeRevision
+            {
+                Id = 7,
+                VersionTag = "latest",
+                ImageReference = "itzg/minecraft-server:latest",
+                Ports =
+                [
+                    new GameTypePort { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 },
+                    new GameTypePort { ContainerPort = 25565, Protocol = "udp", AdvertisedPort = false, DisplayOrder = 2 },
+                    new GameTypePort { ContainerPort = 25575, Protocol = "tcp", AdvertisedPort = false, DisplayOrder = 3 }
+                ]
+            },
+            Result = new GameServerValidationResultDto
+            {
+                IsValid = true,
+                ResolvedPorts =
+                [
+                    new GameServerResolvedPortDto { ContainerPort = 25565, PublishedPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 },
+                    new GameServerResolvedPortDto { ContainerPort = 25565, PublishedPort = 25565, Protocol = "udp", AdvertisedPort = false, DisplayOrder = 2 },
+                    new GameServerResolvedPortDto { ContainerPort = 25575, PublishedPort = 25575, Protocol = "tcp", AdvertisedPort = false, DisplayOrder = 3 }
+                ]
+            }
+        };
+
+        var preview = new GameServerSpecBuilder(NewNetworkOptions()).Build(request, resolution);
+
+        Assert.Equal(3, preview.Ports.Count);
+        Assert.All(preview.Ports, p => Assert.True(p.Published));
+
+        using var document = JsonDocument.Parse(preview.RawServiceSpecJson);
+        var ports = document.RootElement.GetProperty("Service").GetProperty("EndpointSpec").GetProperty("Ports");
+        Assert.Equal(3, ports.GetArrayLength());
+    }
+
+    [Fact]
+    public void Build_WhenWebHostsEnabled_GeneratesTraefikLabelsWithRewriteMiddleware()
+    {
+        var preview = BuildPreview(
+            networkOptions: new NetworkOptions
+            {
+                NetworkName = "gameserver_overlay",
+                LoadBalancerNetwork = "traefik-public",
+                LoadBalancerProvider = "traefik",
+                WebHostsAllowedEntryPoint = "websecure",
+                CertificateResolverName = "myresolver",
+                EnableResponseBodyRewrite = true,
+                ResponseBodyRewritePluginName = "rewritebody"
+            },
+            resolvedWebHosts:
+            [
+                new GameServerResolvedWebHostDto
+                {
+                    Name = "Dynmap",
+                    PathSegment = "map/{serverId}",
+                    ContainerPort = 8123,
+                    DisplayOrder = 1
+                }
+            ]);
+
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.enable" && kv.Value == "true");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.docker.network" && kv.Value == "traefik-public");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.rule" && kv.Value == "PathRegEx(`^/map/abc123(/.*)?$`)");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.entrypoints" && kv.Value == "websecure");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls" && kv.Value == "true");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls.certresolver" && kv.Value == "myresolver");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.middlewares" && kv.Value == "minecraft-abc123-dynmap-rewrite,minecraft-abc123-dynmap-body-rewrite");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-rewrite.replacepathregex.regex" && kv.Value == "^/map/abc123/?(.*)");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-rewrite.replacepathregex.replacement" && kv.Value == "/$1");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].regex" && kv.Value.Contains("href|src|action|url"));
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].replacement" && kv.Value == "$1/map/abc123/");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.services.minecraft-abc123-dynmap.loadbalancer.server.port" && kv.Value == "8123");
+    }
+
     private static GameServerDeploymentPreviewDto BuildPreview(
         NetworkOptions? networkOptions = null,
         IReadOnlyList<GameServerResolvedWebHostDto>? resolvedWebHosts = null)
@@ -229,8 +316,8 @@ public sealed class GameServerSpecBuilderTests
                 ResolvedWebHosts = resolvedWebHosts?.ToList() ?? [],
                 ResolvedPorts =
                 [
-                    new GameServerResolvedPortDto { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 },
-                    new GameServerResolvedPortDto { ContainerPort = 25575, Protocol = "tcp", AdvertisedPort = false, DisplayOrder = 2 }
+                    new GameServerResolvedPortDto { ContainerPort = 25565, PublishedPort = 25565, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 },
+                    new GameServerResolvedPortDto { ContainerPort = 25575, PublishedPort = 0, Protocol = "tcp", AdvertisedPort = false, DisplayOrder = 2 }
                 ]
             }
         };

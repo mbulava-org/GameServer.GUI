@@ -3,7 +3,16 @@
 @using Radzen
 @using Radzen.Blazor
 
-@if (dataType == "boolean")
+@if (dataType == "yesno" || dataType == "yes/no")
+{
+    <div class="d-flex align-items-center gap-2">
+        <RadzenSwitch TValue="bool"
+                      Value="@IsChecked"
+                      Change="@OnYesNoChanged" />
+        <span>@(IsChecked ? "YES" : GetNoValue())</span>
+    </div>
+}
+else if (dataType == "boolean")
 {
     <div class="d-flex align-items-center gap-2">
         <RadzenCheckBox TValue="bool"
@@ -95,7 +104,25 @@ else
 
     private int PortValue => int.TryParse(Value, out var parsed) ? parsed : 0;
 
-    private bool IsChecked => string.Equals(Value, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(Value, "yes", StringComparison.OrdinalIgnoreCase);
+    private bool IsChecked
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Value))
+            {
+                return string.Equals(Value, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Value, "yes", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Value, "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Value, "on", StringComparison.OrdinalIgnoreCase);
+            }
+
+            var def = Definition?.DefaultValue;
+            return string.Equals(def, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(def, "yes", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(def, "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(def, "on", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     protected override void OnParametersSet()
     {
@@ -169,6 +196,22 @@ else
     private Task OnBooleanChanged(bool value)
     {
         return ValueChanged.InvokeAsync(value ? "true" : "false");
+    }
+
+    private Task OnYesNoChanged(bool value)
+    {
+        return ValueChanged.InvokeAsync(value ? "YES" : GetNoValue());
+    }
+
+    private string GetNoValue()
+    {
+        var def = Definition?.DefaultValue;
+        if (!string.IsNullOrEmpty(def) && string.Equals(def, "NO", StringComparison.Ordinal))
+        {
+            return "NO";
+        }
+
+        return "no";
     }
 
     private static IReadOnlyList<EnumOption> GetEnumOptions(GameTypeSettingDefinition definition)

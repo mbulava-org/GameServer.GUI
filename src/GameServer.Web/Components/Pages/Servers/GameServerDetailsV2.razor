@@ -184,6 +184,54 @@
             </div>
         </div>
 
+        @if (CurrentResolvedWebHosts.Any())
+        {
+            <RadzenCard class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <RadzenIcon Icon="language" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                        <h5 class="mb-0">Web Applications & Interfaces</h5>
+                    </div>
+                    <RadzenBadge BadgeStyle="BadgeStyle.Primary" Text="@($"{CurrentResolvedWebHosts.Count} Available")" Variant="Variant.Flat" />
+                </div>
+                <div class="row g-3">
+                    @foreach (var host in CurrentResolvedWebHosts.OrderBy(h => h.DisplayOrder))
+                    {
+                        var targetUrl = GetWebHostUrl(host);
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 border-0 shadow-sm" style="background: var(--rz-base-50); border-radius: 8px;">
+                                <div class="card-body d-flex flex-column justify-content-between p-3">
+                                    <div>
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <h6 class="card-title fw-bold mb-0">@host.Name</h6>
+                                            @if (host.ContainerPort.HasValue)
+                                            {
+                                                <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@($"Port {host.ContainerPort}")" Size="BadgeSize.Small" />
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(host.Description))
+                                        {
+                                            <p class="card-text text-muted small mb-2">@host.Description</p>
+                                        }
+                                        <div class="small text-muted mb-3">
+                                            <code>@targetUrl</code>
+                                        </div>
+                                    </div>
+                                    <a href="@targetUrl"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 mt-auto">
+                                        <span>Open @host.Name</span>
+                                        <RadzenIcon Icon="open_in_new" Style="font-size: 1rem;" />
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </RadzenCard>
+        }
+
         <RadzenTabs>
             <Tabs>
                 <RadzenTabsItem Text="Resource Monitor" Icon="monitoring">
@@ -245,13 +293,13 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Ports" Icon="lan">
+                <RadzenTabsItem Text="Ports" Icon="router">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Ports</h5>
                             @if (!CurrentResolvedPorts.Any())
                             {
-                                <p class="text-muted mb-0">No resolved ports were derived from the selected revision.</p>
+                                <p class="text-muted mb-0">No ports are currently exposed for this server.</p>
                             }
                             else
                             {
@@ -260,17 +308,9 @@
                                                 AllowSorting="true">
                                     <Columns>
                                         <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="ContainerPort" Title="Container Port" Width="140px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Title="Published Port (Ingress)" Width="180px">
-                                            <Template Context="port">
-                                                <span>@port.PublishedPort</span>
-                                                @if (port.PublishedPort != port.ContainerPort)
-                                                {
-                                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Custom" Style="margin-left: 6px;" />
-                                                }
-                                            </Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Protocol" Title="Protocol" Width="120px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Title="Advertised" Width="120px">
+                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="PublishedPort" Title="Published Port" Width="140px" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Protocol" Title="Protocol" Width="100px" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="AdvertisedPort" Title="Advertised" Width="120px">
                                             <Template Context="port">
                                                 <RadzenBadge BadgeStyle="@(port.AdvertisedPort ? BadgeStyle.Success : BadgeStyle.Light)"
                                                              Text="@(port.AdvertisedPort ? "Yes" : "No")" />
@@ -290,11 +330,11 @@
                             <h5 class="mb-3">Resolved Volumes</h5>
                             @if (!CurrentResolvedVolumes.Any())
                             {
-                                <p class="text-muted mb-0">No resolved volumes were derived from the selected revision.</p>
+                                <p class="text-muted mb-0">No volumes are currently bound for this server.</p>
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.CreatedAt)"
+                                <RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.Usage)"
                                                 TItem="GameServerResolvedVolume"
                                                 AllowSorting="true">
                                     <Columns>
@@ -328,6 +368,17 @@
                                         <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Property="PathSegment" Title="Path" Width="160px" />
                                         <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Property="EnabledWhen" Title="Enabled When" Width="180px" />
                                         <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Property="Description" Title="Description" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Title="Access" Width="130px" Sortable="false" Filterable="false">
+                                            <Template Context="host">
+                                                <a href="@GetWebHostUrl(host)"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1">
+                                                    <span>Open</span>
+                                                    <RadzenIcon Icon="open_in_new" Style="font-size: 0.9rem;" />
+                                                </a>
+                                            </Template>
+                                        </RadzenDataGridColumn>
                                     </Columns>
                                 </RadzenDataGrid>
                             }
@@ -680,5 +731,51 @@
             "failed" => "Failed",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
+    }
+
+    private string GetWebHostUrl(GameServerResolvedWebHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        var rawSegment = !string.IsNullOrWhiteSpace(host.PathSegment) ? host.PathSegment : host.Name;
+        var expanded = rawSegment;
+
+        if (server is not null)
+        {
+            var tokens = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["ServerId"] = server.ServerId,
+                ["Id"] = server.ServerId,
+                ["Name"] = server.Name,
+                ["ServiceName"] = server.ServiceName,
+                ["GameType"] = server.GameTypeKey,
+                ["GameTypeKey"] = server.GameTypeKey,
+                ["GameTypeDisplayName"] = server.GameTypeDisplayName
+            };
+
+            foreach (var setting in server.Settings)
+            {
+                if (!string.IsNullOrWhiteSpace(setting.SettingKey))
+                {
+                    tokens[setting.SettingKey] = setting.Value;
+                }
+            }
+
+            foreach (var (k, v) in tokens)
+            {
+                if (v is not null)
+                {
+                    expanded = expanded.Replace("{" + k + "}", v, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+        }
+
+        var path = expanded.Trim('/');
+        if (string.IsNullOrWhiteSpace(path) && server is not null)
+        {
+            var slug = new string(host.Name.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+            path = $"{server.ServiceName}-{slug.Trim('-')}";
+        }
+
+        return $"/{path}/";
     }
 }

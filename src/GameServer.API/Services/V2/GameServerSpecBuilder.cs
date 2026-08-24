@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Docker.DotNet.Models;
 using GameServer.API.Configurations;
 using GameServer.API.Constants;
@@ -55,12 +56,7 @@ public sealed class GameServerSpecBuilder
         var environment = BuildEnvironment(request, resolution);
         var ports = BuildPorts(resolution.Result.ResolvedPorts, resolution.Revision);
         var volumes = BuildVolumes(resolution.Result.ResolvedVolumes, []);
-
-        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            [ServiceLabels.Managed] = ServiceLabels.ManagedValue,
-            [ServiceLabels.ServerId] = serverId
-        };
+        var labels = BuildLabels(serverId, serviceName, request, resolution);
 
         var networks = new List<GameServerPreviewNetworkDto>();
 
@@ -110,7 +106,7 @@ public sealed class GameServerSpecBuilder
                 EndpointSpec = new EndpointSpec
                 {
                     Ports = ports
-                        .Where(port => port.Published)
+                        .Where(port => port.Published && port.PublishedPort > 0)
                         .Select(port => new PortConfig
                         {
                             Protocol = port.Protocol,
@@ -154,12 +150,7 @@ public sealed class GameServerSpecBuilder
         var environment = BuildEnvironment(request, resolution);
         var ports = BuildPorts(resolution.Result.ResolvedPorts, resolution.Revision);
         var volumes = BuildVolumes(resolution.Result.ResolvedVolumes, notices);
-
-        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            [ServiceLabels.Managed] = ServiceLabels.ManagedValue,
-            [ServiceLabels.ServerId] = serverId
-        };
+        var labels = BuildLabels(serverId, serviceName, request, resolution);
 
         var networks = new List<GameServerPreviewNetworkDto>();
 
@@ -259,6 +250,100 @@ public sealed class GameServerSpecBuilder
             .ToList();
     }
 
+    private Dictionary<string, string> BuildLabels(
+        string serverId,
+        string serviceName,
+        SaveGameServerRequestDto request,
+        GameServerResolutionContext resolution)
+    {
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [ServiceLabels.Managed] = ServiceLabels.ManagedValue,
+            [ServiceLabels.ServerId] = serverId
+        };
+
+        var hasEnabledWebHosts = resolution.Result.ResolvedWebHosts.Count > 0;
+        if (hasEnabledWebHosts && string.Equals(_networkOptions.LoadBalancerProvider, "traefik", StringComparison.OrdinalIgnoreCase))
+        {
+            labels["traefik.enable"] = "true";
+
+            if (!string.IsNullOrWhiteSpace(_networkOptions.LoadBalancerNetwork))
+            {
+                labels["traefik.docker.network"] = _networkOptions.LoadBalancerNetwork;
+            }
+
+            var tokens = BuildPreviewTokens(request, resolution);
+
+            foreach (var webHost in resolution.Result.ResolvedWebHosts.OrderBy(h => h.DisplayOrder))
+            {
+                var containerPort = webHost.ContainerPort ?? 80;
+                var rawSegment = !string.IsNullOrWhiteSpace(webHost.PathSegment) ? webHost.PathSegment : webHost.Name;
+                var expandedSegment = ServerVariableExpander.Substitute(rawSegment, tokens)?.Trim('/') ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(expandedSegment))
+                {
+                    expandedSegment = $"{serviceName}-{Slugify(webHost.Name)}";
+                }
+
+                var hostSlug = Slugify(webHost.Name);
+                var routerName = $"{serviceName}-{hostSlug}";
+                var pathRewriteMiddlewareName = $"{routerName}-rewrite";
+                var bodyRewriteMiddlewareName = $"{routerName}-body-rewrite";
+
+                var middlewareList = new List<string> { pathRewriteMiddlewareName };
+                if (_networkOptions.EnableResponseBodyRewrite && !string.IsNullOrWhiteSpace(_networkOptions.ResponseBodyRewritePluginName))
+                {
+                    middlewareList.Add(bodyRewriteMiddlewareName);
+
+                    var plugin = _networkOptions.ResponseBodyRewritePluginName;
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].regex"] = $"((?:href|src|action|url)=[\"'])/(?!([a-zA-Z]+://|{Regex.Escape(expandedSegment)}/))";
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].replacement"] = $"$1/{expandedSegment}/";
+                }
+
+                // Router configuration on websecure / https
+                labels[$"traefik.http.routers.{routerName}.rule"] = $"PathRegEx(`^/{expandedSegment}(/.*)?$`)";
+                labels[$"traefik.http.routers.{routerName}.entrypoints"] = _networkOptions.WebHostsAllowedEntryPoint;
+                if (!string.IsNullOrWhiteSpace(_networkOptions.CertificateResolverName))
+                {
+                    labels[$"traefik.http.routers.{routerName}.tls.certresolver"] = _networkOptions.CertificateResolverName;
+                }
+                labels[$"traefik.http.routers.{routerName}.tls"] = "true";
+                labels[$"traefik.http.routers.{routerName}.middlewares"] = string.Join(",", middlewareList);
+                labels[$"traefik.http.routers.{routerName}.service"] = routerName;
+
+                // Middleware configuration for incoming URL rewriting
+                labels[$"traefik.http.middlewares.{pathRewriteMiddlewareName}.replacepathregex.regex"] = $"^/{expandedSegment}/?(.*)";
+                labels[$"traefik.http.middlewares.{pathRewriteMiddlewareName}.replacepathregex.replacement"] = "/$1";
+
+                // Service load balancer port
+                labels[$"traefik.http.services.{routerName}.loadbalancer.server.port"] = containerPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+
+        return labels;
+    }
+
+    private static string Slugify(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "web";
+        }
+
+        var chars = value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '-')
+            .ToArray();
+
+        var slug = string.Concat(chars);
+        while (slug.Contains("--", StringComparison.Ordinal))
+        {
+            slug = slug.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        return slug.Trim('-');
+    }
+
     private static Dictionary<string, string?> BuildPreviewTokens(SaveGameServerRequestDto request, GameServerResolutionContext resolution)
     {
         var gameTypeKey = resolution.GameType?.Key;
@@ -274,6 +359,7 @@ public sealed class GameServerSpecBuilder
             ["ServiceName"] = serviceName,
             ["Description"] = request.Description,
             ["Status"] = request.Status,
+            ["GameType"] = gameTypeKey,
             ["GameTypeKey"] = gameTypeKey,
             ["RevisionVersionTag"] = resolution.Revision?.VersionTag,
             ["RevisionImageReference"] = resolution.Revision?.ImageReference
@@ -295,15 +381,18 @@ public sealed class GameServerSpecBuilder
                     ?? revisionPorts.FirstOrDefault(p => string.Equals(p.Protocol, resolvedPort.Protocol, StringComparison.OrdinalIgnoreCase));
 
                 var containerPort = revisionPort?.ContainerPort ?? resolvedPort.ContainerPort;
-                var publishedPort = resolvedPort.PublishedPort;
+                var publishedPort = resolvedPort.PublishedPort > 0
+                    ? resolvedPort.PublishedPort
+                    : (resolvedPort.ContainerPort != containerPort ? resolvedPort.ContainerPort : 0);
+                var isPublished = publishedPort > 0;
 
                 return new GameServerPreviewPortDto
                 {
                     ContainerPort = containerPort,
                     PublishedPort = publishedPort,
                     Protocol = string.IsNullOrWhiteSpace(resolvedPort.Protocol) ? "tcp" : resolvedPort.Protocol.ToLowerInvariant(),
-                    Published = resolvedPort.AdvertisedPort,
-                    PublishMode = resolvedPort.AdvertisedPort ? "ingress" : "not published",
+                    Published = isPublished,
+                    PublishMode = isPublished ? "ingress" : "not published",
                     Description = resolvedPort.Description
                 };
             })
