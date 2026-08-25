@@ -10,14 +10,27 @@ namespace GameServer.API.Services
         bool IsReady { get; }
 
         void MarkReady();
+
+        Task WaitUntilReadyAsync(CancellationToken cancellationToken = default);
     }
 
     public class DatabaseReadinessGate : IDatabaseReadinessGate
     {
-        private volatile bool _isReady;
+        private readonly TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public bool IsReady => _isReady;
+        public bool IsReady => _tcs.Task.IsCompletedSuccessfully;
 
-        public void MarkReady() => _isReady = true;
+        public void MarkReady() => _tcs.TrySetResult(true);
+
+        public async Task WaitUntilReadyAsync(CancellationToken cancellationToken = default)
+        {
+            if (IsReady)
+            {
+                return;
+            }
+
+            await _tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 }
+

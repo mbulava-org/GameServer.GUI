@@ -167,6 +167,7 @@ namespace GameServer.API
                 builder.Services.AddMemoryCache();
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGameServerResourceUtilizationRepository, RepositoriesV2.GameServerResourceUtilizationRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IMountTypeConfigRepository, RepositoriesV2.MountTypeConfigRepository>();
                 builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
                 builder.Services.AddScoped<ServicesV2.GameServerValidationService>();
@@ -190,6 +191,8 @@ namespace GameServer.API
                 // V2-compatible resource monitor/aggregator for SignalR streaming hubs
                 builder.Services.AddScoped<Interfaces.IServerResourceMonitor, ServicesV2.ServerResourceMonitor>();
                 builder.Services.AddSingleton<Interfaces.IServerResourceAggregator, ServicesV2.ServerResourceAggregator>();
+                builder.Services.AddSingleton<ServicesV2.IGameServerResourceCollector, ServicesV2.GameServerResourceCollectorService>();
+                builder.Services.AddHostedService(sp => (ServicesV2.GameServerResourceCollectorService)sp.GetRequiredService<ServicesV2.IGameServerResourceCollector>());
                 builder.Services.AddSingleton<Interfaces.IServerLogAggregator, ServicesV2.ServerLogAggregator>();
                 builder.Services.AddSingleton<Interfaces.IContainerAttachAggregator, ServicesV2.ContainerAttachAggregator>();
 

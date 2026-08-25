@@ -6,7 +6,13 @@ namespace GameServer.API.Controllers.V2;
 
 [ApiController]
 [Route("api/v2/gameservers")]
-public sealed class GameServersController(GameServerQueryService queryService, GameServerCommandService commandService, ILogger<GameServersController> logger) : ControllerBase
+public sealed class GameServersController(
+    GameServerQueryService queryService,
+    GameServerCommandService commandService,
+    ILogger<GameServersController> logger,
+    Repositories.V2.IGameServerResourceUtilizationRepository? resourceUtilizationRepository = null,
+    IGameServerResourceCollector? resourceCollector = null,
+    Interfaces.IServerResourceMonitor? resourceMonitor = null) : ControllerBase
 {
     /// <summary>
     /// Gets the V2 GameServer list.
@@ -231,5 +237,74 @@ public sealed class GameServersController(GameServerQueryService queryService, G
         {
             return NotFound();
         }
+    }
+
+    /// <summary>
+    /// Gets the historical resource utilization records for a V2 GameServer.
+    /// </summary>
+    [HttpGet("{serverId}/resources/history")]
+    [ProducesResponseType(200, Type = typeof(IEnumerable<GameServerResourceHistoryDto>))]
+    public async Task<ActionResult<IReadOnlyList<GameServerResourceHistoryDto>>> GetResourceHistory(
+        string serverId,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] int limit = 500,
+        CancellationToken cancellationToken = default)
+    {
+        if (resourceUtilizationRepository is null)
+        {
+            return Ok(Array.Empty<GameServerResourceHistoryDto>());
+        }
+
+        var records = await resourceUtilizationRepository.GetHistoryAsync(serverId, from, to, limit, cancellationToken);
+        var dtos = records.Select(r => new GameServerResourceHistoryDto
+        {
+            Id = r.Id,
+            ServerId = r.ServerId,
+            Timestamp = r.Timestamp,
+            CpuUsagePercent = r.CpuUsagePercent,
+            MemoryUsageBytes = r.MemoryUsageBytes,
+            MemoryLimitBytes = r.MemoryLimitBytes,
+            MemoryUsagePercent = r.MemoryUsagePercent,
+            NetworkRxBytes = r.NetworkRxBytes,
+            NetworkTxBytes = r.NetworkTxBytes,
+            BlockReadBytes = r.BlockReadBytes,
+            BlockWriteBytes = r.BlockWriteBytes,
+            DesiredReplicas = r.DesiredReplicas,
+            RunningReplicas = r.RunningReplicas,
+            ContainerId = r.ContainerId
+        }).ToList();
+
+        return Ok(dtos);
+    }
+
+    /// <summary>
+    /// Gets the latest resource utilization snapshot for a V2 GameServer.
+    /// </summary>
+    [HttpGet("{serverId}/resources/latest")]
+    [ProducesResponseType(200, Type = typeof(Models.ServerResourceUsage))]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<Models.ServerResourceUsage>> GetLatestResource(
+        string serverId,
+        CancellationToken cancellationToken = default)
+    {
+        // Try in-memory cached snapshot first
+        var cached = resourceCollector?.GetCachedUsage(serverId);
+        if (cached != null)
+        {
+            return Ok(cached);
+        }
+
+        // Fall back to on-demand snapshot
+        if (resourceMonitor is not null)
+        {
+            var snapshot = await resourceMonitor.GetSnapshotAsync(serverId, cancellationToken);
+            if (snapshot != null)
+            {
+                return Ok(snapshot);
+            }
+        }
+
+        return NotFound();
     }
 }

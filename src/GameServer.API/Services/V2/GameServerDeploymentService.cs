@@ -24,7 +24,8 @@ public sealed class GameServerDeploymentService(
     IServiceOperations serviceOperations,
     GameServerValidationService validationService,
     GameServerSpecBuilder specBuilder,
-    ILogger<GameServerDeploymentService> logger)
+    ILogger<GameServerDeploymentService> logger,
+    IGameServerResourceCollector? resourceCollector = null)
 {
     /// <summary>
     /// Creates the Swarm service for a V2 GameServer and marks the server as deployed.
@@ -92,6 +93,7 @@ public sealed class GameServerDeploymentService(
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
 
         logger.LogInformation("Deployed V2 GameServer {ServerId} as service {ServiceId}", serverId, response.ID);
+        _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
     }
 
     /// <summary>
@@ -131,6 +133,7 @@ public sealed class GameServerDeploymentService(
         server = server with { Status = "Running" };
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
         logger.LogInformation("Started V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
+        _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
     }
 
     /// <summary>
@@ -213,6 +216,7 @@ public sealed class GameServerDeploymentService(
         server = server with { Status = "Running" };
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
         logger.LogInformation("Restarted V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
+        _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
     }
 
     /// <summary>
@@ -297,6 +301,7 @@ public sealed class GameServerDeploymentService(
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
 
         logger.LogInformation("Updated V2 GameServer {ServerId} service deployment", serverId);
+        _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
     }
 
     /// <summary>

@@ -31,15 +31,21 @@ namespace GameServer.API.Configurations
         public string CertificateResolverName { get; set; } = "myresolver";
 
         /// <summary>
+        /// The router priority for WebHost PathRegexp routes so they take precedence over Host-only routes.
+        /// Default: 10000
+        /// </summary>
+        public int WebHostsRouterPriority { get; set; } = 10000;
+
+        /// <summary>
         /// Whether to generate response body URL rewriting middleware labels for WebHosts.
         /// Default: true
         /// </summary>
         public bool EnableResponseBodyRewrite { get; set; } = true;
 
         /// <summary>
-        /// The Traefik plugin name for response body rewriting (e.g., "rewritebody" or "rewrite-body").
-        /// Default: "rewritebody"
+        /// The Traefik plugin name for response body rewriting (e.g., "plugin-rewritebody" or "rewritebody").
+        /// Default: "plugin-rewritebody"
         /// </summary>
-        public string ResponseBodyRewritePluginName { get; set; } = "rewritebody";
+        public string ResponseBodyRewritePluginName { get; set; } = "plugin-rewritebody";
     }
 }

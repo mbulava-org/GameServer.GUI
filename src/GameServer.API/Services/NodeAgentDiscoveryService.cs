@@ -215,7 +215,7 @@ namespace GameServer.API.Services
             return Task.FromResult(new List<NodeAgentEndpoint>());
         }
 
-        public Task<NodeAgentEndpoint?> GetAgentForContainerAsync(string containerId)
+        public async Task<NodeAgentEndpoint?> GetAgentForContainerAsync(string containerId)
         {
             _logger.LogDebug("Finding agent for container {ContainerId}", containerId);
 
@@ -228,7 +228,7 @@ namespace GameServer.API.Services
                     containerId.Substring(0, Math.Min(12, containerId.Length)),
                     registryAgent.InternalUrl,
                     registryAgent.NodeName);
-                return Task.FromResult<NodeAgentEndpoint?>(registryAgent);
+                return registryAgent;
             }
 
             var udpAgent = _udpAgentRegistry.GetAgentForContainer(containerId);
@@ -239,13 +239,49 @@ namespace GameServer.API.Services
                     containerId.Substring(0, Math.Min(12, containerId.Length)),
                     udpAgent.InternalUrl,
                     udpAgent.NodeName);
-                return Task.FromResult<NodeAgentEndpoint?>(udpAgent);
+                return udpAgent;
+            }
+
+            // Fallback: probe healthy agents directly
+            var allAgents = await DiscoverAgentsAsync().ConfigureAwait(false);
+            var healthyAgents = allAgents.Where(a => a.IsHealthy).ToList();
+            if (healthyAgents.Count > 0)
+            {
+                var probeTasks = healthyAgents.Select(async agent =>
+                {
+                    try
+                    {
+                        var httpClient = GetOrCreateHttpClientForAgent(agent.InternalUrl);
+                        var response = await httpClient.GetAsync($"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/stats").ConfigureAwait(false);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            return agent;
+                        }
+                    }
+                    catch
+                    {
+                        // Agent probe failed or container not on this node
+                    }
+                    return null;
+                }).ToList();
+
+                var results = await Task.WhenAll(probeTasks).ConfigureAwait(false);
+                var discovered = results.FirstOrDefault(a => a != null);
+                if (discovered != null)
+                {
+                    _logger.LogDebug(
+                        "✅ Discovered agent via PROBE for container {ContainerId}: {AgentUrl} on node {NodeName}",
+                        containerId.Substring(0, Math.Min(12, containerId.Length)),
+                        discovered.InternalUrl,
+                        discovered.NodeName);
+                    return discovered;
+                }
             }
 
             _logger.LogWarning(
-                "⚠️ Agent not found in registry or UDP discovery for container {ContainerId}",
+                "⚠️ Agent not found in registry, UDP discovery, or probe for container {ContainerId}",
                 containerId.Substring(0, Math.Min(12, containerId.Length)));
-            return Task.FromResult<NodeAgentEndpoint?>(null);
+            return null;
         }
 
         public async Task<NodeAgentEndpoint?> GetAgentForServerAsync(string serverId)
@@ -354,7 +390,7 @@ namespace GameServer.API.Services
             try
             {
                 var httpClient = GetOrCreateHttpClientForAgent(agent.InternalUrl);
-                var url = $"{agent.InternalUrl}/containers/{containerId}/stats";
+                var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/stats";
                 _logger.LogDebug("Fetching stats from agent: GET {Url}", url);
 
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();

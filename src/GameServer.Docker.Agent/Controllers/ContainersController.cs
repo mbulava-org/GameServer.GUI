@@ -12,6 +12,7 @@ namespace GameServer.Docker.Agent.Controllers
     /// </summary>
     [ApiController]
     [Route("containers")]
+    [Route("api/containers")]
     public class ContainersController : ControllerBase
     {
         private readonly IContainerService _containerService;

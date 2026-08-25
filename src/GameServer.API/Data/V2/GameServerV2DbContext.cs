@@ -68,6 +68,8 @@ public class GameServerV2DbContext : DbContext
 
     public DbSet<MountTypeConfigEntity> MountTypeConfigs { get; set; }
 
+    public DbSet<GameServerResourceUtilizationEntity> ResourceUtilizations { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -311,6 +313,17 @@ public class GameServerV2DbContext : DbContext
                     CreatedAt = SeedTimestamp,
                     UpdatedAt = SeedTimestamp
                 });
+        });
+
+        modelBuilder.Entity<GameServerResourceUtilizationEntity>(entity =>
+        {
+            entity.ToTable("GameServerResourceUtilizations");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ServerId);
+            entity.HasIndex(e => new { e.ServerId, e.Timestamp });
+            entity.Property(e => e.ServerId).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.ContainerId).HasMaxLength(100);
+            ConfigureTimestampProperty(entity.Property(e => e.Timestamp), isMySql);
         });
     }
 

@@ -295,12 +295,20 @@ public sealed class GameServerSpecBuilder
                     middlewareList.Add(bodyRewriteMiddlewareName);
 
                     var plugin = _networkOptions.ResponseBodyRewritePluginName;
-                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].regex"] = $"((?:href|src|action|url)=[\"'])/(?!([a-zA-Z]+://|{Regex.Escape(expandedSegment)}/))";
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.lastModified"] = "true";
+
+                    // Rewrite 0: HTML attributes (href, src, action, data-url, data-src, srcset, url)
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].regex"] = $"((?:href|src|action|data-url|data-src|srcset|url)=[\"'])/(?!([a-zA-Z]+://|{Regex.Escape(expandedSegment)}/))";
                     labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].replacement"] = $"$1/{expandedSegment}/";
+
+                    // Rewrite 1: CSS url(...) references
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[1].regex"] = $"(url\\(\\s*[\"']?)/(?!([a-zA-Z]+://|{Regex.Escape(expandedSegment)}/))";
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[1].replacement"] = $"$1/{expandedSegment}/";
                 }
 
                 // Router configuration on websecure / https
                 labels[$"traefik.http.routers.{routerName}.rule"] = $"PathRegexp(`^/{expandedSegment}(/.*)?$`)";
+                labels[$"traefik.http.routers.{routerName}.priority"] = _networkOptions.WebHostsRouterPriority.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 labels[$"traefik.http.routers.{routerName}.entrypoints"] = _networkOptions.WebHostsAllowedEntryPoint;
                 if (!string.IsNullOrWhiteSpace(_networkOptions.CertificateResolverName))
                 {

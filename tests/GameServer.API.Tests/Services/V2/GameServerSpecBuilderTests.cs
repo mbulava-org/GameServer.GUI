@@ -248,14 +248,18 @@ public sealed class GameServerSpecBuilderTests
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.enable" && kv.Value == "true");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.docker.network" && kv.Value == "traefik-public");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.rule" && kv.Value == "PathRegexp(`^/map/abc123(/.*)?$`)");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.priority" && kv.Value == "10000");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.entrypoints" && kv.Value == "websecure");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls" && kv.Value == "true");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls.certresolver" && kv.Value == "myresolver");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.middlewares" && kv.Value == "minecraft-abc123-dynmap-rewrite,minecraft-abc123-dynmap-body-rewrite");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-rewrite.replacepathregex.regex" && kv.Value == "^/map/abc123/?(.*)");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-rewrite.replacepathregex.replacement" && kv.Value == "/$1");
-        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].regex" && kv.Value.Contains("href|src|action|url"));
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.lastModified" && kv.Value == "true");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].regex" && kv.Value.Contains("href|src|action"));
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].replacement" && kv.Value == "$1/map/abc123/");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[1].regex" && kv.Value.Contains("url"));
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[1].replacement" && kv.Value == "$1/map/abc123/");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.services.minecraft-abc123-dynmap.loadbalancer.server.port" && kv.Value == "8123");
     }
 

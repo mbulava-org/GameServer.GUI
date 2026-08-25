@@ -235,6 +235,20 @@
 
             await client.ConnectAsync(CancellationToken.None);
             isConnected = true;
+
+            try
+            {
+                var snapshot = await client.GetSnapshotAsync(ServerId, CancellationToken.None);
+                if (snapshot != null)
+                {
+                    latestUsage = snapshot;
+                }
+            }
+            catch (Exception snapshotEx)
+            {
+                Logger.LogDebug(snapshotEx, "Initial snapshot fetch failed; waiting for live stream updates for server {ServerId}", ServerId);
+            }
+
             await client.SubscribeToServerAsync(ServerId, intervalSeconds: 2, CancellationToken.None);
             AddLog($"Subscribed to resource updates for server {ServerId}");
         }

@@ -423,3 +423,38 @@ public class MountTypeConfigEntity
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
+
+public class GameServerResourceUtilizationEntity
+{
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string ServerId { get; set; } = string.Empty;
+
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    public double? CpuUsagePercent { get; set; }
+
+    public long? MemoryUsageBytes { get; set; }
+
+    public long? MemoryLimitBytes { get; set; }
+
+    public double? MemoryUsagePercent { get; set; }
+
+    public long? NetworkRxBytes { get; set; }
+
+    public long? NetworkTxBytes { get; set; }
+
+    public long? BlockReadBytes { get; set; }
+
+    public long? BlockWriteBytes { get; set; }
+
+    public int DesiredReplicas { get; set; }
+
+    public int RunningReplicas { get; set; }
+
+    [MaxLength(100)]
+    public string? ContainerId { get; set; }
+}
+

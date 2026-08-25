@@ -48,6 +48,15 @@ namespace GameServer.API.Client.Models
             _ => "Unknown"
         };
 
+        public double? CpuUsagePercent { get; set; }
+        public long? MemoryUsageBytes { get; set; }
+        public long? MemoryLimitBytes { get; set; }
+        public double? MemoryUsagePercent { get; set; }
+        public long? NetworkRxBytes { get; set; }
+        public long? NetworkTxBytes { get; set; }
+        public long? BlockReadBytes { get; set; }
+        public long? BlockWriteBytes { get; set; }
+
         public ContainerStats? RealTimeStats { get; set; }
     }
 
