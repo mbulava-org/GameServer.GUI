@@ -13,6 +13,11 @@ namespace GameServer.API.Configurations
         public string? NetworkName { get; set; }
 
         /// <summary>
+        /// The IP address of the primary DNS service the Service/Container should use for name resolution beyond other docker service endpoints.
+        /// </summary>
+        public string? DNS1 { get; set; }
+
+        /// <summary>
         /// The network name where the load balancer (e.g., Traefik) is running.
         /// Services with web hosts will be attached to this network for reverse proxy discovery.
         /// Default: "traefik-public"

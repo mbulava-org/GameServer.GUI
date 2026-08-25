@@ -328,4 +328,63 @@ public sealed class GameServerSpecBuilderTests
 
         return new GameServerSpecBuilder(networkOptions ?? NewNetworkOptions()).Build(request, resolution);
     }
+
+    [Fact]
+    public void BuildCreateParameters_WhenDNS1Configured_SetsNameserversOnDNSConfig()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions
+        {
+            NetworkName = "gameserver_overlay",
+            DNS1 = "10.0.0.2"
+        });
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-dns",
+            ServiceName = "srv-dns-svc",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "minecraft" },
+            Revision = new GameTypeRevision { Id = 1, ImageReference = "repo/img:tag" },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        Assert.NotNull(parameters.Service?.TaskTemplate?.ContainerSpec?.DNSConfig);
+        Assert.Single(parameters.Service!.TaskTemplate!.ContainerSpec!.DNSConfig.Nameservers);
+        Assert.Equal("10.0.0.2", parameters.Service.TaskTemplate.ContainerSpec.DNSConfig.Nameservers[0]);
+    }
+
+    [Fact]
+    public void BuildCreateParameters_WhenDNS1NotConfigured_DNSConfigIsNull()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions
+        {
+            NetworkName = "gameserver_overlay",
+            DNS1 = null
+        });
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-nodns",
+            ServiceName = "srv-nodns-svc",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "minecraft" },
+            Revision = new GameTypeRevision { Id = 1, ImageReference = "repo/img:tag" },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        Assert.Null(parameters.Service?.TaskTemplate?.ContainerSpec?.DNSConfig);
+    }
 }
+

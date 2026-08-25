@@ -365,6 +365,12 @@ public sealed class GameServerDeploymentService(
             {
                 return true;
             }
+
+            // DNSConfig
+            if (!DNSConfigEqual(existingContainer.DNSConfig, desiredContainer.DNSConfig))
+            {
+                return true;
+            }
         }
 
         // 2. Networks on TaskTemplate
@@ -556,4 +562,16 @@ public sealed class GameServerDeploymentService(
             .Select(volume => mountTypeHandlerFactory.GetHandler(volume.MountType).BuildMount(volume))
             .ToList();
     }
+
+    private static bool DNSConfigEqual(DNSConfig? a, DNSConfig? b)
+    {
+        if (a is null && b is null) return true;
+        if (a is null || b is null) return false;
+
+        var nsA = a.Nameservers ?? (IList<string>)Array.Empty<string>();
+        var nsB = b.Nameservers ?? (IList<string>)Array.Empty<string>();
+
+        return nsA.SequenceEqual(nsB, StringComparer.OrdinalIgnoreCase);
+    }
 }
+

@@ -83,6 +83,15 @@ public sealed class GameServerSpecBuilder
             });
         }
 
+        DNSConfig? dnsConfig = null;
+        if (!string.IsNullOrWhiteSpace(_networkOptions.DNS1))
+        {
+            dnsConfig = new DNSConfig
+            {
+                Nameservers = new List<string> { _networkOptions.DNS1.Trim() }
+            };
+        }
+
         return new ServiceCreateParameters
         {
             Service = new ServiceSpec
@@ -97,7 +106,8 @@ public sealed class GameServerSpecBuilder
                         Labels = labels,
                         Env = environment.Select(entry => $"{entry.Key}={entry.Value}").ToList(),
                         Mounts = volumes.Select(ToMount).ToList(),
-                        TTY = revision.EnableTTY
+                        TTY = revision.EnableTTY,
+                        DNSConfig = dnsConfig
                     },
                     Networks = networks
                         .Select(network => new NetworkAttachmentConfig { Target = network.Name })
