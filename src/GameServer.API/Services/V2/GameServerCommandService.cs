@@ -92,7 +92,7 @@ public sealed class GameServerCommandService(
         var updated = await repository.UpdateAsync(MapToModel(normalizedRequest, existing.Id)).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (existing.LastDeployedAt.HasValue)
+        if (existing.LastDeployedAt.HasValue || string.Equals(existing.Status, "Running", StringComparison.OrdinalIgnoreCase))
         {
             await deploymentService.UpdateDeploymentAsync(updated.ServerId, volumeBindingLayout: normalizedRequest.VolumeBindingLayout, cancellationToken: cancellationToken).ConfigureAwait(false);
         }

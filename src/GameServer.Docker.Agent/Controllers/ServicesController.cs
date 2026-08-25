@@ -49,7 +49,11 @@ namespace GameServer.Docker.Agent.Controllers
                                 Image = request.Image,
                                 Labels = request.Labels,
                                 Env = request.Env.Select(kv => $"{kv.Key}={kv.Value}").ToList(),
-                                Mounts = request.Mounts.Select(MapMountConfig).ToList()
+                                Mounts = request.Mounts.Select(MapMountConfig).ToList(),
+                                TTY = request.TTY ?? false,
+                                DNSConfig = request.DnsNameservers != null && request.DnsNameservers.Count > 0
+                                    ? new DNSConfig { Nameservers = request.DnsNameservers }
+                                    : null
                             },
                             Resources = request.Resources != null ? new ResourceRequirements
                             {
@@ -189,6 +193,13 @@ namespace GameServer.Docker.Agent.Controllers
                 if (request.TTY.HasValue)
                 {
                     currentSpec.TaskTemplate.ContainerSpec.TTY = request.TTY.Value;
+                }
+
+                if (request.DnsNameservers != null)
+                {
+                    currentSpec.TaskTemplate.ContainerSpec.DNSConfig = request.DnsNameservers.Count > 0
+                        ? new DNSConfig { Nameservers = request.DnsNameservers }
+                        : null;
                 }
 
                 if (request.Replicas.HasValue)

@@ -15,6 +15,8 @@ namespace GameServer.Docker.Agent.Models
         public RestartPolicyConfig? RestartPolicy { get; set; }
         public PlacementConfig? Placement { get; set; }
         public List<string> Networks { get; set; } = new();
+        public bool? TTY { get; set; }
+        public List<string>? DnsNameservers { get; set; }
     }
 
     public class PortMapping
@@ -72,6 +74,7 @@ namespace GameServer.Docker.Agent.Models
         public ulong? Replicas { get; set; }
         public List<string>? Networks { get; set; }
         public bool? TTY { get; set; }
+        public List<string>? DnsNameservers { get; set; }
     }
 
     /// <summary>

@@ -51,7 +51,9 @@ namespace GameServer.API.Services
                 Resources = ConvertResources(parameters.Service.TaskTemplate.Resources),
                 RestartPolicy = ConvertRestartPolicy(parameters.Service.TaskTemplate.RestartPolicy),
                 Placement = ConvertPlacement(parameters.Service.TaskTemplate.Placement),
-                Networks = parameters.Service.TaskTemplate.Networks?.Select(n => n.Target).ToList() ?? new List<string>()
+                Networks = parameters.Service.TaskTemplate.Networks?.Select(n => n.Target).ToList() ?? new List<string>(),
+                TTY = parameters.Service.TaskTemplate.ContainerSpec.TTY,
+                DnsNameservers = parameters.Service.TaskTemplate.ContainerSpec.DNSConfig?.Nameservers?.ToList()
             };
 
             var httpClient = _httpClientFactory.CreateClient();
@@ -114,7 +116,8 @@ namespace GameServer.API.Services
                 ForceUpdate = parameters.Service.TaskTemplate?.ForceUpdate > 0,
                 Replicas = (ulong?)parameters.Service.Mode?.Replicated?.Replicas,
                 Networks = parameters.Service.TaskTemplate?.Networks?.Select(n => n.Target).ToList(),
-                TTY = parameters.Service.TaskTemplate?.ContainerSpec?.TTY
+                TTY = parameters.Service.TaskTemplate?.ContainerSpec?.TTY,
+                DnsNameservers = parameters.Service.TaskTemplate?.ContainerSpec?.DNSConfig?.Nameservers?.ToList()
             };
 
             var httpClient = _httpClientFactory.CreateClient();
