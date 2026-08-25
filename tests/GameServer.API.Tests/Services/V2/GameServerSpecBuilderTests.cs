@@ -247,7 +247,7 @@ public sealed class GameServerSpecBuilderTests
 
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.enable" && kv.Value == "true");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.docker.network" && kv.Value == "traefik-public");
-        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.rule" && kv.Value == "PathRegEx(`^/map/abc123(/.*)?$`)");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.rule" && kv.Value == "PathRegexp(`^/map/abc123(/.*)?$`)");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.entrypoints" && kv.Value == "websecure");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls" && kv.Value == "true");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls.certresolver" && kv.Value == "myresolver");

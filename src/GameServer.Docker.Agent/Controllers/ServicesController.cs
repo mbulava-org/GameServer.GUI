@@ -165,6 +165,32 @@ namespace GameServer.Docker.Agent.Controllers
                     currentSpec.TaskTemplate.ForceUpdate = service.Spec.TaskTemplate.ForceUpdate + 1;
                 }
 
+                if (request.Networks != null)
+                {
+                    currentSpec.TaskTemplate.Networks = request.Networks
+                        .Select(n => new NetworkAttachmentConfig { Target = n })
+                        .ToList();
+                }
+
+                if (request.Ports != null)
+                {
+                    currentSpec.EndpointSpec ??= new EndpointSpec();
+                    currentSpec.EndpointSpec.Ports = request.Ports
+                        .Select(p => new PortConfig
+                        {
+                            TargetPort = p.TargetPort,
+                            PublishedPort = p.PublishedPort ?? 0,
+                            Protocol = p.Protocol,
+                            PublishMode = p.PublishMode ?? "ingress"
+                        })
+                        .ToList();
+                }
+
+                if (request.TTY.HasValue)
+                {
+                    currentSpec.TaskTemplate.ContainerSpec.TTY = request.TTY.Value;
+                }
+
                 if (request.Replicas.HasValue)
                 {
                     currentSpec.Mode ??= new ServiceMode();

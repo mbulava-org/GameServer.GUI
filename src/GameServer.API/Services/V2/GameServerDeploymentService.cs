@@ -184,8 +184,25 @@ public sealed class GameServerDeploymentService(
 
         if (existing != null)
         {
-            var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
-            var updateParams = BuildUpdateParameters(server, gameType, revision, server.Volumes, null);
+            var saveRequest = CreateSaveRequest(server, "standard");
+            var resolutionContext = await validationService.ResolveAsync(saveRequest, cancellationToken).ConfigureAwait(false);
+            var desiredCreateParameters = specBuilder.BuildCreateParameters(saveRequest, resolutionContext);
+            var desiredServiceSpec = desiredCreateParameters.Service;
+
+            if (desiredServiceSpec.TaskTemplate?.ContainerSpec is not null)
+            {
+                desiredServiceSpec.TaskTemplate.ContainerSpec.Mounts = BuildDockerMounts(server.Volumes);
+            }
+
+            if (desiredServiceSpec.TaskTemplate != null)
+            {
+                desiredServiceSpec.TaskTemplate.ForceUpdate = (ulong)DateTime.UtcNow.Ticks;
+            }
+
+            var updateParams = new ServiceUpdateParameters
+            {
+                Service = desiredServiceSpec
+            };
             await serviceOperations.UpdateServiceAsync(server.ServiceName, updateParams, cancellationToken).ConfigureAwait(false);
         }
         else
@@ -216,7 +233,218 @@ public sealed class GameServerDeploymentService(
 
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
 
-        var saveRequest = new SaveGameServerRequestDto
+        var layout = volumeBindingLayout ?? "standard";
+        var saveRequest = CreateSaveRequest(server, layout);
+
+        var resolutionContext = await validationService.ResolveAsync(saveRequest, cancellationToken).ConfigureAwait(false);
+
+        var newResolutions = await ResolveNewServerVolumesAsync(server, gameType, revision, layout, cancellationToken).ConfigureAwait(false);
+        var newVolumes = newResolutions.Select(r => r.Snapshot with { IsProvisioned = true }).ToList();
+        var allVolumes = server.Volumes.Concat(newVolumes).ToList();
+
+        // Provision newly introduced volumes before updating the service.
+        await ProvisionVolumesAsync(newResolutions, cancellationToken).ConfigureAwait(false);
+
+        // Build the desired parameters using GameServerSpecBuilder as single source of truth for Labels, Networks, Env, Ports, TTY, Mounts
+        var desiredCreateParameters = specBuilder.BuildCreateParameters(saveRequest, resolutionContext);
+        var desiredServiceSpec = desiredCreateParameters.Service;
+
+        if (!string.IsNullOrWhiteSpace(imageReference) && desiredServiceSpec.TaskTemplate?.ContainerSpec is not null)
+        {
+            desiredServiceSpec.TaskTemplate.ContainerSpec.Image = imageReference;
+        }
+
+        if (desiredServiceSpec.TaskTemplate?.ContainerSpec is not null)
+        {
+            desiredServiceSpec.TaskTemplate.ContainerSpec.Mounts = BuildDockerMounts(allVolumes);
+        }
+
+        var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var existingService = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
+
+        if (existingService != null)
+        {
+            if (HasSpecChanged(existingService.Spec, desiredServiceSpec))
+            {
+                var updateParams = new ServiceUpdateParameters
+                {
+                    Service = desiredServiceSpec
+                };
+                if (updateParams.Service.TaskTemplate != null)
+                {
+                    updateParams.Service.TaskTemplate.ForceUpdate = (ulong)DateTime.UtcNow.Ticks;
+                }
+                await serviceOperations.UpdateServiceAsync(server.ServiceName, updateParams, cancellationToken).ConfigureAwait(false);
+                logger.LogInformation("Updated V2 GameServer {ServerId} service deployment with new spec", serverId);
+            }
+            else
+            {
+                logger.LogInformation("V2 GameServer {ServerId} service deployment is already up to date; skipping Docker service update", serverId);
+            }
+        }
+        else
+        {
+            var response = await serviceOperations.CreateServiceAsync(desiredCreateParameters, cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Created V2 GameServer {ServerId} service deployment {ServiceId}", serverId, response.ID);
+        }
+
+        server = server with
+        {
+            Status = "Running",
+            LastDeployedAt = DateTime.UtcNow,
+            Volumes = allVolumes
+        };
+        await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+
+        logger.LogInformation("Updated V2 GameServer {ServerId} service deployment", serverId);
+    }
+
+    /// <summary>
+    /// Compares an existing Docker Swarm ServiceSpec with a desired ServiceSpec to determine
+    /// if Labels, Networks, Environment Variables, Ports, Mounts, Image, or TTY have changed.
+    /// </summary>
+    public static bool HasSpecChanged(ServiceSpec? existing, ServiceSpec? desired)
+    {
+        if (existing is null && desired is null)
+        {
+            return false;
+        }
+
+        if (existing is null || desired is null)
+        {
+            return true;
+        }
+
+        // 1. Labels on ServiceSpec
+        if (!DictionariesEqual(existing.Labels, desired.Labels))
+        {
+            return true;
+        }
+
+        var existingContainer = existing.TaskTemplate?.ContainerSpec;
+        var desiredContainer = desired.TaskTemplate?.ContainerSpec;
+
+        if (existingContainer is null != (desiredContainer is null))
+        {
+            return true;
+        }
+
+        if (existingContainer is not null && desiredContainer is not null)
+        {
+            // Image
+            if (!string.Equals(existingContainer.Image, desiredContainer.Image, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            // TTY
+            if (existingContainer.TTY != desiredContainer.TTY)
+            {
+                return true;
+            }
+
+            // ContainerSpec Labels
+            if (!DictionariesEqual(existingContainer.Labels, desiredContainer.Labels))
+            {
+                return true;
+            }
+
+            // Environment variables
+            if (!EnvListsEqual(existingContainer.Env, desiredContainer.Env))
+            {
+                return true;
+            }
+
+            // Mounts
+            if (!MountsEqual(existingContainer.Mounts, desiredContainer.Mounts))
+            {
+                return true;
+            }
+        }
+
+        // 2. Networks on TaskTemplate
+        if (!NetworksEqual(existing.TaskTemplate?.Networks, desired.TaskTemplate?.Networks))
+        {
+            return true;
+        }
+
+        // 3. EndpointSpec Ports
+        if (!PortsEqual(existing.EndpointSpec?.Ports, desired.EndpointSpec?.Ports))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool DictionariesEqual(IDictionary<string, string>? a, IDictionary<string, string>? b)
+    {
+        var countA = a?.Count ?? 0;
+        var countB = b?.Count ?? 0;
+        if (countA == 0 && countB == 0) return true;
+        if (countA != countB || a is null || b is null) return false;
+
+        foreach (var (key, val) in a)
+        {
+            if (!b.TryGetValue(key, out var bVal) || !string.Equals(val, bVal, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool EnvListsEqual(IList<string>? a, IList<string>? b)
+    {
+        var countA = a?.Count ?? 0;
+        var countB = b?.Count ?? 0;
+        if (countA == 0 && countB == 0) return true;
+        if (countA != countB || a is null || b is null) return false;
+
+        var setA = new HashSet<string>(a, StringComparer.Ordinal);
+        var setB = new HashSet<string>(b, StringComparer.Ordinal);
+        return setA.SetEquals(setB);
+    }
+
+    private static bool NetworksEqual(IList<NetworkAttachmentConfig>? a, IList<NetworkAttachmentConfig>? b)
+    {
+        var countA = a?.Count ?? 0;
+        var countB = b?.Count ?? 0;
+        if (countA == 0 && countB == 0) return true;
+        if (countA != countB || a is null || b is null) return false;
+
+        var setA = a.Select(n => n.Target ?? string.Empty).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var setB = b.Select(n => n.Target ?? string.Empty).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return setA.SetEquals(setB);
+    }
+
+    private static bool MountsEqual(IList<Mount>? a, IList<Mount>? b)
+    {
+        var countA = a?.Count ?? 0;
+        var countB = b?.Count ?? 0;
+        if (countA == 0 && countB == 0) return true;
+        if (countA != countB || a is null || b is null) return false;
+
+        var listA = a.Select(m => $"{m.Type}|{m.Source}|{m.Target}|{m.ReadOnly}").ToHashSet(StringComparer.Ordinal);
+        var listB = b.Select(m => $"{m.Type}|{m.Source}|{m.Target}|{m.ReadOnly}").ToHashSet(StringComparer.Ordinal);
+        return listA.SetEquals(listB);
+    }
+
+    private static bool PortsEqual(IList<PortConfig>? a, IList<PortConfig>? b)
+    {
+        var countA = a?.Count ?? 0;
+        var countB = b?.Count ?? 0;
+        if (countA == 0 && countB == 0) return true;
+        if (countA != countB || a is null || b is null) return false;
+
+        var listA = a.Select(p => $"{p.Protocol?.ToLowerInvariant()}|{p.TargetPort}|{p.PublishedPort}|{p.PublishMode}").ToHashSet(StringComparer.Ordinal);
+        var listB = b.Select(p => $"{p.Protocol?.ToLowerInvariant()}|{p.TargetPort}|{p.PublishedPort}|{p.PublishMode}").ToHashSet(StringComparer.Ordinal);
+        return listA.SetEquals(listB);
+    }
+
+    private static SaveGameServerRequestDto CreateSaveRequest(GameServerModel server, string volumeBindingLayout)
+    {
+        return new SaveGameServerRequestDto
         {
             ServerId = server.ServerId,
             Name = server.Name,
@@ -224,7 +452,7 @@ public sealed class GameServerDeploymentService(
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = server.Status,
-            VolumeBindingLayout = volumeBindingLayout ?? "standard",
+            VolumeBindingLayout = volumeBindingLayout,
             Ports = server.Ports
                 .Select(p => new GameServerPortDto
                 {
@@ -241,38 +469,6 @@ public sealed class GameServerDeploymentService(
                 })
                 .ToList()
         };
-
-        var resolutionContext = await validationService.ResolveAsync(saveRequest, cancellationToken).ConfigureAwait(false);
-
-        var layout = volumeBindingLayout ?? "standard";
-        var newResolutions = await ResolveNewServerVolumesAsync(server, gameType, revision, layout, cancellationToken).ConfigureAwait(false);
-        var newVolumes = newResolutions.Select(r => r.Snapshot with { IsProvisioned = true }).ToList();
-        var allVolumes = server.Volumes.Concat(newVolumes).ToList();
-
-        // Provision newly introduced volumes before updating the service.
-        await ProvisionVolumesAsync(newResolutions, cancellationToken).ConfigureAwait(false);
-
-        var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (existingServices.Any(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase)))
-        {
-            var parameters = BuildUpdateParameters(server, gameType, revision, allVolumes, imageReference, resolutionContext);
-            await serviceOperations.UpdateServiceAsync(server.ServiceName, parameters, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            var createParams = specBuilder.BuildCreateParameters(saveRequest, resolutionContext);
-            await serviceOperations.CreateServiceAsync(createParams, cancellationToken).ConfigureAwait(false);
-        }
-
-        server = server with
-        {
-            Status = "Running",
-            LastDeployedAt = DateTime.UtcNow,
-            Volumes = allVolumes
-        };
-        await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
-
-        logger.LogInformation("Updated V2 GameServer {ServerId} service deployment", serverId);
     }
 
     private async Task<List<VolumeSetupResolution>> ResolveNewServerVolumesAsync(
@@ -347,47 +543,6 @@ public sealed class GameServerDeploymentService(
         }
 
         return match;
-    }
-
-    private ServiceUpdateParameters BuildUpdateParameters(
-        GameServerModel server,
-        GameType gameType,
-        GameTypeRevision revision,
-        IReadOnlyList<GameServerVolume> volumes,
-        string? imageReference,
-        GameServerResolutionContext? resolutionContext = null)
-    {
-        var image = imageReference 
-            ?? (!string.IsNullOrWhiteSpace(revision.VersionTag) ? $"{revision.ImageReference}:{revision.VersionTag}" : revision.ImageReference);
-
-        var env = BuildSettingValues(server, gameType, revision)
-            .Where(kv => kv.Value != null)
-            .Select(kv => $"{kv.Key}={kv.Value}")
-            .ToList();
-
-        return new ServiceUpdateParameters
-        {
-            Service = new ServiceSpec
-            {
-                Name = server.ServiceName,
-                Mode = new ServiceMode
-                {
-                    Replicated = new ReplicatedService { Replicas = 1 }
-                },
-                TaskTemplate = new TaskSpec
-                {
-                    ContainerSpec = new ContainerSpec
-                    {
-                        Image = image,
-                        Env = env,
-                        Mounts = BuildDockerMounts(volumes),
-                        TTY = revision.EnableTTY
-                    },
-                    ForceUpdate = (ulong)DateTime.UtcNow.Ticks,
-                    Networks = [new NetworkAttachmentConfig { Target = "gameserver_overlay" }]
-                }
-            }
-        };
     }
 
     private List<Mount> BuildDockerMounts(IReadOnlyList<GameServerVolume> volumes)

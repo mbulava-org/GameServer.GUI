@@ -108,10 +108,13 @@ namespace GameServer.API.Services
                 Env = parameters.Service.TaskTemplate?.ContainerSpec?.Env != null
                     ? ParseEnvironmentVariables(parameters.Service.TaskTemplate.ContainerSpec.Env)
                     : null,
+                Ports = ConvertPortConfigs(parameters.Service.EndpointSpec?.Ports),
                 Mounts = ConvertMounts(parameters.Service.TaskTemplate?.ContainerSpec?.Mounts),
                 Resources = ConvertResources(parameters.Service.TaskTemplate?.Resources),
                 ForceUpdate = parameters.Service.TaskTemplate?.ForceUpdate > 0,
-                Replicas = (ulong?)parameters.Service.Mode?.Replicated?.Replicas
+                Replicas = (ulong?)parameters.Service.Mode?.Replicated?.Replicas,
+                Networks = parameters.Service.TaskTemplate?.Networks?.Select(n => n.Target).ToList(),
+                TTY = parameters.Service.TaskTemplate?.ContainerSpec?.TTY
             };
 
             var httpClient = _httpClientFactory.CreateClient();
