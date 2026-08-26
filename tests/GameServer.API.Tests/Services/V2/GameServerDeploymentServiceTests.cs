@@ -79,6 +79,18 @@ public class GameServerDeploymentServiceTests
     }
 
     [Fact]
+    public void HasSpecChanged_WhenUserDiffers_ShouldReturnTrue()
+    {
+        var spec1 = CreateSampleSpec("val1", "gameserver_overlay");
+        var spec2 = CreateSampleSpec("val1", "gameserver_overlay");
+        spec2.TaskTemplate.ContainerSpec.User = "1001:1001";
+
+        var changed = GameServerDeploymentService.HasSpecChanged(spec1, spec2);
+
+        Assert.True(changed);
+    }
+
+    [Fact]
     public async Task UpdateDeploymentAsync_WhenSpecMatchesExisting_ShouldSkipDockerUpdate()
     {
         // Arrange

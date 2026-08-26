@@ -254,12 +254,13 @@ public sealed class GameServerSpecBuilderTests
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.tls.certresolver" && kv.Value == "myresolver");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.routers.minecraft-abc123-dynmap.middlewares" && kv.Value == "minecraft-abc123-dynmap-rewrite,minecraft-abc123-dynmap-body-rewrite");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-rewrite.replacepathregex.regex" && kv.Value == "^/map/abc123/?(.*)");
-        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-rewrite.replacepathregex.replacement" && kv.Value == "/$1");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.lastModified" && kv.Value == "true");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].regex" && kv.Value.Contains("href|src|action"));
-        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].replacement" && kv.Value == "$1/map/abc123/");
-        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[1].regex" && kv.Value.Contains("url"));
-        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[1].replacement" && kv.Value == "$1/map/abc123/");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[0].replacement" && kv.Value == "$1/map/abc123/$2");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[1].regex" && kv.Value.Contains("[\"']"));
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[1].replacement" && kv.Value == "$1/map/abc123/$2");
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[2].regex" && kv.Value.Contains("url"));
+        Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.middlewares.minecraft-abc123-dynmap-body-rewrite.plugin.rewritebody.rewrites[2].replacement" && kv.Value == "$1/map/abc123/$2");
         Assert.Contains(preview.Labels, kv => kv.Key == "traefik.http.services.minecraft-abc123-dynmap.loadbalancer.server.port" && kv.Value == "8123");
     }
 
@@ -386,5 +387,45 @@ public sealed class GameServerSpecBuilderTests
 
         Assert.Null(parameters.Service?.TaskTemplate?.ContainerSpec?.DNSConfig);
     }
+
+    [Fact]
+    public void BuildCreateParameters_When7DaysToDie_SetsContainerUserFromPuidAndPgid()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-7dtd",
+            ServiceName = "7dtd-srv-7dtd",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "7DaysToDie" },
+            Revision = new GameTypeRevision
+            {
+                Id = 1,
+                ImageReference = "vinanrra/7dtd-server:latest",
+                SettingDefinitions =
+                [
+                    new GameTypeSettingDefinition { SettingKey = "PUID", DefaultValue = "1000" },
+                    new GameTypeSettingDefinition { SettingKey = "PGID", DefaultValue = "1000" }
+                ]
+            },
+            EffectiveSettings = new Dictionary<string, string?>
+            {
+                ["PUID"] = "1001",
+                ["PGID"] = "1002"
+            },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        Assert.NotNull(parameters.Service?.TaskTemplate?.ContainerSpec);
+        Assert.Equal("1001:1002", parameters.Service!.TaskTemplate!.ContainerSpec!.User);
+    }
 }
+
 

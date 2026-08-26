@@ -53,7 +53,8 @@ namespace GameServer.Docker.Agent.Controllers
                                 TTY = request.TTY ?? false,
                                 DNSConfig = request.DnsNameservers != null && request.DnsNameservers.Count > 0
                                     ? new DNSConfig { Nameservers = request.DnsNameservers }
-                                    : null
+                                    : null,
+                                User = request.User
                             },
                             Resources = request.Resources != null ? new ResourceRequirements
                             {
@@ -200,6 +201,11 @@ namespace GameServer.Docker.Agent.Controllers
                     currentSpec.TaskTemplate.ContainerSpec.DNSConfig = request.DnsNameservers.Count > 0
                         ? new DNSConfig { Nameservers = request.DnsNameservers }
                         : null;
+                }
+
+                if (request.User != null)
+                {
+                    currentSpec.TaskTemplate.ContainerSpec.User = string.IsNullOrWhiteSpace(request.User) ? null : request.User;
                 }
 
                 if (request.Replicas.HasValue)

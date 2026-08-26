@@ -92,6 +92,22 @@ public sealed class GameServerSpecBuilder
             };
         }
 
+        string? containerUser = null;
+        if (string.Equals(resolution.GameType?.Key, "7DaysToDie", StringComparison.OrdinalIgnoreCase))
+        {
+            var puid = environment.FirstOrDefault(e => string.Equals(e.Key, "PUID", StringComparison.OrdinalIgnoreCase))?.Value;
+            var pgid = environment.FirstOrDefault(e => string.Equals(e.Key, "PGID", StringComparison.OrdinalIgnoreCase))?.Value;
+
+            if (!string.IsNullOrWhiteSpace(puid) && !string.IsNullOrWhiteSpace(pgid))
+            {
+                containerUser = $"{puid}:{pgid}";
+            }
+            else if (!string.IsNullOrWhiteSpace(puid))
+            {
+                containerUser = puid;
+            }
+        }
+
         return new ServiceCreateParameters
         {
             Service = new ServiceSpec
@@ -107,7 +123,8 @@ public sealed class GameServerSpecBuilder
                         Env = environment.Select(entry => $"{entry.Key}={entry.Value}").ToList(),
                         Mounts = volumes.Select(ToMount).ToList(),
                         TTY = revision.EnableTTY,
-                        DNSConfig = dnsConfig
+                        DNSConfig = dnsConfig,
+                        User = containerUser
                     },
                     Networks = networks
                         .Select(network => new NetworkAttachmentConfig { Target = network.Name })
@@ -307,13 +324,17 @@ public sealed class GameServerSpecBuilder
                     var plugin = _networkOptions.ResponseBodyRewritePluginName;
                     labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.lastModified"] = "true";
 
-                    // Rewrite 0: HTML attributes (href, src, action, data-url, data-src, srcset, url)
-                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].regex"] = $"((?:href|src|action|data-url|data-src|srcset|url)=[\"'])/(?!([a-zA-Z]+://|{Regex.Escape(expandedSegment)}/))";
-                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].replacement"] = $"$1/{expandedSegment}/";
+                    // Rewrite 0: HTML attributes with path (href, src, action, data-url, data-src, srcset, url)
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].regex"] = $"((?:href|src|action|data-url|data-src|srcset|url)=[\"'])/([^/\"'\\s>][^\"'\\s>]*)";
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[0].replacement"] = $"$1/{expandedSegment}/$2";
 
-                    // Rewrite 1: CSS url(...) references
-                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[1].regex"] = $"(url\\(\\s*[\"']?)/(?!([a-zA-Z]+://|{Regex.Escape(expandedSegment)}/))";
-                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[1].replacement"] = $"$1/{expandedSegment}/";
+                    // Rewrite 1: HTML attributes with root slash only (href="/", action="/", etc.)
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[1].regex"] = $"((?:href|src|action|data-url|data-src|srcset|url)=[\"'])/([\"'])";
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[1].replacement"] = $"$1/{expandedSegment}/$2";
+
+                    // Rewrite 2: CSS url(...) references
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[2].regex"] = $"(url\\(\\s*[\"']?)/([^/\"'\\s\\)]*)";
+                    labels[$"traefik.http.middlewares.{bodyRewriteMiddlewareName}.plugin.{plugin}.rewrites[2].replacement"] = $"$1/{expandedSegment}/$2";
                 }
 
                 // Router configuration on websecure / https

@@ -17,6 +17,7 @@ namespace GameServer.Docker.Agent.Models
         public List<string> Networks { get; set; } = new();
         public bool? TTY { get; set; }
         public List<string>? DnsNameservers { get; set; }
+        public string? User { get; set; }
     }
 
     public class PortMapping
@@ -75,6 +76,7 @@ namespace GameServer.Docker.Agent.Models
         public List<string>? Networks { get; set; }
         public bool? TTY { get; set; }
         public List<string>? DnsNameservers { get; set; }
+        public string? User { get; set; }
     }
 
     /// <summary>

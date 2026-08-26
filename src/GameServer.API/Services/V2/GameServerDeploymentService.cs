@@ -366,6 +366,12 @@ public sealed class GameServerDeploymentService(
                 return true;
             }
 
+            // User
+            if (!string.Equals(existingContainer.User, desiredContainer.User, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
             // DNSConfig
             if (!DNSConfigEqual(existingContainer.DNSConfig, desiredContainer.DNSConfig))
             {
