@@ -126,4 +126,109 @@ public class GameServerResourceCollectorServiceTests
 
         Assert.True(flushed, "StopAsync should have flushed the remaining buffered metrics to the repository.");
     }
+
+    [Fact]
+    public async Task TriggerImmediateCollectionAsync_WhenServerIsStopped_ShouldCacheUsageButNotBufferForDatabase()
+    {
+        var services = new ServiceCollection();
+        var mockMonitor = new Mock<IServerResourceMonitor>();
+        var mockRepo = new Mock<IGameServerResourceUtilizationRepository>();
+        var readinessGate = new DatabaseReadinessGate();
+        readinessGate.MarkReady();
+
+        var stoppedUsage = new ServerResourceUsage
+        {
+            ServerId = "srv-stopped",
+            Timestamp = DateTime.UtcNow,
+            RealTimeStats = null,
+            DesiredReplicas = 0,
+            RunningReplicas = 0
+        };
+
+        mockMonitor
+            .Setup(m => m.GetSnapshotAsync("srv-stopped", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(stoppedUsage);
+
+        services.AddScoped(_ => mockMonitor.Object);
+        services.AddScoped(_ => mockRepo.Object);
+        var serviceProvider = services.BuildServiceProvider();
+
+        var collector = new GameServerResourceCollectorService(
+            serviceProvider,
+            readinessGate,
+            Mock.Of<ILogger<GameServerResourceCollectorService>>());
+
+        await collector.TriggerImmediateCollectionAsync("srv-stopped");
+
+        var cached = collector.GetCachedUsage("srv-stopped");
+        Assert.NotNull(cached);
+        Assert.Equal("srv-stopped", cached!.ServerId);
+        Assert.Equal(0, cached.RunningReplicas);
+
+        var batchCalled = false;
+        mockRepo
+            .Setup(r => r.BatchInsertAsync(It.IsAny<IEnumerable<GameServerResourceUtilizationEntity>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<GameServerResourceUtilizationEntity>, CancellationToken>((recs, _) =>
+            {
+                if (recs.Any())
+                {
+                    batchCalled = true;
+                }
+            })
+            .Returns(Task.CompletedTask);
+
+        await collector.FlushAsync();
+
+        Assert.False(batchCalled, "Stopped servers without active container stats should not be saved to the database.");
+    }
+
+    [Fact]
+    public async Task TriggerImmediateCollectionAsync_WhenNoRealTimeStats_ShouldNotBufferForDatabase()
+    {
+        var services = new ServiceCollection();
+        var mockMonitor = new Mock<IServerResourceMonitor>();
+        var mockRepo = new Mock<IGameServerResourceUtilizationRepository>();
+        var readinessGate = new DatabaseReadinessGate();
+        readinessGate.MarkReady();
+
+        var emptyMetricsUsage = new ServerResourceUsage
+        {
+            ServerId = "srv-no-stats",
+            Timestamp = DateTime.UtcNow,
+            RealTimeStats = null,
+            DesiredReplicas = 1,
+            RunningReplicas = 1
+        };
+
+        mockMonitor
+            .Setup(m => m.GetSnapshotAsync("srv-no-stats", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(emptyMetricsUsage);
+
+        services.AddScoped(_ => mockMonitor.Object);
+        services.AddScoped(_ => mockRepo.Object);
+        var serviceProvider = services.BuildServiceProvider();
+
+        var collector = new GameServerResourceCollectorService(
+            serviceProvider,
+            readinessGate,
+            Mock.Of<ILogger<GameServerResourceCollectorService>>());
+
+        await collector.TriggerImmediateCollectionAsync("srv-no-stats");
+
+        var batchCalled = false;
+        mockRepo
+            .Setup(r => r.BatchInsertAsync(It.IsAny<IEnumerable<GameServerResourceUtilizationEntity>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<GameServerResourceUtilizationEntity>, CancellationToken>((recs, _) =>
+            {
+                if (recs.Any())
+                {
+                    batchCalled = true;
+                }
+            })
+            .Returns(Task.CompletedTask);
+
+        await collector.FlushAsync();
+
+        Assert.False(batchCalled, "Server without real-time stats should not be saved to the database.");
+    }
 }

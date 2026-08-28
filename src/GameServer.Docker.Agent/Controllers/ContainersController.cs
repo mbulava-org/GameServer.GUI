@@ -52,7 +52,8 @@ namespace GameServer.Docker.Agent.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting stats for container {ContainerId}", id);
+                // Log as warning to avoid noisy error logs when stats collection fails
+                _logger.LogWarning(ex, "Error getting stats for container {ContainerId}", id);
                 return Problem(detail: ex.Message, statusCode: 500);
             }
         }

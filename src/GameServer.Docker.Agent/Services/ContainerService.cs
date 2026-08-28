@@ -26,118 +26,48 @@ namespace GameServer.Docker.Agent.Services
         {
             _logger.LogDebug("Getting stats for container {ContainerId}", containerId);
 
-            // Use Progress to capture stats response
-            //var statsResponse = new TaskCompletionSource<ContainerStatsResponse>();
-            var response = new ContainerStatsResponse();
-            var progress = new Progress<ContainerStatsResponse>(stats =>
+            var tcs = new TaskCompletionSource<DockerStatsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var progress = new SyncProgress<DockerStatsResponse>(stats =>
             {
                 _logger.LogTrace("Received stats from Docker for container {ContainerId}", containerId);
-                response = stats;
+                tcs.TrySetResult(stats);
             });
-            progress.ProgressChanged += (s, e) => {
-                _logger.LogTrace("Received progresschanged from Docker for container {ContainerId}", containerId);
-                response = e;
-            };
+
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            // Set a timeout to prevent hanging forever
             cts.CancelAfter(TimeSpan.FromSeconds(DefaultStatsTimeoutSeconds));
 
             try
             {
                 _logger.LogTrace("Starting stats collection for container {ContainerId}", containerId);
-                
-                //// Start the stats stream (non-streaming, single snapshot)
-                //var statsTask = _dockerClient.Containers.GetContainerStatsAsync(
-                //    containerId,
-                //    new ContainerStatsParameters { Stream = false, OneShot = true },
-                //    progress,
-                //    cts.Token);
 
-                //// Wait for either the stats response or the task to complete
-                //var completedTask = await Task.WhenAny(statsResponse.Task, statsTask);
-                
-                //// If the Docker task completed but we didn't get stats, something went wrong
-                //if (completedTask == statsTask)
-                //{
-                //    await statsTask; // This will throw if there was an error
-                    
-                //    // If we get here, the task completed but no stats were received
-                //    _logger.LogWarning("Docker stats task completed for container {ContainerId} but no stats were received", containerId);
-                //    throw new InvalidOperationException($"No stats received for container {containerId}");
-                //}
-
-                await _dockerClient.Containers.GetContainerStatsAsync(
+                var statsTask = _dockerClient.Containers.GetContainerStatsAsync(
                     containerId,
                     new ContainerStatsParameters { Stream = false, OneShot = true },
                     progress,
-                    default);
+                    cts.Token);
 
-                // Get the stats (will be ready since statsResponse.Task completed)
-                var stats = response;
-
-                // Parse and return formatted stats
-                var cpuDelta = (stats.CPUStats.CPUUsage.TotalUsage) - (stats.PreCPUStats.CPUUsage.TotalUsage);
-                var systemDelta = (stats.CPUStats.SystemUsage ?? 0) - (stats.PreCPUStats.SystemUsage ?? 0);
-                var cpuPercent = 0.0;
-
-                if (systemDelta > 0 && cpuDelta > 0)
+                var completedTask = await Task.WhenAny(tcs.Task, statsTask);
+                if (completedTask == tcs.Task)
                 {
-                    cpuPercent = (double)cpuDelta / systemDelta * (stats.CPUStats.CPUUsage.PercpuUsage?.Count ?? 1) * 100.0;
+                    var stats = await tcs.Task;
+                    return MapStatsResponse(containerId, stats);
                 }
 
-                var memoryUsage = stats.MemoryStats.Usage ?? 0;
-                var memoryLimit = stats.MemoryStats.Limit ?? 0;
-                var memoryPercent = memoryLimit > 0 ? (double)memoryUsage / memoryLimit * 100.0 : 0.0;
+                // If Docker task completed first, observe any exception
+                await statsTask;
 
-                // Network I/O
-                var networkRx = stats.Networks?.Values.Sum(n => (long)n.RxBytes) ?? 0;
-                var networkTx = stats.Networks?.Values.Sum(n => (long)n.TxBytes) ?? 0;
-
-                // Block I/O
-                var blockRead = stats.BlkioStats?.IoServiceBytesRecursive?
-                    .Where(io => io.Op == "read")
-                    .Sum(io => (long)io.Value) ?? 0;
-                var blockWrite = stats.BlkioStats?.IoServiceBytesRecursive?
-                    .Where(io => io.Op == "write")
-                    .Sum(io => (long)io.Value) ?? 0;
-
-                _logger.LogDebug("Stats retrieved for container {ContainerId}: CPU {Cpu:F2}%, Memory {Memory:F2}%",
-                    containerId, cpuPercent, memoryPercent);
-
-                return new Models.ContainerStatsResponse
+                if (tcs.Task.IsCompletedSuccessfully)
                 {
-                    ContainerId = containerId,
-                    Timestamp = DateTime.UtcNow,
-                    Cpu = new Models.CpuStats
-                    {
-                        UsagePercent = Math.Round(cpuPercent, 2),
-                        TotalUsage = stats.CPUStats.CPUUsage.TotalUsage,
-                        SystemUsage = stats.CPUStats.SystemUsage ?? 0,
-                        OnlineCpus = stats.CPUStats.OnlineCPUs ?? 0
-                    },
-                    Memory = new Models.MemoryStats
-                    {
-                        UsageBytes = memoryUsage,
-                        LimitBytes = memoryLimit,
-                        UsagePercent = Math.Round(memoryPercent, 2),
-                        MaxUsageBytes = stats.MemoryStats.MaxUsage ?? 0
-                    },
-                    Network = new Models.NetworkStats
-                    {
-                        RxBytes = networkRx,
-                        TxBytes = networkTx
-                    },
-                    BlockIo = new Models.BlockIoStats
-                    {
-                        ReadBytes = blockRead,
-                        WriteBytes = blockWrite
-                    },
-                    Pids = stats.PidsStats?.Current ?? 0
-                };
+                    var stats = await tcs.Task;
+                    return MapStatsResponse(containerId, stats);
+                }
+
+                _logger.LogWarning("Docker stats task completed for container {ContainerId} but no stats were received", containerId);
+                return MapStatsResponse(containerId, null);
             }
-            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+            catch (OperationCanceledException) when (cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning("Stats collection timed out for container {ContainerId} after 10 seconds", containerId);
+                _logger.LogWarning("Stats collection timed out for container {ContainerId} after {Timeout} seconds", containerId, DefaultStatsTimeoutSeconds);
                 throw new TimeoutException($"Stats collection timed out for container {containerId}");
             }
         }
@@ -152,74 +82,15 @@ namespace GameServer.Docker.Agent.Services
             var channel = System.Threading.Channels.Channel.CreateUnbounded<Models.ContainerStatsResponse>();
 
             // Start the Docker streaming in a background task
-            // Important: Don't await this task - it runs until cancellation
             _ = Task.Run(async () =>
             {
-                // Create progress handler inside the task to ensure proper context
-                var progress = new Progress<DockerStatsResponse>(stats =>
+                var progress = new SyncProgress<DockerStatsResponse>(stats =>
                 {
                     _logger.LogTrace("Received stats from Docker stream for container {ContainerId}", containerId);
                     
                     try
                     {
-                        // Calculate CPU percentage
-                        var cpuDelta = stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage;
-                        var systemDelta = (stats.CPUStats.SystemUsage ?? 0) - (stats.PreCPUStats.SystemUsage ?? 0);
-                        var cpuPercent = 0.0;
-
-                        if (systemDelta > 0 && cpuDelta > 0)
-                        {
-                            cpuPercent = (double)cpuDelta / systemDelta * (stats.CPUStats.CPUUsage.PercpuUsage?.Count ?? 1) * 100.0;
-                        }
-
-                        var memoryUsage = stats.MemoryStats.Usage ?? 0;
-                        var memoryLimit = stats.MemoryStats.Limit ?? 0;
-                        var memoryPercent = memoryLimit > 0 ? (double)memoryUsage / memoryLimit * 100.0 : 0.0;
-
-                        // Network I/O
-                        var networkRx = stats.Networks?.Values.Sum(n => (long)n.RxBytes) ?? 0;
-                        var networkTx = stats.Networks?.Values.Sum(n => (long)n.TxBytes) ?? 0;
-
-                        // Block I/O
-                        var blockRead = stats.BlkioStats?.IoServiceBytesRecursive?
-                            .Where(io => io.Op == "read")
-                            .Sum(io => (long)io.Value) ?? 0;
-                        var blockWrite = stats.BlkioStats?.IoServiceBytesRecursive?
-                            .Where(io => io.Op == "write")
-                            .Sum(io => (long)io.Value) ?? 0;
-
-                        var response = new Models.ContainerStatsResponse
-                        {
-                            ContainerId = containerId,
-                            Timestamp = DateTime.UtcNow,
-                            Cpu = new Models.CpuStats
-                            {
-                                UsagePercent = Math.Round(cpuPercent, 2),
-                                TotalUsage = stats.CPUStats.CPUUsage.TotalUsage,
-                                SystemUsage = stats.CPUStats.SystemUsage ?? 0,
-                                OnlineCpus = stats.CPUStats.OnlineCPUs ?? 0
-                            },
-                            Memory = new Models.MemoryStats
-                            {
-                                UsageBytes = memoryUsage,
-                                LimitBytes = memoryLimit,
-                                UsagePercent = Math.Round(memoryPercent, 2),
-                                MaxUsageBytes = stats.MemoryStats.MaxUsage ?? 0
-                            },
-                            Network = new Models.NetworkStats
-                            {
-                                RxBytes = networkRx,
-                                TxBytes = networkTx
-                            },
-                            BlockIo = new Models.BlockIoStats
-                            {
-                                ReadBytes = blockRead,
-                                WriteBytes = blockWrite
-                            },
-                            Pids = stats.PidsStats?.Current ?? 0
-                        };
-
-                        // Write to channel (non-blocking)
+                        var response = MapStatsResponse(containerId, stats);
                         channel.Writer.TryWrite(response);
                     }
                     catch (Exception ex)
@@ -232,7 +103,6 @@ namespace GameServer.Docker.Agent.Services
                 {
                     _logger.LogTrace("Starting Docker GetContainerStatsAsync with Stream=true for container {ContainerId}", containerId);
                     
-                    // Stream = true: Docker will continuously push stats via IProgress callbacks
                     await _dockerClient.Containers.GetContainerStatsAsync(
                         containerId,
                         new ContainerStatsParameters 
@@ -251,7 +121,7 @@ namespace GameServer.Docker.Agent.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error in Docker stats stream for container {ContainerId}", containerId);
+                    _logger.LogWarning(ex, "Error in Docker stats stream for container {ContainerId}", containerId);
                 }
                 finally
                 {
@@ -261,7 +131,6 @@ namespace GameServer.Docker.Agent.Services
             }, cancellationToken);
 
             // Yield stats as they arrive from the channel
-            // The stream task will continue running in the background until cancellation
             await foreach (var stats in channel.Reader.ReadAllAsync(cancellationToken))
             {
                 yield return stats;
@@ -512,5 +381,106 @@ namespace GameServer.Docker.Agent.Services
                 }).ToList()
             };
         }
+
+        private static Models.ContainerStatsResponse MapStatsResponse(string containerId, DockerStatsResponse? stats)
+        {
+            if (stats == null)
+            {
+                return new Models.ContainerStatsResponse
+                {
+                    ContainerId = containerId,
+                    Timestamp = DateTime.UtcNow,
+                    Cpu = new Models.CpuStats(),
+                    Memory = new Models.MemoryStats(),
+                    Network = new Models.NetworkStats(),
+                    BlockIo = new Models.BlockIoStats(),
+                    Pids = 0
+                };
+            }
+
+            // CPU percentage calculation
+            var totalUsage = stats.CPUStats?.CPUUsage?.TotalUsage ?? 0;
+            var preTotalUsage = stats.PreCPUStats?.CPUUsage?.TotalUsage ?? 0;
+            var cpuDelta = totalUsage - preTotalUsage;
+
+            var systemUsage = stats.CPUStats?.SystemUsage ?? 0;
+            var preSystemUsage = stats.PreCPUStats?.SystemUsage ?? 0;
+            var systemDelta = systemUsage - preSystemUsage;
+
+            var onlineCpus = (uint)(stats.CPUStats?.OnlineCPUs ?? (ulong)(stats.CPUStats?.CPUUsage?.PercpuUsage?.Count ?? 1));
+            if (onlineCpus == 0)
+            {
+                onlineCpus = 1;
+            }
+
+            var cpuPercent = 0.0;
+            if (systemDelta > 0 && cpuDelta > 0)
+            {
+                cpuPercent = (double)cpuDelta / systemDelta * onlineCpus * 100.0;
+            }
+
+            // Memory
+            var memoryUsage = stats.MemoryStats?.Usage ?? 0;
+            var memoryLimit = stats.MemoryStats?.Limit ?? 0;
+            var memoryPercent = memoryLimit > 0 ? (double)memoryUsage / memoryLimit * 100.0 : 0.0;
+
+            // Network I/O
+            var networkRx = stats.Networks?.Values.Sum(n => (long)(n?.RxBytes ?? 0)) ?? 0;
+            var networkTx = stats.Networks?.Values.Sum(n => (long)(n?.TxBytes ?? 0)) ?? 0;
+
+            // Block I/O
+            var blockRead = stats.BlkioStats?.IoServiceBytesRecursive?
+                .Where(io => io != null && io.Op == "read")
+                .Sum(io => (long)(io?.Value ?? 0)) ?? 0;
+            var blockWrite = stats.BlkioStats?.IoServiceBytesRecursive?
+                .Where(io => io != null && io.Op == "write")
+                .Sum(io => (long)(io?.Value ?? 0)) ?? 0;
+
+            return new Models.ContainerStatsResponse
+            {
+                ContainerId = containerId,
+                Timestamp = DateTime.UtcNow,
+                Cpu = new Models.CpuStats
+                {
+                    UsagePercent = Math.Round(cpuPercent, 2),
+                    TotalUsage = totalUsage,
+                    SystemUsage = systemUsage,
+                    OnlineCpus = onlineCpus
+                },
+                Memory = new Models.MemoryStats
+                {
+                    UsageBytes = memoryUsage,
+                    LimitBytes = memoryLimit,
+                    UsagePercent = Math.Round(memoryPercent, 2),
+                    MaxUsageBytes = stats.MemoryStats?.MaxUsage ?? 0
+                },
+                Network = new Models.NetworkStats
+                {
+                    RxBytes = networkRx,
+                    TxBytes = networkTx
+                },
+                BlockIo = new Models.BlockIoStats
+                {
+                    ReadBytes = blockRead,
+                    WriteBytes = blockWrite
+                },
+                Pids = stats.PidsStats?.Current ?? 0
+            };
+        }
+    }
+
+    /// <summary>
+    /// Synchronous progress reporter to avoid async SynchronizationContext delays with Progress&lt;T&gt;.
+    /// </summary>
+    internal sealed class SyncProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _handler;
+
+        public SyncProgress(Action<T> handler)
+        {
+            _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        }
+
+        public void Report(T value) => _handler(value);
     }
 }

@@ -182,6 +182,20 @@ public sealed class GameServerResourceCollectorService : BackgroundService, IGam
             // Update in-memory local cache
             _cachedUsage[serverId] = usage;
 
+            // Only persist to database if the server has active containers and real-time metrics
+            if (!usage.HasRealTimeStats || usage.RunningReplicas == 0)
+            {
+                _logger.LogTrace("Skipping metric persistence for server {ServerId}: server is stopped or lacks real-time container stats", serverId);
+                return;
+            }
+
+            // Ensure we aren't saving empty stats records where all metrics are null
+            if (!usage.CpuUsagePercent.HasValue && !usage.MemoryUsageBytes.HasValue)
+            {
+                _logger.LogTrace("Skipping metric persistence for server {ServerId}: metric values are empty", serverId);
+                return;
+            }
+
             // Map to entity for DB persistence
             var entity = new GameServerResourceUtilizationEntity
             {
