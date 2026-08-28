@@ -425,7 +425,11 @@ public sealed class GameServerValidationService
                         continue;
                     }
 
-                    resolvedPorts[resolvedPortIndex] = resolvedPorts[resolvedPortIndex] with { PublishedPort = derivedPort.Value };
+                    resolvedPorts[resolvedPortIndex] = resolvedPorts[resolvedPortIndex] with
+                    {
+                        ContainerPort = derivedPort.Value,
+                        PublishedPort = derivedPort.Value
+                    };
                 }
             }
             else
@@ -451,7 +455,11 @@ public sealed class GameServerValidationService
 
                 if (targetIndex.HasValue)
                 {
-                    resolvedPorts[targetIndex.Value] = resolvedPorts[targetIndex.Value] with { PublishedPort = basePort };
+                    resolvedPorts[targetIndex.Value] = resolvedPorts[targetIndex.Value] with
+                    {
+                        ContainerPort = basePort,
+                        PublishedPort = basePort
+                    };
                 }
             }
         }

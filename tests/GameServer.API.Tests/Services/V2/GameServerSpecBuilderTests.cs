@@ -125,6 +125,54 @@ public sealed class GameServerSpecBuilderTests
         new() { NetworkName = "gameserver_overlay", LoadBalancerNetwork = "traefik-public" };
 
     [Fact]
+    public void Build_WhenPortIsLinkedToEnvironmentVariable_ShouldSetContainerPortAndPublishedPortToTheSameValue()
+    {
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "abc123",
+            Name = "My Server",
+            ServiceName = "conan-abc123",
+            GameTypeRevisionId = 7
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "conan" },
+            Revision = new GameTypeRevision
+            {
+                Id = 7,
+                VersionTag = "latest",
+                ImageReference = "conan:latest",
+                Ports =
+                [
+                    new GameTypePort { ContainerPort = 7777, Protocol = "udp", AdvertisedPort = true, DisplayOrder = 1 }
+                ]
+            },
+            Result = new GameServerValidationResultDto
+            {
+                IsValid = true,
+                ResolvedPorts =
+                [
+                    new GameServerResolvedPortDto { ContainerPort = 8000, PublishedPort = 8000, Protocol = "udp", AdvertisedPort = true, DisplayOrder = 1 }
+                ]
+            }
+        };
+
+        var preview = new GameServerSpecBuilder(NewNetworkOptions()).Build(request, resolution);
+
+        var port = Assert.Single(preview.Ports);
+        Assert.Equal(8000, port.ContainerPort);
+        Assert.Equal(8000, port.PublishedPort);
+
+        using var document = JsonDocument.Parse(preview.RawServiceSpecJson);
+        var spec = document.RootElement.GetProperty("Service");
+        var ports = spec.GetProperty("EndpointSpec").GetProperty("Ports");
+        Assert.Equal(1, ports.GetArrayLength());
+        Assert.Equal(8000u, ports[0].GetProperty("TargetPort").GetUInt32());
+        Assert.Equal(8000u, ports[0].GetProperty("PublishedPort").GetUInt32());
+    }
+
+    [Fact]
     public void Build_WhenPublishedPortDiffersFromContainerPort_ShouldSetTargetPortToContainerAndPublishedPortToPublished()
     {
         var request = new SaveGameServerRequestDto
@@ -153,7 +201,7 @@ public sealed class GameServerSpecBuilderTests
                 IsValid = true,
                 ResolvedPorts =
                 [
-                    new GameServerResolvedPortDto { ContainerPort = 26000, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 }
+                    new GameServerResolvedPortDto { ContainerPort = 25565, PublishedPort = 26000, Protocol = "tcp", AdvertisedPort = true, DisplayOrder = 1 }
                 ]
             }
         };

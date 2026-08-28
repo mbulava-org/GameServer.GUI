@@ -419,10 +419,12 @@ public sealed class GameServerSpecBuilder
                     ?? (index < revisionPorts.Count ? revisionPorts[index] : null)
                     ?? revisionPorts.FirstOrDefault(p => string.Equals(p.Protocol, resolvedPort.Protocol, StringComparison.OrdinalIgnoreCase));
 
-                var containerPort = revisionPort?.ContainerPort ?? resolvedPort.ContainerPort;
+                var containerPort = resolvedPort.ContainerPort > 0
+                    ? resolvedPort.ContainerPort
+                    : (revisionPort?.ContainerPort ?? 0);
                 var publishedPort = resolvedPort.PublishedPort > 0
                     ? resolvedPort.PublishedPort
-                    : (resolvedPort.ContainerPort != containerPort ? resolvedPort.ContainerPort : 0);
+                    : (resolvedPort.AdvertisedPort ? containerPort : 0);
                 var isPublished = publishedPort > 0;
 
                 return new GameServerPreviewPortDto

@@ -210,7 +210,80 @@ public class GameServerValidationServiceTests
         });
 
         var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
+        Assert.Equal(26000, resolvedPort.ContainerPort);
         Assert.Equal(26000, resolvedPort.PublishedPort);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenPortMappingLinkedToEnvironmentVariable_ShouldSetContainerPortAndPublishedPortToDerivedValue()
+    {
+        var gameType = new GameType
+        {
+            Id = 1,
+            Key = "conan",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 1,
+                    Ports =
+                    [
+                        new GameTypePort { ContainerPort = 7777, Protocol = "udp", DisplayOrder = 1 },
+                        new GameTypePort { ContainerPort = 7778, Protocol = "udp", DisplayOrder = 2 }
+                    ],
+                    SettingDefinitions =
+                    [
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "SERVER_PORT",
+                            DefaultValue = "7777",
+                            DisplayOrder = 1,
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                DataType = "port",
+                                IsRequired = true,
+                                PortMappings =
+                                [
+                                    new GameTypeSettingPortMapping
+                                    {
+                                        MappingRole = GameTypeSettingPortMappingRole.Primary,
+                                        RelationType = GameTypeSettingPortRelationType.Direct,
+                                        TargetContainerPort = 7777,
+                                        TargetProtocol = "udp"
+                                    },
+                                    new GameTypeSettingPortMapping
+                                    {
+                                        MappingRole = GameTypeSettingPortMappingRole.Related,
+                                        RelationType = GameTypeSettingPortRelationType.Offset,
+                                        CalculationValue = 1,
+                                        TargetContainerPort = 7778,
+                                        TargetProtocol = "udp"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var service = CreateService(gameType, services: []);
+
+        var resolution = await service.ResolveAsync(new SaveGameServerRequestDto
+        {
+            Name = "Conan Server",
+            GameTypeRevisionId = 1,
+            Settings = [new GameServerSettingDto { SettingKey = "SERVER_PORT", Value = "8000" }]
+        });
+
+        Assert.Equal(2, resolution.Result.ResolvedPorts.Count);
+        var primaryPort = resolution.Result.ResolvedPorts[0];
+        Assert.Equal(8000, primaryPort.ContainerPort);
+        Assert.Equal(8000, primaryPort.PublishedPort);
+
+        var relatedPort = resolution.Result.ResolvedPorts[1];
+        Assert.Equal(8001, relatedPort.ContainerPort);
+        Assert.Equal(8001, relatedPort.PublishedPort);
     }
 
     [Fact]
