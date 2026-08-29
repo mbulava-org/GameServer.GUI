@@ -250,34 +250,49 @@ public sealed class GameServerFilesService(
             normalizedContainerPath = "/" + normalizedContainerPath;
         }
 
-        var volume = server.Volumes.FirstOrDefault(v => string.Equals(v.ContainerPath, normalizedContainerPath, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"Volume for container path '{volumeContainerPath}' was not found on server '{serverId}'.");
+        var volume = server.Volumes.FirstOrDefault(v => string.Equals(v.ContainerPath, normalizedContainerPath, StringComparison.OrdinalIgnoreCase));
+        var mountType = volume?.MountType ?? "volume";
 
-        var config = await mountTypeConfigRepository.GetByKeyAsync(volume.MountType).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Mount type configuration '{volume.MountType}' was not found.");
+        var config = await mountTypeConfigRepository.GetByKeyAsync(mountType).ConfigureAwait(false);
 
-        var localRoot = (config.GetOption("LocalPath") ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+        var localRoot = (config?.GetOption("LocalPath") ?? string.Empty).Replace('\\', '/').TrimEnd('/');
         if (string.IsNullOrEmpty(localRoot))
         {
-            throw new NotSupportedException($"Mount type '{volume.MountType}' does not have a configured LocalPath for host filesystem access.");
+            // Default to data/volumes in application root
+            localRoot = Path.Combine(AppContext.BaseDirectory, "data", "volumes").Replace('\\', '/');
+            logger.LogDebug("No LocalPath configured for mount type '{MountType}'; using fallback '{LocalRoot}'", mountType, localRoot);
         }
 
         var gameTypes = await gameTypeRepository.GetAllAsync(includeInactive: true).ConfigureAwait(false);
         var matchingType = gameTypes.FirstOrDefault(gt => gt.Revisions.Any(r => r.Id == server.GameTypeRevisionId));
         var gameTypeKey = matchingType?.Key ?? "default";
 
-        var sourceToken = volume.ContainerPath.Trim('/').Replace('/', '-');
-        var devicePathFormat = config.GetOption("DevicePathFormat") ?? "{gameTypeKey}/{serverId}/{Source}";
-        var relativeDevicePath = devicePathFormat
-            .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
-            .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
-            .Trim('/');
+        var sourceToken = normalizedContainerPath.Trim('/').Replace('/', '-');
+        var devicePathFormat = config?.GetOption("DevicePathFormat");
+        string relativeDevicePath;
+
+        if (!string.IsNullOrWhiteSpace(devicePathFormat))
+        {
+            relativeDevicePath = devicePathFormat
+                .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
+                .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)
+                .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
+                .Trim('/');
+        }
+        else if (!string.IsNullOrWhiteSpace(volume?.VolumeName))
+        {
+            relativeDevicePath = volume.VolumeName.Trim('/');
+        }
+        else
+        {
+            relativeDevicePath = $"{gameTypeKey}/{serverId}/{sourceToken}";
+        }
 
         var fullVolumeRoot = Path.Combine(localRoot, relativeDevicePath.Replace('/', Path.DirectorySeparatorChar));
         if (!Directory.Exists(fullVolumeRoot))
         {
             Directory.CreateDirectory(fullVolumeRoot);
+            logger.LogInformation("Created volume root directory {FullVolumeRoot} for server {ServerId}", fullVolumeRoot, serverId);
         }
 
         return fullVolumeRoot;

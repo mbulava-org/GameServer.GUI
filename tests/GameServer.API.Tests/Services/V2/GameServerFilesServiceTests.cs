@@ -161,4 +161,50 @@ public class GameServerFilesServiceTests : IDisposable
         var itemsAfterDelete = await _service.ListFilesAsync(serverId, volumePath);
         Assert.DoesNotContain(itemsAfterDelete, i => i.Name == "logs");
     }
+
+    [Fact]
+    public async Task ListFilesAsync_WhenMountTypeHasNoLocalPath_ShouldUseFallbackAndNotThrow()
+    {
+        const string serverId = "srv-fallback";
+        const string volumePath = "/config";
+        
+        var server = new Models.V2.GameServer
+        {
+            ServerId = serverId,
+            Name = "Fallback Server",
+            GameTypeRevisionId = 1,
+            Volumes =
+            [
+                new GameServerVolume
+                {
+                    ContainerPath = volumePath,
+                    MountType = "volume",
+                    VolumeName = "vol_fallback",
+                    Usage = "config"
+                }
+            ]
+        };
+
+        var gameType = new GameType
+        {
+            Key = "valheim",
+            DisplayName = "Valheim",
+            Revisions = [new GameTypeRevision { Id = 1, VersionTag = "latest" }]
+        };
+
+        var mountConfig = new MountTypeConfig
+        {
+            Key = "volume",
+            DisplayName = "Docker volume",
+            Options = new Dictionary<string, string>() // No LocalPath option
+        };
+
+        _gameServerRepoMock.Setup(r => r.GetByServerIdAsync(serverId)).ReturnsAsync(server);
+        _gameTypeRepoMock.Setup(r => r.GetAllAsync(true)).ReturnsAsync(new List<GameType> { gameType });
+        _mountTypeConfigRepoMock.Setup(r => r.GetByKeyAsync("volume")).ReturnsAsync(mountConfig);
+
+        var items = await _service.ListFilesAsync(serverId, volumePath);
+
+        Assert.NotNull(items);
+    }
 }

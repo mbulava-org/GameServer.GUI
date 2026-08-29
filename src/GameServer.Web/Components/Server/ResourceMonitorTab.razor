@@ -1,9 +1,12 @@
 @using Microsoft.Extensions.Options
 @using GameServer.Web.Configurations
+@using GameServer.Web.Models.V2
+@using GameServer.Web.Services.V2
 @using GameServer.API.Client.Interfaces
 @using Radzen
 @using Radzen.Blazor
 @inject IOptions<GameServerDockerApi> ApiConfig
+@inject IGameServerV2ApiService GameServerApiV2
 @inject NotificationService NotificationService
 @inject ILogger<ResourceMonitorTab> Logger
 @implements IAsyncDisposable
@@ -140,47 +143,107 @@
                 </RadzenCard>
             </div>
         </div>
+    }
 
-        <!-- Node & Container Details -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-6">
-                <RadzenCard class="p-3">
-                    <h6 class="mb-3">Container & Swarm Node</h6>
-                    <div class="row g-2 small">
-                        <div class="col-sm-4 text-muted">Node Name:</div>
-                        <div class="col-sm-8"><code>@(latestUsage?.NodeName ?? "Swarm Host")</code></div>
-                        <div class="col-sm-4 text-muted">Container ID:</div>
-                        <div class="col-sm-8 text-break"><code>@(latestUsage?.ContainerId ?? "Running in service")</code></div>
-                        <div class="col-sm-4 text-muted">Replicas:</div>
-                        <div class="col-sm-8">
-                            <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@($"{latestUsage?.HealthyReplicas ?? latestUsage?.Replicas ?? 1} running")" Variant="Variant.Outlined" />
-                        </div>
-                    </div>
-                </RadzenCard>
+    <!-- Resource History Section -->
+    <RadzenCard class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenIcon Icon="history" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                <h5 class="mb-0">Resource History</h5>
+                @if (historyRecords.Any())
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{historyRecords.Count} records")" Variant="Variant.Flat" />
+                }
             </div>
-
-            <div class="col-md-6">
-                <RadzenCard class="p-3">
-                    <h6 class="mb-3">Live Metrics Feed</h6>
-                    <div class="resource-log-stream" style="max-height: 120px; overflow-y: auto; font-family: monospace; font-size: 0.8rem;">
-                        @if (!activityLogs.Any())
-                        {
-                            <span class="text-muted">Listening for live resource updates...</span>
-                        }
-                        else
-                        {
-                            @foreach (var log in activityLogs)
-                            {
-                                <div class="mb-1 text-muted">
-                                    <span class="text-secondary">[@log.Timestamp.ToString("HH:mm:ss")]</span> @log.Message
-                                </div>
-                            }
-                        }
-                    </div>
-                </RadzenCard>
+            <div class="d-flex align-items-center gap-2">
+                <RadzenDropDown TValue="int"
+                                Data="@(new[] { 25, 50, 100, 250, 500 })"
+                                Value="@historyLimit"
+                                ValueChanged="@OnHistoryLimitChanged"
+                                Style="width: 100px;" />
+                <RadzenButton Icon="refresh"
+                              Text="Refresh History"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@LoadHistoryAsync"
+                              Disabled="@isHistoryLoading" />
             </div>
         </div>
-    }
+
+        @if (isHistoryLoading && !historyRecords.Any())
+        {
+            <div class="text-center py-4">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+                <p class="mt-2 text-muted small">Loading historical resource records...</p>
+            </div>
+        }
+        else if (!historyRecords.Any())
+        {
+            <div class="text-center py-4 border rounded bg-light">
+                <RadzenIcon Icon="analytics" Style="font-size: 2.5rem; color: var(--rz-text-disabled-color);" />
+                <p class="text-muted mt-2 mb-0">No historical resource records have been saved yet for this game server.</p>
+            </div>
+        }
+        else
+        {
+            <RadzenDataGrid Data="@historyRecords"
+                            TItem="GameServerResourceHistoryItem"
+                            AllowSorting="true"
+                            AllowPaging="true"
+                            PageSize="10"
+                            PagerHorizontalAlign="HorizontalAlign.Center"
+                            ShowPagingSummary="true"
+                            class="border rounded">
+                <Columns>
+                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="Timestamp" Title="Time" Width="170px" SortOrder="SortOrder.Descending">
+                        <Template Context="item">
+                            <span>@item.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="CpuUsagePercent" Title="CPU" Width="110px">
+                        <Template Context="item">
+                            <span class="fw-bold">@((item.CpuUsagePercent ?? 0).ToString("F1"))%</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="MemoryUsageBytes" Title="Memory" Width="180px">
+                        <Template Context="item">
+                            <div>@FormatBytes(item.MemoryUsageBytes ?? 0)</div>
+                            <small class="text-muted">@((item.MemoryUsagePercent ?? 0).ToString("F1"))% used</small>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Title="Network I/O" Width="180px" Sortable="false">
+                        <Template Context="item">
+                            <div class="small">
+                                <span class="text-success"><RadzenIcon Icon="arrow_downward" Style="font-size: 0.8rem;" /> @FormatBytes(item.NetworkRxBytes ?? 0)</span>
+                                <span class="ms-2 text-info"><RadzenIcon Icon="arrow_upward" Style="font-size: 0.8rem;" /> @FormatBytes(item.NetworkTxBytes ?? 0)</span>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Title="Disk I/O" Width="180px" Sortable="false">
+                        <Template Context="item">
+                            <div class="small text-muted">
+                                <span>R: @FormatBytes(item.BlockReadBytes ?? 0)</span>
+                                <span class="ms-2">W: @FormatBytes(item.BlockWriteBytes ?? 0)</span>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="RunningReplicas" Title="Replicas" Width="100px">
+                        <Template Context="item">
+                            <RadzenBadge BadgeStyle="@(item.RunningReplicas >= item.DesiredReplicas && item.RunningReplicas > 0 ? BadgeStyle.Success : BadgeStyle.Warning)"
+                                         Text="@($"{item.RunningReplicas}/{item.DesiredReplicas}")"
+                                         Size="BadgeSize.Small" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </RadzenCard>
 </div>
 
 @code {
@@ -197,13 +260,48 @@
     private ServerResourceUsage? latestUsage;
     private bool isConnected;
     private bool isConnecting;
-    private readonly List<ActivityLogEntry> activityLogs = [];
+    private List<GameServerResourceHistoryItem> historyRecords = [];
+    private bool isHistoryLoading;
+    private int historyLimit = 100;
 
     protected override async Task OnParametersSetAsync()
     {
         if (AutoConnect)
         {
             await ConnectAndSubscribeAsync();
+        }
+
+        await LoadHistoryAsync();
+    }
+
+    private async Task OnHistoryLimitChanged(int newLimit)
+    {
+        historyLimit = newLimit;
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId) || GameServerApiV2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            isHistoryLoading = true;
+            var result = await GameServerApiV2.GetResourceHistoryAsync(ServerId, limit: historyLimit);
+            historyRecords = result.OrderByDescending(r => r.Timestamp).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load resource history for server {ServerId}", ServerId);
+            historyRecords = [];
+        }
+        finally
+        {
+            isHistoryLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -250,13 +348,11 @@
             }
 
             await client.SubscribeToServerAsync(ServerId, intervalSeconds: 2, CancellationToken.None);
-            AddLog($"Subscribed to resource updates for server {ServerId}");
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to connect to ResourceMonitoringHub for server {ServerId}", ServerId);
             isConnected = false;
-            AddLog($"Connection failed: {ex.Message}");
         }
         finally
         {
@@ -270,7 +366,6 @@
         InvokeAsync(() =>
         {
             latestUsage = usage;
-            AddLog($"CPU: {(usage.CpuUsagePercent ?? 0):F1}% | RAM: {FormatBytes(usage.MemoryUsageBytes ?? 0)} ({usage.MemoryUsagePercent ?? 0:F1}%)");
             StateHasChanged();
         });
     }
@@ -279,18 +374,8 @@
     {
         InvokeAsync(() =>
         {
-            AddLog($"Error: {error}");
             StateHasChanged();
         });
-    }
-
-    private void AddLog(string message)
-    {
-        activityLogs.Insert(0, new ActivityLogEntry(DateTime.Now, message));
-        if (activityLogs.Count > 50)
-        {
-            activityLogs.RemoveAt(activityLogs.Count - 1);
-        }
     }
 
     private static ProgressBarStyle GetCpuProgressStyle(double percent) =>
@@ -351,6 +436,4 @@
     {
         await DisconnectAsync();
     }
-
-    private sealed record ActivityLogEntry(DateTime Timestamp, string Message);
 }

@@ -66,4 +66,9 @@ public interface IGameServerV2ApiService
     /// Deletes a V2 GameServer.
     /// </summary>
     Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the historical resource utilization records for a V2 GameServer.
+    /// </summary>
+    Task<IReadOnlyList<GameServerResourceHistoryItem>> GetResourceHistoryAsync(string serverId, DateTime? from = null, DateTime? to = null, int limit = 100, CancellationToken cancellationToken = default);
 }

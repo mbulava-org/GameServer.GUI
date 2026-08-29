@@ -298,7 +298,7 @@ public class GameServerV2DbContext : DbContext
                     Key = "volume",
                     DisplayName = "Docker volume",
                     VolumeNameFormat = "{gameTypeKey}_{serverId}_{Source}",
-                    OptionsJson = "{\"Driver\":\"local\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
+                    OptionsJson = "{\"Driver\":\"local\",\"LocalPath\":\"/data/volumes\",\"DevicePathFormat\":\"{gameTypeKey}/{serverId}/{Source}\",\"SourcePathTemplate\":\"{gameTypeKey}_{serverId}_{Source}\",\"DefaultReadOnly\":\"false\",\"DefaultEnsureNfsPathExists\":\"false\"}",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,
                     UpdatedAt = SeedTimestamp
