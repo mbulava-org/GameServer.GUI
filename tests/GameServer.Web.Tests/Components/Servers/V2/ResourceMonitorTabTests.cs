@@ -1,4 +1,5 @@
 using Bunit;
+using GameServer.API.Client.Interfaces;
 using GameServer.Web.Components.Server;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
@@ -60,8 +61,10 @@ public class ResourceMonitorTabTests : BunitContext
 
         Assert.Contains("Live Resource Usage", cut.Markup);
         Assert.Contains("Resource Usage History", cut.Markup);
+        Assert.Contains("Time Range:", cut.Markup);
         Assert.DoesNotContain("Live Metrics Feed", cut.Markup);
         Assert.DoesNotContain("Container & Swarm Node", cut.Markup);
+        Assert.DoesNotContain("Historical Records Table", cut.Markup);
     }
 
     [Fact]
@@ -79,6 +82,41 @@ public class ResourceMonitorTabTests : BunitContext
             Assert.Contains("Disk I/O (MB)", cut.Markup);
             Assert.Contains("25.5%", cut.Markup);
             Assert.Contains("512 MB", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void ResourceMonitorTab_WhenLiveUpdateReceived_ShouldAppendToHistoryWithoutReloadingApi()
+    {
+        var mockClient = new Mock<IResourceMonitoringClient>();
+        var cut = Render<ResourceMonitorTab>(parameters => parameters
+            .Add(p => p.ServerId, "srv-1")
+            .Add(p => p.AutoConnect, true)
+            .Add(p => p.Client, mockClient.Object));
+
+        var update = new ServerResourceUsage
+        {
+            ServerId = "srv-1",
+            Timestamp = DateTime.UtcNow.AddSeconds(5),
+            CpuUsagePercent = 88.0,
+            MemoryUsageBytes = 1024 * 1024 * 768,
+            MemoryLimitBytes = 1024 * 1024 * 1024,
+            MemoryUsagePercent = 75.0,
+            NetworkRxBytes = 1024 * 100,
+            NetworkTxBytes = 1024 * 80,
+            BlockReadBytes = 1024 * 40,
+            BlockWriteBytes = 1024 * 20,
+            Replicas = 1,
+            HealthyReplicas = 1
+        };
+
+        mockClient.Raise(m => m.ResourceUpdateReceived += null, mockClient.Object, update);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("88.0", cut.Markup);
+            Assert.Contains("768 MB", cut.Markup);
+            Assert.Contains("2 records", cut.Markup);
         });
     }
 }

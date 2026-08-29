@@ -248,7 +248,7 @@ public sealed class GameServersController(
         string serverId,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 500,
+        [FromQuery] int limit = 5000,
         CancellationToken cancellationToken = default)
     {
         if (resourceUtilizationRepository is null)

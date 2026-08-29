@@ -11,6 +11,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject Services.IThumbnailCacheService ThumbnailCacheService
+@inject Services.IPublicIpService PublicIpService
 @inject IOptions<GameServerDockerApi> ApiConfig
 @inject IJSRuntime JSRuntime
 
@@ -180,7 +181,7 @@
                     @foreach (var port in CurrentAdvertisedPorts.OrderBy(p => p.DisplayOrder))
                     {
                         var ipEndpoint = $"{ResolvedPublicIp}:{port.PublishedPort}";
-                        var hostEndpoint = !string.IsNullOrWhiteSpace(ConfiguredHostName) ? $"{ConfiguredHostName}:{port.PublishedPort}" : null;
+                        var hostEndpoint = $"{ResolvedHostName}:{port.PublishedPort}";
                         <div class="col-md-6 col-lg-@(CurrentAdvertisedPorts.Count == 1 ? "12" : "6")">
                             <div class="card h-100 border-0 shadow-sm p-3" style="background: var(--rz-base-50); border-radius: 8px;">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
@@ -192,32 +193,31 @@
                                 </div>
 
                                 <div class="d-flex flex-column gap-2 mt-2">
+                                    <!-- HostName Address -->
                                     <div class="d-flex align-items-center justify-content-between p-2 rounded border bg-white">
                                         <div>
-                                            <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Internet IP Address</div>
-                                            <code class="fw-bold fs-6" style="color: var(--rz-primary);">@ipEndpoint</code>
+                                            <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">HostName Address</div>
+                                            <code class="fw-bold fs-6" style="color: var(--rz-primary);">@hostEndpoint</code>
                                         </div>
                                         <RadzenButton Icon="content_copy"
                                                       ButtonStyle="ButtonStyle.Light"
                                                       Size="ButtonSize.Small"
-                                                      Click="@(() => CopyToClipboardAsync(ipEndpoint, "Internet IP"))"
-                                                      title="Copy IP:Port" />
+                                                      Click="@(() => CopyToClipboardAsync(hostEndpoint, "HostName:Port"))"
+                                                      title="Copy HostName:Port" />
                                     </div>
 
-                                    @if (!string.IsNullOrWhiteSpace(hostEndpoint))
-                                    {
-                                        <div class="d-flex align-items-center justify-content-between p-2 rounded border bg-white">
-                                            <div>
-                                                <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">HostName Address</div>
-                                                <code class="fw-bold fs-6" style="color: var(--rz-primary-darker);">@hostEndpoint</code>
-                                            </div>
-                                            <RadzenButton Icon="content_copy"
-                                                          ButtonStyle="ButtonStyle.Light"
-                                                          Size="ButtonSize.Small"
-                                                          Click="@(() => CopyToClipboardAsync(hostEndpoint, "HostName:Port"))"
-                                                          title="Copy HostName:Port" />
+                                    <!-- Public IP Address -->
+                                    <div class="d-flex align-items-center justify-content-between p-2 rounded border bg-white">
+                                        <div>
+                                            <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Public IP Address</div>
+                                            <code class="fw-bold fs-6" style="color: var(--rz-primary-darker, #2c3e50);">@ipEndpoint</code>
                                         </div>
-                                    }
+                                        <RadzenButton Icon="content_copy"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => CopyToClipboardAsync(ipEndpoint, "Public IP:Port"))"
+                                                      title="Copy Public IP:Port" />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -582,27 +582,54 @@
             ? CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList()
             : CurrentResolvedPorts.Where(p => p.PublishedPort > 0).ToList();
 
+    private string? detectedPublicIp;
+
     private string ResolvedPublicIp
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(ApiConfig?.Value?.PublicIp))
+            if (!string.IsNullOrWhiteSpace(detectedPublicIp) && detectedPublicIp != "127.0.0.1")
             {
-                return ApiConfig.Value.PublicIp.Trim();
+                return detectedPublicIp;
             }
 
             try
             {
-                return new Uri(Navigation.Uri).Host;
+                var uriHost = new Uri(Navigation.Uri).Host;
+                if (System.Net.IPAddress.TryParse(uriHost, out _))
+                {
+                    return uriHost;
+                }
             }
             catch
             {
-                return "127.0.0.1";
+                // Ignore uri parse failure
             }
+
+            return !string.IsNullOrWhiteSpace(detectedPublicIp) ? detectedPublicIp : "127.0.0.1";
         }
     }
 
-    private string? ConfiguredHostName => !string.IsNullOrWhiteSpace(ApiConfig?.Value?.HostName) ? ApiConfig.Value.HostName.Trim() : null;
+    private string ResolvedHostName
+    {
+        get
+        {
+            try
+            {
+                var uriHost = new Uri(Navigation.Uri).Host;
+                if (!string.IsNullOrWhiteSpace(uriHost))
+                {
+                    return uriHost;
+                }
+            }
+            catch
+            {
+                // Ignore uri parse failure
+            }
+
+            return Environment.MachineName.ToLowerInvariant();
+        }
+    }
 
     private async Task CopyToClipboardAsync(string text, string label)
     {
@@ -663,6 +690,18 @@
             cachedGameTypeThumbnailUrl = server is null
                 ? null
                 : await ThumbnailCacheService.GetCachedThumbnailUrlAsync(server.GameTypeThumbnailUrl);
+
+            if (string.IsNullOrWhiteSpace(detectedPublicIp))
+            {
+                try
+                {
+                    detectedPublicIp = await PublicIpService.GetPublicIpAsync();
+                }
+                catch
+                {
+                    // Fallback to local / request IP
+                }
+            }
         }
         catch (HttpRequestException ex)
         {

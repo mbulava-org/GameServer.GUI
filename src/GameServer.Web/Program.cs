@@ -85,6 +85,8 @@ namespace GameServer.Web
                     options.RequestPath = "/thumbnail-cache";
                     Directory.CreateDirectory(options.CacheDirectory);
                 });
+                builder.Services.AddHttpClient("PublicIpDiscovery");
+                builder.Services.AddSingleton<IPublicIpService, PublicIpService>();
                 builder.Services.AddScoped<IThumbnailCacheService, ThumbnailCacheService>();
                 builder.Services.AddScoped<Services.V2.IGameServerV2ApiService, Services.V2.GameServerV2ApiService>();
                 builder.Services.AddScoped<Services.V2.IGameTypeV2ApiService, Services.V2.GameTypeV2ApiService>();

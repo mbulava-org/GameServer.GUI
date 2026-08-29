@@ -264,6 +264,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
     {
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
+        Services.AddSingleton<IPublicIpService>(new StubPublicIpService());
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
         Services.AddSingleton(CreateMountTypeConfigApiService(handler));
@@ -336,6 +337,14 @@ public sealed class GameServerPagesV2Tests : BunitContext
         public Task<string?> GetCachedThumbnailUrlAsync(string? sourceUrl, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(sourceUrl);
+        }
+    }
+
+    private sealed class StubPublicIpService : IPublicIpService
+    {
+        public Task<string> GetPublicIpAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult("203.0.113.195");
         }
     }
 }

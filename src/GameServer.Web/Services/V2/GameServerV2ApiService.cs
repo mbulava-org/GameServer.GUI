@@ -191,7 +191,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
         string serverId,
         DateTime? from = null,
         DateTime? to = null,
-        int limit = 100,
+        int limit = 5000,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);

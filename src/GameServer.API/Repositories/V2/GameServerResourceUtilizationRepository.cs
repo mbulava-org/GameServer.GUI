@@ -37,14 +37,14 @@ public class GameServerResourceUtilizationRepository(
         string serverId,
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
-        int limit = 500,
+        int limit = 5000,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
         if (limit <= 0)
         {
-            limit = 500;
+            limit = Int32.MaxValue;
         }
 
         var query = context.ResourceUtilizations

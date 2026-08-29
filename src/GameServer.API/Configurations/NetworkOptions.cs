@@ -48,16 +48,6 @@ namespace GameServer.API.Configurations
         public bool EnableResponseBodyRewrite { get; set; } = true;
 
         /// <summary>
-        /// The public Internet IP address of the server / host cluster for connecting to game services.
-        /// </summary>
-        public string? PublicIp { get; set; }
-
-        /// <summary>
-        /// The public HostName / FQDN of the server / host cluster (e.g. play.example.com) for connecting to game services.
-        /// </summary>
-        public string? HostName { get; set; }
-
-        /// <summary>
         /// The Traefik plugin name for response body rewriting (e.g., "plugin-rewritebody" or "rewritebody").
         /// Default: "plugin-rewritebody"
         /// </summary>

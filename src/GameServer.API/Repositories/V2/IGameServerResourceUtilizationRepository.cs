@@ -10,7 +10,7 @@ public interface IGameServerResourceUtilizationRepository
         string serverId,
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
-        int limit = 500,
+        int limit = 5000,
         CancellationToken cancellationToken = default);
 
     Task<GameServerResourceUtilizationEntity?> GetLatestAsync(
