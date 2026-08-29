@@ -108,11 +108,17 @@ public sealed class ServerResourceMonitor : IServerResourceMonitor
                 },
                 cancellationToken).ConfigureAwait(false);
 
+            var preparingTasks = tasks.Count(t => t.Status?.State is TaskState.Preparing or TaskState.Allocated or TaskState.Assigned or TaskState.Accepted or TaskState.New);
+            var startingTasks = tasks.Count(t => t.Status?.State is TaskState.Starting or TaskState.Ready);
+            var pendingTasks = tasks.Count(t => t.Status?.State is TaskState.Pending);
             var runningTasks = tasks.Where(t => t.Status?.State == TaskState.Running).ToList();
+            var failedTasks = tasks.Count(t => t.Status?.State is TaskState.Failed or TaskState.Rejected or TaskState.Orphaned);
             var runningContainerIds = runningTasks
                 .Select(t => t.Status?.ContainerStatus?.ContainerID)
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .ToList()!;
+
+            var latestTask = tasks.OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).FirstOrDefault();
 
             var usage = new ServerResourceUsage
             {
@@ -124,11 +130,16 @@ public sealed class ServerResourceMonitor : IServerResourceMonitor
                 ServiceVersion = service.Version?.Index ?? 0,
                 DesiredReplicas = (int)(service.Spec?.Mode?.Replicated?.Replicas ?? 0),
                 RunningReplicas = runningTasks.Count,
-                FailedTasks = tasks.Count(t => t.Status?.State == TaskState.Failed || t.Status?.State == TaskState.Shutdown),
-                PendingTasks = tasks.Count(t => t.Status?.State == TaskState.Pending || t.Status?.State == TaskState.Starting),
+                PreparingTasks = preparingTasks,
+                StartingTasks = startingTasks,
+                PendingTasks = pendingTasks,
+                FailedTasks = failedTasks,
                 TaskCount = tasks.Count,
                 TaskIds = tasks.Select(t => t.ID ?? string.Empty).ToList(),
                 ContainerIds = runningContainerIds,
+                LatestTaskState = latestTask?.Status?.State.ToString(),
+                LatestTaskMessage = latestTask?.Status?.Message,
+                LatestTaskError = latestTask?.Status?.Err,
                 ServiceCpuLimitPerReplica = service.Spec?.TaskTemplate?.Resources?.Limits?.NanoCPUs is long limitNanos && limitNanos > 0
                     ? (ulong)limitNanos
                     : null,

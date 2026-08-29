@@ -60,9 +60,10 @@
         </div>
     </div>
 
-    <div class="terminal-wrapper" @onclick="FocusTerminalAsync">
+    <div class="terminal-wrapper" @ref="_terminalWrapperRef" @onclick="FocusTerminalAsync">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
+               AddonIds="@_addonIds"
                OnFirstRender="@OnTerminalFirstRender"
                OnData="@OnTerminalData"
                OnLineFeed="@OnLineFeed"
@@ -111,6 +112,8 @@
         overflow: hidden;
         background: #000;
         cursor: text;
+        width: 100%;
+        height: 100%;
     }
 
     .terminal-wrapper:hover {
@@ -119,6 +122,7 @@
 
     .terminal-wrapper ::deep .xterm {
         height: 100%;
+        width: 100%;
         padding: 0.5rem;
     }
 
@@ -128,6 +132,7 @@
 
     .terminal-wrapper ::deep .xterm-screen {
         height: 100%;
+        width: 100%;
     }
     
     .terminal-wrapper ::deep .xterm-cursor-layer {
@@ -147,6 +152,8 @@
 [Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
 
     private Xterm? terminal;
+    private ElementReference _terminalWrapperRef;
+    private readonly string[] _addonIds = new[] { "addon-fit" };
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,
@@ -178,7 +185,7 @@
         },
         FontSize = 14,
         FontFamily = "'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace",
-        Scrollback = 1000,
+        Scrollback = 2000,
         AllowTransparency = false
     };
 
@@ -195,6 +202,17 @@
             // Mark that JavaScript is now available
             isJavaScriptAvailable = true;
             
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.initAutoFit", _terminalWrapperRef);
+            }
+            catch
+            {
+                // Fallback gracefully if JS not initialized
+            }
+
+            await FitTerminalAsync();
+
             if (AutoConnect && !string.IsNullOrEmpty(ServerId))
             {
                 await Task.Delay(500); // Wait for terminal to initialize
@@ -203,13 +221,30 @@
         }
     }
 
+    private async Task FitTerminalAsync()
+    {
+        if (isJavaScriptAvailable)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.fitAll");
+            }
+            catch
+            {
+                // Ignore if terminal DOM element is not yet attached or rendered
+            }
+        }
+    }
+
     private async Task OnTerminalFirstRender()
     {
         if (terminal != null && isJavaScriptAvailable)
         {
+            await FitTerminalAsync();
             await terminal.WriteLine("Terminal initialized. Click 'Connect' to attach to container console.");
             await terminal.WriteLine("");
             await terminal.WriteLine("Click anywhere in the terminal to focus and start typing.");
+            await FitTerminalAsync();
         }
     }
 

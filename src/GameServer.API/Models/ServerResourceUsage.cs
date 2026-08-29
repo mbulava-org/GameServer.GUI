@@ -22,7 +22,12 @@ namespace GameServer.API.Models
         public int RunningReplicas { get; set; }
         public int FailedTasks { get; set; }
         public int PendingTasks { get; set; }
+        public int PreparingTasks { get; set; }
+        public int StartingTasks { get; set; }
         public int TaskCount { get; set; }
+        public string? LatestTaskState { get; set; }
+        public string? LatestTaskMessage { get; set; }
+        public string? LatestTaskError { get; set; }
 
         // Task/Container References
         public List<string> TaskIds { get; set; } = new();
@@ -52,14 +57,53 @@ namespace GameServer.API.Models
 
         public bool IsHealthy => RunningReplicas == DesiredReplicas && FailedTasks == 0;
 
-        public string ServiceStatus => (DesiredReplicas, RunningReplicas) switch
+        public string ServiceStatus
         {
-            (0, _) => "Stopped",
-            var (d, r) when r == d => "Running",
-            var (d, r) when r < d => "Starting",
-            var (d, r) when r > d => "Scaling Down",
-            _ => "Unknown"
-        };
+            get
+            {
+                if (DesiredReplicas == 0)
+                {
+                    return "Stopped";
+                }
+
+                if (RunningReplicas == DesiredReplicas && DesiredReplicas > 0)
+                {
+                    return "Running";
+                }
+
+                if (RunningReplicas > DesiredReplicas && DesiredReplicas > 0)
+                {
+                    return "Scaling Down";
+                }
+
+                if (PreparingTasks > 0)
+                {
+                    return "Preparing";
+                }
+
+                if (StartingTasks > 0 || PendingTasks > 0)
+                {
+                    return "Starting";
+                }
+
+                if (FailedTasks > 0 && RunningReplicas == 0)
+                {
+                    return "Failed";
+                }
+
+                if (RunningReplicas < DesiredReplicas)
+                {
+                    return "Starting";
+                }
+
+                if (RunningReplicas > DesiredReplicas)
+                {
+                    return "Scaling Down";
+                }
+
+                return "Unknown";
+            }
+        }
 
         // Real-time Container Stats (from Node Agent)
         public ContainerStats? RealTimeStats { get; set; }

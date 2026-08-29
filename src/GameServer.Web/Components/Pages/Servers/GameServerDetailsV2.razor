@@ -73,12 +73,12 @@
                 <RadzenButton Text="Start"
                               Icon="play_arrow"
                               ButtonStyle="ButtonStyle.Success"
-                              Disabled="@(isOperating || string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase))"
+                              Disabled="@(isOperating || string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Preparing", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Starting", StringComparison.OrdinalIgnoreCase))"
                               Click="@StartServiceAsync" />
                 <RadzenButton Text="Stop"
                               Icon="stop"
                               ButtonStyle="ButtonStyle.Warning"
-                              Disabled="@(isOperating || !string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase))"
+                              Disabled="@(isOperating || string.Equals(server.Status, "Stopped", StringComparison.OrdinalIgnoreCase))"
                               Click="@StopServiceAsync" />
                 <RadzenButton Text="Restart"
                               Icon="restart_alt"
@@ -712,10 +712,12 @@
         return status?.Trim().ToLowerInvariant() switch
         {
             "running" => BadgeStyle.Success,
+            "preparing" => BadgeStyle.Primary,
             "starting" => BadgeStyle.Info,
             "stopped" => BadgeStyle.Secondary,
             "stopping" => BadgeStyle.Warning,
             "failed" => BadgeStyle.Danger,
+            "scaling down" => BadgeStyle.Warning,
             _ => BadgeStyle.Secondary
         };
     }
@@ -725,10 +727,12 @@
         return status?.Trim().ToLowerInvariant() switch
         {
             "running" => "Running",
+            "preparing" => "Preparing",
             "starting" => "Starting",
             "stopped" => "Stopped",
             "stopping" => "Stopping",
             "failed" => "Failed",
+            "scaling down" => "Scaling Down",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
     }

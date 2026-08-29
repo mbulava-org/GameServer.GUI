@@ -1218,9 +1218,10 @@
     private BadgeStyle GetStatusBadgeStyle(string? status) => status?.ToLowerInvariant() switch
     {
         "running" => BadgeStyle.Success,
+        "preparing" => BadgeStyle.Primary,
+        "starting" => BadgeStyle.Info,
         "stopped" => BadgeStyle.Warning,
         "failed" => BadgeStyle.Danger,
-        "starting" => BadgeStyle.Info,
         _ => BadgeStyle.Light
     };
 

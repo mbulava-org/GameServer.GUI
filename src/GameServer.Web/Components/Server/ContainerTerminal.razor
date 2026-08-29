@@ -4,6 +4,7 @@
 @using GameServer.API.Client.Interfaces
 @using XtermBlazor
 @using Radzen
+@inject IJSRuntime JSRuntime
 @inject IOptions<GameServerDockerApi> ApiConfig
 @inject NotificationService NotificationService
 @inject ILogger<ContainerTerminal> Logger
@@ -49,9 +50,10 @@
         </div>
     </div>
 
-    <div class="xterm-wrapper">
+    <div class="xterm-wrapper" @ref="_terminalWrapperRef">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
+               AddonIds="@_addonIds"
                OnFirstRender="@OnTerminalReady"
                OnData="@OnTerminalData" />
     </div>
@@ -97,15 +99,23 @@
         flex: 1;
         overflow: hidden;
         background: #000;
+        width: 100%;
+        height: 100%;
     }
 
     .xterm-wrapper ::deep .xterm {
         height: 100%;
+        width: 100%;
         padding: 0.5rem;
     }
 
     .xterm-wrapper ::deep .xterm-viewport {
         background-color: transparent !important;
+    }
+
+    .xterm-wrapper ::deep .xterm-screen {
+        height: 100%;
+        width: 100%;
     }
 
     @@media (max-width: 768px) {
@@ -122,6 +132,8 @@
     [Parameter] public string Shell { get; set; } = "/bin/sh";
 
     private Xterm? terminal;
+    private ElementReference _terminalWrapperRef;
+    private readonly string[] _addonIds = new[] { "addon-fit" };
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,
@@ -169,6 +181,18 @@
         if (firstRender)
         {
             isJavaScriptAvailable = true;
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.initAutoFit", _terminalWrapperRef);
+            }
+            catch
+            {
+                // Fallback gracefully
+            }
+
+            await FitTerminalAsync();
+
             if (AutoConnect && (!string.IsNullOrEmpty(ContainerId) || !string.IsNullOrEmpty(ServerId)))
             {
                 await Task.Delay(500); // Wait for terminal to initialize
@@ -177,10 +201,26 @@
         }
     }
 
+    private async Task FitTerminalAsync()
+    {
+        if (isJavaScriptAvailable)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.fitAll");
+            }
+            catch
+            {
+                // Ignore if terminal is hidden/unmeasured
+            }
+        }
+    }
+
     private async Task OnTerminalReady()
     {
         if (terminal == null || !isJavaScriptAvailable) return;
 
+        await FitTerminalAsync();
         await terminal.WriteLine("\x1b[1;32m=== Container Interactive Terminal ===\x1b[0m");
         await terminal.WriteLine($"\x1b[36mShell: {Shell}\x1b[0m");
         await terminal.WriteLine($"\x1b[36mTarget: {ContainerId ?? ServerId ?? "Unknown"}\x1b[0m");
@@ -190,6 +230,7 @@
         {
             await terminal.WriteLine("\x1b[33mClick 'Connect' to start an interactive shell session\x1b[0m");
         }
+        await FitTerminalAsync();
     }
 
     private async Task ConnectAsync()

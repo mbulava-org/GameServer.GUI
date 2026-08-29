@@ -265,6 +265,201 @@ public class GameServerDeploymentServiceTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task DeployAsync_WhenCreatingNewService_ShouldSetStatusToPreparing()
+    {
+        // Arrange
+        var serverId = "deploy-srv";
+        var gameType = CreateGameType();
+        var server = new GameServerModel
+        {
+            Id = 3,
+            ServerId = serverId,
+            Name = "Deploy Server",
+            ServiceName = $"gameserver-{serverId}",
+            GameTypeRevisionId = 10,
+            Status = "Stopped",
+            Settings = [new GameServerSettingModel { SettingKey = "MOTD", Value = "Welcome" }],
+            Ports = [new GameServer.API.Models.V2.GameServerPort { ContainerPort = 25565, Protocol = "tcp", PublishedPort = 25565 }]
+        };
+
+        var serverRepo = new Mock<IGameServerRepository>();
+        serverRepo.Setup(x => x.GetByServerIdAsync(serverId)).ReturnsAsync(server);
+        serverRepo.Setup(x => x.GetAllAsync(It.IsAny<bool>())).ReturnsAsync([server]);
+
+        var gameTypeRepo = new Mock<IGameTypeRepository>();
+        gameTypeRepo.Setup(x => x.GetAllAsync(true)).ReturnsAsync([gameType]);
+
+        var serviceOperations = new Mock<IServiceOperations>();
+        serviceOperations
+            .Setup(x => x.ListServicesAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        serviceOperations
+            .Setup(x => x.CreateServiceAsync(It.IsAny<ServiceCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceCreateResponse { ID = "srv-new-123" });
+
+        var mountTypeConfigRepo = Mock.Of<IMountTypeConfigRepository>();
+        var mountTypeHandlerFactory = new Mock<IMountTypeHandlerFactory>();
+        var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
+        var validationService = new GameServerValidationService(
+            gameTypeRepo.Object,
+            serviceOperations.Object,
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            volumeResolver,
+            mountTypeConfigRepo);
+
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        GameServerModel? updatedServer = null;
+        serverRepo.Setup(x => x.UpdateAsync(It.IsAny<GameServerModel>()))
+            .Callback<GameServerModel>(s => updatedServer = s)
+            .ReturnsAsync((GameServerModel s) => s);
+
+        var deploymentService = new GameServerDeploymentService(
+            serverRepo.Object,
+            gameTypeRepo.Object,
+            volumeResolver,
+            mountTypeHandlerFactory.Object,
+            serviceOperations.Object,
+            validationService,
+            specBuilder,
+            NullLogger<GameServerDeploymentService>.Instance);
+
+        // Act
+        await deploymentService.DeployAsync(serverId);
+
+        // Assert
+        Assert.NotNull(updatedServer);
+        Assert.Equal("Preparing", updatedServer.Status);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenScalingExistingService_ShouldSetStatusToStarting()
+    {
+        // Arrange
+        var serverId = "start-srv";
+        var gameType = CreateGameType();
+        var server = new GameServerModel
+        {
+            Id = 4,
+            ServerId = serverId,
+            Name = "Start Server",
+            ServiceName = $"gameserver-{serverId}",
+            GameTypeRevisionId = 10,
+            Status = "Stopped",
+            Settings = [],
+            Ports = []
+        };
+
+        var serverRepo = new Mock<IGameServerRepository>();
+        serverRepo.Setup(x => x.GetByServerIdAsync(serverId)).ReturnsAsync(server);
+
+        var gameTypeRepo = new Mock<IGameTypeRepository>();
+        gameTypeRepo.Setup(x => x.GetAllAsync(true)).ReturnsAsync([gameType]);
+
+        var serviceOperations = new Mock<IServiceOperations>();
+        serviceOperations
+            .Setup(x => x.ListServicesAsync(null, server.ServiceName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new SwarmService { ID = "srv-start-123", Spec = new ServiceSpec { Name = server.ServiceName } }]);
+
+        var mountTypeConfigRepo = Mock.Of<IMountTypeConfigRepository>();
+        var mountTypeHandlerFactory = new Mock<IMountTypeHandlerFactory>();
+        var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
+        var validationService = new GameServerValidationService(
+            gameTypeRepo.Object,
+            serviceOperations.Object,
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            volumeResolver,
+            mountTypeConfigRepo);
+
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        GameServerModel? updatedServer = null;
+        serverRepo.Setup(x => x.UpdateAsync(It.IsAny<GameServerModel>()))
+            .Callback<GameServerModel>(s => updatedServer = s)
+            .ReturnsAsync((GameServerModel s) => s);
+
+        var deploymentService = new GameServerDeploymentService(
+            serverRepo.Object,
+            gameTypeRepo.Object,
+            volumeResolver,
+            mountTypeHandlerFactory.Object,
+            serviceOperations.Object,
+            validationService,
+            specBuilder,
+            NullLogger<GameServerDeploymentService>.Instance);
+
+        // Act
+        await deploymentService.StartAsync(serverId);
+
+        // Assert
+        Assert.NotNull(updatedServer);
+        Assert.Equal("Starting", updatedServer.Status);
+    }
+
+    [Fact]
+    public async Task StopAsync_WhenScalingToZeroReplicas_ShouldSetStatusToStopped()
+    {
+        // Arrange
+        var serverId = "stop-srv";
+        var gameType = CreateGameType();
+        var server = new GameServerModel
+        {
+            Id = 5,
+            ServerId = serverId,
+            Name = "Stop Server",
+            ServiceName = $"gameserver-{serverId}",
+            GameTypeRevisionId = 10,
+            Status = "Running",
+            Settings = [],
+            Ports = []
+        };
+
+        var serverRepo = new Mock<IGameServerRepository>();
+        serverRepo.Setup(x => x.GetByServerIdAsync(serverId)).ReturnsAsync(server);
+
+        var gameTypeRepo = new Mock<IGameTypeRepository>();
+
+        var serviceOperations = new Mock<IServiceOperations>();
+        serviceOperations
+            .Setup(x => x.ListServicesAsync(null, server.ServiceName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new SwarmService { ID = "srv-stop-123", Spec = new ServiceSpec { Name = server.ServiceName } }]);
+
+        var mountTypeConfigRepo = Mock.Of<IMountTypeConfigRepository>();
+        var mountTypeHandlerFactory = new Mock<IMountTypeHandlerFactory>();
+        var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
+        var validationService = new GameServerValidationService(
+            gameTypeRepo.Object,
+            serviceOperations.Object,
+            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            volumeResolver,
+            mountTypeConfigRepo);
+
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        GameServerModel? updatedServer = null;
+        serverRepo.Setup(x => x.UpdateAsync(It.IsAny<GameServerModel>()))
+            .Callback<GameServerModel>(s => updatedServer = s)
+            .ReturnsAsync((GameServerModel s) => s);
+
+        var deploymentService = new GameServerDeploymentService(
+            serverRepo.Object,
+            gameTypeRepo.Object,
+            volumeResolver,
+            mountTypeHandlerFactory.Object,
+            serviceOperations.Object,
+            validationService,
+            specBuilder,
+            NullLogger<GameServerDeploymentService>.Instance);
+
+        // Act
+        await deploymentService.StopAsync(serverId);
+
+        // Assert
+        Assert.NotNull(updatedServer);
+        Assert.Equal("Stopped", updatedServer.Status);
+    }
+
     private static ServiceSpec CreateSampleSpec(string envVal, string networkName, string? labelKey = null, string? labelVal = null)
     {
         var labels = new Dictionary<string, string>();

@@ -85,7 +85,7 @@ public sealed class GameServerDeploymentService(
 
         server = server with
         {
-            Status = "Running",
+            Status = "Preparing",
             LastDeployedAt = DateTime.UtcNow,
             Volumes = volumes
         };
@@ -130,7 +130,7 @@ public sealed class GameServerDeploymentService(
             await DeployAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        server = server with { Status = "Running" };
+        server = server with { Status = existing != null ? "Starting" : "Preparing" };
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
         logger.LogInformation("Started V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
         _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
@@ -213,7 +213,7 @@ public sealed class GameServerDeploymentService(
             await DeployAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        server = server with { Status = "Running" };
+        server = server with { Status = "Preparing" };
         await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
         logger.LogInformation("Restarted V2 GameServer {ServerId} service {ServiceName}", serverId, server.ServiceName);
         _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
@@ -294,7 +294,7 @@ public sealed class GameServerDeploymentService(
 
         server = server with
         {
-            Status = "Running",
+            Status = "Preparing",
             LastDeployedAt = DateTime.UtcNow,
             Volumes = allVolumes
         };

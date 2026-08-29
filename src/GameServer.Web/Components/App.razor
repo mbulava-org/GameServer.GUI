@@ -26,7 +26,14 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script src="js/addon-fit.min.js"></script>
     <script src="_content/XtermBlazor/XtermBlazor.min.js"></script>
+    <script src="js/terminal-helpers.js"></script>
+    <script>
+        if (window.XtermBlazor && window.FitAddon) {
+            window.XtermBlazor.registerAddons({ "addon-fit": new window.FitAddon.FitAddon() });
+        }
+    </script>
     <script src="js/fileDownload.js"></script>
 </body>
 

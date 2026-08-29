@@ -37,7 +37,7 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionId);
         ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
 
-        var source = _sources.GetOrAdd(containerId, id => new AttachSource(id, _serviceProvider, _logger));
+        var source = _sources.GetOrAdd(containerId, id => new AttachSource(id, _serviceProvider, _logger, RemoveSource));
         var channel = await source.SubscribeAsync(connectionId, cancellationToken).ConfigureAwait(false);
 
         await foreach (var frame in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -89,6 +89,15 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
         _sources.Clear();
     }
 
+    private void RemoveSource(string containerId, AttachSource source)
+    {
+        if (_sources.TryGetValue(containerId, out var existing) && ReferenceEquals(existing, source))
+        {
+            _sources.TryRemove(containerId, out _);
+            _logger.LogDebug("Removed AttachSource for container {ContainerId}", containerId);
+        }
+    }
+
     /// <summary>
     /// Shared source of attach frames for a single container.
     /// </summary>
@@ -97,19 +106,27 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
         private readonly string _containerId;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger _logger;
+        private readonly Action<string, AttachSource> _onClosed;
         private readonly object _lock = new();
         private readonly List<Subscriber> _subscribers = new();
+        private readonly List<AttachStreamFrame> _historyBuffer = new();
+        private const int MaxHistoryFrames = 2000;
 
         private CancellationTokenSource? _cts;
         private Task? _producer;
         private ClientWebSocket? _webSocket;
         private string? _controllerConnectionId;
 
-        public AttachSource(string containerId, IServiceProvider serviceProvider, ILogger logger)
+        public AttachSource(
+            string containerId,
+            IServiceProvider serviceProvider,
+            ILogger logger,
+            Action<string, AttachSource> onClosed)
         {
             _containerId = containerId;
             _serviceProvider = serviceProvider;
             _logger = logger;
+            _onClosed = onClosed;
         }
 
         public Task<Channel<AttachStreamFrame>> SubscribeAsync(
@@ -124,6 +141,12 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
                 {
                     SingleReader = true
                 });
+
+                // Replay historical output buffer so the newly connected subscriber immediately sees past logs
+                foreach (var historyFrame in _historyBuffer)
+                {
+                    channel.Writer.TryWrite(historyFrame);
+                }
 
                 var subscriber = new Subscriber(connectionId, channel);
                 channel.Reader.Completion.ContinueWith(_ => Unsubscribe(connectionId), TaskScheduler.Default);
@@ -202,14 +225,14 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
                         "Input controller {ConnectionId} released for container {ContainerId}",
                         connectionId, _containerId);
 
-                    // If anyone else is connected, the next person to send input will win.
-                    // Optionally could auto-assign oldest subscriber; input-on-demand is simpler.
                     BroadcastControlLocked(null);
                 }
 
                 if (_subscribers.Count == 0)
                 {
+                    _logger.LogDebug("All subscribers disconnected from container {ContainerId}, tearing down producer", _containerId);
                     _cts?.Cancel();
+                    _onClosed(_containerId, this);
                 }
             }
         }
@@ -267,10 +290,12 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
 
         private void EnsureStartedLocked()
         {
-            if (_producer != null)
+            if (_producer != null && !_producer.IsCompleted)
                 return;
 
+            _cts?.Dispose();
             _cts = new CancellationTokenSource();
+            _webSocket?.Dispose();
             _webSocket = new ClientWebSocket();
             _producer = Task.Run(() => RunProducerAsync(_cts.Token));
         }
@@ -295,7 +320,6 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
             {
                 using var scope = _serviceProvider.CreateScope();
                 var discovery = scope.ServiceProvider.GetRequiredService<INodeAgentDiscovery>();
-                var nodeAgentClient = scope.ServiceProvider.GetRequiredService<NodeAgentClient>();
 
                 var agent = await discovery.GetAgentForContainerAsync(_containerId).ConfigureAwait(false);
                 if (agent is null)
@@ -305,7 +329,6 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
                     return;
                 }
 
-                // We already created the socket; connect it now.
                 ClientWebSocket ws;
                 lock (_lock)
                 {
@@ -347,6 +370,8 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
             }
             finally
             {
+                _onClosed(_containerId, this);
+
                 List<Subscriber> targets;
                 lock (_lock)
                 {
@@ -371,6 +396,11 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
             List<Subscriber> targets;
             lock (_lock)
             {
+                _historyBuffer.Add(frame);
+                if (_historyBuffer.Count > MaxHistoryFrames)
+                {
+                    _historyBuffer.RemoveRange(0, _historyBuffer.Count - MaxHistoryFrames);
+                }
                 targets = new List<Subscriber>(_subscribers);
             }
 

@@ -182,6 +182,27 @@ public sealed class GameServerResourceCollectorService : BackgroundService, IGam
             // Update in-memory local cache
             _cachedUsage[serverId] = usage;
 
+            // Synchronize status back to the repository if it changed based on live Swarm service tasks
+            if (!string.IsNullOrWhiteSpace(usage.ServiceStatus))
+            {
+                try
+                {
+                    var serverRepo = scope.ServiceProvider.GetRequiredService<IGameServerRepository>();
+                    var server = await serverRepo.GetByServerIdAsync(serverId).ConfigureAwait(false);
+                    if (server != null && !string.Equals(server.Status, usage.ServiceStatus, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("Syncing GameServer {ServerId} status from '{OldStatus}' to '{NewStatus}'",
+                            serverId, server.Status, usage.ServiceStatus);
+                        server = server with { Status = usage.ServiceStatus };
+                        await serverRepo.UpdateAsync(server).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to sync status for server {ServerId}", serverId);
+                }
+            }
+
             // Only persist to database if the server has active containers and real-time metrics
             if (!usage.HasRealTimeStats || usage.RunningReplicas == 0)
             {

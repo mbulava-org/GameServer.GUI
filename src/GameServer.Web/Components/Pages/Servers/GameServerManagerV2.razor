@@ -358,10 +358,12 @@
         return status?.Trim().ToLowerInvariant() switch
         {
             "running" => BadgeStyle.Success,
+            "preparing" => BadgeStyle.Primary,
             "starting" => BadgeStyle.Info,
             "stopped" => BadgeStyle.Secondary,
             "stopping" => BadgeStyle.Warning,
             "failed" => BadgeStyle.Danger,
+            "scaling down" => BadgeStyle.Warning,
             _ => BadgeStyle.Secondary
         };
     }
@@ -371,10 +373,12 @@
         return status?.Trim().ToLowerInvariant() switch
         {
             "running" => "Running",
+            "preparing" => "Preparing",
             "starting" => "Starting",
             "stopped" => "Stopped",
             "stopping" => "Stopping",
             "failed" => "Failed",
+            "scaling down" => "Scaling Down",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
     }

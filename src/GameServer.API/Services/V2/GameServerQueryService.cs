@@ -6,7 +6,10 @@ using GameTypeRevisionModel = GameServer.API.Models.V2.GameTypeRevision;
 
 namespace GameServer.API.Services.V2;
 
-public sealed class GameServerQueryService(IGameServerRepository gameServerRepository, IGameTypeRepository gameTypeRepository)
+public sealed class GameServerQueryService(
+    IGameServerRepository gameServerRepository,
+    IGameTypeRepository gameTypeRepository,
+    IGameServerResourceCollector? resourceCollector = null)
 {
     /// <summary>
     /// Gets the V2 GameServer list payload.
@@ -65,7 +68,14 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
         return revisionIndex.TryGetValue(revisionId, out var context) ? context : null;
     }
 
-    private static GameServerListItemDto MapListItem(GameServerModel server, RevisionContext? revisionContext)
+    private string ResolveEffectiveStatus(string serverId, string fallbackStatus)
+    {
+        if (resourceCollector == null) return fallbackStatus;
+        var cached = resourceCollector.GetCachedUsage(serverId);
+        return !string.IsNullOrWhiteSpace(cached?.ServiceStatus) ? cached.ServiceStatus : fallbackStatus;
+    }
+
+    private GameServerListItemDto MapListItem(GameServerModel server, RevisionContext? revisionContext)
     {
         ArgumentNullException.ThrowIfNull(server);
 
@@ -77,7 +87,7 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
             Description = server.Description,
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
-            Status = server.Status,
+            Status = ResolveEffectiveStatus(server.ServerId, server.Status),
             CreatedAt = server.CreatedAt,
             UpdatedAt = server.UpdatedAt,
             LastDeployedAt = server.LastDeployedAt,
@@ -101,7 +111,7 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
         };
     }
 
-    private static GameServerDetailDto MapDetail(GameServerModel server, RevisionContext? revisionContext)
+    private GameServerDetailDto MapDetail(GameServerModel server, RevisionContext? revisionContext)
     {
         ArgumentNullException.ThrowIfNull(server);
 
@@ -113,7 +123,7 @@ public sealed class GameServerQueryService(IGameServerRepository gameServerRepos
             Description = server.Description,
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
-            Status = server.Status,
+            Status = ResolveEffectiveStatus(server.ServerId, server.Status),
             CreatedAt = server.CreatedAt,
             UpdatedAt = server.UpdatedAt,
             LastDeployedAt = server.LastDeployedAt,
