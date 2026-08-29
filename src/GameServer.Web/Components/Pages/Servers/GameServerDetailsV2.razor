@@ -78,7 +78,7 @@
                 <RadzenButton Text="Start"
                               Icon="play_arrow"
                               ButtonStyle="ButtonStyle.Success"
-                              Disabled="@(isOperating || string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Preparing", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Starting", StringComparison.OrdinalIgnoreCase))"
+                              Disabled="@(isOperating || string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Preparing", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Starting", StringComparison.OrdinalIgnoreCase))"
                               Click="@StartServiceAsync" />
                 <RadzenButton Text="Stop"
                               Icon="stop"
@@ -278,13 +278,13 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Console / Logs" Icon="terminal">
+                <RadzenTabsItem Text="Console / Logs" Icon="terminal" Disabled="@(!IsServerRunning)">
                     <div class="p-3">
                         <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" />
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Terminal" Icon="code">
+                <RadzenTabsItem Text="Terminal" Icon="code" Disabled="@(!IsServerRunning)">
                     <div class="p-3">
                         <ContainerTerminal ServerId="@ServerId" ContainerId="@RunningContainerId" />
                     </div>
@@ -575,6 +575,8 @@
 
     private bool showValidationDetails;
 
+    private bool IsServerRunning => server != null && (string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase));
+
     private IReadOnlyList<GameServerResolvedPort> CurrentAdvertisedPorts =>
         CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList().Count > 0
             ? CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList()
@@ -857,7 +859,8 @@
     {
         return status?.Trim().ToLowerInvariant() switch
         {
-            "running" => BadgeStyle.Success,
+            "available" => BadgeStyle.Success,
+            "running" => BadgeStyle.Info,
             "preparing" => BadgeStyle.Primary,
             "starting" => BadgeStyle.Info,
             "stopped" => BadgeStyle.Secondary,
@@ -872,6 +875,7 @@
     {
         return status?.Trim().ToLowerInvariant() switch
         {
+            "available" => "Available",
             "running" => "Running",
             "preparing" => "Preparing",
             "starting" => "Starting",

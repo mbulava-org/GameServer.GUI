@@ -72,7 +72,18 @@ public sealed class GameServerQueryService(
     {
         if (resourceCollector == null) return fallbackStatus;
         var cached = resourceCollector.GetCachedUsage(serverId);
-        return !string.IsNullOrWhiteSpace(cached?.ServiceStatus) ? cached.ServiceStatus : fallbackStatus;
+        if (cached == null || string.IsNullOrWhiteSpace(cached.ServiceStatus))
+        {
+            return fallbackStatus;
+        }
+
+        if (string.Equals(fallbackStatus, "Available", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(cached.ServiceStatus, "Running", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Available";
+        }
+
+        return cached.ServiceStatus;
     }
 
     private GameServerListItemDto MapListItem(GameServerModel server, RevisionContext? revisionContext)

@@ -74,6 +74,34 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
     }
 
     [Fact]
+    public void GameServerDetailsV2_WhenServerIsAvailable_ShouldRenderAvailableBadge()
+    {
+        // Arrange
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-ready",
+            Name = "Ready Minecraft Server",
+            GameTypeDisplayName = "Minecraft",
+            RevisionVersionTag = "1.21.2",
+            ServiceName = "mc-srv-ready",
+            Status = "Available"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-ready", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        // Act
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-ready"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Ready Minecraft Server", cut.Markup);
+            Assert.Contains("Available", cut.Markup);
+        });
+    }
+
+    [Fact]
     public void GameServerDetailsV2_WhenServerNotFound_ShouldRenderNotFoundMessage()
     {
         // Arrange

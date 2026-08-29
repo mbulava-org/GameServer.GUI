@@ -17,6 +17,7 @@ public sealed class GameServerResourceCollectorService : BackgroundService, IGam
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IDatabaseReadinessGate _readinessGate;
+    private readonly Interfaces.IGameServerReadinessWatcherService _readinessWatcher;
     private readonly ILogger<GameServerResourceCollectorService> _logger;
 
     private readonly ConcurrentQueue<GameServerResourceUtilizationEntity> _writeBuffer = new();
@@ -30,10 +31,12 @@ public sealed class GameServerResourceCollectorService : BackgroundService, IGam
     public GameServerResourceCollectorService(
         IServiceProvider serviceProvider,
         IDatabaseReadinessGate readinessGate,
+        Interfaces.IGameServerReadinessWatcherService readinessWatcher,
         ILogger<GameServerResourceCollectorService> logger)
     {
         _serviceProvider = serviceProvider;
         _readinessGate = readinessGate;
+        _readinessWatcher = readinessWatcher;
         _logger = logger;
     }
 
@@ -189,12 +192,35 @@ public sealed class GameServerResourceCollectorService : BackgroundService, IGam
                 {
                     var serverRepo = scope.ServiceProvider.GetRequiredService<IGameServerRepository>();
                     var server = await serverRepo.GetByServerIdAsync(serverId).ConfigureAwait(false);
-                    if (server != null && !string.Equals(server.Status, usage.ServiceStatus, StringComparison.OrdinalIgnoreCase))
+                    if (server != null)
                     {
-                        _logger.LogInformation("Syncing GameServer {ServerId} status from '{OldStatus}' to '{NewStatus}'",
-                            serverId, server.Status, usage.ServiceStatus);
-                        server = server with { Status = usage.ServiceStatus };
-                        await serverRepo.UpdateAsync(server).ConfigureAwait(false);
+                        var targetStatus = usage.ServiceStatus;
+                        if (string.Equals(usage.ServiceStatus, "Running", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (_readinessWatcher.IsServerReady(serverId))
+                            {
+                                targetStatus = "Available";
+                            }
+                            else
+                            {
+                                _ = _readinessWatcher.EnsureWatchingAsync(serverId, cancellationToken);
+                                targetStatus = string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase)
+                                    ? "Available"
+                                    : "Running";
+                            }
+                        }
+                        else
+                        {
+                            _readinessWatcher.ResetReadiness(serverId);
+                        }
+
+                        if (!string.Equals(server.Status, targetStatus, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogInformation("Syncing GameServer {ServerId} status from '{OldStatus}' to '{NewStatus}'",
+                                serverId, server.Status, targetStatus);
+                            server = server with { Status = targetStatus };
+                            await serverRepo.UpdateAsync(server).ConfigureAwait(false);
+                        }
                     }
                 }
                 catch (Exception ex)

@@ -51,6 +51,7 @@ public class GameServerResourceCollectorServiceTests
         var collector = new GameServerResourceCollectorService(
             serviceProvider,
             readinessGate,
+            Mock.Of<IGameServerReadinessWatcherService>(),
             Mock.Of<ILogger<GameServerResourceCollectorService>>());
 
         await collector.TriggerImmediateCollectionAsync("srv-101");
@@ -117,6 +118,7 @@ public class GameServerResourceCollectorServiceTests
         var collector = new GameServerResourceCollectorService(
             serviceProvider,
             readinessGate,
+            Mock.Of<IGameServerReadinessWatcherService>(),
             Mock.Of<ILogger<GameServerResourceCollectorService>>());
 
         await collector.TriggerImmediateCollectionAsync("srv-shutdown");
@@ -156,6 +158,7 @@ public class GameServerResourceCollectorServiceTests
         var collector = new GameServerResourceCollectorService(
             serviceProvider,
             readinessGate,
+            Mock.Of<IGameServerReadinessWatcherService>(),
             Mock.Of<ILogger<GameServerResourceCollectorService>>());
 
         await collector.TriggerImmediateCollectionAsync("srv-stopped");
@@ -211,6 +214,7 @@ public class GameServerResourceCollectorServiceTests
         var collector = new GameServerResourceCollectorService(
             serviceProvider,
             readinessGate,
+            Mock.Of<IGameServerReadinessWatcherService>(),
             Mock.Of<ILogger<GameServerResourceCollectorService>>());
 
         await collector.TriggerImmediateCollectionAsync("srv-no-stats");

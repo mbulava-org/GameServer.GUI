@@ -312,6 +312,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             ImageReference = revision.ImageReference,
             ImageDigest = revision.ImageDigest,
             EnableTTY = revision.EnableTTY,
+            ReadyLogPattern = revision.ReadyLogPattern,
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             Ports = revision.Ports.Select(port => new GameTypePortDto
@@ -539,6 +540,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             ImageReference = request.ImageReference,
             ImageDigest = request.ImageDigest,
             EnableTTY = request.EnableTTY,
+            ReadyLogPattern = request.ReadyLogPattern,
             Notes = request.Notes,
             IsPublished = request.IsPublished,
             Ports = request.Ports.Select(x => new GameTypePort
@@ -643,6 +645,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             ImageReference = revision.ImageReference,
             ImageDigest = revision.ImageDigest,
             EnableTTY = revision.EnableTTY,
+            ReadyLogPattern = revision.ReadyLogPattern,
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             CreatedAt = revision.CreatedAt,

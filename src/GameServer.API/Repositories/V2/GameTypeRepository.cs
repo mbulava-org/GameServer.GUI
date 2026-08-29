@@ -258,6 +258,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         entity.ImageReference = revision.ImageReference;
         entity.ImageDigest = revision.ImageDigest;
         entity.EnableTTY = revision.EnableTTY;
+        entity.ReadyLogPattern = revision.ReadyLogPattern;
         entity.Notes = revision.Notes;
         entity.IsPublished = revision.IsPublished;
 
@@ -481,6 +482,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ImageReference = entity.ImageReference,
             ImageDigest = entity.ImageDigest,
             EnableTTY = entity.EnableTTY,
+            ReadyLogPattern = entity.ReadyLogPattern,
             Notes = entity.Notes,
             IsPublished = entity.IsPublished,
             CreatedAt = entity.CreatedAt,
@@ -567,6 +569,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ImageReference = model.ImageReference,
             ImageDigest = model.ImageDigest,
             EnableTTY = model.EnableTTY,
+            ReadyLogPattern = model.ReadyLogPattern,
             Notes = model.Notes,
             IsPublished = model.IsPublished,
             CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt,

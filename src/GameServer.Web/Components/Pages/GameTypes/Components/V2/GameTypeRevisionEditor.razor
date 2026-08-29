@@ -50,6 +50,11 @@
         </div>
     </div>
     <div class="col-12">
+        <RadzenFormField Text="Ready Log Pattern (Optional)" Variant="Variant.Outlined" class="w-100" HelperText="Optional log entry string or wildcard pattern to detect when server is ready (supports env var replacements like {SERVER_PORT}). Server stays 'Running' until matched, then becomes 'Available'.">
+            <RadzenTextBox Value="@ReadyLogPattern" ValueChanged="@OnReadyLogPatternChanged" class="w-100" Placeholder="e.g. Done ({*})! For help, type &quot;help&quot;" />
+        </RadzenFormField>
+    </div>
+    <div class="col-12">
         <RadzenFormField Text="Revision Notes" Variant="Variant.Outlined" class="w-100">
             <RadzenTextArea Value="@Notes" ValueChanged="@OnNotesChanged" Rows="4" class="w-100" />
         </RadzenFormField>
@@ -119,6 +124,12 @@
     public EventCallback<bool> EnableTTYChanged { get; set; }
 
     [Parameter]
+    public string? ReadyLogPattern { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ReadyLogPatternChanged { get; set; }
+
+    [Parameter]
     public string? Notes { get; set; }
 
     [Parameter]
@@ -156,6 +167,8 @@
     private Task OnVersionTagChanged(string value) => VersionTagChanged.InvokeAsync(value);
 
     private Task OnEnableTTYChanged(bool value) => EnableTTYChanged.InvokeAsync(value);
+
+    private Task OnReadyLogPatternChanged(string? value) => ReadyLogPatternChanged.InvokeAsync(value);
 
     private Task OnNotesChanged(string? value) => NotesChanged.InvokeAsync(value);
 

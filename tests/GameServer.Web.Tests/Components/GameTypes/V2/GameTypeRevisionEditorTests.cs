@@ -25,7 +25,7 @@ public sealed class GameTypeRevisionEditorTests : BunitContext
                 IsPublished = true,
                 EnableTTY = false,
                 CreatedAt = DateTime.UtcNow,
-                SourceRevision = new GameTypeRevision { Id = 1, VersionTag = "1.21.2" }
+                SourceRevision = new GameTypeRevision { Id = 1, VersionTag = "1.21.2", ReadyLogPattern = "Done (*)! For help*" }
             }
         };
 
@@ -34,6 +34,7 @@ public sealed class GameTypeRevisionEditorTests : BunitContext
             .Add(p => p.RevisionRows, rows)
             .Add(p => p.VersionTag, "1.21.2")
             .Add(p => p.ImageReference, "itzg/minecraft-server")
+            .Add(p => p.ReadyLogPattern, "Done (*)! For help*")
             .Add(p => p.Warnings, ["Image has no digest tag."])
             .Add(p => p.CanSetCurrentRevision, true));
 
@@ -43,6 +44,8 @@ public sealed class GameTypeRevisionEditorTests : BunitContext
             Assert.Contains("Docker Image Reference", cut.Markup);
             Assert.Contains("itzg/minecraft-server", cut.Markup);
             Assert.Contains("Version Tag", cut.Markup);
+            Assert.Contains("Ready Log Pattern (Optional)", cut.Markup);
+            Assert.Contains("Done (*)! For help*", cut.Markup);
             Assert.Contains("Image has no digest tag.", cut.Markup);
             Assert.Contains("1.21.2", cut.Markup);
             Assert.Contains("Set Current", cut.Markup);

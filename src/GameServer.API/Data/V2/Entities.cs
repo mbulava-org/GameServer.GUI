@@ -58,6 +58,9 @@ public class GameTypeRevisionEntity
 
     public bool EnableTTY { get; set; }
 
+    [MaxLength(500)]
+    public string? ReadyLogPattern { get; set; }
+
     public string? Notes { get; set; }
 
     public bool IsPublished { get; set; }

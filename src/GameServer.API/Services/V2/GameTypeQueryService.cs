@@ -125,6 +125,7 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
             ImageReference = revision.ImageReference,
             ImageDigest = revision.ImageDigest,
             EnableTTY = revision.EnableTTY,
+            ReadyLogPattern = revision.ReadyLogPattern,
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             CreatedAt = revision.CreatedAt,
@@ -251,6 +252,7 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
             ImageReference = revision.ImageReference,
             ImageDigest = revision.ImageDigest,
             EnableTTY = revision.EnableTTY,
+            ReadyLogPattern = revision.ReadyLogPattern,
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             Ports = revision.Ports

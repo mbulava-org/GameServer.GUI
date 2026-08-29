@@ -195,6 +195,7 @@ namespace GameServer.API
                 builder.Services.AddHostedService(sp => (ServicesV2.GameServerResourceCollectorService)sp.GetRequiredService<ServicesV2.IGameServerResourceCollector>());
                 builder.Services.AddSingleton<Interfaces.IServerLogAggregator, ServicesV2.ServerLogAggregator>();
                 builder.Services.AddSingleton<Interfaces.IContainerAttachAggregator, ServicesV2.ContainerAttachAggregator>();
+                builder.Services.AddSingleton<Interfaces.IGameServerReadinessWatcherService, ServicesV2.GameServerReadinessWatcherService>();
 
                 // Database Initialization - Runs in background after webhost starts
                 // This allows the webhost and SignalR hubs to be available immediately

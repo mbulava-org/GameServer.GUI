@@ -70,6 +70,12 @@ public class GameServerV2DbContext : DbContext
 
     public DbSet<GameServerResourceUtilizationEntity> ResourceUtilizations { get; set; }
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -109,6 +115,7 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.VersionTag).IsRequired().HasMaxLength(100);
             entity.Property(e => e.ImageReference).IsRequired().HasMaxLength(500);
             entity.Property(e => e.ImageDigest).HasMaxLength(250);
+            entity.Property(e => e.ReadyLogPattern).HasMaxLength(500);
             ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
 
             entity.HasMany(e => e.Ports)
