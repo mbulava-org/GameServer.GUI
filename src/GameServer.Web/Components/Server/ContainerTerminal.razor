@@ -53,7 +53,6 @@
     <div class="xterm-wrapper" @ref="_terminalWrapperRef">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
-               AddonIds="@_addonIds"
                OnFirstRender="@OnTerminalReady"
                OnData="@OnTerminalData" />
     </div>
@@ -133,7 +132,6 @@
 
     private Xterm? terminal;
     private ElementReference _terminalWrapperRef;
-    private readonly string[] _addonIds = new[] { "addon-fit" };
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,

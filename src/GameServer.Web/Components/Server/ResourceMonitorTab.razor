@@ -149,21 +149,29 @@
     <RadzenCard class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div class="d-flex align-items-center gap-2">
-                <RadzenIcon Icon="history" Style="color: var(--rz-primary); font-size: 1.5rem;" />
-                <h5 class="mb-0">Resource History</h5>
+                <RadzenIcon Icon="show_chart" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                <h5 class="mb-0">Resource Usage History</h5>
                 @if (historyRecords.Any())
                 {
                     <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{historyRecords.Count} records")" Variant="Variant.Flat" />
                 }
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <RadzenSelectBar @bind-Value="@viewMode" TValue="string" Size="ButtonSize.Small">
+                    <Items>
+                        <RadzenSelectBarItem Text="Charts" Value="@("charts")" Icon="show_chart" />
+                        <RadzenSelectBarItem Text="Both" Value="@("both")" Icon="dashboard" />
+                        <RadzenSelectBarItem Text="Table" Value="@("table")" Icon="table_rows" />
+                    </Items>
+                </RadzenSelectBar>
+
                 <RadzenDropDown TValue="int"
                                 Data="@(new[] { 25, 50, 100, 250, 500 })"
                                 Value="@historyLimit"
                                 ValueChanged="@OnHistoryLimitChanged"
-                                Style="width: 100px;" />
+                                Style="width: 90px;" />
                 <RadzenButton Icon="refresh"
-                              Text="Refresh History"
+                              Text="Refresh"
                               ButtonStyle="ButtonStyle.Light"
                               Size="ButtonSize.Small"
                               Click="@LoadHistoryAsync"
@@ -187,61 +195,219 @@
         }
         else
         {
-            <RadzenDataGrid Data="@historyRecords"
-                            TItem="GameServerResourceHistoryItem"
-                            AllowSorting="true"
-                            AllowPaging="true"
-                            PageSize="10"
-                            PagerHorizontalAlign="HorizontalAlign.Center"
-                            ShowPagingSummary="true"
-                            class="border rounded">
-                <Columns>
-                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="Timestamp" Title="Time" Width="170px" SortOrder="SortOrder.Descending">
-                        <Template Context="item">
-                            <span>@item.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="CpuUsagePercent" Title="CPU" Width="110px">
-                        <Template Context="item">
-                            <span class="fw-bold">@((item.CpuUsagePercent ?? 0).ToString("F1"))%</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="MemoryUsageBytes" Title="Memory" Width="180px">
-                        <Template Context="item">
-                            <div>@FormatBytes(item.MemoryUsageBytes ?? 0)</div>
-                            <small class="text-muted">@((item.MemoryUsagePercent ?? 0).ToString("F1"))% used</small>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Title="Network I/O" Width="180px" Sortable="false">
-                        <Template Context="item">
-                            <div class="small">
-                                <span class="text-success"><RadzenIcon Icon="arrow_downward" Style="font-size: 0.8rem;" /> @FormatBytes(item.NetworkRxBytes ?? 0)</span>
-                                <span class="ms-2 text-info"><RadzenIcon Icon="arrow_upward" Style="font-size: 0.8rem;" /> @FormatBytes(item.NetworkTxBytes ?? 0)</span>
+            @if (viewMode is "charts" or "both")
+            {
+                <div class="row g-3 mb-4">
+                    <!-- CPU Usage Line Chart -->
+                    <div class="col-lg-6">
+                        <RadzenCard class="p-3 h-100 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenIcon Icon="memory" Style="color: var(--rz-primary);" />
+                                    <strong class="small text-uppercase">CPU Usage (%)</strong>
+                                </div>
+                                <span class="badge bg-primary-subtle text-primary">Avg: @GetAvgCpu()%</span>
                             </div>
-                        </Template>
-                    </RadzenDataGridColumn>
+                            <RadzenChart Style="height: 240px;">
+                                <RadzenLineSeries Data="@chartPoints"
+                                                  CategoryProperty="TimeLabel"
+                                                  ValueProperty="CpuPercent"
+                                                  Title="CPU %"
+                                                  Smooth="true"
+                                                  Stroke="var(--rz-primary)"
+                                                  LineType="LineType.Solid">
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </RadzenLineSeries>
+                                <RadzenCategoryAxis Padding="10">
+                                    <RadzenAxisTitle Text="Time" />
+                                </RadzenCategoryAxis>
+                                <RadzenValueAxis Min="0" Max="100" Step="25">
+                                    <RadzenAxisTitle Text="CPU %" />
+                                    <RadzenGridLines Visible="true" />
+                                </RadzenValueAxis>
+                                <RadzenLegend Visible="false" />
+                            </RadzenChart>
+                        </RadzenCard>
+                    </div>
 
-                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Title="Disk I/O" Width="180px" Sortable="false">
-                        <Template Context="item">
-                            <div class="small text-muted">
-                                <span>R: @FormatBytes(item.BlockReadBytes ?? 0)</span>
-                                <span class="ms-2">W: @FormatBytes(item.BlockWriteBytes ?? 0)</span>
+                    <!-- Memory Usage Line Chart -->
+                    <div class="col-lg-6">
+                        <RadzenCard class="p-3 h-100 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenIcon Icon="developer_board" Style="color: var(--rz-info);" />
+                                    <strong class="small text-uppercase">Memory Usage (%)</strong>
+                                </div>
+                                <span class="badge bg-info-subtle text-info">Latest: @GetLatestMemoryMB() MB</span>
                             </div>
-                        </Template>
-                    </RadzenDataGridColumn>
+                            <RadzenChart Style="height: 240px;">
+                                <RadzenLineSeries Data="@chartPoints"
+                                                  CategoryProperty="TimeLabel"
+                                                  ValueProperty="MemoryPercent"
+                                                  Title="Memory %"
+                                                  Smooth="true"
+                                                  Stroke="var(--rz-info)"
+                                                  LineType="LineType.Solid">
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </RadzenLineSeries>
+                                <RadzenCategoryAxis Padding="10">
+                                    <RadzenAxisTitle Text="Time" />
+                                </RadzenCategoryAxis>
+                                <RadzenValueAxis Min="0" Max="100" Step="25">
+                                    <RadzenAxisTitle Text="Memory %" />
+                                    <RadzenGridLines Visible="true" />
+                                </RadzenValueAxis>
+                                <RadzenLegend Visible="false" />
+                            </RadzenChart>
+                        </RadzenCard>
+                    </div>
 
-                    <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="RunningReplicas" Title="Replicas" Width="100px">
-                        <Template Context="item">
-                            <RadzenBadge BadgeStyle="@(item.RunningReplicas >= item.DesiredReplicas && item.RunningReplicas > 0 ? BadgeStyle.Success : BadgeStyle.Warning)"
-                                         Text="@($"{item.RunningReplicas}/{item.DesiredReplicas}")"
-                                         Size="BadgeSize.Small" />
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
+                    <!-- Network I/O Line Chart -->
+                    <div class="col-lg-6">
+                        <RadzenCard class="p-3 h-100 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenIcon Icon="swap_vert" Style="color: var(--rz-success);" />
+                                    <strong class="small text-uppercase">Network I/O (MB)</strong>
+                                </div>
+                            </div>
+                            <RadzenChart Style="height: 240px;">
+                                <RadzenLineSeries Data="@chartPoints"
+                                                  CategoryProperty="TimeLabel"
+                                                  ValueProperty="NetworkRxMB"
+                                                  Title="Rx In (MB)"
+                                                  Smooth="true"
+                                                  Stroke="var(--rz-success)"
+                                                  LineType="LineType.Solid">
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </RadzenLineSeries>
+                                <RadzenLineSeries Data="@chartPoints"
+                                                  CategoryProperty="TimeLabel"
+                                                  ValueProperty="NetworkTxMB"
+                                                  Title="Tx Out (MB)"
+                                                  Smooth="true"
+                                                  Stroke="var(--rz-info)"
+                                                  LineType="LineType.Solid">
+                                    <RadzenMarkers MarkerType="MarkerType.Diamond" Size="3" />
+                                </RadzenLineSeries>
+                                <RadzenCategoryAxis Padding="10">
+                                    <RadzenAxisTitle Text="Time" />
+                                </RadzenCategoryAxis>
+                                <RadzenValueAxis Min="0">
+                                    <RadzenAxisTitle Text="MB" />
+                                    <RadzenGridLines Visible="true" />
+                                </RadzenValueAxis>
+                                <RadzenLegend Position="LegendPosition.Top" />
+                            </RadzenChart>
+                        </RadzenCard>
+                    </div>
+
+                    <!-- Disk I/O Line Chart -->
+                    <div class="col-lg-6">
+                        <RadzenCard class="p-3 h-100 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <RadzenIcon Icon="storage" Style="color: var(--rz-warning);" />
+                                    <strong class="small text-uppercase">Disk I/O (MB)</strong>
+                                </div>
+                            </div>
+                            <RadzenChart Style="height: 240px;">
+                                <RadzenLineSeries Data="@chartPoints"
+                                                  CategoryProperty="TimeLabel"
+                                                  ValueProperty="BlockReadMB"
+                                                  Title="Read (MB)"
+                                                  Smooth="true"
+                                                  Stroke="var(--rz-warning)"
+                                                  LineType="LineType.Solid">
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </RadzenLineSeries>
+                                <RadzenLineSeries Data="@chartPoints"
+                                                  CategoryProperty="TimeLabel"
+                                                  ValueProperty="BlockWriteMB"
+                                                  Title="Write (MB)"
+                                                  Smooth="true"
+                                                  Stroke="var(--rz-danger)"
+                                                  LineType="LineType.Solid">
+                                    <RadzenMarkers MarkerType="MarkerType.Diamond" Size="3" />
+                                </RadzenLineSeries>
+                                <RadzenCategoryAxis Padding="10">
+                                    <RadzenAxisTitle Text="Time" />
+                                </RadzenCategoryAxis>
+                                <RadzenValueAxis Min="0">
+                                    <RadzenAxisTitle Text="MB" />
+                                    <RadzenGridLines Visible="true" />
+                                </RadzenValueAxis>
+                                <RadzenLegend Position="LegendPosition.Top" />
+                            </RadzenChart>
+                        </RadzenCard>
+                    </div>
+                </div>
+            }
+
+            @if (viewMode is "table" or "both")
+            {
+                <div class="mt-3">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <RadzenIcon Icon="table_rows" Style="color: var(--rz-text-secondary-color);" />
+                        <h6 class="mb-0">Historical Records Table</h6>
+                    </div>
+                    <RadzenDataGrid Data="@historyRecords"
+                                    TItem="GameServerResourceHistoryItem"
+                                    AllowSorting="true"
+                                    AllowPaging="true"
+                                    PageSize="10"
+                                    PagerHorizontalAlign="HorizontalAlign.Center"
+                                    ShowPagingSummary="true"
+                                    class="border rounded">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="Timestamp" Title="Time" Width="170px" SortOrder="SortOrder.Descending">
+                                <Template Context="item">
+                                    <span>@item.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="CpuUsagePercent" Title="CPU" Width="110px">
+                                <Template Context="item">
+                                    <span class="fw-bold">@((item.CpuUsagePercent ?? 0).ToString("F1"))%</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="MemoryUsageBytes" Title="Memory" Width="180px">
+                                <Template Context="item">
+                                    <div>@FormatBytes(item.MemoryUsageBytes ?? 0)</div>
+                                    <small class="text-muted">@((item.MemoryUsagePercent ?? 0).ToString("F1"))% used</small>
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Title="Network I/O" Width="180px" Sortable="false">
+                                <Template Context="item">
+                                    <div class="small">
+                                        <span class="text-success"><RadzenIcon Icon="arrow_downward" Style="font-size: 0.8rem;" /> @FormatBytes(item.NetworkRxBytes ?? 0)</span>
+                                        <span class="ms-2 text-info"><RadzenIcon Icon="arrow_upward" Style="font-size: 0.8rem;" /> @FormatBytes(item.NetworkTxBytes ?? 0)</span>
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Title="Disk I/O" Width="180px" Sortable="false">
+                                <Template Context="item">
+                                    <div class="small text-muted">
+                                        <span>R: @FormatBytes(item.BlockReadBytes ?? 0)</span>
+                                        <span class="ms-2">W: @FormatBytes(item.BlockWriteBytes ?? 0)</span>
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerResourceHistoryItem" Property="RunningReplicas" Title="Replicas" Width="100px">
+                                <Template Context="item">
+                                    <RadzenBadge BadgeStyle="@(item.RunningReplicas >= item.DesiredReplicas && item.RunningReplicas > 0 ? BadgeStyle.Success : BadgeStyle.Warning)"
+                                                 Text="@($"{item.RunningReplicas}/{item.DesiredReplicas}")"
+                                                 Size="BadgeSize.Small" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+            }
         }
     </RadzenCard>
 </div>
@@ -261,8 +427,23 @@
     private bool isConnected;
     private bool isConnecting;
     private List<GameServerResourceHistoryItem> historyRecords = [];
+    private List<ResourceHistoryChartPoint> chartPoints = [];
     private bool isHistoryLoading;
     private int historyLimit = 100;
+    private string viewMode = "both";
+
+    public sealed record ResourceHistoryChartPoint
+    {
+        public DateTime Timestamp { get; init; }
+        public string TimeLabel => Timestamp.ToLocalTime().ToString("HH:mm:ss");
+        public double CpuPercent { get; init; }
+        public double MemoryPercent { get; init; }
+        public double MemoryMB { get; init; }
+        public double NetworkRxMB { get; init; }
+        public double NetworkTxMB { get; init; }
+        public double BlockReadMB { get; init; }
+        public double BlockWriteMB { get; init; }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -292,17 +473,41 @@
             isHistoryLoading = true;
             var result = await GameServerApiV2.GetResourceHistoryAsync(ServerId, limit: historyLimit);
             historyRecords = result.OrderByDescending(r => r.Timestamp).ToList();
+            chartPoints = result.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
+            {
+                Timestamp = r.Timestamp,
+                CpuPercent = Math.Round(r.CpuUsagePercent ?? 0, 1),
+                MemoryPercent = Math.Round(r.MemoryUsagePercent ?? 0, 1),
+                MemoryMB = Math.Round((r.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
+                NetworkRxMB = Math.Round((r.NetworkRxBytes ?? 0) / (1024.0 * 1024.0), 2),
+                NetworkTxMB = Math.Round((r.NetworkTxBytes ?? 0) / (1024.0 * 1024.0), 2),
+                BlockReadMB = Math.Round((r.BlockReadBytes ?? 0) / (1024.0 * 1024.0), 2),
+                BlockWriteMB = Math.Round((r.BlockWriteBytes ?? 0) / (1024.0 * 1024.0), 2)
+            }).ToList();
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to load resource history for server {ServerId}", ServerId);
             historyRecords = [];
+            chartPoints = [];
         }
         finally
         {
             isHistoryLoading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private string GetAvgCpu()
+    {
+        if (!chartPoints.Any()) return "0.0";
+        return chartPoints.Average(c => c.CpuPercent).ToString("F1");
+    }
+
+    private string GetLatestMemoryMB()
+    {
+        if (!chartPoints.Any()) return "0";
+        return chartPoints.Last().MemoryMB.ToString("0.##");
     }
 
     private async Task ConnectAndSubscribeAsync()

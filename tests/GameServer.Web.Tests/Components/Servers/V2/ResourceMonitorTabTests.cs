@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Radzen;
+using Radzen.Blazor.Rendering;
 using Xunit;
 
 namespace GameServer.Web.Tests.Components.Servers.V2;
@@ -20,8 +21,11 @@ public class ResourceMonitorTabTests : BunitContext
     public ResourceMonitorTabTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        JSInterop.Setup<Rect>(inv => inv.Identifier.Contains("createChart"))
+            .SetResult(new Rect { Width = 600, Height = 300 });
 
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<TooltipService>();
         Services.AddSingleton<ILogger<ResourceMonitorTab>>(NullLogger<ResourceMonitorTab>.Instance);
         Services.AddSingleton(Options.Create(new GameServerDockerApi { BaseUri = "http://localhost:5164" }));
         _apiMock.Setup(a => a.GetResourceHistoryAsync(It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -55,13 +59,13 @@ public class ResourceMonitorTabTests : BunitContext
             .Add(p => p.AutoConnect, false));
 
         Assert.Contains("Live Resource Usage", cut.Markup);
-        Assert.Contains("Resource History", cut.Markup);
+        Assert.Contains("Resource Usage History", cut.Markup);
         Assert.DoesNotContain("Live Metrics Feed", cut.Markup);
         Assert.DoesNotContain("Container & Swarm Node", cut.Markup);
     }
 
     [Fact]
-    public void ResourceMonitorTab_RendersHistoricalRecords()
+    public void ResourceMonitorTab_RendersChartsAndHistoricalRecords()
     {
         var cut = Render<ResourceMonitorTab>(parameters => parameters
             .Add(p => p.ServerId, "srv-1")
@@ -69,6 +73,10 @@ public class ResourceMonitorTabTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
+            Assert.Contains("CPU Usage (%)", cut.Markup);
+            Assert.Contains("Memory Usage (%)", cut.Markup);
+            Assert.Contains("Network I/O (MB)", cut.Markup);
+            Assert.Contains("Disk I/O (MB)", cut.Markup);
             Assert.Contains("25.5%", cut.Markup);
             Assert.Contains("512 MB", cut.Markup);
         });

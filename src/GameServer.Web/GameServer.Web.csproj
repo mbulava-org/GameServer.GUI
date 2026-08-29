@@ -26,8 +26,8 @@
   <!-- Manually copy Radzen and XtermBlazor assets to wwwroot/_content -->
   <Target Name="CopyStaticWebAssets" AfterTargets="Build">
     <ItemGroup>
-      <RadzenAssets Include="$(NuGetPackageRoot)radzen.blazor\9.0.4\staticwebassets\**\*.*" />
-      <XtermAssets Include="$(NuGetPackageRoot)xtermblazor\2.3.0\staticwebassets\**\*.*" />
+      <RadzenAssets Include="$(NuGetPackageRoot)radzen.blazor\*\staticwebassets\**\*.*" />
+      <XtermAssets Include="$(NuGetPackageRoot)xtermblazor\*\staticwebassets\**\*.*" />
     </ItemGroup>
     
     <Copy SourceFiles="@(RadzenAssets)" DestinationFolder="$(OutputPath)wwwroot\_content\Radzen.Blazor\%(RecursiveDir)" SkipUnchangedFiles="true" />

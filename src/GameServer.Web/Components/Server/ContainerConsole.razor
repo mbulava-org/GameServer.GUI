@@ -63,7 +63,6 @@
     <div class="terminal-wrapper" @ref="_terminalWrapperRef" @onclick="FocusTerminalAsync">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
-               AddonIds="@_addonIds"
                OnFirstRender="@OnTerminalFirstRender"
                OnData="@OnTerminalData"
                OnLineFeed="@OnLineFeed"
@@ -153,7 +152,6 @@
 
     private Xterm? terminal;
     private ElementReference _terminalWrapperRef;
-    private readonly string[] _addonIds = new[] { "addon-fit" };
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,
