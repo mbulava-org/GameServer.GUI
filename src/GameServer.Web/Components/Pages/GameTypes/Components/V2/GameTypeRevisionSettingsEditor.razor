@@ -1070,6 +1070,11 @@ else
             return "Server Varible (Optional)";
         }
 
+        if (string.Equals(value, "password", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Password";
+        }
+
         return value ?? string.Empty;
     }
 

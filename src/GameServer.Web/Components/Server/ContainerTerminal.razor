@@ -53,6 +53,7 @@
     <div class="xterm-wrapper" @ref="_terminalWrapperRef">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
+               Addons="@_addons"
                OnFirstRender="@OnTerminalReady"
                OnData="@OnTerminalData" />
     </div>
@@ -106,10 +107,12 @@
         height: 100%;
         width: 100%;
         padding: 0.5rem;
+        box-sizing: border-box;
     }
 
     .xterm-wrapper ::deep .xterm-viewport {
         background-color: transparent !important;
+        width: 100% !important;
     }
 
     .xterm-wrapper ::deep .xterm-screen {
@@ -132,6 +135,7 @@
 
     private Xterm? terminal;
     private ElementReference _terminalWrapperRef;
+    private readonly HashSet<string> _addons = ["addon-fit"];
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,
@@ -203,6 +207,18 @@
     {
         if (isJavaScriptAvailable)
         {
+            try
+            {
+                if (terminal is not null)
+                {
+                    await terminal.Addon("addon-fit").InvokeVoidAsync("fit");
+                }
+            }
+            catch
+            {
+                // Fallback
+            }
+
             try
             {
                 await JSRuntime.InvokeVoidAsync("TerminalHelpers.fitAll");

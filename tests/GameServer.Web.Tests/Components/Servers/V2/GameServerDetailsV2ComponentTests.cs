@@ -161,4 +161,146 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
             Assert.Contains("title=\"Copy Public IP:Port\"", cut.Markup);
         });
     }
+
+    [Fact]
+    public void GameServerDetailsV2_WhenValidationIsValid_ShouldNotDisplayPinnedValidationBar()
+    {
+        // Arrange
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-valid",
+            Name = "Perfect Server",
+            GameTypeDisplayName = "Satisfactory",
+            RevisionVersionTag = "1.0",
+            ServiceName = "satisfactory-srv",
+            Status = "Running"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-valid", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        // Act
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-valid"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Perfect Server", cut.Markup);
+            Assert.Empty(cut.FindAll("div.gameserver-sticky-validation"));
+            Assert.DoesNotContain("Current Validation:", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_WhenValidationHasErrors_ShouldDisplayPinnedValidationBar()
+    {
+        // Arrange
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-invalid",
+            Name = "Broken Server",
+            GameTypeDisplayName = "Satisfactory",
+            RevisionVersionTag = "1.0",
+            ServiceName = "satisfactory-broken",
+            Status = "Running"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-invalid", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerValidationResult
+            {
+                IsValid = false,
+                Issues = [new GameServerValidationIssue { Scope = "ports", Message = "Port conflict detected", Severity = "Error" }]
+            });
+
+        // Act
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-invalid"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Broken Server", cut.Markup);
+            Assert.NotEmpty(cut.FindAll("div.gameserver-sticky-validation"));
+            Assert.Contains("Current Validation: 1 Issue", cut.Markup);
+            Assert.Contains("Port conflict detected", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_WhenPasswordSettingPresent_ShouldDisplayMaskedAndAllowToggle()
+    {
+        // Arrange
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-pwd",
+            Name = "Protected Server",
+            GameTypeKey = "valheim",
+            GameTypeDisplayName = "Valheim",
+            RevisionVersionTag = "1.0",
+            ServiceName = "valheim-srv-pwd",
+            Status = "Running",
+            Settings =
+            [
+                new GameServerSetting { SettingKey = "SERVER_PASSWORD", Value = "SuperSecret123" },
+                new GameServerSetting { SettingKey = "PUBLIC_NAME", Value = "My Server" }
+            ]
+        };
+
+        var gameType = new GameTypeDetail
+        {
+            Key = "valheim",
+            DisplayName = "Valheim",
+            CurrentRevisionId = 1,
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 1,
+                    VersionTag = "1.0",
+                    SettingDefinitions =
+                    [
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "SERVER_PASSWORD",
+                            Metadata = new GameTypeSettingMetadata { DataType = "password" }
+                        },
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "PUBLIC_NAME",
+                            Metadata = new GameTypeSettingMetadata { DataType = "string" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-pwd", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        gameTypeApi.Setup(a => a.GetByKeyAsync("valheim", It.IsAny<CancellationToken>())).ReturnsAsync(gameType);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        // Act - Open to Settings tab (index 4)
+        var cut = Render<GameServerDetailsV2>(parameters => parameters
+            .Add(p => p.ServerId, "srv-pwd")
+            .Add(p => p.SelectedTabIndex, 4));
+
+        // Assert - Password should initially be masked
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("••••••••", cut.Markup);
+            Assert.DoesNotContain("SuperSecret123", cut.Markup);
+            Assert.Contains("My Server", cut.Markup);
+        });
+
+        // Find and click the toggle visibility button for password
+        var showButton = cut.Find("button[title='Show Password']");
+        showButton.Click();
+
+        // Password should now be revealed
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("SuperSecret123", cut.Markup);
+            Assert.NotNull(cut.Find("button[title='Hide Password']"));
+        });
+    }
 }

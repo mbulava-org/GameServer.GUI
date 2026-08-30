@@ -8,6 +8,7 @@
 @using Radzen
 @using Radzen.Blazor
 @inject Services.V2.IGameServerV2ApiService GameServerApiV2
+@inject Services.V2.IGameTypeV2ApiService GameTypeApiV2
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject Services.IThumbnailCacheService ThumbnailCacheService
@@ -125,7 +126,7 @@
 
 
         <div class="row g-3 mb-3">
-            <div class="col-lg-4">
+            <div class="col-lg-6">
                 <RadzenCard>
                     <h5 class="mb-3">Overview</h5>
                     <div><strong>Game Type:</strong> @(server.GameTypeDisplayName ?? "Unknown")</div>
@@ -143,7 +144,7 @@
                     }
                 </RadzenCard>
             </div>
-            <div class="col-lg-4">
+            <div class="col-lg-6">
                 <RadzenCard>
                     <h5 class="mb-3">Resolved Runtime</h5>
                     <div><strong>Ports:</strong> @CurrentResolvedPorts.Count</div>
@@ -151,18 +152,6 @@
                     <div><strong>Web Hosts:</strong> @CurrentResolvedWebHosts.Count</div>
                     <div><strong>Settings:</strong> @server.Settings.Count</div>
                     <div><strong>Configuration Rules:</strong> @CurrentValidationIssues.Count</div>
-                </RadzenCard>
-            </div>
-            <div class="col-lg-4">
-                <RadzenCard>
-                    <h5 class="mb-3">Containers & Host</h5>
-                    <div><strong>Containers:</strong> @(server.Containers.Count > 0 ? server.Containers.Count.ToString() : "0 (Stopped)")</div>
-                    @if (server.Containers.Any())
-                    {
-                        <div><strong>Primary Container:</strong> <code>@server.Containers.First().Id[..Math.Min(12, server.Containers.First().Id.Length)]</code></div>
-                    }
-                    <div><strong>Docker Volume Options:</strong> @(validationPreview?.DockerVolumeOptions.Count ?? server.DockerVolumeOptions.Count)</div>
-                    <div><strong>Network Options:</strong> @(validationPreview?.NetworkOptions.Count ?? server.NetworkOptions.Count)</div>
                 </RadzenCard>
             </div>
         </div>
@@ -270,7 +259,7 @@
             </RadzenCard>
         }
 
-        <RadzenTabs>
+        <RadzenTabs @bind-SelectedIndex="SelectedTabIndex">
             <Tabs>
                 <RadzenTabsItem Text="Resource Monitor" Icon="monitoring">
                     <div class="p-3">
@@ -318,68 +307,34 @@
                                                 {
                                                     <span class="text-muted">(empty)</span>
                                                 }
+                                                else if (IsPasswordSetting(setting))
+                                                {
+                                                    var isRevealed = revealedPasswords.Contains(setting.SettingKey);
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="gameserver-detail-code">
+                                                            @(isRevealed ? setting.Value : "••••••••")
+                                                        </code>
+                                                        <RadzenButton Icon="@(isRevealed ? "visibility_off" : "visibility")"
+                                                                      ButtonStyle="ButtonStyle.Light"
+                                                                      Size="ButtonSize.ExtraSmall"
+                                                                      Click="@(() => TogglePasswordVisibility(setting.SettingKey))"
+                                                                      title="@(isRevealed ? "Hide Password" : "Show Password")" />
+                                                        @if (isRevealed)
+                                                        {
+                                                            <RadzenButton Icon="content_copy"
+                                                                          ButtonStyle="ButtonStyle.Light"
+                                                                          Size="ButtonSize.ExtraSmall"
+                                                                          Click="@(() => CopyToClipboardAsync(setting.Value, setting.SettingKey))"
+                                                                          title="Copy Password" />
+                                                        }
+                                                    </div>
+                                                }
                                                 else
                                                 {
                                                     <code class="gameserver-detail-code">@setting.Value</code>
                                                 }
                                             </Template>
                                         </RadzenDataGridColumn>
-                                    </Columns>
-                                </RadzenDataGrid>
-                            }
-                        </RadzenCard>
-                    </div>
-                </RadzenTabsItem>
-
-                <RadzenTabsItem Text="Ports" Icon="router">
-                    <div class="p-3">
-                        <RadzenCard>
-                            <h5 class="mb-3">Resolved Ports</h5>
-                            @if (!CurrentResolvedPorts.Any())
-                            {
-                                <p class="text-muted mb-0">No ports are currently exposed for this server.</p>
-                            }
-                            else
-                            {
-                                <RadzenDataGrid Data="@CurrentResolvedPorts.OrderBy(port => port.DisplayOrder)"
-                                                TItem="GameServerResolvedPort"
-                                                AllowSorting="true">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="ContainerPort" Title="Container Port" Width="140px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="PublishedPort" Title="Published Port" Width="140px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Protocol" Title="Protocol" Width="100px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="AdvertisedPort" Title="Advertised" Width="120px">
-                                            <Template Context="port">
-                                                <RadzenBadge BadgeStyle="@(port.AdvertisedPort ? BadgeStyle.Success : BadgeStyle.Light)"
-                                                             Text="@(port.AdvertisedPort ? "Yes" : "No")" />
-                                            </Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Description" Title="Description" />
-                                    </Columns>
-                                </RadzenDataGrid>
-                            }
-                        </RadzenCard>
-                    </div>
-                </RadzenTabsItem>
-
-                <RadzenTabsItem Text="Volumes" Icon="storage">
-                    <div class="p-3">
-                        <RadzenCard>
-                            <h5 class="mb-3">Resolved Volumes</h5>
-                            @if (!CurrentResolvedVolumes.Any())
-                            {
-                                <p class="text-muted mb-0">No volumes are currently bound for this server.</p>
-                            }
-                            else
-                            {
-                                <RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.Usage)"
-                                                TItem="GameServerResolvedVolume"
-                                                AllowSorting="true">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="ContainerPath" Title="Container Path" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="VolumeName" Title="Volume Name" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Usage" Title="Usage" Width="140px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="MountType" Title="Type" Width="100px" />
                                     </Columns>
                                 </RadzenDataGrid>
                             }
@@ -423,58 +378,25 @@
                         </RadzenCard>
                     </div>
                 </RadzenTabsItem>
-
-                <RadzenTabsItem Text="Configuration Rules" Icon="rule">
-                    <div class="p-3">
-                        <RadzenCard>
-                            <h5 class="mb-3">Validation and Configuration Rules</h5>
-                            @if (!CurrentValidationIssues.Any())
-                            {
-                                <p class="text-muted mb-0">No validation issues are currently reported for this server.</p>
-                            }
-                            else
-                            {
-                                <ul class="mb-0 ps-3">
-                                    @foreach (var issue in CurrentValidationIssues)
-                                    {
-                                        <li>@issue.Message</li>
-                                    }
-                                </ul>
-                            }
-                        </RadzenCard>
-                    </div>
-                </RadzenTabsItem>
             </Tabs>
         </RadzenTabs>
 
-        @if (validationPreview is not null)
+        @if (validationPreview is not null && validationPreview.Issues.Any())
         {
             <div class="gameserver-sticky-validation">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-2">
-                        @if (!validationPreview.Issues.Any())
-                        {
-                            <RadzenIcon Icon="check_circle" Style="color: var(--rz-success); font-size: 1.3rem;" />
-                            <span class="fw-bold">Current Validation: Valid</span>
-                            <span class="text-muted small d-none d-md-inline">— Server configuration matches the selected revision.</span>
-                        }
-                        else
-                        {
-                            <RadzenIcon Icon="warning" Style="color: var(--rz-warning); font-size: 1.3rem;" />
-                            <span class="fw-bold text-danger">Current Validation: @(validationPreview.Issues.Count) Issue@(validationPreview.Issues.Count > 1 ? "s" : "")</span>
-                            <span class="text-muted small d-none d-md-inline">— Review validation issues below.</span>
-                        }
+                        <RadzenIcon Icon="warning" Style="color: var(--rz-warning); font-size: 1.3rem;" />
+                        <span class="fw-bold text-danger">Current Validation: @(validationPreview.Issues.Count) Issue@(validationPreview.Issues.Count > 1 ? "s" : "")</span>
+                        <span class="text-muted small d-none d-md-inline">— Review validation issues below.</span>
                     </div>
-                    @if (validationPreview.Issues.Any())
-                    {
-                        <RadzenButton Text="@(showValidationDetails ? "Hide Issues" : "Show Issues")"
-                                      Icon="@(showValidationDetails ? "expand_less" : "expand_more")"
-                                      ButtonStyle="ButtonStyle.Light"
-                                      Size="ButtonSize.ExtraSmall"
-                                      Click="@(() => showValidationDetails = !showValidationDetails)" />
-                    }
+                    <RadzenButton Text="@(showValidationDetails ? "Hide Issues" : "Show Issues")"
+                                  Icon="@(showValidationDetails ? "expand_less" : "expand_more")"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.ExtraSmall"
+                                  Click="@(() => showValidationDetails = !showValidationDetails)" />
                 </div>
-                @if (validationPreview.Issues.Any() && !showValidationDetails)
+                @if (showValidationDetails)
                 {
                     <div class="mt-2 pt-2 border-top">
                         <ul class="mb-0 ps-3 small text-danger">
@@ -565,6 +487,9 @@
     [Parameter]
     public string ServerId { get; set; } = string.Empty;
 
+    [Parameter]
+    public int SelectedTabIndex { get; set; } = 0;
+
     private GameServerDetail? server;
     private GameServerValidationResult? validationPreview;
     private string? cachedGameTypeThumbnailUrl;
@@ -573,7 +498,7 @@
     private string operationTitle = string.Empty;
     private string operationSubtitle = string.Empty;
 
-    private bool showValidationDetails;
+    private bool showValidationDetails = true;
 
     private bool IsServerRunning => server != null && (string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase));
 
@@ -672,12 +597,40 @@
         _ = RunValidationInBackgroundAsync();
     }
 
+    private IReadOnlyList<GameTypeSettingDefinition> settingDefinitions = [];
+    private readonly HashSet<string> revealedPasswords = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool IsPasswordSetting(GameServerSetting setting)
+    {
+        var def = settingDefinitions.FirstOrDefault(d => string.Equals(d.SettingKey, setting.SettingKey, StringComparison.OrdinalIgnoreCase));
+        if (def?.Metadata?.DataType is not null)
+        {
+            return string.Equals(def.Metadata.DataType, "password", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return setting.SettingKey.Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) ||
+               setting.SettingKey.Contains("SECRET", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void TogglePasswordVisibility(string settingKey)
+    {
+        if (revealedPasswords.Contains(settingKey))
+        {
+            revealedPasswords.Remove(settingKey);
+        }
+        else
+        {
+            revealedPasswords.Add(settingKey);
+        }
+    }
+
     private async Task LoadServerDataAsync()
     {
         if (string.IsNullOrWhiteSpace(ServerId))
         {
             server = null;
             cachedGameTypeThumbnailUrl = null;
+            settingDefinitions = [];
             isLoading = false;
             return;
         }
@@ -690,6 +643,26 @@
             cachedGameTypeThumbnailUrl = server is null
                 ? null
                 : await ThumbnailCacheService.GetCachedThumbnailUrlAsync(server.GameTypeThumbnailUrl);
+
+            settingDefinitions = [];
+            if (server is not null && !string.IsNullOrWhiteSpace(server.GameTypeKey))
+            {
+                try
+                {
+                    var gameTypeDetail = await GameTypeApiV2.GetByKeyAsync(server.GameTypeKey);
+                    var revision = gameTypeDetail?.Revisions.FirstOrDefault(r => r.Id == server.GameTypeRevisionId)
+                        ?? gameTypeDetail?.Revisions.FirstOrDefault(r => r.Id == gameTypeDetail.CurrentRevisionId)
+                        ?? gameTypeDetail?.Revisions.FirstOrDefault();
+                    if (revision is not null)
+                    {
+                        settingDefinitions = revision.SettingDefinitions;
+                    }
+                }
+                catch
+                {
+                    // Fallback to key heuristics if GameType is unreachable
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(detectedPublicIp))
             {
