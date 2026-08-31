@@ -15,6 +15,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
     private readonly Mock<IGameTypeV2ApiService> gameTypeApi = new();
     private readonly Mock<IThumbnailCacheService> thumbnailCache = new();
     private readonly Mock<IPublicIpService> publicIpService = new();
+    private readonly Mock<IGameServerFilesApiService> filesApi = new();
 
     public GameServerDetailsV2ComponentTests()
     {
@@ -26,6 +27,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         Services.AddSingleton(gameTypeApi.Object);
         Services.AddSingleton(thumbnailCache.Object);
         Services.AddSingleton(publicIpService.Object);
+        Services.AddSingleton(filesApi.Object);
         publicIpService
             .Setup(p => p.GetPublicIpAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync("203.0.113.195");
@@ -279,10 +281,10 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         gameTypeApi.Setup(a => a.GetByKeyAsync("valheim", It.IsAny<CancellationToken>())).ReturnsAsync(gameType);
         serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
 
-        // Act - Open to Settings tab (index 4)
+        // Act - Open to Settings tab (index 5)
         var cut = Render<GameServerDetailsV2>(parameters => parameters
             .Add(p => p.ServerId, "srv-pwd")
-            .Add(p => p.SelectedTabIndex, 4));
+            .Add(p => p.SelectedTabIndex, 5));
 
         // Assert - Password should initially be masked
         cut.WaitForAssertion(() =>

@@ -261,9 +261,15 @@
 
         <RadzenTabs @bind-SelectedIndex="SelectedTabIndex">
             <Tabs>
-                <RadzenTabsItem Text="Resource Monitor" Icon="monitoring">
+                <RadzenTabsItem Text="Live Monitor" Icon="speed">
                     <div class="p-3">
-                        <ResourceMonitorTab ServerId="@ServerId" />
+                        <LiveResourceMonitorTab ServerId="@ServerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Resource History" Icon="show_chart">
+                    <div class="p-3">
+                        <ResourceHistoryTab ServerId="@ServerId" />
                     </div>
                 </RadzenTabsItem>
 

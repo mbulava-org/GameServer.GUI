@@ -13,9 +13,9 @@ using Xunit;
 
 namespace GameServer.Web.Tests.Components.Servers.V2;
 
-public class ResourceMonitorTabTests : BunitContext
+public class LiveResourceMonitorTabTests : BunitContext
 {
-    public ResourceMonitorTabTests()
+    public LiveResourceMonitorTabTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton<NotificationService>();
@@ -25,21 +25,22 @@ public class ResourceMonitorTabTests : BunitContext
     }
 
     [Fact]
-    public void ResourceMonitorTab_RendersHeaderAndTitle()
+    public void LiveResourceMonitorTab_RendersHeaderAndTitle()
     {
-        var cut = Render<ResourceMonitorTab>(parameters => parameters
+        var cut = Render<LiveResourceMonitorTab>(parameters => parameters
             .Add(p => p.ServerId, "srv-1")
             .Add(p => p.AutoConnect, false));
 
         Assert.Contains("Live Resource Usage", cut.Markup);
         Assert.Contains("Disconnected", cut.Markup);
+        Assert.DoesNotContain("Resource Usage History", cut.Markup);
     }
 
     [Fact]
-    public void ResourceMonitorTab_WhenLiveUpdateReceived_RendersMetrics()
+    public void LiveResourceMonitorTab_WhenLiveUpdateReceived_RendersMetrics()
     {
         var mockClient = new Mock<IResourceMonitoringClient>();
-        var cut = Render<ResourceMonitorTab>(parameters => parameters
+        var cut = Render<LiveResourceMonitorTab>(parameters => parameters
             .Add(p => p.ServerId, "srv-1")
             .Add(p => p.AutoConnect, true)
             .Add(p => p.Client, mockClient.Object));
@@ -48,14 +49,14 @@ public class ResourceMonitorTabTests : BunitContext
         {
             ServerId = "srv-1",
             Timestamp = DateTime.UtcNow,
-            CpuUsagePercent = 88.0,
-            MemoryUsageBytes = 1024 * 1024 * 768,
+            CpuUsagePercent = 42.5,
+            MemoryUsageBytes = 1024 * 1024 * 512,
             MemoryLimitBytes = 1024 * 1024 * 1024,
-            MemoryUsagePercent = 75.0,
+            MemoryUsagePercent = 50.0,
             NetworkRxBytes = 1024 * 100,
-            NetworkTxBytes = 1024 * 80,
-            BlockReadBytes = 1024 * 40,
-            BlockWriteBytes = 1024 * 20,
+            NetworkTxBytes = 1024 * 50,
+            BlockReadBytes = 1024 * 20,
+            BlockWriteBytes = 1024 * 10,
             Replicas = 1,
             HealthyReplicas = 1
         };
@@ -64,8 +65,11 @@ public class ResourceMonitorTabTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("88.0", cut.Markup);
-            Assert.Contains("768 MB", cut.Markup);
+            Assert.Contains("42.5", cut.Markup);
+            Assert.Contains("512 MB", cut.Markup);
+            Assert.Contains("1 GB", cut.Markup);
+            Assert.Contains("100 KB", cut.Markup);
+            Assert.Contains("50 KB", cut.Markup);
         });
     }
 }
