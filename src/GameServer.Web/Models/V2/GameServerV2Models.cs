@@ -38,6 +38,8 @@ public sealed record GameServerListItem
 
     public List<GameServerResolvedPort> ResolvedPorts { get; init; } = [];
 
+    public List<GameServerPort> Ports { get; init; } = [];
+
     /// <summary>
     /// Running containers for this server (when available).
     /// </summary>
@@ -91,6 +93,8 @@ public sealed record GameServerDetail
 
     public List<GameServerSetting> Settings { get; init; } = [];
 
+    public List<GameServerPort> Ports { get; init; } = [];
+
     public List<GameServerResolvedPort> ResolvedPorts { get; init; } = [];
 
     public List<GameServerResolvedVolume> ResolvedVolumes { get; init; } = [];
@@ -123,6 +127,8 @@ public sealed record GameServerResolvedPort
     public int ContainerPort { get; init; }
 
     public string Protocol { get; init; } = string.Empty;
+
+    public int PublishedPort { get; init; }
 
     public bool AdvertisedPort { get; init; }
 
@@ -206,3 +212,22 @@ public sealed record GameServerValidationIssue
 
     public bool IsBlocking { get; init; }
 }
+
+public sealed record GameServerResourceHistoryItem
+{
+    public long Id { get; init; }
+    public string ServerId { get; init; } = string.Empty;
+    public DateTime Timestamp { get; init; }
+    public double? CpuUsagePercent { get; init; }
+    public long? MemoryUsageBytes { get; init; }
+    public long? MemoryLimitBytes { get; init; }
+    public double? MemoryUsagePercent { get; init; }
+    public long? NetworkRxBytes { get; init; }
+    public long? NetworkTxBytes { get; init; }
+    public long? BlockReadBytes { get; init; }
+    public long? BlockWriteBytes { get; init; }
+    public int DesiredReplicas { get; init; }
+    public int RunningReplicas { get; init; }
+    public string? ContainerId { get; init; }
+}
+

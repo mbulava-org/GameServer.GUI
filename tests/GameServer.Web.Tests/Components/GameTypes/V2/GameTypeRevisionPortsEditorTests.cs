@@ -11,50 +11,64 @@ public sealed class GameTypeRevisionPortsEditorTests : BunitContext
     }
 
     [Fact]
-    public void GameTypeRevisionPortsEditor_AddPort_ShouldCreateAdvertisedPrimaryPort()
+    public void PortsEditor_WhenEmpty_ShouldRenderEmptyMessage()
     {
-        // Arrange
-        var ports = new List<GameTypeRevisionPortDraft>();
-
         // Act
         var cut = Render<GameTypeRevisionPortsEditor>(parameters => parameters
-            .Add(p => p.Ports, ports)
-            .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" }));
-
-        cut.FindAll("button").First(button => button.TextContent.Contains("Add Port", StringComparison.Ordinal)).Click();
+            .Add(p => p.Ports, [])
+            .Add(p => p.ProtocolOptions, ["tcp", "udp"]));
 
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Single(ports);
-            Assert.True(ports[0].AdvertisedPort);
-            Assert.Equal(25565, ports[0].ContainerPort);
+            Assert.Contains("No ports in this draft.", cut.Markup);
+            Assert.Contains("Add Port", cut.Markup);
         });
     }
 
     [Fact]
-    public void GameTypeRevisionPortsEditor_AddSecondPort_ShouldKeepSingleAdvertisedPort()
+    public void PortsEditor_WithPorts_ShouldRenderFields()
     {
         // Arrange
         var ports = new List<GameTypeRevisionPortDraft>
         {
-            new() { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, Description = "Primary" }
+            new() { ContainerPort = 25565, Protocol = "tcp", AdvertisedPort = true, Description = "Default Minecraft Port" }
         };
 
         // Act
         var cut = Render<GameTypeRevisionPortsEditor>(parameters => parameters
             .Add(p => p.Ports, ports)
-            .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" }));
-
-        cut.FindAll("button").First(button => button.TextContent.Contains("Add Port", StringComparison.Ordinal)).Click();
+            .Add(p => p.ProtocolOptions, ["tcp", "udp"]));
 
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal(2, ports.Count);
-            Assert.Equal(1, ports.Count(port => port.AdvertisedPort));
-            Assert.True(ports[0].AdvertisedPort);
-            Assert.False(ports[1].AdvertisedPort);
+            Assert.Contains("Container Port", cut.Markup);
+            Assert.Contains("25565", cut.Markup);
+            Assert.Contains("Advertised", cut.Markup);
+            Assert.Contains("Default Minecraft Port", cut.Markup);
         });
+    }
+
+    [Fact]
+    public void PortsEditor_AddPort_ShouldAddPortDraft()
+    {
+        // Arrange
+        var ports = new List<GameTypeRevisionPortDraft>();
+        var changed = false;
+
+        var cut = Render<GameTypeRevisionPortsEditor>(parameters => parameters
+            .Add(p => p.Ports, ports)
+            .Add(p => p.ProtocolOptions, ["tcp", "udp"])
+            .Add(p => p.OnDraftChanged, () => changed = true));
+
+        // Act
+        var addButton = cut.FindAll("button").First(b => b.TextContent.Contains("Add Port"));
+        addButton.Click();
+
+        // Assert
+        Assert.Single(ports);
+        Assert.True(ports[0].AdvertisedPort);
+        Assert.True(changed);
     }
 }

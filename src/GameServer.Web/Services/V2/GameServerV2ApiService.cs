@@ -123,6 +123,108 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Starts the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetail> StartAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/start", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerDetail>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 GameServer start response did not contain a payload.");
+    }
+
+    /// <summary>
+    /// Stops the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetail> StopAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/stop", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerDetail>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 GameServer stop response did not contain a payload.");
+    }
+
+    /// <summary>
+    /// Restarts the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetail> RestartAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/restart", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerDetail>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 GameServer restart response did not contain a payload.");
+    }
+
+    /// <summary>
+    /// Redeploys and updates the Swarm service for a V2 GameServer.
+    /// </summary>
+    public async Task<GameServerDetail> RedeployAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/redeploy", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerDetail>(cancellationToken)
+            ?? throw new InvalidOperationException("The V2 GameServer redeploy response did not contain a payload.");
+    }
+
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    public async Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.DeleteAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}?softDelete={softDelete}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Gets the historical resource utilization records for a V2 GameServer.
+    /// </summary>
+    public async Task<IReadOnlyList<GameServerResourceHistoryItem>> GetResourceHistoryAsync(
+        string serverId,
+        DateTime? from = null,
+        DateTime? to = null,
+        int limit = 5000,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/resources/history?limit={limit}";
+        if (from.HasValue)
+        {
+            url += $"&from={Uri.EscapeDataString(from.Value.ToString("o"))}";
+        }
+        if (to.HasValue)
+        {
+            url += $"&to={Uri.EscapeDataString(to.Value.ToString("o"))}";
+        }
+
+        using var response = await client.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<GameServerResourceHistoryItem>>(cancellationToken)
+            ?? [];
+    }
+
     private HttpClient CreateClient()
     {
         var baseUri = apiOptions.BaseUri;

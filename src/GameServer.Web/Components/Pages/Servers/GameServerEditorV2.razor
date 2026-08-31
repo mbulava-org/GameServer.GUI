@@ -1,11 +1,14 @@
 @page "/gameservers-v2/new"
 @page "/gameservers-v2/{ServerId}/edit"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 @using System.Text.Json
 @using GameServer.Web.Models.V2
-@using GameServer.Docker.Client.Interfaces
-@using GameServer.Docker.Client.Services
+@using GameServer.Web.Components.Server
+@using GameServer.API.Client.Interfaces
+@using GameServer.API.Client.Services
 @using Microsoft.Extensions.Options
+@using Microsoft.Extensions.Logging
 @using GameServer.Web.Configurations
 @using Radzen
 @using Radzen.Blazor
@@ -15,15 +18,27 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IOptions<GameServerDockerApi> ApiConfig
+@inject ILogger<GameServerEditorV2> Logger
 
-<PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</PageTitle>
+<PageTitle>@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server")</PageTitle>
+
+@if (isSaving)
+{
+    <div class="gameserver-saving-overlay">
+        <div class="gameserver-saving-modal">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+            <h5 class="mt-3 mb-1">@operationTitle</h5>
+            <p class="text-muted small mb-0">@operationSubtitle</p>
+        </div>
+    </div>
+}
 
 <div class="container-fluid mt-4">
     @if (isLoading)
     {
-        <div class="text-center py-5">
+        <div class="d-flex flex-column align-items-center justify-content-center py-5 my-5">
             <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
-            <p class="mt-3">Loading V2 editor...</p>
+            <p class="mt-3 text-muted">Loading editor...</p>
         </div>
     }
     else if (!isEditMode && !gameTypes.Any())
@@ -31,9 +46,9 @@
         <RadzenCard>
             <div class="text-center py-5">
                 <RadzenIcon Icon="inventory_2" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
-                <h4 class="mt-3">No V2 Game Types Available</h4>
-                <p class="text-muted">Create a V2 GameType revision before creating a V2 GameServer.</p>
-                <RadzenButton Text="Go to Game Types (V2)"
+                <h4 class="mt-3">No Game Types Available</h4>
+                <p class="text-muted">Create a GameType revision before creating a GameServer.</p>
+                <RadzenButton Text="Go to Game Types"
                               Icon="arrow_forward"
                               ButtonStyle="ButtonStyle.Primary"
                               Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
@@ -44,10 +59,17 @@
     {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
-                <h2 class="mb-1">@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server V2")</h2>
-                <p class="text-muted mb-0">Configure a V2 GameServer from a V2 GameType revision with backend validation previews.</p>
+                <div class="d-flex align-items-center gap-2">
+                    <h2 class="mb-0">@(isEditMode ? $"Edit {draft.Name}" : "Create Game Server")</h2>
+                    @if (isEditMode)
+                    {
+                        <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(draft.Status)"
+                                     Text="@(string.IsNullOrWhiteSpace(draft.Status) ? "Unknown" : draft.Status)" />
+                    }
+                </div>
+                <p class="text-muted mb-0 mt-1">Configure a GameServer from a GameType revision with backend validation previews.</p>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
                 <RadzenButton Text="Back"
                               Icon="arrow_back"
                               ButtonStyle="ButtonStyle.Light"
@@ -60,11 +82,6 @@
                                   Click="@DeleteServerAsync"
                                   Disabled="@isSaving" />
                 }
-                <RadzenButton Text="Validate"
-                              Icon="rule"
-                              ButtonStyle="ButtonStyle.Secondary"
-                              Click="@ValidateAsync"
-                              Disabled="@isSaving" />
                 <RadzenButton Text="@(isEditMode ? "Save Changes" : "Create Server")"
                               Icon="save"
                               ButtonStyle="ButtonStyle.Primary"
@@ -73,33 +90,6 @@
             </div>
         </div>
 
-        @if (validationResult is not null)
-        {
-            <RadzenCard class="mb-3">
-                <h5 class="mb-3">Validation Summary</h5>
-                @if (!validationResult.Issues.Any())
-                {
-                    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat">
-                        Validation passed. The current configuration is ready for persistence.
-                    </RadzenAlert>
-                }
-                else
-                {
-                    <ul class="mb-0 ps-3">
-                        @foreach (var issue in validationResult.Issues)
-                        {
-                            <li>
-                                <strong>@issue.Scope</strong>: @issue.Message
-                                @if (!issue.IsBlocking)
-                                {
-                                    <span class="text-muted"> (warning)</span>
-                                }
-                            </li>
-                        }
-                    </ul>
-                }
-            </RadzenCard>
-        }
 
         <div class="row g-3">
             <div class="col-xl-4">
@@ -158,7 +148,11 @@
                     </div>
                     <div class="mb-3">
                         <RadzenFormField Text="Description" Variant="Variant.Outlined" class="w-100">
-                            <RadzenTextArea @bind-Value="draft.Description" Rows="4" class="w-100" />
+                            <RadzenTextArea Value="@draft.Description"
+                                            ValueChanged="@OnDescriptionChanged"
+                                            @oninput="@(e => OnDescriptionInput(e.Value?.ToString()))"
+                                            Rows="4"
+                                            class="w-100" />
                         </RadzenFormField>
                     </div>
                     <div class="mb-3">
@@ -236,6 +230,7 @@
                                     <RadzenNumeric TValue="int"
                                                    Value="@GetPublishedPort(port)"
                                                    ValueChanged="@(value => OnPublishedPortChanged(port, value))"
+                                                   Change="@(value => OnPublishedPortChanged(port, value))"
                                                    Min="1"
                                                    Max="65535"
                                                    class="w-100"
@@ -243,12 +238,13 @@
                                 </RadzenFormField>
                                 @{
                                     var availability = GetPortAvailability(port);
+                                    var publishedPortNum = GetPublishedPort(port);
                                 }
                                 @if (availability is not null)
                                 {
                                     @if (availability.IsAvailable)
                                     {
-                                        <div class="small text-success mt-1">Port is available.</div>
+                                        <div class="small text-success mt-1">Port @publishedPortNum/@port.Protocol is available.</div>
                                     }
                                     else
                                     {
@@ -395,44 +391,74 @@
                                                                OnRefresh="@LoadDeploymentPreviewAsync" />
                             </div>
                         </RadzenTabsItem>
-
-                        <RadzenTabsItem Text="Terminal">
-                            <div class="p-3">
-                                @if (isEditMode)
-                                {
-                                    <ContainerTerminal ContainerId="@terminalContainerId" AutoConnect="false" />
-                                }
-                                else
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
-                                        Terminal is only available for existing servers. Save the server first, then open the Terminal tab.
-                                    </RadzenAlert>
-                                }
-                            </div>
-                        </RadzenTabsItem>
-
-                        <RadzenTabsItem Text="Resource Monitor">
-                            <div class="p-3">
-                                @if (isEditMode && !string.IsNullOrWhiteSpace(ServerId))
-                                {
-                                    <ResourceMonitorTab ServerId="@ServerId" />
-                                }
-                                else
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat">
-                                        Resource monitoring is only available for existing servers. Save the server first, then open the Resource Monitor tab.
-                                    </RadzenAlert>
-                                }
-                            </div>
-                        </RadzenTabsItem>
                     </Tabs>
                 </RadzenTabs>
             </div>
         </div>
+
+        @if (validationResult is not null)
+        {
+            <div class="gameserver-sticky-validation">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        @if (!validationResult.Issues.Any())
+                        {
+                            <RadzenIcon Icon="check_circle" Style="color: var(--rz-success); font-size: 1.3rem;" />
+                            <span class="fw-bold">Configuration Valid</span>
+                            <span class="text-muted small d-none d-md-inline">— Ready for persistence.</span>
+                        }
+                        else
+                        {
+                            <RadzenIcon Icon="error" Style="color: var(--rz-danger); font-size: 1.3rem;" />
+                            <span class="fw-bold text-danger">@(validationResult.Issues.Count) Validation Issue@(validationResult.Issues.Count > 1 ? "s" : "")</span>
+                            <span class="text-muted small d-none d-md-inline">— Blocking issues prevent saving.</span>
+                        }
+                    </div>
+                    @if (validationResult.Issues.Any())
+                    {
+                        <RadzenButton Text="@(showValidationDetails ? "Hide Issues" : "Show Issues")"
+                                      Icon="@(showValidationDetails ? "expand_less" : "expand_more")"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Size="ButtonSize.ExtraSmall"
+                                      Click="@(() => showValidationDetails = !showValidationDetails)" />
+                    }
+                </div>
+                @if (showValidationDetails && validationResult.Issues.Any())
+                {
+                    <div class="mt-2 pt-2 border-top">
+                        <ul class="mb-0 ps-3 small text-danger">
+                            @foreach (var issue in validationResult.Issues)
+                            {
+                                <li>
+                                    <strong>@issue.Scope</strong>: @issue.Message
+                                    @if (!issue.IsBlocking)
+                                    {
+                                        <span class="text-muted"> (warning)</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
     }
 </div>
 
 <style>
+    .gameserver-sticky-validation {
+        position: sticky;
+        bottom: 12px;
+        z-index: 100;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        background: var(--rz-panel-background-color, #ffffff);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+        border-radius: 8px;
+        padding: 10px 16px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    }
+
     .v2-server-settings-category {
         border-bottom: 1px solid var(--rz-border-color);
         padding-bottom: 1rem;
@@ -457,16 +483,16 @@
     private readonly List<RevisionOption> availableRevisions = [];
     private GameServerEditorDraft draft = new();
     private GameServerValidationResult? validationResult;
+    private bool showValidationDetails;
     private GameServerDeploymentPreview? deploymentPreview;
     private bool isPreviewLoading;
     private GameTypeDetail? selectedGameType;
     private string? selectedGameTypeKey;
     private bool isLoading = true;
     private bool isSaving;
+    private string operationTitle = "Saving Server Changes...";
+    private string operationSubtitle = "Provisioning volumes and deploying Docker Swarm service...";
     private int selectedTabIndex;
-    private const int DeploymentPreviewTabIndex = 2;
-    private const int TerminalTabIndex = 3;
-    private const int ResourceMonitorTabIndex = 4;
 
     // Volume mount type selections (keyed by GameTypeVolume.Id)
     private readonly List<MountTypeConfig> mountTypeOptions = [];
@@ -474,6 +500,7 @@
 
     // Published port selections (keyed by GameTypePort.Id)
     private readonly Dictionary<int, int> publishedPortSelections = new();
+    private List<GameServerPort>? initialServerPorts;
 
     // Published port values as originally loaded, so reverting a port is never flagged unavailable.
     private readonly Dictionary<int, int> originalPublishedPorts = new();
@@ -482,12 +509,6 @@
     private readonly Dictionary<int, GameServerPortAvailability> portAvailability = new();
     private bool isCheckingPorts;
     private int portCheckToken;
-
-    // Terminal / resource monitor state
-    private string? terminalContainerId;
-    private IResourceMonitoringClient? resourceClient;
-    private ServerResourceUsage? latestResourceData;
-    private List<ResourceMonitorLogEntry> resourceLogs = new();
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
 
@@ -543,8 +564,11 @@
                     draft = new();
                     selectedGameType = null;
                     selectedGameTypeKey = null;
+                    initialServerPorts = null;
                     return;
                 }
+
+                initialServerPorts = server.Ports;
 
                 draft = new GameServerEditorDraft
                 {
@@ -570,6 +594,8 @@
                 EnsureRevisionSelected();
                 EnsureSettingsInitialized();
                 EnsurePortsInitialized();
+                await CheckPortAvailabilityAsync();
+                TriggerLiveValidation();
                 return;
             }
 
@@ -586,6 +612,8 @@
             EnsureRevisionSelected();
             EnsureSettingsInitialized();
             EnsurePortsInitialized();
+            await CheckPortAvailabilityAsync();
+            TriggerLiveValidation();
         }
         catch (HttpRequestException ex)
         {
@@ -607,19 +635,24 @@
         draft.GameTypeRevisionId = 0;
         draft.SettingValues.Clear();
         validationResult = null;
+        deploymentPreview = null;
         RefreshRevisionOptions();
         EnsureRevisionSelected();
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
+        await CheckPortAvailabilityAsync();
+        TriggerLiveValidation();
     }
 
-    private Task OnRevisionChanged(int? revisionId)
+    private async Task OnRevisionChanged(int? revisionId)
     {
         draft.GameTypeRevisionId = revisionId ?? 0;
         validationResult = null;
+        deploymentPreview = null;
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
-        return Task.CompletedTask;
+        await CheckPortAvailabilityAsync();
+        TriggerLiveValidation();
     }
 
     private void RefreshRevisionOptions()
@@ -672,9 +705,12 @@
 
         foreach (var port in CurrentRevisionPorts)
         {
-            // Prefer the value already stored on the owning port-type setting so an existing
-            // server round-trips its configured ports instead of falling back to the defaults.
-            publishedPortSelections[port.Id] = TryGetPortSettingValue(port) ?? port.ContainerPort;
+            var savedPort = initialServerPorts?.FirstOrDefault(p =>
+                p.ContainerPort == port.ContainerPort && string.Equals(p.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase));
+
+            publishedPortSelections[port.Id] = (savedPort != null && savedPort.PublishedPort > 0)
+                ? savedPort.PublishedPort
+                : (TryGetPortSettingValue(port) ?? port.ContainerPort);
             originalPublishedPorts[port.Id] = publishedPortSelections[port.Id];
         }
 
@@ -691,7 +727,20 @@
             definition.Metadata?.PortMappings.Any(mapping =>
                 mapping.TargetContainerPort == port.ContainerPort
                 && string.Equals(mapping.TargetProtocol, port.Protocol, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)) == true);
+                && (string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(mapping.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase))) == true)
+            ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
+                string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+                && (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0)
+                && int.TryParse(definition.DefaultValue, out var defPort)
+                && defPort == port.ContainerPort)
+            ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
+                (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0)
+                && int.TryParse(definition.DefaultValue, out var defPort2)
+                && defPort2 == port.ContainerPort)
+            ?? CurrentSettingDefinitions.FirstOrDefault(definition =>
+                string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+                && (definition.Metadata?.PortMappings == null || definition.Metadata.PortMappings.Count == 0));
     }
 
     private int? TryGetPortSettingValue(GameTypePort port)
@@ -732,12 +781,16 @@
 
     private async Task OnPublishedPortChanged(GameTypePort port, int value)
     {
+        if (value <= 0 || value > 65535)
+        {
+            return;
+        }
+
         publishedPortSelections[port.Id] = value;
-        validationResult = null;
-        deploymentPreview = null;
         RecalculateAutoPortsFrom(port);
         SyncPortSettingsFromPublishedPorts();
         await CheckPortAvailabilityAsync();
+        TriggerLiveValidation();
     }
 
     private bool IsAutoCalculatedPort(GameTypePort port)
@@ -748,7 +801,8 @@
             def.Metadata?.PortMappings.Any(pm =>
                 pm.TargetContainerPort == port.ContainerPort
                 && string.Equals(pm.TargetProtocol, port.Protocol, StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(pm.MappingRole, "Related", StringComparison.OrdinalIgnoreCase)
+                    || (!string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(pm.RelationType)))
             ) == true);
     }
 
@@ -781,7 +835,8 @@
             var primaryMapping = portMappings.FirstOrDefault(pm =>
                 pm.TargetContainerPort == sourcePort.ContainerPort
                 && string.Equals(pm.TargetProtocol, sourcePort.Protocol, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase));
+                && (string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pm.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase)));
 
             if (primaryMapping is null)
             {
@@ -790,7 +845,8 @@
 
             // Now recalculate all related (non-Direct) ports in this setting
             foreach (var relatedMapping in portMappings.Where(pm =>
-                !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)))
+                !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(pm.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase)))
             {
                 var targetPort = CurrentRevisionPorts.FirstOrDefault(p =>
                     p.ContainerPort == relatedMapping.TargetContainerPort
@@ -837,8 +893,6 @@
         }
 
         draft.SettingValues[settingKey] = value;
-        validationResult = null;
-        deploymentPreview = null;
 
         // A port typed on the Settings tab must drive the same recalculation and availability
         // pipeline as the Port Mappings panel so both views stay consistent.
@@ -850,6 +904,8 @@
             SyncPortSettingsFromPublishedPorts();
             await CheckPortAvailabilityAsync();
         }
+
+        TriggerLiveValidation();
     }
 
     /// <summary>
@@ -860,38 +916,43 @@
         var definition = CurrentSettingDefinitions.FirstOrDefault(candidate =>
             string.Equals(candidate.SettingKey, settingKey, StringComparison.OrdinalIgnoreCase));
 
-        var primaryMapping = definition?.Metadata?.PortMappings.FirstOrDefault(mapping =>
-            string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase));
-
-        if (primaryMapping is null)
+        if (definition is null)
         {
             return null;
         }
 
-        return CurrentRevisionPorts.FirstOrDefault(port =>
-            port.ContainerPort == primaryMapping.TargetContainerPort
-            && string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+        var primaryMapping = definition.Metadata?.PortMappings.FirstOrDefault(mapping =>
+            string.Equals(mapping.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mapping.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase));
+
+        if (primaryMapping is not null)
+        {
+            return CurrentRevisionPorts.FirstOrDefault(port =>
+                port.ContainerPort == primaryMapping.TargetContainerPort
+                && string.Equals(port.Protocol, primaryMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.Equals(definition.Metadata?.DataType, "port", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(definition.DefaultValue, out var defPort))
+        {
+            return CurrentRevisionPorts.FirstOrDefault(port => port.ContainerPort == defPort);
+        }
+
+        return null;
     }
 
     /// <summary>
-    /// Checks availability for every published port that differs from its originally loaded value.
-    /// Ports restored to their original value are always treated as available.
+    /// Checks availability for all published ports against active servers and allocation rules.
+    /// Ensures that even default port values are validated immediately upon loading/selecting.
     /// </summary>
     private async Task CheckPortAvailabilityAsync()
     {
         var token = ++portCheckToken;
 
-        var changedPorts = CurrentRevisionPorts
-            .Where(port => !originalPublishedPorts.TryGetValue(port.Id, out var original) || original != GetPublishedPort(port))
-            .ToList();
-
-        foreach (var port in CurrentRevisionPorts.Except(changedPorts))
+        var portsToCheck = CurrentRevisionPorts.ToList();
+        if (portsToCheck.Count == 0)
         {
-            portAvailability.Remove(port.Id);
-        }
-
-        if (changedPorts.Count == 0)
-        {
+            portAvailability.Clear();
             return;
         }
 
@@ -901,7 +962,7 @@
             var result = await GameServerApiV2.CheckPortAvailabilityAsync(new GameServerPortAvailabilityRequest
             {
                 ServerId = isEditMode ? ServerId : draft.ServerId,
-                Ports = changedPorts
+                Ports = portsToCheck
                     .Select(port => new GameServerPortAvailabilityRequestPort
                     {
                         PortId = port.Id,
@@ -917,6 +978,7 @@
                 return;
             }
 
+            portAvailability.Clear();
             foreach (var entry in result.Ports)
             {
                 portAvailability[entry.PortId] = entry;
@@ -931,6 +993,7 @@
             if (token == portCheckToken)
             {
                 isCheckingPorts = false;
+                await InvokeAsync(StateHasChanged);
             }
         }
     }
@@ -957,6 +1020,58 @@
     }
 
     private bool HasUnavailablePort => portAvailability.Values.Any(availability => !availability.IsAvailable);
+
+    private CancellationTokenSource? liveValidationCts;
+
+    private void TriggerLiveValidation()
+    {
+        liveValidationCts?.Cancel();
+        liveValidationCts?.Dispose();
+        liveValidationCts = new CancellationTokenSource();
+        var token = liveValidationCts.Token;
+
+        _ = RunLiveValidationAsync(token);
+    }
+
+    private async Task RunLiveValidationAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(300, token);
+
+            if (draft.GameTypeRevisionId <= 0)
+            {
+                validationResult = null;
+                deploymentPreview = null;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var request = BuildSaveRequest();
+            var valTask = GameServerApiV2.ValidateAsync(request, token);
+            var prevTask = GameServerApiV2.PreviewAsync(request, token);
+
+            await Task.WhenAll(valTask, prevTask);
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            validationResult = await valTask;
+            deploymentPreview = await prevTask;
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during continuous user input
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Live validation failed");
+        }
+    }
 
     private async Task ValidateAsync()
     {
@@ -1003,6 +1118,8 @@
 
     private SaveGameServerRequest BuildSaveRequest()
     {
+        SyncPortSettingsFromPublishedPorts();
+
         return new SaveGameServerRequest
         {
             ServerId = isEditMode ? ServerId : draft.ServerId,
@@ -1011,6 +1128,14 @@
             GameTypeRevisionId = draft.GameTypeRevisionId,
             ServiceName = string.IsNullOrWhiteSpace(ComputedServiceName) ? null : ComputedServiceName,
             Status = string.IsNullOrWhiteSpace(draft.Status) ? null : draft.Status,
+            Ports = CurrentRevisionPorts
+                .Select(port => new GameServerPort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = GetPublishedPort(port)
+                })
+                .ToList(),
             Settings = CurrentSettingDefinitions
                 .Select(definition => new GameServerSetting
                 {
@@ -1031,22 +1156,34 @@
     private void SetVolumeMountType(GameTypeVolume volume, string? value)
     {
         volumeMountTypeSelections[volume.Id] = value ?? volume.MountType;
-        validationResult = null;
+        TriggerLiveValidation();
     }
 
     private void OnServerNameInput(string? value)
     {
         draft.Name = value ?? string.Empty;
-        validationResult = null;
-        deploymentPreview = null;
+        TriggerLiveValidation();
         StateHasChanged();
     }
 
     private void OnServerNameChanged(string value)
     {
         draft.Name = value ?? string.Empty;
-        validationResult = null;
-        deploymentPreview = null;
+        TriggerLiveValidation();
+        StateHasChanged();
+    }
+
+    private void OnDescriptionInput(string? value)
+    {
+        draft.Description = value;
+        TriggerLiveValidation();
+        StateHasChanged();
+    }
+
+    private void OnDescriptionChanged(string? value)
+    {
+        draft.Description = value;
+        TriggerLiveValidation();
         StateHasChanged();
     }
 
@@ -1076,8 +1213,14 @@
             .Replace("{serverName}", serverName.Replace(' ', '-').ToLowerInvariant(), StringComparison.OrdinalIgnoreCase)
             .Replace("{Name}", serverName, StringComparison.OrdinalIgnoreCase)
             .Replace("{Usage}", volume.Usage, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Source}", volume.Source.Replace('/', '-'), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Source}", NormalizeSourceToken(volume.Source), StringComparison.OrdinalIgnoreCase)
             .Replace("{MountType}", mountTypeKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeSourceToken(string containerSource)
+    {
+        var value = (containerSource ?? string.Empty).Replace('\\', '/').Trim('/');
+        return value.Replace('/', '-');
     }
 
     private async Task DeleteServerAsync()
@@ -1090,6 +1233,8 @@
         try
         {
             isSaving = true;
+            operationTitle = "Deleting Server...";
+            operationSubtitle = "Removing GameServer definition...";
             await GameServerApiV2.DeleteAsync(ServerId);
             NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Server '{draft.Name}' was deleted.");
             Navigation.NavigateTo("/gameservers-v2");
@@ -1103,6 +1248,16 @@
             isSaving = false;
         }
     }
+
+    private BadgeStyle GetStatusBadgeStyle(string? status) => status?.ToLowerInvariant() switch
+    {
+        "running" => BadgeStyle.Success,
+        "preparing" => BadgeStyle.Primary,
+        "starting" => BadgeStyle.Info,
+        "stopped" => BadgeStyle.Warning,
+        "failed" => BadgeStyle.Danger,
+        _ => BadgeStyle.Light
+    };
 
     private async Task LoadMountTypesAsync()
     {
@@ -1129,16 +1284,6 @@
         Navigation.NavigateTo("/gameservers-v2");
     }
 
-    private async Task OnSelectedTabChanged(int index)
-    {
-        selectedTabIndex = index;
-
-        if (index == DeploymentPreviewTabIndex && deploymentPreview is null && !isPreviewLoading)
-        {
-            await LoadDeploymentPreviewAsync();
-        }
-    }
-
     private async Task LoadDeploymentPreviewAsync()
     {
         if (draft.GameTypeRevisionId <= 0)
@@ -1162,136 +1307,13 @@
         }
     }
 
-    /// <summary>
-    /// Returns the first live container ID from the deployment preview so the Terminal tab can connect.
-    /// If the server is already loaded in edit mode, attempt to fetch containers and pick one.
-    /// </summary>
-    private async Task EnsureTerminalContainerIdAsync()
+    private async Task OnSelectedTabChanged(int index)
     {
-        if (terminalContainerId is not null)
+        selectedTabIndex = index;
+        if (index == 1)
         {
-            return;
+            await LoadDeploymentPreviewAsync();
         }
-
-        // Try to get container ID from the deployment preview
-        if (deploymentPreview?.Containers?.Any() == true)
-        {
-            terminalContainerId = deploymentPreview.Containers.First().Id;
-            StateHasChanged();
-            return;
-        }
-
-        // Fallback: fetch running containers for the server and use the first one
-        if (!string.IsNullOrWhiteSpace(ServerId))
-        {
-            try
-            {
-                var serverDetail = await GameServerApiV2.GetByServerIdAsync(ServerId);
-                terminalContainerId = serverDetail?.Containers?.FirstOrDefault()?.Id;
-                StateHasChanged();
-            }
-            catch
-            {
-                // Best-effort – Terminal component will handle missing ID gracefully.
-            }
-        }
-    }
-
-    // ---- Resource monitoring helpers ----
-
-    private async Task StartResourceMonitoringAsync()
-    {
-        if (!string.IsNullOrWhiteSpace(ServerId) && resourceClient is null)
-        {
-            var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
-            var wsUri = baseUri.Replace("https://", "wss://").Replace("http://", "ws://");
-            var hubUrl = $"{wsUri}/hubs/resources";
-
-            resourceClient = new ResourceMonitoringClient(hubUrl);
-            resourceClient.ResourceUpdateReceived += OnResourceData;
-            resourceClient.ErrorReceived += OnResourceError;
-
-            try
-            {
-                await resourceClient.ConnectAsync(CancellationToken.None);
-                await resourceClient.SubscribeToServerAsync(ServerId, 5, CancellationToken.None);
-                AddResourceLog("INFO", $"Subscribed to resource updates for server {ServerId}");
-            }
-            catch (Exception ex)
-            {
-                AddResourceLog("ERROR", $"Failed to initialize resource monitor: {ex.Message}");
-            }
-        }
-    }
-
-    private void StopResourceMonitoringAsync()
-    {
-        if (resourceClient != null)
-        {
-            resourceClient.ResourceUpdateReceived -= OnResourceData;
-            resourceClient.ErrorReceived -= OnResourceError;
-            resourceClient = null;
-        }
-    }
-
-    private void OnResourceData(object? sender, ServerResourceUsage usage)
-    {
-        InvokeAsync(() =>
-        {
-            latestResourceData = usage;
-            AddResourceLog("DATA", $"CPU: {(usage.CpuUsagePercent ?? 0):F1}% · Memory: {(usage.MemoryUsagePercent ?? 0):F1}%");
-            StateHasChanged();
-        });
-    }
-
-    private void OnResourceError(object? sender, string error)
-    {
-        InvokeAsync(() =>
-        {
-            AddResourceLog("ERROR", error);
-            StateHasChanged();
-        });
-    }
-
-    private void AddResourceLog(string type, string message)
-    {
-        resourceLogs.Insert(0, new ResourceMonitorLogEntry
-        {
-            Timestamp = DateTime.Now,
-            Type = type,
-            Message = message
-        });
-
-        if (resourceLogs.Count > 100)
-        {
-            resourceLogs.RemoveAt(resourceLogs.Count - 1);
-        }
-    }
-
-    private static string FormatResourceBytes(long bytes)
-    {
-        string[] sizes = { "B", "KB", "MB", "GB" };
-        double len = Math.Abs(bytes);
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len /= 1024;
-        }
-        return $"{len:F1} {sizes[order]}";
-    }
-
-    private static string BuildResourceBarHtml(double percentage, string colorClass)
-    {
-        var clamped = Math.Clamp(percentage, 0, 100);
-        return $"<div class='resource-bar-bg' style='height:8px;border-radius:4px;background:#333;overflow:hidden;margin-top:4px;'><div class='{colorClass}' style='height:100%;width:{clamped}%;background-currentColor;'></div></div>";
-    }
-
-    private sealed record ResourceMonitorLogEntry
-    {
-        public DateTime Timestamp { get; set; }
-        public string Type { get; set; } = "";
-        public string Message { get; set; } = "";
     }
 
     private static string BuildRevisionLabel(GameTypeRevision revision)
@@ -1300,6 +1322,13 @@
         return string.IsNullOrWhiteSpace(revision.VersionTag)
             ? $"Revision {revision.Id}"
             : $"{revision.VersionTag} ({revision.ImageReference})";
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        liveValidationCts?.Cancel();
+        liveValidationCts?.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     private sealed class GameServerEditorDraft
@@ -1321,3 +1350,33 @@
 
     private sealed record RevisionOption(int Id, string Label);
 }
+
+<style>
+    .gameserver-saving-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        backdrop-filter: blur(4px);
+    }
+
+    .gameserver-saving-modal {
+        background: var(--rz-base-background-color, #ffffff);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+        border-radius: 12px;
+        padding: 2.5rem 3rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        min-width: 320px;
+        max-width: 450px;
+    }
+</style>

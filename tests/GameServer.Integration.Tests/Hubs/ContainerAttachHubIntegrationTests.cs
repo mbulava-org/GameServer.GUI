@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using GameServer.Docker.Interfaces;
-using GameServer.Docker.Hubs;
+using GameServer.API.Interfaces;
+using GameServer.API.Hubs;
 using System.Runtime.CompilerServices;
 
 namespace GameServer.Integration.Tests.Hubs;

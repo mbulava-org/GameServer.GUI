@@ -4,19 +4,19 @@
     <File Path=".github/workflows/ci.yaml" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/GameServer.API.Client/GameServer.API.Client.csproj" />
+    <Project Path="src/GameServer.API/GameServer.API.csproj" />
     <Project Path="src/GameServer.DB.PostgreSql/GameServer.DB.PostgreSql.csproj">
       <Build Solution="Release|*" Project="false" />
     </Project>
     <Project Path="src/GameServer.Docker.Agent/GameServer.Docker.Agent.csproj" />
-    <Project Path="src/GameServer.Docker.Client/GameServer.Docker.Client.csproj" />
-    <Project Path="src/GameServer.Docker/GameServer.Docker.csproj" />
     <Project Path="src/GameServer.Web/GameServer.Web.csproj" />
     <Project Path="src/GameServer.Windows.Agent/GameServer.Windows.Agent.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/GameServer.API.Client.Tests/GameServer.API.Client.Tests.csproj" />
+    <Project Path="tests/GameServer.API.Tests/GameServer.API.Tests.csproj" />
     <Project Path="tests/GameServer.Docker.Agent.Tests/GameServer.Docker.Agent.Tests.csproj" />
-    <Project Path="tests/GameServer.Docker.Client.Tests/GameServer.Docker.Client.Tests.csproj" />
-    <Project Path="tests/GameServer.Docker.Tests/GameServer.Docker.Tests.csproj" />
     <Project Path="tests/GameServer.Integration.Tests/GameServer.Integration.Tests.csproj" />
     <Project Path="tests/GameServer.Web.Tests/GameServer.Web.Tests.csproj" />
     <Project Path="tests/GameServer.Windows.Agent.Tests/GameServer.Windows.Agent.Tests.csproj" />

@@ -27,19 +27,14 @@
 }
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-5">
         <RadzenFormField Text="Docker Image Reference" Variant="Variant.Outlined" class="w-100">
             <RadzenTextBox Value="@ImageReference" ValueChanged="@OnImageReferenceChanged" class="w-100" />
         </RadzenFormField>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <RadzenFormField Text="Version Tag" Variant="Variant.Outlined" class="w-100">
             <RadzenTextBox Value="@VersionTag" ValueChanged="@OnVersionTagChanged" class="w-100" />
-        </RadzenFormField>
-    </div>
-    <div class="col-md-4">
-        <RadzenFormField Text="Image Digest" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@ImageDigest" ValueChanged="@OnImageDigestChanged" class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-md-4 d-flex align-items-center">
@@ -53,6 +48,11 @@
                 <span>Published</span>
             </div>
         </div>
+    </div>
+    <div class="col-12">
+        <RadzenFormField Text="Ready Log Pattern (Optional)" Variant="Variant.Outlined" class="w-100" HelperText="Optional log entry string or wildcard pattern to detect when server is ready (supports env var replacements like {SERVER_PORT}). Server stays 'Running' until matched, then becomes 'Available'.">
+            <RadzenTextBox Value="@ReadyLogPattern" ValueChanged="@OnReadyLogPatternChanged" class="w-100" Placeholder="e.g. Done ({*})! For help, type &quot;help&quot;" />
+        </RadzenFormField>
     </div>
     <div class="col-12">
         <RadzenFormField Text="Revision Notes" Variant="Variant.Outlined" class="w-100">
@@ -74,7 +74,6 @@
                 </div>
             </Template>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="ImageDigest" Title="Digest" />
         <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="IsPublished" Title="Published" />
         <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="EnableTTY" Title="TTY" />
         <RadzenDataGridColumn TItem="GameTypeRevisionListRow" Property="CreatedAt" Title="Created" />
@@ -119,16 +118,16 @@
     public EventCallback<string> VersionTagChanged { get; set; }
 
     [Parameter]
-    public string? ImageDigest { get; set; }
-
-    [Parameter]
-    public EventCallback<string?> ImageDigestChanged { get; set; }
-
-    [Parameter]
     public bool EnableTTY { get; set; }
 
     [Parameter]
     public EventCallback<bool> EnableTTYChanged { get; set; }
+
+    [Parameter]
+    public string? ReadyLogPattern { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ReadyLogPatternChanged { get; set; }
 
     [Parameter]
     public string? Notes { get; set; }
@@ -167,9 +166,9 @@
 
     private Task OnVersionTagChanged(string value) => VersionTagChanged.InvokeAsync(value);
 
-    private Task OnImageDigestChanged(string? value) => ImageDigestChanged.InvokeAsync(value);
-
     private Task OnEnableTTYChanged(bool value) => EnableTTYChanged.InvokeAsync(value);
+
+    private Task OnReadyLogPatternChanged(string? value) => ReadyLogPatternChanged.InvokeAsync(value);
 
     private Task OnNotesChanged(string? value) => NotesChanged.InvokeAsync(value);
 

@@ -1,11 +1,11 @@
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
 @using GameServer.Web.Configurations
-@using GameServer.Docker.Client.Interfaces
+@using GameServer.API.Client.Interfaces
 @using XtermBlazor
 @using Radzen
+@inject IJSRuntime JSRuntime
 @inject IOptions<GameServerDockerApi> ApiConfig
-@inject IContainerTerminalClient TerminalClient
 @inject NotificationService NotificationService
 @inject ILogger<ContainerTerminal> Logger
 @implements IAsyncDisposable
@@ -50,9 +50,10 @@
         </div>
     </div>
 
-    <div class="xterm-wrapper">
+    <div class="xterm-wrapper" @ref="_terminalWrapperRef">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
+               Addons="@_addons"
                OnFirstRender="@OnTerminalReady"
                OnData="@OnTerminalData" />
     </div>
@@ -98,15 +99,25 @@
         flex: 1;
         overflow: hidden;
         background: #000;
+        width: 100%;
+        height: 100%;
     }
 
     .xterm-wrapper ::deep .xterm {
         height: 100%;
+        width: 100%;
         padding: 0.5rem;
+        box-sizing: border-box;
     }
 
     .xterm-wrapper ::deep .xterm-viewport {
         background-color: transparent !important;
+        width: 100% !important;
+    }
+
+    .xterm-wrapper ::deep .xterm-screen {
+        height: 100%;
+        width: 100%;
     }
 
     @@media (max-width: 768px) {
@@ -117,11 +128,14 @@
 </style>
 
 @code {
+    [Parameter] public string? ServerId { get; set; }
     [Parameter] public string? ContainerId { get; set; }
     [Parameter] public bool AutoConnect { get; set; } = false;
     [Parameter] public string Shell { get; set; } = "/bin/sh";
 
     private Xterm? terminal;
+    private ElementReference _terminalWrapperRef;
+    private readonly HashSet<string> _addons = ["addon-fit"];
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,
@@ -154,43 +168,91 @@
         FontSize = 14,
         FontFamily = "'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace",
         Scrollback = 5000,
-        AllowTransparency = false,
+        AllowTransparency = false
     };
 
     private bool isConnected = false;
     private bool isConnecting = false;
+    private bool isJavaScriptAvailable = false;
     private string? sessionId;
     private CancellationTokenSource? cts;
+    private IContainerTerminalClient? terminalClient;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && AutoConnect && !string.IsNullOrEmpty(ContainerId))
+        if (firstRender)
         {
-            await Task.Delay(500); // Wait for terminal to initialize
-            await ConnectAsync();
+            isJavaScriptAvailable = true;
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.initAutoFit", _terminalWrapperRef);
+            }
+            catch
+            {
+                // Fallback gracefully
+            }
+
+            await FitTerminalAsync();
+
+            if (AutoConnect && (!string.IsNullOrEmpty(ContainerId) || !string.IsNullOrEmpty(ServerId)))
+            {
+                await Task.Delay(500); // Wait for terminal to initialize
+                await ConnectAsync();
+            }
+        }
+    }
+
+    private async Task FitTerminalAsync()
+    {
+        if (isJavaScriptAvailable)
+        {
+            try
+            {
+                if (terminal is not null)
+                {
+                    await terminal.Addon("addon-fit").InvokeVoidAsync("fit");
+                }
+            }
+            catch
+            {
+                // Fallback
+            }
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.fitAll");
+            }
+            catch
+            {
+                // Ignore if terminal is hidden/unmeasured
+            }
         }
     }
 
     private async Task OnTerminalReady()
     {
-        if (terminal == null) return;
+        if (terminal == null || !isJavaScriptAvailable) return;
 
+        await FitTerminalAsync();
         await terminal.WriteLine("\x1b[1;32m=== Container Interactive Terminal ===\x1b[0m");
         await terminal.WriteLine($"\x1b[36mShell: {Shell}\x1b[0m");
-        await terminal.WriteLine($"\x1b[36mContainer: {ContainerId ?? "Unknown"}\x1b[0m");
+        await terminal.WriteLine($"\x1b[36mTarget: {ContainerId ?? ServerId ?? "Unknown"}\x1b[0m");
         await terminal.WriteLine("");
         
         if (!AutoConnect)
         {
             await terminal.WriteLine("\x1b[33mClick 'Connect' to start an interactive shell session\x1b[0m");
         }
+        await FitTerminalAsync();
     }
 
     private async Task ConnectAsync()
     {
-        if (string.IsNullOrEmpty(ContainerId))
+        var targetId = !string.IsNullOrWhiteSpace(ContainerId) ? ContainerId : ServerId;
+        if (string.IsNullOrEmpty(targetId))
         {
-            await WriteError("Error: No container ID provided");
+            await WriteError("Error: No server or container ID provided");
             return;
         }
 
@@ -204,14 +266,15 @@
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
             var hubUrl = $"{baseUri}/hubs/terminal";
 
-            Logger.LogInformation("Connecting to terminal hub at {HubUrl} for container {ContainerId}", hubUrl, ContainerId);
+            Logger.LogInformation("Connecting to terminal hub at {HubUrl} for target {TargetId}", hubUrl, targetId);
 
             cts = new CancellationTokenSource();
 
+            terminalClient = new GameServer.API.Client.Services.ContainerTerminalClient(hubUrl);
             WireTerminalEvents();
 
-            await TerminalClient.ConnectAsync(cts.Token);
-            var sessionStarted = await TerminalClient.StartExecSessionAsync(ContainerId, Shell, cts.Token);
+            await terminalClient.ConnectAsync(cts.Token);
+            var sessionStarted = await terminalClient.StartExecSessionAsync(targetId, Shell, cts.Token);
 
             if (!sessionStarted)
             {
@@ -220,7 +283,7 @@
 
             isConnected = true;
             isConnecting = false;
-            sessionId = TerminalClient.ConnectionId;
+            sessionId = terminalClient.ConnectionId;
 
             await WriteSuccess($"Connected! Shell session active.\n");
 
@@ -255,12 +318,12 @@
 
     private async Task OnTerminalData(string data)
     {
-        if (!isConnected || !TerminalClient.IsConnected)
+        if (!isConnected || terminalClient is null || !terminalClient.IsConnected)
             return;
 
         try
         {
-            await TerminalClient.SendInputAsync(data);
+            await terminalClient.SendInputAsync(data);
         }
         catch (Exception ex)
         {
@@ -272,7 +335,10 @@
     {
         try
         {
-            await TerminalClient.DisconnectAsync();
+            if (terminalClient != null)
+            {
+                await terminalClient.DisconnectAsync();
+            }
         }
         catch { }
 
@@ -286,48 +352,63 @@
 
     private void WireTerminalEvents()
     {
-        TerminalClient.OutputReceived -= OnTerminalOutput;
-        TerminalClient.OutputReceived += OnTerminalOutput;
+        if (terminalClient is null) return;
+        terminalClient.OutputReceived -= OnTerminalOutput;
+        terminalClient.OutputReceived += OnTerminalOutput;
 
-        TerminalClient.ErrorReceived -= OnTerminalError;
-        TerminalClient.ErrorReceived += OnTerminalError;
+        terminalClient.ErrorReceived -= OnTerminalError;
+        terminalClient.ErrorReceived += OnTerminalError;
 
-        TerminalClient.SessionStarted -= OnTerminalSessionStarted;
-        TerminalClient.SessionStarted += OnTerminalSessionStarted;
+        terminalClient.SessionStarted -= OnTerminalSessionStarted;
+        terminalClient.SessionStarted += OnTerminalSessionStarted;
 
-        TerminalClient.Disconnected -= OnTerminalDisconnected;
-        TerminalClient.Disconnected += OnTerminalDisconnected;
+        terminalClient.Disconnected -= OnTerminalDisconnected;
+        terminalClient.Disconnected += OnTerminalDisconnected;
     }
 
-    private async void OnTerminalOutput(object? sender, string data)
+    private void OnTerminalOutput(object? sender, string data)
     {
-        if (terminal != null)
+        InvokeAsync(async () =>
         {
-            await terminal.Write(data);
-        }
+            if (terminal != null && isJavaScriptAvailable)
+            {
+                var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
+                await terminal.Write(normalized);
+            }
+        });
     }
 
-    private async void OnTerminalError(object? sender, string error)
+    private void OnTerminalError(object? sender, string error)
     {
-        await WriteError($"Error: {error}");
+        InvokeAsync(async () =>
+        {
+            await WriteError($"Error: {error}");
+        });
     }
 
     private void OnTerminalSessionStarted(object? sender, string sid)
     {
-        sessionId = sid;
-        Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
+        InvokeAsync(() =>
+        {
+            sessionId = sid;
+            Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
+            StateHasChanged();
+        });
     }
 
-    private async void OnTerminalDisconnected(object? sender, string message)
+    private void OnTerminalDisconnected(object? sender, string message)
     {
-        isConnected = false;
-        await WriteInfo($"Disconnected: {message}");
-        await InvokeAsync(StateHasChanged);
+        InvokeAsync(async () =>
+        {
+            isConnected = false;
+            await WriteInfo($"Disconnected: {message}");
+            StateHasChanged();
+        });
     }
 
     private async Task ClearTerminal()
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
         {
             await terminal.Clear();
             await terminal.WriteLine("\x1b[1;32m=== Terminal Cleared ===\x1b[0m\n");
@@ -336,35 +417,39 @@
 
     private async Task WriteSuccess(string message)
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
             await terminal.WriteLine($"\x1b[1;32m{message}\x1b[0m");
     }
 
     private async Task WriteError(string message)
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
             await terminal.WriteLine($"\x1b[1;31m{message}\x1b[0m");
     }
 
     private async Task WriteInfo(string message)
     {
-        if (terminal != null)
+        if (terminal != null && isJavaScriptAvailable)
             await terminal.WriteLine($"\x1b[1;36m{message}\x1b[0m");
     }
 
     public async ValueTask DisposeAsync()
     {
+        isJavaScriptAvailable = false;
         cts?.Cancel();
         cts?.Dispose();
 
-        TerminalClient.OutputReceived -= OnTerminalOutput;
-        TerminalClient.ErrorReceived -= OnTerminalError;
-        TerminalClient.SessionStarted -= OnTerminalSessionStarted;
-        TerminalClient.Disconnected -= OnTerminalDisconnected;
-
-        if (TerminalClient is IAsyncDisposable disposable)
+        if (terminalClient != null)
         {
-            await disposable.DisposeAsync();
+            terminalClient.OutputReceived -= OnTerminalOutput;
+            terminalClient.ErrorReceived -= OnTerminalError;
+            terminalClient.SessionStarted -= OnTerminalSessionStarted;
+            terminalClient.Disconnected -= OnTerminalDisconnected;
+
+            if (terminalClient is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
         }
     }
 }

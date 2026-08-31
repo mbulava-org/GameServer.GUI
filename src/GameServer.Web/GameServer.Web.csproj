@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\GameServer.Docker.Client\GameServer.Docker.Client.csproj" />
+    <ProjectReference Include="..\GameServer.API.Client\GameServer.API.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,8 +26,8 @@
   <!-- Manually copy Radzen and XtermBlazor assets to wwwroot/_content -->
   <Target Name="CopyStaticWebAssets" AfterTargets="Build">
     <ItemGroup>
-      <RadzenAssets Include="$(NuGetPackageRoot)radzen.blazor\9.0.4\staticwebassets\**\*.*" />
-      <XtermAssets Include="$(NuGetPackageRoot)xtermblazor\2.3.0\staticwebassets\**\*.*" />
+      <RadzenAssets Include="$(NuGetPackageRoot)radzen.blazor\*\staticwebassets\**\*.*" />
+      <XtermAssets Include="$(NuGetPackageRoot)xtermblazor\*\staticwebassets\**\*.*" />
     </ItemGroup>
     
     <Copy SourceFiles="@(RadzenAssets)" DestinationFolder="$(OutputPath)wwwroot\_content\Radzen.Blazor\%(RecursiveDir)" SkipUnchangedFiles="true" />

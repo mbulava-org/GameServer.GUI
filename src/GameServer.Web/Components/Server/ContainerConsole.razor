@@ -2,8 +2,8 @@
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
 @using GameServer.Web.Configurations
-@using GameServer.Docker.Client.Interfaces
-@using GameServer.Docker.Client.Services
+@using GameServer.API.Client.Interfaces
+@using GameServer.API.Client.Services
 @using System.Text
 @using XtermBlazor
 @inject IOptions<GameServerDockerApi> ApiConfig
@@ -60,9 +60,10 @@
         </div>
     </div>
 
-    <div class="terminal-wrapper" @onclick="FocusTerminalAsync">
+    <div class="terminal-wrapper" @ref="_terminalWrapperRef" @onclick="FocusTerminalAsync">
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
+               Addons="@_addons"
                OnFirstRender="@OnTerminalFirstRender"
                OnData="@OnTerminalData"
                OnLineFeed="@OnLineFeed"
@@ -111,6 +112,8 @@
         overflow: hidden;
         background: #000;
         cursor: text;
+        width: 100%;
+        height: 100%;
     }
 
     .terminal-wrapper:hover {
@@ -119,15 +122,19 @@
 
     .terminal-wrapper ::deep .xterm {
         height: 100%;
+        width: 100%;
         padding: 0.5rem;
+        box-sizing: border-box;
     }
 
     .terminal-wrapper ::deep .xterm-viewport {
         background-color: transparent !important;
+        width: 100% !important;
     }
 
     .terminal-wrapper ::deep .xterm-screen {
         height: 100%;
+        width: 100%;
     }
     
     .terminal-wrapper ::deep .xterm-cursor-layer {
@@ -147,6 +154,8 @@
 [Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
 
     private Xterm? terminal;
+    private ElementReference _terminalWrapperRef;
+    private readonly HashSet<string> _addons = ["addon-fit"];
     private TerminalOptions terminalOptions = new()
     {
         CursorBlink = true,
@@ -178,9 +187,8 @@
         },
         FontSize = 14,
         FontFamily = "'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace",
-        Scrollback = 1000,
-        AllowTransparency = false,
-        
+        Scrollback = 2000,
+        AllowTransparency = false
     };
 
     private bool isConnected = false;
@@ -196,6 +204,17 @@
             // Mark that JavaScript is now available
             isJavaScriptAvailable = true;
             
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.initAutoFit", _terminalWrapperRef);
+            }
+            catch
+            {
+                // Fallback gracefully if JS not initialized
+            }
+
+            await FitTerminalAsync();
+
             if (AutoConnect && !string.IsNullOrEmpty(ServerId))
             {
                 await Task.Delay(500); // Wait for terminal to initialize
@@ -204,13 +223,42 @@
         }
     }
 
+    private async Task FitTerminalAsync()
+    {
+        if (isJavaScriptAvailable)
+        {
+            try
+            {
+                if (terminal is not null)
+                {
+                    await terminal.Addon("addon-fit").InvokeVoidAsync("fit");
+                }
+            }
+            catch
+            {
+                // Fallback to JS helper
+            }
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.fitAll");
+            }
+            catch
+            {
+                // Ignore if terminal DOM element is not yet attached or rendered
+            }
+        }
+    }
+
     private async Task OnTerminalFirstRender()
     {
         if (terminal != null && isJavaScriptAvailable)
         {
+            await FitTerminalAsync();
             await terminal.WriteLine("Terminal initialized. Click 'Connect' to attach to container console.");
             await terminal.WriteLine("");
             await terminal.WriteLine("Click anywhere in the terminal to focus and start typing.");
+            await FitTerminalAsync();
         }
     }
 
@@ -376,7 +424,8 @@
         {
             if (terminal != null && isJavaScriptAvailable)
             {
-                await terminal.Write(data);
+                var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
+                await terminal.Write(normalized);
                 StateHasChanged(); // Ensure component updates
             }
         });

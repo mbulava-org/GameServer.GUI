@@ -28,6 +28,85 @@ public sealed class GameServerSettingFieldV2Tests : BunitContext
     }
 
     [Fact]
+    public void YesNoSetting_ShouldRenderSwitch()
+    {
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "ALLOW_FLIGHT",
+                DefaultValue = "no",
+                Metadata = new GameTypeSettingMetadata { DataType = "yesno" }
+            })
+            .Add(p => p.Value, "no"));
+
+        Assert.NotNull(cut.FindComponent<RadzenSwitch>());
+        Assert.Contains("no", cut.Markup);
+    }
+
+    [Fact]
+    public void YesNoSetting_WhenSwitchedOn_ShouldEmitUpperCaseYES()
+    {
+        string? saved = null;
+
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "ALLOW_FLIGHT",
+                DefaultValue = "no",
+                Metadata = new GameTypeSettingMetadata { DataType = "yesno" }
+            })
+            .Add(p => p.Value, "no")
+            .Add(p => p.ValueChanged, value => saved = value));
+
+        var toggle = cut.FindComponent<RadzenSwitch>();
+        cut.InvokeAsync(() => toggle.Instance.Change.InvokeAsync(true)).GetAwaiter().GetResult();
+
+        Assert.Equal("YES", saved);
+    }
+
+    [Fact]
+    public void YesNoSetting_WhenSwitchedOff_WithLowercaseDefault_ShouldEmitLowercaseNo()
+    {
+        string? saved = null;
+
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "ALLOW_FLIGHT",
+                DefaultValue = "no",
+                Metadata = new GameTypeSettingMetadata { DataType = "yesno" }
+            })
+            .Add(p => p.Value, "YES")
+            .Add(p => p.ValueChanged, value => saved = value));
+
+        var toggle = cut.FindComponent<RadzenSwitch>();
+        cut.InvokeAsync(() => toggle.Instance.Change.InvokeAsync(false)).GetAwaiter().GetResult();
+
+        Assert.Equal("no", saved);
+    }
+
+    [Fact]
+    public void YesNoSetting_WhenSwitchedOff_WithUppercaseDefault_ShouldEmitUppercaseNO()
+    {
+        string? saved = null;
+
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "ENABLE_PVP",
+                DefaultValue = "NO",
+                Metadata = new GameTypeSettingMetadata { DataType = "yes/no" }
+            })
+            .Add(p => p.Value, "YES")
+            .Add(p => p.ValueChanged, value => saved = value));
+
+        var toggle = cut.FindComponent<RadzenSwitch>();
+        cut.InvokeAsync(() => toggle.Instance.Change.InvokeAsync(false)).GetAwaiter().GetResult();
+
+        Assert.Equal("NO", saved);
+    }
+
+    [Fact]
     public void EnumSetting_WithInvalidMetadata_ShouldFallBackToTextBox()
     {
         var cut = Render<GameServerSettingFieldV2>(parameters => parameters

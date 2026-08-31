@@ -8,7 +8,6 @@
             <h5 class="mb-3">Revision Draft Summary</h5>
             <div><strong>Image:</strong> @(string.IsNullOrWhiteSpace(RevisionImageReference) ? "Not set" : RevisionImageReference)</div>
             <div><strong>Version Tag:</strong> @(string.IsNullOrWhiteSpace(RevisionVersionTag) ? "Not set" : RevisionVersionTag)</div>
-            <div><strong>Digest:</strong> @(string.IsNullOrWhiteSpace(RevisionImageDigest) ? "Not set" : RevisionImageDigest)</div>
             <div><strong>TTY:</strong> @(RevisionEnableTTY ? "Enabled" : "Disabled")</div>
             <div><strong>Published:</strong> @(RevisionIsPublished ? "Yes" : "No")</div>
         </RadzenCard>
@@ -108,9 +107,6 @@
 
     [Parameter]
     public string RevisionVersionTag { get; set; } = string.Empty;
-
-    [Parameter]
-    public string? RevisionImageDigest { get; set; }
 
     [Parameter]
     public bool RevisionEnableTTY { get; set; }

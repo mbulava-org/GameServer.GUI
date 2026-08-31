@@ -43,6 +43,16 @@ public sealed class GameServerEditorV2Tests : BunitContext
             .Setup(api => api.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
+        gameServerApi
+            .Setup(api => api.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        gameServerApi
+            .Setup(api => api.PreviewAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerDeploymentPreview { ServiceName = "minecraft-srv-1", Issues = [], Notices = [] });
+
+        SetupAvailability(isAvailable: true);
+
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IGameServerV2ApiService>(gameServerApi.Object);
@@ -85,7 +95,7 @@ public sealed class GameServerEditorV2Tests : BunitContext
 
             // The owning port-type setting is synchronized so save/preview use the edited port.
             Assert.Equal("26000", FindSettingPortInput(cut).GetAttribute("value"));
-            Assert.Contains("Port is available.", cut.Markup);
+            Assert.Contains("Port 26000/tcp is available.", cut.Markup);
         });
     }
 
@@ -93,7 +103,7 @@ public sealed class GameServerEditorV2Tests : BunitContext
     public void GameServerEditorV2_WhenPortUnavailable_ShouldShowReasonAndBlockSaving()
     {
         // Arrange
-        SetupAvailability(isAvailable: false, reason: "Port 26000/tcp is already used by srv-2.");
+        SetupAvailability(isAvailable: false, reason: "Port '26000/tcp' is already used by srv-2.");
         var cut = RenderEditor();
         cut.WaitForAssertion(() => Assert.NotEmpty(FindPortMappingInputs(cut)));
 
@@ -103,10 +113,49 @@ public sealed class GameServerEditorV2Tests : BunitContext
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Port 26000/tcp is already used by srv-2.", cut.Markup);
+            Assert.Contains("Port '26000/tcp' is already used by srv-2.", cut.Markup);
 
             var saveButton = cut.FindAll("button").First(button => button.TextContent.Contains("Save Changes"));
             Assert.True(saveButton.HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_WhenDefaultPortUnavailable_ShouldImmediatelyShowUnavailableAndBlockSaving()
+    {
+        // Arrange
+        SetupAvailability(isAvailable: false, reason: "Port '25565/tcp' is already in use by another managed server.");
+
+        // Act
+        var cut = RenderEditor();
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Port '25565/tcp' is already in use by another managed server.", cut.Markup);
+
+            var saveButton = cut.FindAll("button").First(button => button.TextContent.Contains("Save Changes"));
+            Assert.True(saveButton.HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_WhenServerNameUpdated_ShouldTriggerLiveValidation()
+    {
+        // Arrange
+        var cut = RenderEditor();
+        cut.WaitForAssertion(() => Assert.NotEmpty(FindPortMappingInputs(cut)));
+
+        // Act
+        var nameInput = cut.Find("input.rz-textbox");
+        nameInput.Input("My Renamed Server");
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            gameServerApi.Verify(
+                api => api.ValidateAsync(It.Is<SaveGameServerRequest>(req => req.Name == "My Renamed Server"), It.IsAny<CancellationToken>()),
+                Times.AtLeastOnce());
         });
     }
 

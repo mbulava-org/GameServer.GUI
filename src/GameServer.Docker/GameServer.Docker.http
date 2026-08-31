@@ -1,6 +1,0 @@
-@GameServer.Docker_HostAddress = http://localhost:5164
-
-GET {{GameServer.Docker_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

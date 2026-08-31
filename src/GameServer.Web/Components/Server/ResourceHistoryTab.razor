@@ -1,0 +1,618 @@
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
+@using GameServer.Web.Models.V2
+@using GameServer.Web.Services.V2
+@using GameServer.API.Client.Interfaces
+@using Radzen
+@using Radzen.Blazor
+@inject IOptions<GameServerDockerApi> ApiConfig
+@inject IGameServerV2ApiService GameServerApiV2
+@inject NotificationService NotificationService
+@inject ILogger<ResourceHistoryTab> Logger
+@implements IAsyncDisposable
+
+<div class="resource-history-container">
+    <RadzenCard class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenIcon Icon="show_chart" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                <h5 class="mb-0">Resource Usage History</h5>
+                @if (chartPoints.Any())
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{chartPoints.Count} records")" Variant="Variant.Flat" />
+                }
+                @if (isConnected)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Live Stream Active" Variant="Variant.Flat" />
+                }
+                else if (isConnecting)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting Stream..." Variant="Variant.Flat" />
+                }
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="d-flex align-items-center gap-1">
+                    <span class="text-muted small">Time Range:</span>
+                    <RadzenDropDown TValue="string"
+                                    Data="@TimeRangeOptions"
+                                    TextProperty="Text"
+                                    ValueProperty="Value"
+                                    Value="@selectedRangeKey"
+                                    ValueChanged="@OnRangeOptionChanged"
+                                    Style="min-width: 160px;" />
+                </div>
+
+                @if (selectedRangeKey == "custom")
+                {
+                    <div class="d-flex align-items-center gap-1 flex-wrap">
+                        <RadzenDatePicker @bind-Value="@customFrom"
+                                          ShowTime="true"
+                                          DateFormat="yyyy-MM-dd HH:mm"
+                                          Placeholder="Start Date/Time"
+                                          Style="width: 175px;" />
+                        <span class="text-muted small">to</span>
+                        <RadzenDatePicker @bind-Value="@customTo"
+                                          ShowTime="true"
+                                          DateFormat="yyyy-MM-dd HH:mm"
+                                          Placeholder="End Date/Time"
+                                          Style="width: 175px;" />
+                        <RadzenButton Icon="check"
+                                      Text="Apply"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.Small"
+                                      Click="@ApplyCustomRangeAsync"
+                                      Disabled="@isHistoryLoading" />
+                    </div>
+                }
+
+                <RadzenButton Icon="refresh"
+                              Text="Refresh"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@LoadHistoryAsync"
+                              Disabled="@isHistoryLoading" />
+            </div>
+        </div>
+
+        @if (isHistoryLoading && !chartPoints.Any())
+        {
+            <div class="text-center py-4">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+                <p class="mt-2 text-muted small">Loading historical resource records...</p>
+            </div>
+        }
+        else if (!chartPoints.Any())
+        {
+            <div class="text-center py-4 border rounded bg-light">
+                <RadzenIcon Icon="analytics" Style="font-size: 2.5rem; color: var(--rz-text-disabled-color);" />
+                <p class="text-muted mt-2 mb-0">No historical resource records have been saved yet for this game server in the selected time range.</p>
+            </div>
+        }
+        else
+        {
+            <div class="row g-3 mb-2">
+                <!-- CPU Usage Line Chart -->
+                <div class="col-lg-6">
+                    <RadzenCard class="p-3 h-100 border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <RadzenIcon Icon="memory" Style="color: var(--rz-primary);" />
+                                <strong class="small text-uppercase">CPU Usage (%)</strong>
+                            </div>
+                            <span class="badge bg-primary-subtle text-primary">Avg: @GetAvgCpu()%</span>
+                        </div>
+                        <RadzenChart Style="height: 250px;">
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="CpuPercent"
+                                              Title="CPU %"
+                                              Smooth="true"
+                                              Stroke="var(--rz-primary)"
+                                              LineType="LineType.Solid">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="fw-bold text-primary">@data.CpuPercent.ToString("F1")% CPU</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="10">
+                                <RadzenAxisTitle Text="Time" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0" Max="100" Step="25">
+                                <RadzenAxisTitle Text="CPU %" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Visible="false" />
+                        </RadzenChart>
+                    </RadzenCard>
+                </div>
+
+                <!-- Memory Usage Line Chart -->
+                <div class="col-lg-6">
+                    <RadzenCard class="p-3 h-100 border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <RadzenIcon Icon="developer_board" Style="color: var(--rz-info);" />
+                                <strong class="small text-uppercase">Memory Usage (%)</strong>
+                            </div>
+                            <span class="badge bg-info-subtle text-info">Latest: @GetLatestMemoryMB() MB</span>
+                        </div>
+                        <RadzenChart Style="height: 250px;">
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="MemoryPercent"
+                                              Title="Memory %"
+                                              Smooth="true"
+                                              Stroke="var(--rz-info)"
+                                              LineType="LineType.Solid">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="fw-bold text-info">@data.MemoryPercent.ToString("F1")% (@data.MemoryMB.ToString("F1") MB)</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="10">
+                                <RadzenAxisTitle Text="Time" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0" Max="100" Step="25">
+                                <RadzenAxisTitle Text="Memory %" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Visible="false" />
+                        </RadzenChart>
+                    </RadzenCard>
+                </div>
+
+                <!-- Network I/O Line Chart -->
+                <div class="col-lg-6">
+                    <RadzenCard class="p-3 h-100 border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <RadzenIcon Icon="swap_vert" Style="color: var(--rz-success);" />
+                                <strong class="small text-uppercase">Network I/O (MB)</strong>
+                            </div>
+                        </div>
+                        <RadzenChart Style="height: 250px;">
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="NetworkRxMB"
+                                              Title="Rx In (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-success)"
+                                              LineType="LineType.Solid">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-success small">Rx In: @data.NetworkRxMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="NetworkTxMB"
+                                              Title="Tx Out (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-info)"
+                                              LineType="LineType.Solid">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Diamond" Size="3" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-info small">Tx Out: @data.NetworkTxMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="10">
+                                <RadzenAxisTitle Text="Time" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0">
+                                <RadzenAxisTitle Text="MB" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Position="LegendPosition.Top" />
+                        </RadzenChart>
+                    </RadzenCard>
+                </div>
+
+                <!-- Disk I/O Line Chart -->
+                <div class="col-lg-6">
+                    <RadzenCard class="p-3 h-100 border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <RadzenIcon Icon="storage" Style="color: var(--rz-warning);" />
+                                <strong class="small text-uppercase">Disk I/O (MB)</strong>
+                            </div>
+                        </div>
+                        <RadzenChart Style="height: 250px;">
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="BlockReadMB"
+                                              Title="Read (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-warning)"
+                                              LineType="LineType.Solid">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-warning small">Read: @data.BlockReadMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="BlockWriteMB"
+                                              Title="Write (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-danger)"
+                                              LineType="LineType.Solid">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Diamond" Size="3" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-danger small">Write: @data.BlockWriteMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="10">
+                                <RadzenAxisTitle Text="Time" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0">
+                                <RadzenAxisTitle Text="MB" />
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Position="LegendPosition.Top" />
+                        </RadzenChart>
+                    </RadzenCard>
+                </div>
+            </div>
+        }
+    </RadzenCard>
+</div>
+
+@code {
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    [Parameter]
+    public bool AutoConnect { get; set; } = true;
+
+    [Parameter]
+    public IResourceMonitoringClient? Client { get; set; }
+
+    private IResourceMonitoringClient? client;
+    private bool isConnected;
+    private bool isConnecting;
+    private List<ResourceHistoryChartPoint> chartPoints = [];
+    private bool isHistoryLoading;
+
+    public sealed record TimeRangeOption(string Value, string Text, TimeSpan? Duration);
+
+    private static readonly IReadOnlyList<TimeRangeOption> TimeRangeOptions =
+    [
+        new TimeRangeOption("15m", "Last 15 Minutes", TimeSpan.FromMinutes(15)),
+        new TimeRangeOption("30m", "Last 30 Minutes", TimeSpan.FromMinutes(30)),
+        new TimeRangeOption("1h", "Last 1 Hour", TimeSpan.FromHours(1)),
+        new TimeRangeOption("3h", "Last 3 Hours", TimeSpan.FromHours(3)),
+        new TimeRangeOption("6h", "Last 6 Hours", TimeSpan.FromHours(6)),
+        new TimeRangeOption("12h", "Last 12 Hours", TimeSpan.FromHours(12)),
+        new TimeRangeOption("24h", "Last 24 Hours", TimeSpan.FromHours(24)),
+        new TimeRangeOption("25h", "Last 25 Hours", TimeSpan.FromHours(25)),
+        new TimeRangeOption("3d", "Last 3 Days", TimeSpan.FromDays(3)),
+        new TimeRangeOption("7d", "Last 7 Days", TimeSpan.FromDays(7)),
+        new TimeRangeOption("30d", "Last 30 Days", TimeSpan.FromDays(30)),
+        new TimeRangeOption("custom", "Custom Range...", null)
+    ];
+
+    private string selectedRangeKey = "25h";
+    private DateTime? customFrom;
+    private DateTime? customTo;
+
+    public sealed class ResourceHistoryChartPoint
+    {
+        public DateTime Timestamp { get; init; }
+        public string AxisLabel { get; set; } = string.Empty;
+        public string FullTimestamp => Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        public double CpuPercent { get; init; }
+        public double MemoryPercent { get; init; }
+        public double MemoryMB { get; init; }
+        public double NetworkRxMB { get; init; }
+        public double NetworkTxMB { get; init; }
+        public double BlockReadMB { get; init; }
+        public double BlockWriteMB { get; init; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadHistoryAsync();
+
+        if (AutoConnect)
+        {
+            await ConnectAndSubscribeAsync();
+        }
+    }
+
+    private async Task OnRangeOptionChanged(string newKey)
+    {
+        selectedRangeKey = newKey;
+        if (selectedRangeKey == "custom")
+        {
+            customFrom ??= DateTime.Now.AddHours(-25);
+            customTo ??= DateTime.Now;
+        }
+        else
+        {
+            await LoadHistoryAsync();
+        }
+    }
+
+    private async Task ApplyCustomRangeAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId) || GameServerApiV2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            isHistoryLoading = true;
+
+            DateTime? fromUtc = null;
+            DateTime? toUtc = null;
+
+            if (selectedRangeKey == "custom")
+            {
+                fromUtc = customFrom?.ToUniversalTime();
+                toUtc = customTo?.ToUniversalTime();
+            }
+            else
+            {
+                var preset = TimeRangeOptions.FirstOrDefault(o => o.Value == selectedRangeKey);
+                if (preset?.Duration != null)
+                {
+                    fromUtc = DateTime.UtcNow.Subtract(preset.Duration.Value);
+                    toUtc = DateTime.UtcNow;
+                }
+            }
+
+            var result = await GameServerApiV2.GetResourceHistoryAsync(ServerId, from: fromUtc, to: toUtc, limit: 5000);
+            chartPoints = result.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
+            {
+                Timestamp = r.Timestamp,
+                CpuPercent = Math.Round(r.CpuUsagePercent ?? 0, 1),
+                MemoryPercent = Math.Round(r.MemoryUsagePercent ?? 0, 1),
+                MemoryMB = Math.Round((r.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
+                NetworkRxMB = Math.Round((r.NetworkRxBytes ?? 0) / (1024.0 * 1024.0), 2),
+                NetworkTxMB = Math.Round((r.NetworkTxBytes ?? 0) / (1024.0 * 1024.0), 2),
+                BlockReadMB = Math.Round((r.BlockReadBytes ?? 0) / (1024.0 * 1024.0), 2),
+                BlockWriteMB = Math.Round((r.BlockWriteBytes ?? 0) / (1024.0 * 1024.0), 2)
+            }).ToList();
+
+            ComputeAxisLabels(chartPoints);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load resource history for server {ServerId}", ServerId);
+            chartPoints = [];
+        }
+        finally
+        {
+            isHistoryLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static void ComputeAxisLabels(List<ResourceHistoryChartPoint> points)
+    {
+        if (points.Count == 0) return;
+
+        var minTime = points[0].Timestamp;
+        var maxTime = points[^1].Timestamp;
+        var totalSpan = maxTime - minTime;
+
+        TimeSpan step;
+        string format;
+        if (totalSpan <= TimeSpan.FromHours(1))
+        {
+            step = TimeSpan.FromMinutes(5);
+            format = "HH:mm";
+        }
+        else if (totalSpan <= TimeSpan.FromHours(6))
+        {
+            step = TimeSpan.FromMinutes(30);
+            format = "HH:mm";
+        }
+        else if (totalSpan <= TimeSpan.FromHours(48))
+        {
+            step = TimeSpan.FromHours(1);
+            format = "HH:00";
+        }
+        else if (totalSpan <= TimeSpan.FromDays(7))
+        {
+            step = TimeSpan.FromHours(6);
+            format = "MM/dd HH:mm";
+        }
+        else
+        {
+            step = TimeSpan.FromDays(1);
+            format = "MM/dd";
+        }
+
+        DateTime? lastLabeledSlot = null;
+        for (int i = 0; i < points.Count; i++)
+        {
+            var p = points[i];
+            var localTime = p.Timestamp.ToLocalTime();
+            long ticks = localTime.Ticks - (localTime.Ticks % step.Ticks);
+            var slot = new DateTime(ticks, localTime.Kind);
+
+            if (lastLabeledSlot == null || slot > lastLabeledSlot)
+            {
+                p.AxisLabel = localTime.ToString(format);
+                lastLabeledSlot = slot;
+            }
+            else
+            {
+                p.AxisLabel = string.Empty;
+            }
+        }
+    }
+
+    private string GetAvgCpu()
+    {
+        if (!chartPoints.Any()) return "0.0";
+        return chartPoints.Average(c => c.CpuPercent).ToString("F1");
+    }
+
+    private string GetLatestMemoryMB()
+    {
+        if (!chartPoints.Any()) return "0";
+        return chartPoints.Last().MemoryMB.ToString("0.##");
+    }
+
+    private async Task ConnectAndSubscribeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId))
+        {
+            return;
+        }
+
+        try
+        {
+            isConnecting = true;
+            await DisconnectAsync();
+
+            if (Client != null)
+            {
+                client = Client;
+            }
+            else
+            {
+                var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
+                var hubUrl = $"{baseUri}/hubs/resources";
+                client = new GameServer.API.Client.Services.ResourceMonitoringClient(hubUrl);
+            }
+
+            client.ResourceUpdateReceived += OnResourceUpdate;
+            client.ErrorReceived += OnError;
+
+            await client.ConnectAsync(CancellationToken.None);
+            isConnected = true;
+
+            await client.SubscribeToServerAsync(ServerId, intervalSeconds: 2, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to connect to ResourceMonitoringHub for server {ServerId}", ServerId);
+            isConnected = false;
+        }
+        finally
+        {
+            isConnecting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnResourceUpdate(object? sender, ServerResourceUsage usage)
+    {
+        InvokeAsync(() =>
+        {
+            AppendLiveUsage(usage);
+            StateHasChanged();
+        });
+    }
+
+    private void AppendLiveUsage(ServerResourceUsage usage)
+    {
+        var point = new ResourceHistoryChartPoint
+        {
+            Timestamp = usage.Timestamp,
+            CpuPercent = Math.Round(usage.CpuUsagePercent ?? 0, 1),
+            MemoryPercent = Math.Round(usage.MemoryUsagePercent ?? 0, 1),
+            MemoryMB = Math.Round((usage.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
+            NetworkRxMB = Math.Round((usage.NetworkRxBytes ?? 0) / (1024.0 * 1024.0), 2),
+            NetworkTxMB = Math.Round((usage.NetworkTxBytes ?? 0) / (1024.0 * 1024.0), 2),
+            BlockReadMB = Math.Round((usage.BlockReadBytes ?? 0) / (1024.0 * 1024.0), 2),
+            BlockWriteMB = Math.Round((usage.BlockWriteBytes ?? 0) / (1024.0 * 1024.0), 2)
+        };
+
+        // If not already in the collection (within 1 second)
+        if (!chartPoints.Any(p => Math.Abs((p.Timestamp - point.Timestamp).TotalSeconds) < 1.0))
+        {
+            chartPoints.Add(point);
+
+            // Prune records older than active preset duration
+            var preset = TimeRangeOptions.FirstOrDefault(o => o.Value == selectedRangeKey);
+            if (preset?.Duration != null)
+            {
+                var cutoff = DateTime.UtcNow.Subtract(preset.Duration.Value);
+                chartPoints.RemoveAll(p => p.Timestamp < cutoff);
+            }
+
+            ComputeAxisLabels(chartPoints);
+        }
+    }
+
+    private void OnError(object? sender, string error)
+    {
+        InvokeAsync(() =>
+        {
+            StateHasChanged();
+        });
+    }
+
+    private async Task DisconnectAsync()
+    {
+        if (client is not null)
+        {
+            try
+            {
+                client.ResourceUpdateReceived -= OnResourceUpdate;
+                client.ErrorReceived -= OnError;
+                await client.UnsubscribeAsync(CancellationToken.None);
+                await client.StopAsync(CancellationToken.None);
+                await client.DisposeAsync();
+            }
+            catch
+            {
+                // Best effort disconnect
+            }
+            finally
+            {
+                client = null;
+                isConnected = false;
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+    }
+}

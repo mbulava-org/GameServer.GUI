@@ -90,6 +90,204 @@ public sealed class GameTypeV2ApiServiceTests
         Assert.Single(result.Ports);
     }
 
+    [Fact]
+    public async Task GetListAsync_WhenApiReturnsList_ShouldReturnGameTypes()
+    {
+        var expected = new List<GameTypeListItem>
+        {
+            new() { Id = 1, Key = "minecraft", DisplayName = "Minecraft" }
+        };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Contains("api/v2/gametypes?includeInactive=true", request.RequestUri!.PathAndQuery, StringComparison.OrdinalIgnoreCase);
+            return CreateJsonResponse(expected);
+        });
+
+        var result = await service.GetListAsync(true, TestContext.Current.CancellationToken);
+
+        Assert.Single(result);
+        Assert.Equal("minecraft", result[0].Key);
+    }
+
+    [Fact]
+    public async Task GetByKeyAsync_WhenExists_ShouldReturnGameTypeDetail()
+    {
+        var expected = new GameTypeDetail { Key = "valheim", DisplayName = "Valheim" };
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Contains("api/v2/gametypes/valheim", request.RequestUri!.PathAndQuery);
+            return CreateJsonResponse(expected);
+        });
+
+        var result = await service.GetByKeyAsync("valheim", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("valheim", result.Key);
+    }
+
+    [Fact]
+    public async Task GetByKeyAsync_WhenNotFound_ShouldReturnNull()
+    {
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var result = await service.GetByKeyAsync("non-existent", TestContext.Current.CancellationToken);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenValid_ShouldPostAndReturnDetail()
+    {
+        var requestPayload = new SaveGameTypeRequest { Key = "factorio", DisplayName = "Factorio" };
+        var expected = new GameTypeDetail { Key = "factorio", DisplayName = "Factorio" };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            return CreateJsonResponse(expected, HttpStatusCode.Created);
+        });
+
+        var result = await service.CreateAsync(requestPayload, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("factorio", result.Key);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenValid_ShouldPutAndReturnDetail()
+    {
+        var requestPayload = new SaveGameTypeRequest { Key = "factorio", DisplayName = "Factorio Updated" };
+        var expected = new GameTypeDetail { Key = "factorio", DisplayName = "Factorio Updated" };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Put, request.Method);
+            return CreateJsonResponse(expected);
+        });
+
+        var result = await service.UpdateAsync("factorio", requestPayload, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("Factorio Updated", result.DisplayName);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenValid_ShouldSendDelete()
+    {
+        var deleteCalled = false;
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Delete && request.RequestUri?.AbsolutePath == "/api/v2/gametypes/custom")
+            {
+                deleteCalled = true;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        await service.DeleteAsync("custom", TestContext.Current.CancellationToken);
+        Assert.True(deleteCalled);
+    }
+
+    [Fact]
+    public async Task AddRevisionAsync_WhenValid_ShouldPostAndReturnRevision()
+    {
+        var revisionRequest = new SaveGameTypeRevisionRequest { VersionTag = "1.0.0", ImageReference = "custom/img" };
+        var expected = new GameTypeRevision { Id = 1, VersionTag = "1.0.0", ImageReference = "custom/img" };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Contains("api/v2/gametypes/custom/revisions", request.RequestUri!.AbsolutePath);
+            return CreateJsonResponse(expected, HttpStatusCode.Created);
+        });
+
+        var result = await service.AddRevisionAsync("custom", revisionRequest, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("1.0.0", result.VersionTag);
+    }
+
+    [Fact]
+    public async Task UpdateRevisionAsync_WhenValid_ShouldPutAndReturnRevision()
+    {
+        var revisionRequest = new SaveGameTypeRevisionRequest { VersionTag = "1.0.1", ImageReference = "custom/img" };
+        var expected = new GameTypeRevision { Id = 1, VersionTag = "1.0.1", ImageReference = "custom/img" };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Put, request.Method);
+            Assert.Contains("api/v2/gametypes/custom/revisions/1", request.RequestUri!.AbsolutePath);
+            return CreateJsonResponse(expected);
+        });
+
+        var result = await service.UpdateRevisionAsync("custom", 1, revisionRequest, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("1.0.1", result.VersionTag);
+    }
+
+    [Fact]
+    public async Task PublishRevisionAsync_WhenValid_ShouldPostAndReturnRevision()
+    {
+        var expected = new GameTypeRevision { Id = 1, VersionTag = "1.0.0", IsPublished = true };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Contains("api/v2/gametypes/custom/revisions/1/publish", request.RequestUri!.AbsolutePath);
+            return CreateJsonResponse(expected);
+        });
+
+        var result = await service.PublishRevisionAsync("custom", 1, true, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.True(result.IsPublished);
+    }
+
+    [Fact]
+    public async Task SetCurrentRevisionAsync_WhenValid_ShouldPost()
+    {
+        var setCurrentCalled = false;
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gametypes/custom/revisions/1/set-current")
+            {
+                setCurrentCalled = true;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        await service.SetCurrentRevisionAsync("custom", 1, TestContext.Current.CancellationToken);
+        Assert.True(setCurrentCalled);
+    }
+
+    [Fact]
+    public async Task CompareSetupAsync_WhenValid_ShouldReturnComparison()
+    {
+        var expected = new GameTypeSetupComparisonResult
+        {
+            RevisionId = 1,
+            HasChanges = true,
+            AddedPorts = ["8080/tcp"]
+        };
+
+        var service = CreateService(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Contains("api/v2/gametypes/custom/detection/compare", request.RequestUri!.AbsolutePath);
+            return CreateJsonResponse(expected);
+        });
+
+        var result = await service.CompareSetupAsync("custom", "custom/image", "1.0.0", 1, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.True(result.HasChanges);
+        Assert.Single(result.AddedPorts);
+    }
+
     private static GameTypeV2ApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> responder)
     {
         var handler = new StubHttpMessageHandler(responder);

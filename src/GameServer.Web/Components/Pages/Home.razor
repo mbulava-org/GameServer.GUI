@@ -1,4 +1,5 @@
 @page "/"
+@rendermode InteractiveServer
 @using Radzen
 @using Radzen.Blazor
 @inject NavigationManager Navigation
@@ -18,11 +19,13 @@
                               Icon="dns" 
                               ButtonStyle="ButtonStyle.Primary" 
                               Size="ButtonSize.Large"
+                              Path="/gameservers-v2"
                               Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
                 <RadzenButton Text="Create Server" 
                               Icon="add" 
                               ButtonStyle="ButtonStyle.Success" 
                               Size="ButtonSize.Large"
+                              Path="/gameservers-v2/new"
                               Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
             </div>
         </div>
@@ -207,6 +210,7 @@
                                       Icon="rocket_launch" 
                                       ButtonStyle="ButtonStyle.Success" 
                                       Size="ButtonSize.Large"
+                                      Path="/gameservers-v2/new"
                                       Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
                     </div>
                 </div>
@@ -222,6 +226,7 @@
                                               Icon="dns" 
                                               ButtonStyle="ButtonStyle.Light" 
                                               Style="width: 100%;"
+                                              Path="/gameservers-v2"
                                               Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
                             </div>
                             <div class="col-md-3 mb-3">
@@ -229,6 +234,7 @@
                                               Icon="sports_esports" 
                                               ButtonStyle="ButtonStyle.Light" 
                                               Style="width: 100%;"
+                                              Path="/gametypes-v2"
                                               Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
                             </div>
                             <div class="col-md-3 mb-3">

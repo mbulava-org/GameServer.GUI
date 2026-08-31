@@ -196,11 +196,11 @@ public sealed class VolumeNumericVariableOption
     public string? DataType { get; init; }
 }
 
-internal static partial class GameTypeRevisionWebHostDraftRules
+public static partial class GameTypeRevisionWebHostDraftRules
 {
-    internal static IReadOnlyList<string> SupportedPathVariables { get; } = ["serverId", "name", "serviceName", "gameType"];
+    public static IReadOnlyList<string> SupportedPathVariables { get; } = ["serverId", "name", "serviceName", "gameType"];
 
-    internal static string BuildPathSegmentFromName(string? name)
+    public static string BuildPathSegmentFromName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -211,7 +211,7 @@ internal static partial class GameTypeRevisionWebHostDraftRules
         return MultiDashRegex().Replace(slug, "-");
     }
 
-    internal static List<string> GetPathSegmentValidationIssues(string? pathSegment)
+    public static List<string> GetPathSegmentValidationIssues(string? pathSegment)
     {
         var issues = new List<string>();
         if (string.IsNullOrWhiteSpace(pathSegment))

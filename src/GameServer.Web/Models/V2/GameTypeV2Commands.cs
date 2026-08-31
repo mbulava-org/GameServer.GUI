@@ -10,6 +10,8 @@ public sealed record SaveGameTypeRevisionRequest
 
     public bool EnableTTY { get; init; }
 
+    public string? ReadyLogPattern { get; init; }
+
     public string? Notes { get; init; }
 
     public bool IsPublished { get; init; }
@@ -65,6 +67,8 @@ public sealed record PortableGameTypeRevision
     public string? ImageDigest { get; init; }
 
     public bool EnableTTY { get; init; }
+
+    public string? ReadyLogPattern { get; init; }
 
     public string? Notes { get; init; }
 

@@ -172,17 +172,15 @@ else
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="VolumeName" Title="Volume Name" />
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="ContainerPath" Title="Container Path" />
                     <RadzenDataGridColumn TItem="GameServerPreviewVolume" Property="MountType" Title="Mount" Width="100px" />
-                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Ownership" Width="140px">
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Ownership" Width="120px">
                         <Template Context="volume">
                             @(volume.OwnerUid?.ToString() ?? "—"):@(volume.OwnerGid?.ToString() ?? "—")
-                            @if (!string.IsNullOrWhiteSpace(volume.Permissions))
-                            {
-                                <span class="text-muted small"> @volume.Permissions</span>
-                            }
                         </Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Read Only" Width="100px">
-                        <Template Context="volume">@(volume.ReadOnly ? "yes" : "no")</Template>
+                    <RadzenDataGridColumn TItem="GameServerPreviewVolume" Title="Permissions" Width="120px">
+                        <Template Context="volume">
+                            @(string.IsNullOrWhiteSpace(volume.Permissions) ? "—" : volume.Permissions)
+                        </Template>
                     </RadzenDataGridColumn>
                 </Columns>
             </RadzenDataGrid>

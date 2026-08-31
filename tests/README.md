@@ -4,8 +4,8 @@ This folder contains all tests for the GameServer.GUI application.
 
 ## Test Projects
 
-### GameServer.Docker.Tests
-Unit tests for the `GameServer.Docker` library. These tests focus on:
+### GameServer.API.Tests
+Unit tests for the `GameServer.API` library. These tests focus on:
 - Docker service operations
 - Helper classes and utilities
 - Constants and configurations
@@ -58,7 +58,7 @@ dotnet test
 
 ### Run Specific Test Project
 ```bash
-dotnet test tests/GameServer.Docker.Tests
+dotnet test tests/GameServer.API.Tests
 dotnet test tests/GameServer.Docker.Agent.Tests
 dotnet test tests/GameServer.Web.Tests
 dotnet test tests/GameServer.Integration.Tests
@@ -66,16 +66,12 @@ dotnet test tests/GameServer.Integration.Tests
 
 ### Run with Code Coverage
 ```bash
-# Install dotnet-coverage tool (one-time)
-dotnet tool install -g dotnet-coverage
-
-# Run tests with coverage
-dotnet-coverage collect -f cobertura -o coverage.cobertura.xml dotnet test
+dotnet test --coverage --coverage-output-format cobertura
 ```
 
 ### Run Tests in Watch Mode
 ```bash
-dotnet watch test --project tests/GameServer.Docker.Tests
+dotnet watch test --project tests/GameServer.API.Tests
 ```
 
 ## Test Conventions

@@ -1,0 +1,14 @@
+@using GameServer.API.Client.Interfaces
+
+<LiveResourceMonitorTab ServerId="@ServerId" AutoConnect="@AutoConnect" Client="@Client" />
+
+@code {
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    [Parameter]
+    public bool AutoConnect { get; set; } = true;
+
+    [Parameter]
+    public IResourceMonitoringClient? Client { get; set; }
+}

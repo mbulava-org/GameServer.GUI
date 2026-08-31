@@ -189,4 +189,33 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
             Assert.DoesNotContain(">yesno<", cut.Markup);
         });
     }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_ShouldRenderPasswordDataTypeOption()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new()
+            {
+                SettingKey = "SERVER_PASSWORD",
+                DefaultValue = "secret123",
+                Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "Security", DataType = "password" }
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string", "password", "number", "boolean", "yesno", "enum", "port" })
+            .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
+            .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
+            .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
+
+        cut.Find(".setting-list-item").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Password", cut.Markup);
+        });
+    }
 }

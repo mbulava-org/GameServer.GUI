@@ -32,7 +32,6 @@ public sealed class GameTypeRevisionReviewEditorTests : BunitContext
         // Act
         var cut = Render<GameTypeRevisionReviewEditor>(parameters => parameters
             .Add(p => p.RevisionVersionTag, "1.21.1")
-            .Add(p => p.RevisionImageDigest, "sha256:test")
             .Add(p => p.RevisionEnableTTY, true)
             .Add(p => p.RevisionIsPublished, false)
             .Add(p => p.PortCount, 2)

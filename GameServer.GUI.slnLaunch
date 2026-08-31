@@ -7,7 +7,7 @@
         "Action": "Start"
       },
       {
-        "Path": "src\\GameServer.Docker\\GameServer.Docker.csproj",
+        "Path": "src\\GameServer.API\\GameServer.API.csproj",
         "Action": "Start"
       },
       {

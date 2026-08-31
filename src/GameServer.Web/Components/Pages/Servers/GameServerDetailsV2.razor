@@ -1,21 +1,29 @@
 @page "/gameservers-v2/{ServerId}"
 @rendermode InteractiveServer
 @using GameServer.Web.Models.V2
+@using GameServer.Web.Components.Server
+@using Microsoft.JSInterop
+@using Microsoft.Extensions.Options
+@using GameServer.Web.Configurations
 @using Radzen
 @using Radzen.Blazor
 @inject Services.V2.IGameServerV2ApiService GameServerApiV2
+@inject Services.V2.IGameTypeV2ApiService GameTypeApiV2
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject Services.IThumbnailCacheService ThumbnailCacheService
+@inject Services.IPublicIpService PublicIpService
+@inject IOptions<GameServerDockerApi> ApiConfig
+@inject IJSRuntime JSRuntime
 
-<PageTitle>@(server?.Name ?? "Game Server V2")</PageTitle>
+<PageTitle>@(server?.Name ?? "Game Server")</PageTitle>
 
 <div class="container-fluid mt-4">
     @if (isLoading)
     {
         <div class="text-center py-5">
             <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
-            <p class="mt-3">Loading V2 game server...</p>
+            <p class="mt-3">Loading game server...</p>
         </div>
     }
     else if (server is null)
@@ -23,9 +31,9 @@
         <RadzenCard>
             <div class="text-center py-5">
                 <RadzenIcon Icon="error" Style="font-size: 4rem; color: var(--rz-danger);" />
-                <h4 class="mt-3">V2 Game Server Not Found</h4>
-                <p class="text-muted">The requested V2 game server could not be found.</p>
-                <RadzenButton Text="Back to V2 Servers"
+                <h4 class="mt-3">Game Server Not Found</h4>
+                <p class="text-muted">The requested game server could not be found.</p>
+                <RadzenButton Text="Back to Servers"
                               Icon="arrow_back"
                               ButtonStyle="ButtonStyle.Light"
                               Click="@GoBack" />
@@ -34,7 +42,7 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
             <div class="d-flex align-items-center gap-3 flex-wrap">
                 <RadzenButton Icon="arrow_back"
                               ButtonStyle="ButtonStyle.Light"
@@ -68,7 +76,27 @@
                     </div>
                 </div>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <RadzenButton Text="Start"
+                              Icon="play_arrow"
+                              ButtonStyle="ButtonStyle.Success"
+                              Disabled="@(isOperating || string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Preparing", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Starting", StringComparison.OrdinalIgnoreCase))"
+                              Click="@StartServiceAsync" />
+                <RadzenButton Text="Stop"
+                              Icon="stop"
+                              ButtonStyle="ButtonStyle.Warning"
+                              Disabled="@(isOperating || string.Equals(server.Status, "Stopped", StringComparison.OrdinalIgnoreCase))"
+                              Click="@StopServiceAsync" />
+                <RadzenButton Text="Restart"
+                              Icon="restart_alt"
+                              ButtonStyle="ButtonStyle.Info"
+                              Disabled="@isOperating"
+                              Click="@RestartServiceAsync" />
+                <RadzenButton Text="Update Service"
+                              Icon="system_update_alt"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Disabled="@isOperating"
+                              Click="@RedeployServiceAsync" />
                 <RadzenButton Text="Edit"
                               Icon="edit"
                               ButtonStyle="ButtonStyle.Primary"
@@ -76,40 +104,29 @@
                 <RadzenButton Text="Delete"
                               Icon="delete"
                               ButtonStyle="ButtonStyle.Danger"
+                              Disabled="@isOperating"
                               Click="@DeleteServerAsync" />
-                <RadzenButton Text="Refresh"
-                              Icon="refresh"
+                <RadzenButton Icon="refresh"
                               ButtonStyle="ButtonStyle.Light"
+                              Disabled="@isOperating"
                               Click="@OnRefresh" />
             </div>
         </div>
 
-        @if (validationPreview is not null)
+        @if (isOperating)
         {
-            <RadzenCard class="mb-3">
-                <h5 class="mb-3">Current Validation</h5>
-                @if (!validationPreview.Issues.Any())
-                {
-                    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat">
-                        The current server configuration validates successfully against the selected revision.
-                    </RadzenAlert>
-                }
-                else
-                {
-                    <ul class="mb-0 ps-3">
-                        @foreach (var issue in validationPreview.Issues)
-                        {
-                            <li>
-                                <strong>@issue.Scope</strong>: @issue.Message
-                            </li>
-                        }
-                    </ul>
-                }
-            </RadzenCard>
+            <div class="gameserver-details-overlay">
+                <div class="gameserver-details-overlay-card">
+                    <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+                    <h4 class="mt-3 mb-1">@operationTitle</h4>
+                    <p class="text-muted mb-0">@operationSubtitle</p>
+                </div>
+            </div>
         }
 
+
         <div class="row g-3 mb-3">
-            <div class="col-lg-4">
+            <div class="col-lg-6">
                 <RadzenCard>
                     <h5 class="mb-3">Overview</h5>
                     <div><strong>Game Type:</strong> @(server.GameTypeDisplayName ?? "Unknown")</div>
@@ -127,7 +144,7 @@
                     }
                 </RadzenCard>
             </div>
-            <div class="col-lg-4">
+            <div class="col-lg-6">
                 <RadzenCard>
                     <h5 class="mb-3">Resolved Runtime</h5>
                     <div><strong>Ports:</strong> @CurrentResolvedPorts.Count</div>
@@ -137,19 +154,144 @@
                     <div><strong>Configuration Rules:</strong> @CurrentValidationIssues.Count</div>
                 </RadzenCard>
             </div>
-            <div class="col-lg-4">
-                <RadzenCard>
-                    <h5 class="mb-3">Future Extension Points</h5>
-                    <div><strong>Docker Volume Options:</strong> @(validationPreview?.DockerVolumeOptions.Count ?? server.DockerVolumeOptions.Count)</div>
-                    <div><strong>Network Options:</strong> @(validationPreview?.NetworkOptions.Count ?? server.NetworkOptions.Count)</div>
-                    <p class="small text-muted mt-3 mb-0">These sections are reserved for Docker volume, network, and rule configuration as the V2 editor expands.</p>
-                </RadzenCard>
-            </div>
         </div>
 
-        <RadzenTabs>
+        @if (CurrentAdvertisedPorts.Any())
+        {
+            <RadzenCard class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <RadzenIcon Icon="sports_esports" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                        <h5 class="mb-0">Connection Info</h5>
+                    </div>
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@($"{CurrentAdvertisedPorts.Count} Port Mapping{(CurrentAdvertisedPorts.Count > 1 ? "s" : "")}")" Variant="Variant.Flat" />
+                </div>
+                <div class="row g-3">
+                    @foreach (var port in CurrentAdvertisedPorts.OrderBy(p => p.DisplayOrder))
+                    {
+                        var ipEndpoint = $"{ResolvedPublicIp}:{port.PublishedPort}";
+                        var hostEndpoint = $"{ResolvedHostName}:{port.PublishedPort}";
+                        <div class="col-md-6 col-lg-@(CurrentAdvertisedPorts.Count == 1 ? "12" : "6")">
+                            <div class="card h-100 border-0 shadow-sm p-3" style="background: var(--rz-base-50); border-radius: 8px;">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <h6 class="fw-bold mb-0">@(string.IsNullOrWhiteSpace(port.Description) ? "Game Connection Port" : port.Description)</h6>
+                                        <span class="small text-muted">Published Port @port.PublishedPort / @port.Protocol.ToUpperInvariant() (Container Port: @port.ContainerPort)</span>
+                                    </div>
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@port.Protocol.ToUpperInvariant()" Size="BadgeSize.Small" />
+                                </div>
+
+                                <div class="d-flex flex-column gap-2 mt-2">
+                                    <!-- HostName Address -->
+                                    <div class="d-flex align-items-center justify-content-between p-2 rounded border bg-white">
+                                        <div>
+                                            <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">HostName Address</div>
+                                            <code class="fw-bold fs-6" style="color: var(--rz-primary);">@hostEndpoint</code>
+                                        </div>
+                                        <RadzenButton Icon="content_copy"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => CopyToClipboardAsync(hostEndpoint, "HostName:Port"))"
+                                                      title="Copy HostName:Port" />
+                                    </div>
+
+                                    <!-- Public IP Address -->
+                                    <div class="d-flex align-items-center justify-content-between p-2 rounded border bg-white">
+                                        <div>
+                                            <div class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Public IP Address</div>
+                                            <code class="fw-bold fs-6" style="color: var(--rz-primary-darker, #2c3e50);">@ipEndpoint</code>
+                                        </div>
+                                        <RadzenButton Icon="content_copy"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => CopyToClipboardAsync(ipEndpoint, "Public IP:Port"))"
+                                                      title="Copy Public IP:Port" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </RadzenCard>
+        }
+
+        @if (CurrentResolvedWebHosts.Any())
+        {
+            <RadzenCard class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <RadzenIcon Icon="language" Style="color: var(--rz-primary); font-size: 1.5rem;" />
+                        <h5 class="mb-0">Web Applications & Interfaces</h5>
+                    </div>
+                    <RadzenBadge BadgeStyle="BadgeStyle.Primary" Text="@($"{CurrentResolvedWebHosts.Count} Available")" Variant="Variant.Flat" />
+                </div>
+                <div class="row g-3">
+                    @foreach (var host in CurrentResolvedWebHosts.OrderBy(h => h.DisplayOrder))
+                    {
+                        var targetUrl = GetWebHostUrl(host);
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 border-0 shadow-sm" style="background: var(--rz-base-50); border-radius: 8px;">
+                                <div class="card-body d-flex flex-column justify-content-between p-3">
+                                    <div>
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <h6 class="card-title fw-bold mb-0">@host.Name</h6>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(host.Description))
+                                        {
+                                            <p class="card-text text-muted small mb-2">@host.Description</p>
+                                        }
+                                        <div class="small text-muted mb-3">
+                                            <code>@targetUrl</code>
+                                        </div>
+                                    </div>
+                                    <a href="@targetUrl"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 mt-auto">
+                                        <span>Open @host.Name</span>
+                                        <RadzenIcon Icon="open_in_new" Style="font-size: 1rem;" />
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </RadzenCard>
+        }
+
+        <RadzenTabs @bind-SelectedIndex="SelectedTabIndex">
             <Tabs>
-                <RadzenTabsItem Text="Settings">
+                <RadzenTabsItem Text="Live Monitor" Icon="speed">
+                    <div class="p-3">
+                        <LiveResourceMonitorTab ServerId="@ServerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Resource History" Icon="show_chart">
+                    <div class="p-3">
+                        <ResourceHistoryTab ServerId="@ServerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Console / Logs" Icon="terminal" Disabled="@(!IsServerRunning)">
+                    <div class="p-3">
+                        <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Terminal" Icon="code" Disabled="@(!IsServerRunning)">
+                    <div class="p-3">
+                        <ContainerTerminal ServerId="@ServerId" ContainerId="@RunningContainerId" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="File Manager" Icon="folder">
+                    <div class="p-3">
+                        <ServerFileManager ServerId="@ServerId" Volumes="@CurrentResolvedVolumes" />
+                    </div>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="Settings" Icon="tune">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Effective Settings</h5>
@@ -171,6 +313,28 @@
                                                 {
                                                     <span class="text-muted">(empty)</span>
                                                 }
+                                                else if (IsPasswordSetting(setting))
+                                                {
+                                                    var isRevealed = revealedPasswords.Contains(setting.SettingKey);
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="gameserver-detail-code">
+                                                            @(isRevealed ? setting.Value : "••••••••")
+                                                        </code>
+                                                        <RadzenButton Icon="@(isRevealed ? "visibility_off" : "visibility")"
+                                                                      ButtonStyle="ButtonStyle.Light"
+                                                                      Size="ButtonSize.ExtraSmall"
+                                                                      Click="@(() => TogglePasswordVisibility(setting.SettingKey))"
+                                                                      title="@(isRevealed ? "Hide Password" : "Show Password")" />
+                                                        @if (isRevealed)
+                                                        {
+                                                            <RadzenButton Icon="content_copy"
+                                                                          ButtonStyle="ButtonStyle.Light"
+                                                                          Size="ButtonSize.ExtraSmall"
+                                                                          Click="@(() => CopyToClipboardAsync(setting.Value, setting.SettingKey))"
+                                                                          title="Copy Password" />
+                                                        }
+                                                    </div>
+                                                }
                                                 else
                                                 {
                                                     <code class="gameserver-detail-code">@setting.Value</code>
@@ -184,62 +348,7 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Ports">
-                    <div class="p-3">
-                        <RadzenCard>
-                            <h5 class="mb-3">Resolved Ports</h5>
-                            @if (!CurrentResolvedPorts.Any())
-                            {
-                                <p class="text-muted mb-0">No resolved ports were derived from the selected revision.</p>
-                            }
-                            else
-                            {
-                                <RadzenDataGrid Data="@CurrentResolvedPorts.OrderBy(port => port.DisplayOrder)"
-                                                TItem="GameServerResolvedPort"
-                                                AllowSorting="true">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="ContainerPort" Title="Port" Width="120px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Protocol" Title="Protocol" Width="120px" />
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Title="Advertised" Width="120px">
-                                            <Template Context="port">
-                                                <RadzenBadge BadgeStyle="@(port.AdvertisedPort ? BadgeStyle.Success : BadgeStyle.Light)"
-                                                             Text="@(port.AdvertisedPort ? "Yes" : "No")" />
-                                            </Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="GameServerResolvedPort" Property="Description" Title="Description" />
-                                    </Columns>
-                                </RadzenDataGrid>
-                            }
-                        </RadzenCard>
-                    </div>
-                </RadzenTabsItem>
-
-                <RadzenTabsItem Text="Volumes">
-                    <div class="p-3">
-                        <RadzenCard>
-                            <h5 class="mb-3">Resolved Volumes</h5>
-                            @if (!CurrentResolvedVolumes.Any())
-                            {
-                                <p class="text-muted mb-0">No resolved volumes were derived from the selected revision.</p>
-                            }
-                            else
-                            {
-<RadzenDataGrid Data="@CurrentResolvedVolumes.OrderBy(volume => volume.CreatedAt)"
-                TItem="GameServerResolvedVolume"
-                AllowSorting="true">
-    <Columns>
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="ContainerPath" Title="Container Path" />
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="VolumeName" Title="Volume Name" />
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="Usage" Title="Usage" Width="140px" />
-        <RadzenDataGridColumn TItem="GameServerResolvedVolume" Property="MountType" Title="Type" Width="100px" />
-    </Columns>
-</RadzenDataGrid>
-                            }
-                        </RadzenCard>
-                    </div>
-                </RadzenTabsItem>
-
-                <RadzenTabsItem Text="Web Hosts">
+                <RadzenTabsItem Text="Web Hosts" Icon="language">
                     <div class="p-3">
                         <RadzenCard>
                             <h5 class="mb-3">Resolved Web Hosts</h5>
@@ -258,39 +367,71 @@
                                         <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Property="PathSegment" Title="Path" Width="160px" />
                                         <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Property="EnabledWhen" Title="Enabled When" Width="180px" />
                                         <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Property="Description" Title="Description" />
+                                        <RadzenDataGridColumn TItem="GameServerResolvedWebHost" Title="Access" Width="130px" Sortable="false" Filterable="false">
+                                            <Template Context="host">
+                                                <a href="@GetWebHostUrl(host)"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1">
+                                                    <span>Open</span>
+                                                    <RadzenIcon Icon="open_in_new" Style="font-size: 0.9rem;" />
+                                                </a>
+                                            </Template>
+                                        </RadzenDataGridColumn>
                                     </Columns>
                                 </RadzenDataGrid>
                             }
                         </RadzenCard>
                     </div>
                 </RadzenTabsItem>
-
-                <RadzenTabsItem Text="Configuration Rules">
-                    <div class="p-3">
-                        <RadzenCard>
-                            <h5 class="mb-3">Validation and Configuration Rules</h5>
-                            @if (!CurrentValidationIssues.Any())
-                            {
-                                <p class="text-muted mb-0">No validation issues are currently reported for this server.</p>
-                            }
-                            else
-                            {
-                                <ul class="mb-0 ps-3">
-                                    @foreach (var issue in CurrentValidationIssues)
-                                    {
-                                        <li>@issue.Message</li>
-                                    }
-                                </ul>
-                            }
-                        </RadzenCard>
-                    </div>
-                </RadzenTabsItem>
             </Tabs>
         </RadzenTabs>
+
+        @if (validationPreview is not null && validationPreview.Issues.Any())
+        {
+            <div class="gameserver-sticky-validation">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <RadzenIcon Icon="warning" Style="color: var(--rz-warning); font-size: 1.3rem;" />
+                        <span class="fw-bold text-danger">Current Validation: @(validationPreview.Issues.Count) Issue@(validationPreview.Issues.Count > 1 ? "s" : "")</span>
+                        <span class="text-muted small d-none d-md-inline">— Review validation issues below.</span>
+                    </div>
+                    <RadzenButton Text="@(showValidationDetails ? "Hide Issues" : "Show Issues")"
+                                  Icon="@(showValidationDetails ? "expand_less" : "expand_more")"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.ExtraSmall"
+                                  Click="@(() => showValidationDetails = !showValidationDetails)" />
+                </div>
+                @if (showValidationDetails)
+                {
+                    <div class="mt-2 pt-2 border-top">
+                        <ul class="mb-0 ps-3 small text-danger">
+                            @foreach (var issue in validationPreview.Issues)
+                            {
+                                <li><strong>@issue.Scope</strong>: @issue.Message</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
     }
 </div>
 
 <style>
+    .gameserver-sticky-validation {
+        position: sticky;
+        bottom: 12px;
+        z-index: 100;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        background: var(--rz-panel-background-color, #ffffff);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+        border-radius: 8px;
+        padding: 10px 16px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    }
+
     .gameserver-detail-thumbnail,
     .gameserver-detail-thumbnail-fallback {
         width: 72px;
@@ -311,16 +452,142 @@
         font-size: 0.8rem;
         word-break: break-word;
     }
+
+    .gameserver-details-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+
+    .gameserver-details-overlay-card {
+        background: var(--rz-base-card-background-color, #ffffff);
+        color: var(--rz-text-color, #212529);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+        border-radius: 16px;
+        padding: 2.5rem 3rem;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+        text-align: center;
+        max-width: 440px;
+        width: 90%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: detailsFadeIn 0.2s ease-out;
+    }
+
+    @@keyframes detailsFadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
 </style>
 
 @code {
     [Parameter]
     public string ServerId { get; set; } = string.Empty;
 
+    [Parameter]
+    public int SelectedTabIndex { get; set; } = 0;
+
     private GameServerDetail? server;
     private GameServerValidationResult? validationPreview;
     private string? cachedGameTypeThumbnailUrl;
     private bool isLoading = true;
+    private bool isOperating;
+    private string operationTitle = string.Empty;
+    private string operationSubtitle = string.Empty;
+
+    private bool showValidationDetails = true;
+
+    private bool IsServerRunning => server != null && (string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase));
+
+    private IReadOnlyList<GameServerResolvedPort> CurrentAdvertisedPorts =>
+        CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList().Count > 0
+            ? CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList()
+            : CurrentResolvedPorts.Where(p => p.PublishedPort > 0).ToList();
+
+    private string? detectedPublicIp;
+
+    private string ResolvedPublicIp
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(detectedPublicIp) && detectedPublicIp != "127.0.0.1")
+            {
+                return detectedPublicIp;
+            }
+
+            try
+            {
+                var uriHost = new Uri(Navigation.Uri).Host;
+                if (System.Net.IPAddress.TryParse(uriHost, out _))
+                {
+                    return uriHost;
+                }
+            }
+            catch
+            {
+                // Ignore uri parse failure
+            }
+
+            return !string.IsNullOrWhiteSpace(detectedPublicIp) ? detectedPublicIp : "127.0.0.1";
+        }
+    }
+
+    private string ResolvedHostName
+    {
+        get
+        {
+            try
+            {
+                var uriHost = new Uri(Navigation.Uri).Host;
+                if (!string.IsNullOrWhiteSpace(uriHost))
+                {
+                    return uriHost;
+                }
+            }
+            catch
+            {
+                // Ignore uri parse failure
+            }
+
+            return Environment.MachineName.ToLowerInvariant();
+        }
+    }
+
+    private async Task CopyToClipboardAsync(string text, string label)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Copied to Clipboard",
+                Detail = $"{label}: {text}",
+                Duration = 3000
+            });
+        }
+        catch
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = label,
+                Detail = text,
+                Duration = 3000
+            });
+        }
+    }
+
+    private string? RunningContainerId => server?.Containers?.FirstOrDefault()?.Id;
 
     private IReadOnlyList<GameServerResolvedPort> CurrentResolvedPorts => validationPreview?.ResolvedPorts ?? server?.ResolvedPorts ?? [];
 
@@ -336,12 +603,40 @@
         _ = RunValidationInBackgroundAsync();
     }
 
+    private IReadOnlyList<GameTypeSettingDefinition> settingDefinitions = [];
+    private readonly HashSet<string> revealedPasswords = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool IsPasswordSetting(GameServerSetting setting)
+    {
+        var def = settingDefinitions.FirstOrDefault(d => string.Equals(d.SettingKey, setting.SettingKey, StringComparison.OrdinalIgnoreCase));
+        if (def?.Metadata?.DataType is not null)
+        {
+            return string.Equals(def.Metadata.DataType, "password", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return setting.SettingKey.Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) ||
+               setting.SettingKey.Contains("SECRET", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void TogglePasswordVisibility(string settingKey)
+    {
+        if (revealedPasswords.Contains(settingKey))
+        {
+            revealedPasswords.Remove(settingKey);
+        }
+        else
+        {
+            revealedPasswords.Add(settingKey);
+        }
+    }
+
     private async Task LoadServerDataAsync()
     {
         if (string.IsNullOrWhiteSpace(ServerId))
         {
             server = null;
             cachedGameTypeThumbnailUrl = null;
+            settingDefinitions = [];
             isLoading = false;
             return;
         }
@@ -354,6 +649,38 @@
             cachedGameTypeThumbnailUrl = server is null
                 ? null
                 : await ThumbnailCacheService.GetCachedThumbnailUrlAsync(server.GameTypeThumbnailUrl);
+
+            settingDefinitions = [];
+            if (server is not null && !string.IsNullOrWhiteSpace(server.GameTypeKey))
+            {
+                try
+                {
+                    var gameTypeDetail = await GameTypeApiV2.GetByKeyAsync(server.GameTypeKey);
+                    var revision = gameTypeDetail?.Revisions.FirstOrDefault(r => r.Id == server.GameTypeRevisionId)
+                        ?? gameTypeDetail?.Revisions.FirstOrDefault(r => r.Id == gameTypeDetail.CurrentRevisionId)
+                        ?? gameTypeDetail?.Revisions.FirstOrDefault();
+                    if (revision is not null)
+                    {
+                        settingDefinitions = revision.SettingDefinitions;
+                    }
+                }
+                catch
+                {
+                    // Fallback to key heuristics if GameType is unreachable
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(detectedPublicIp))
+            {
+                try
+                {
+                    detectedPublicIp = await PublicIpService.GetPublicIpAsync();
+                }
+                catch
+                {
+                    // Fallback to local / request IP
+                }
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -390,6 +717,98 @@
         _ = RunValidationInBackgroundAsync();
     }
 
+    private async Task StartServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Starting Service...";
+            operationSubtitle = "Scaling service to 1 replica in Docker Swarm...";
+            var updated = await GameServerApiV2.StartAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Started", $"Server '{server.Name}' is now running.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Start failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
+    private async Task StopServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Stopping Service...";
+            operationSubtitle = "Scaling service to 0 replicas in Docker Swarm...";
+            var updated = await GameServerApiV2.StopAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Stopped", $"Server '{server.Name}' has been stopped.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Stop failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
+    private async Task RestartServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Restarting Service...";
+            operationSubtitle = "Forcing container restart in Docker Swarm...";
+            var updated = await GameServerApiV2.RestartAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Restarted", $"Server '{server.Name}' was restarted.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Restart failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
+    private async Task RedeployServiceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Updating Service...";
+            operationSubtitle = "Provisioning storage volumes and redeploying service in Docker Swarm...";
+            var updated = await GameServerApiV2.RedeployAsync(ServerId);
+            server = updated;
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Service Updated", $"Server '{server.Name}' has been updated and redeployed.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Update failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+        }
+    }
+
     private async Task DeleteServerAsync()
     {
         if (string.IsNullOrWhiteSpace(ServerId))
@@ -399,6 +818,9 @@
 
         try
         {
+            isOperating = true;
+            operationTitle = "Deleting Server...";
+            operationSubtitle = "Removing GameServer definition...";
             await GameServerApiV2.DeleteAsync(ServerId);
             NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Server '{server?.Name ?? ServerId}' was deleted.");
             Navigation.NavigateTo("/gameservers-v2");
@@ -406,6 +828,10 @@
         catch (HttpRequestException ex)
         {
             NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
         }
     }
 
@@ -426,6 +852,14 @@
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = server.Status,
+            Ports = server.Ports
+                .Select(port => new GameServerPort
+                {
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = port.PublishedPort
+                })
+                .ToList(),
             Settings = server.Settings
                 .Select(setting => new GameServerSetting
                 {
@@ -443,11 +877,14 @@
     {
         return status?.Trim().ToLowerInvariant() switch
         {
-            "running" => BadgeStyle.Success,
+            "available" => BadgeStyle.Success,
+            "running" => BadgeStyle.Info,
+            "preparing" => BadgeStyle.Primary,
             "starting" => BadgeStyle.Info,
             "stopped" => BadgeStyle.Secondary,
             "stopping" => BadgeStyle.Warning,
             "failed" => BadgeStyle.Danger,
+            "scaling down" => BadgeStyle.Warning,
             _ => BadgeStyle.Secondary
         };
     }
@@ -456,12 +893,61 @@
     {
         return status?.Trim().ToLowerInvariant() switch
         {
+            "available" => "Available",
             "running" => "Running",
+            "preparing" => "Preparing",
             "starting" => "Starting",
             "stopped" => "Stopped",
             "stopping" => "Stopping",
             "failed" => "Failed",
+            "scaling down" => "Scaling Down",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
+    }
+
+    private string GetWebHostUrl(GameServerResolvedWebHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        var rawSegment = !string.IsNullOrWhiteSpace(host.PathSegment) ? host.PathSegment : host.Name;
+        var expanded = rawSegment;
+
+        if (server is not null)
+        {
+            var tokens = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["ServerId"] = server.ServerId,
+                ["Id"] = server.ServerId,
+                ["Name"] = server.Name,
+                ["ServiceName"] = server.ServiceName,
+                ["GameType"] = server.GameTypeKey,
+                ["GameTypeKey"] = server.GameTypeKey,
+                ["GameTypeDisplayName"] = server.GameTypeDisplayName
+            };
+
+            foreach (var setting in server.Settings)
+            {
+                if (!string.IsNullOrWhiteSpace(setting.SettingKey))
+                {
+                    tokens[setting.SettingKey] = setting.Value;
+                }
+            }
+
+            foreach (var (k, v) in tokens)
+            {
+                if (v is not null)
+                {
+                    expanded = expanded.Replace("{" + k + "}", v, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+        }
+
+        var path = expanded.Trim('/');
+        if (string.IsNullOrWhiteSpace(path) && server is not null)
+        {
+            var slug = new string(host.Name.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+            path = $"{server.ServiceName}-{slug.Trim('-')}";
+        }
+
+        return $"/{path}/";
     }
 }

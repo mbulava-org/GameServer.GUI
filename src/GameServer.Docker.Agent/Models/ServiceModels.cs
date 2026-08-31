@@ -15,6 +15,9 @@ namespace GameServer.Docker.Agent.Models
         public RestartPolicyConfig? RestartPolicy { get; set; }
         public PlacementConfig? Placement { get; set; }
         public List<string> Networks { get; set; } = new();
+        public bool? TTY { get; set; }
+        public List<string>? DnsNameservers { get; set; }
+        public string? User { get; set; }
     }
 
     public class PortMapping
@@ -65,9 +68,15 @@ namespace GameServer.Docker.Agent.Models
         public string? Image { get; set; }
         public Dictionary<string, string>? Labels { get; set; }
         public Dictionary<string, string>? Env { get; set; }
+        public List<PortMapping>? Ports { get; set; }
         public List<MountConfig>? Mounts { get; set; }
         public ResourcesConfig? Resources { get; set; }
         public bool ForceUpdate { get; set; }
+        public ulong? Replicas { get; set; }
+        public List<string>? Networks { get; set; }
+        public bool? TTY { get; set; }
+        public List<string>? DnsNameservers { get; set; }
+        public string? User { get; set; }
     }
 
     /// <summary>

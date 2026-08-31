@@ -1,4 +1,4 @@
-﻿namespace GameServer.Web.Configurations
+namespace GameServer.Web.Configurations
 {
     public class GameServerDockerApi
     {

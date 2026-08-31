@@ -51,7 +51,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Game Servers V2", cut.Markup);
+            Assert.Contains("Game Servers", cut.Markup);
             Assert.Contains("Minecraft Survival", cut.Markup);
             Assert.Contains("25565/tcp", cut.Markup);
         });
@@ -158,7 +158,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         // Assert
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Create Game Server V2", cut.Markup);
+            Assert.Contains("Create Game Server", cut.Markup);
             Assert.Contains("Create Server", cut.Markup);
 
             // No game type is selected by default, so the requirement is surfaced
@@ -168,10 +168,103 @@ public sealed class GameServerPagesV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameServerEditorV2_Edit_ShouldPopulateFieldsAndSettings()
+    {
+        // Arrange
+        RegisterApis(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Existing Server",
+                    Description = "Server description",
+                    GameTypeKey = "minecraft",
+                    GameTypeRevisionId = 10,
+                    RevisionVersionTag = "1.21.2",
+                    ServiceName = "minecraft-srv-1",
+                    Status = "Running",
+                    Settings = [new GameServerSetting { SettingKey = "SERVER_PORT", Value = "25565" }]
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gametypes")
+            {
+                return CreateJsonResponse(new List<GameTypeListItem>
+                {
+                    new() { Key = "minecraft", DisplayName = "Minecraft", CurrentRevisionId = 10, CurrentVersionTag = "1.21.2" }
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gametypes/minecraft")
+            {
+                return CreateJsonResponse(new GameTypeDetail
+                {
+                    Key = "minecraft",
+                    DisplayName = "Minecraft",
+                    CurrentRevisionId = 10,
+                    Revisions =
+                    [
+                        new GameTypeRevision
+                        {
+                            Id = 10,
+                            VersionTag = "1.21.2",
+                            ImageReference = "itzg/minecraft-server",
+                            SettingDefinitions =
+                            [
+                                new GameTypeSettingDefinition
+                                {
+                                    SettingKey = "SERVER_PORT",
+                                    DefaultValue = "25565",
+                                    Metadata = new GameTypeSettingMetadata { DataType = "port", IsRequired = true, Category = "Network" }
+                                }
+                            ]
+                        }
+                    ]
+                });
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/port-availability")
+            {
+                return CreateJsonResponse(new GameServerPortAvailabilityResult
+                {
+                    Ports = [new GameServerPortAvailability { Port = 25565, IsAvailable = true }]
+                });
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/validate")
+            {
+                return CreateJsonResponse(new GameServerValidationResult { IsValid = true, Issues = [] });
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/preview")
+            {
+                return CreateJsonResponse(new GameServerDeploymentPreview { ServiceName = "minecraft-srv-1", Issues = [], Notices = [] });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var cut = Render<GameServerEditorV2>(parameters => parameters.Add(p => p.ServerId, "srv-1"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Edit Existing Server", cut.Markup);
+            Assert.Contains("Existing Server", cut.Markup);
+            Assert.Contains("Save Changes", cut.Markup);
+            Assert.Contains("SERVER_PORT", cut.Markup);
+        });
+    }
+
     private void RegisterApis(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
+        Services.AddSingleton<IPublicIpService>(new StubPublicIpService());
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
         Services.AddSingleton(CreateMountTypeConfigApiService(handler));
@@ -244,6 +337,14 @@ public sealed class GameServerPagesV2Tests : BunitContext
         public Task<string?> GetCachedThumbnailUrlAsync(string? sourceUrl, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(sourceUrl);
+        }
+    }
+
+    private sealed class StubPublicIpService : IPublicIpService
+    {
+        public Task<string> GetPublicIpAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult("203.0.113.195");
         }
     }
 }

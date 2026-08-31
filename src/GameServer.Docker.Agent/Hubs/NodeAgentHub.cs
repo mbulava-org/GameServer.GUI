@@ -79,7 +79,7 @@ namespace GameServer.Docker.Agent.Hubs
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting stats snapshot for container {ContainerId}", containerId);
+                _logger.LogWarning(ex, "Error getting stats snapshot for container {ContainerId}", containerId);
                 throw;
             }
         }

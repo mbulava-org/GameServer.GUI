@@ -163,8 +163,8 @@
                                                    Warnings="@GetRevisionWarnings()"
                                                    @bind-ImageReference="revisionImageReference"
                                                    @bind-VersionTag="revisionVersionTag"
-                                                   @bind-ImageDigest="revisionImageDigest"
                                                    @bind-EnableTTY="revisionEnableTTY"
+                                                   @bind-ReadyLogPattern="revisionReadyLogPattern"
                                                    @bind-Notes="revisionNotes"
                                                    @bind-IsPublished="revisionIsPublished"
                                                    IsSavingRevision="isSavingRevision"
@@ -219,7 +219,6 @@
                         <div class="p-4">
                             <GameTypeRevisionReviewEditor RevisionImageReference="revisionImageReference"
                                                          RevisionVersionTag="revisionVersionTag"
-                                                         RevisionImageDigest="revisionImageDigest"
                                                          RevisionEnableTTY="revisionEnableTTY"
                                                          RevisionIsPublished="revisionIsPublished"
                                                          PortCount="revisionPorts.Count"
@@ -268,6 +267,7 @@
     private string revisionVersionTag = string.Empty;
     private string? revisionImageDigest;
     private bool revisionEnableTTY;
+    private string? revisionReadyLogPattern;
     private string? revisionNotes;
     private bool revisionIsPublished;
     private List<GameTypeRevisionPortDraft> revisionPorts = [];
@@ -282,7 +282,7 @@
     private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
     private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
     private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "saves", "backups", "gamefiles", "logs"];
-    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "number", "boolean", "yesno", "enum", "port", "servervariable"];
+    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "password", "number", "boolean", "yesno", "enum", "port", "servervariable"];
     private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
     private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
     private static readonly HashSet<string> supportedWebHostVariableDataTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -532,6 +532,7 @@
                 VersionTag = revisionVersionTag,
                 ImageDigest = revisionImageDigest,
                 EnableTTY = revisionEnableTTY,
+                ReadyLogPattern = revisionReadyLogPattern,
                 Notes = revisionNotes,
                 IsPublished = revisionIsPublished,
                 Ports = revisionPorts.Select((port, index) => new GameTypePort
@@ -966,6 +967,7 @@
         revisionVersionTag = asNewDraft ? string.Empty : revision?.VersionTag ?? string.Empty;
         revisionImageDigest = revision?.ImageDigest;
         revisionEnableTTY = revision?.EnableTTY ?? false;
+        revisionReadyLogPattern = asNewDraft ? null : revision?.ReadyLogPattern;
         revisionNotes = revision?.Notes;
         revisionIsPublished = asNewDraft ? false : revision?.IsPublished ?? false;
         revisionPorts = revision?.Ports.Select(x => new GameTypeRevisionPortDraft

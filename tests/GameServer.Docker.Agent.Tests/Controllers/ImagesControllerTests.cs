@@ -112,7 +112,6 @@ public class ImagesControllerTests
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
-        _ = Assert.IsType<GameServer.Docker.Agent.Models.ImageInspectResponse>(okResult.Value);
         imageOperations.Verify(
             x => x.CreateImageAsync(
                 It.Is<DockerModels.ImagesCreateParameters>(p => p.FromImage == "itzg/minecraft-server" && p.Tag == "latest"),
@@ -120,5 +119,55 @@ public class ImagesControllerTests
                 It.IsAny<IProgress<DockerModels.JSONMessage>>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Theory]
+    [InlineData("https://hub.docker.com/r/othrayte/docker-conanexiles#first-time-setup", "othrayte/docker-conanexiles")]
+    [InlineData("http://hub.docker.com/_/ubuntu?ref=main", "ubuntu")]
+    [InlineData("hub.docker.com/r/itzg/minecraft-server:latest", "itzg/minecraft-server:latest")]
+    [InlineData("docker.io/library/nginx:latest", "nginx:latest")]
+    [InlineData("  itzg/minecraft-server:1.20  ", "itzg/minecraft-server:1.20")]
+    public void SanitizeImageReference_ShouldNormalizeProperly(string input, string expected)
+    {
+        var result = ImagesController.SanitizeImageReference(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public async Task InspectImage_WhenUrlWithFragmentProvided_ShouldSanitizeBeforeInspecting()
+    {
+        // Arrange
+        var imageOperations = new Mock<IImageOperations>();
+        imageOperations
+            .Setup(x => x.InspectImageAsync("othrayte/docker-conanexiles", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerModels.ImageInspectResponse
+            {
+                RepoDigests = ["othrayte/docker-conanexiles@sha256:test"],
+                Config = new DockerModels.DockerOCIImageConfig
+                {
+                    ExposedPorts = new Dictionary<string, DockerModels.EmptyStruct>
+                    {
+                        ["7777/udp"] = default
+                    }
+                }
+            });
+
+        var dockerClient = new Mock<IDockerClient>();
+        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+
+        var controller = new ImagesController(dockerClient.Object, Mock.Of<ILogger<ImagesController>>());
+
+        // Act
+        var result = await controller.InspectImage(
+            new InspectImageRequest { ImageReference = "https://hub.docker.com/r/othrayte/docker-conanexiles#first-time-setup" },
+            CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<GameServer.Docker.Agent.Models.ImageInspectResponse>(okResult.Value);
+        Assert.Equal("othrayte/docker-conanexiles", response.ImageReference);
+        Assert.Equal("7777/udp", Assert.Single(response.ExposedPorts));
+
+        imageOperations.Verify(x => x.InspectImageAsync("othrayte/docker-conanexiles", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

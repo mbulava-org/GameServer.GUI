@@ -43,7 +43,32 @@ public interface IGameServerV2ApiService
     Task<GameServerDetail> UpdateAsync(string serverId, SaveGameServerRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Starts the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> StartAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stops the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> StopAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Restarts the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> RestartAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Redeploys and updates the Swarm service for a V2 GameServer.
+    /// </summary>
+    Task<GameServerDetail> RedeployAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes a V2 GameServer.
     /// </summary>
     Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the historical resource utilization records for a V2 GameServer.
+    /// </summary>
+    Task<IReadOnlyList<GameServerResourceHistoryItem>> GetResourceHistoryAsync(string serverId, DateTime? from = null, DateTime? to = null, int limit = 5000, CancellationToken cancellationToken = default);
 }

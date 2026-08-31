@@ -68,6 +68,8 @@ public sealed record GameTypeRevision
 
     public bool EnableTTY { get; init; }
 
+    public string? ReadyLogPattern { get; init; }
+
     public string? Notes { get; init; }
 
     public bool IsPublished { get; init; }

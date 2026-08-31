@@ -15,7 +15,7 @@ namespace GameServer.Integration.Tests;
 ///    in-process tests do not need a running database server.
 /// 3. Skips the background DatabaseInitializationService to prevent StopApplication() calls.
 /// </summary>
-public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Program>
+public class IntegrationTestFactory : WebApplicationFactory<GameServer.API.Program>
 {
     private readonly string _v2DatabasePath;
 
@@ -56,7 +56,7 @@ public class IntegrationTestFactory : WebApplicationFactory<GameServer.Docker.Pr
         using var scope = host.Services.CreateScope();
         var sp = scope.ServiceProvider;
 
-        sp.GetRequiredService<GameServer.Docker.Data.V2.GameServerV2DbContext>()
+        sp.GetRequiredService<GameServer.API.Data.V2.GameServerV2DbContext>()
           .Database.EnsureCreated();
 
         return host;

@@ -3,6 +3,7 @@ using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Models;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using System.Collections.Generic;
 
 namespace GameServer.Docker.Agent.Controllers
 {
@@ -48,7 +49,12 @@ namespace GameServer.Docker.Agent.Controllers
                                 Image = request.Image,
                                 Labels = request.Labels,
                                 Env = request.Env.Select(kv => $"{kv.Key}={kv.Value}").ToList(),
-                                Mounts = request.Mounts.Select(MapMountConfig).ToList()
+                                Mounts = request.Mounts.Select(MapMountConfig).ToList(),
+                                TTY = request.TTY ?? false,
+                                DNSConfig = request.DnsNameservers != null && request.DnsNameservers.Count > 0
+                                    ? new DNSConfig { Nameservers = request.DnsNameservers }
+                                    : null,
+                                User = request.User
                             },
                             Resources = request.Resources != null ? new ResourceRequirements
                             {
@@ -162,6 +168,51 @@ namespace GameServer.Docker.Agent.Controllers
                 if (request.ForceUpdate)
                 {
                     currentSpec.TaskTemplate.ForceUpdate = service.Spec.TaskTemplate.ForceUpdate + 1;
+                }
+
+                if (request.Networks != null)
+                {
+                    currentSpec.TaskTemplate.Networks = request.Networks
+                        .Select(n => new NetworkAttachmentConfig { Target = n })
+                        .ToList();
+                }
+
+                if (request.Ports != null)
+                {
+                    currentSpec.EndpointSpec ??= new EndpointSpec();
+                    currentSpec.EndpointSpec.Ports = request.Ports
+                        .Select(p => new PortConfig
+                        {
+                            TargetPort = p.TargetPort,
+                            PublishedPort = p.PublishedPort ?? 0,
+                            Protocol = p.Protocol,
+                            PublishMode = p.PublishMode ?? "ingress"
+                        })
+                        .ToList();
+                }
+
+                if (request.TTY.HasValue)
+                {
+                    currentSpec.TaskTemplate.ContainerSpec.TTY = request.TTY.Value;
+                }
+
+                if (request.DnsNameservers != null)
+                {
+                    currentSpec.TaskTemplate.ContainerSpec.DNSConfig = request.DnsNameservers.Count > 0
+                        ? new DNSConfig { Nameservers = request.DnsNameservers }
+                        : null;
+                }
+
+                if (request.User != null)
+                {
+                    currentSpec.TaskTemplate.ContainerSpec.User = string.IsNullOrWhiteSpace(request.User) ? null : request.User;
+                }
+
+                if (request.Replicas.HasValue)
+                {
+                    currentSpec.Mode ??= new ServiceMode();
+                    currentSpec.Mode.Replicated ??= new ReplicatedService();
+                    currentSpec.Mode.Replicated.Replicas = request.Replicas.Value;
                 }
 
                 var updateParams = new ServiceUpdateParameters
@@ -401,9 +452,15 @@ namespace GameServer.Docker.Agent.Controllers
 
         private static Mount MapMountConfig(MountConfig m)
         {
+            var mountType = string.Equals(m.Type, "bind", StringComparison.OrdinalIgnoreCase)
+                ? "bind"
+                : string.Equals(m.Type, "tmpfs", StringComparison.OrdinalIgnoreCase)
+                    ? "tmpfs"
+                    : "volume";
+
             return new Mount
             {
-                Type = m.Type,
+                Type = mountType,
                 Source = m.Source,
                 Target = m.Target,
                 ReadOnly = m.ReadOnly,
