@@ -174,16 +174,25 @@ public sealed class ServerLogAggregator : IServerLogAggregator, IAsyncDisposable
                     return;
                 }
 
-                var containerId = await Hubs.ServerLogsHub.ResolveContainerIdAsync(agent, _serverId, cancellationToken).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(containerId))
+                string? targetId;
+                if (string.Equals(agent.HostType, "windows", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogWarning("Cannot aggregate logs: no container for server {ServerId} on agent {AgentUrl}", _serverId, agent.InternalUrl);
+                    targetId = _serverId;
+                }
+                else
+                {
+                    targetId = await Hubs.ServerLogsHub.ResolveContainerIdAsync(agent, _serverId, cancellationToken).ConfigureAwait(false) ?? _serverId;
+                }
+
+                if (string.IsNullOrWhiteSpace(targetId))
+                {
+                    _logger.LogWarning("Cannot aggregate logs: no target identifier for server {ServerId} on agent {AgentUrl}", _serverId, agent.InternalUrl);
                     return;
                 }
 
                 await foreach (var line in nodeAgentClient.StreamContainerLogsAsync(
                     agent.InternalUrl,
-                    containerId,
+                    targetId,
                     follow: true,
                     tailLines: 100,
                     timestamps: true,

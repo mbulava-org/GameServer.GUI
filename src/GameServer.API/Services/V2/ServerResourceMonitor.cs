@@ -86,6 +86,16 @@ public sealed class ServerResourceMonitor : IServerResourceMonitor
 
         try
         {
+            var agent = await _nodeAgentDiscovery.GetAgentForServerAsync(serverId).ConfigureAwait(false);
+            if (agent != null && string.Equals(agent.HostType, "windows", StringComparison.OrdinalIgnoreCase))
+            {
+                var winUsage = await GetWindowsServerSnapshotAsync(agent, serverId, cancellationToken).ConfigureAwait(false);
+                if (winUsage != null)
+                {
+                    return winUsage;
+                }
+            }
+
             var services = await _serviceOperations.ListServicesAsync(
                 serviceName: serviceName,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -93,6 +103,15 @@ public sealed class ServerResourceMonitor : IServerResourceMonitor
             var service = services.FirstOrDefault();
             if (service == null)
             {
+                if (agent != null)
+                {
+                    var fallbackUsage = await GetWindowsServerSnapshotAsync(agent, serverId, cancellationToken).ConfigureAwait(false);
+                    if (fallbackUsage != null)
+                    {
+                        return fallbackUsage;
+                    }
+                }
+
                 _logger.LogDebug("Service {ServiceName} for server {ServerId} not found", serviceName, serverId);
                 return null;
             }
@@ -217,6 +236,57 @@ public sealed class ServerResourceMonitor : IServerResourceMonitor
         {
             _logger.LogWarning(ex, "Failed to stream real-time stats for container {ContainerId} on server {ServerId}",
                 lastContainerId, usage.ServerId);
+        }
+    }
+
+    private static async Task<ServerResourceUsage?> GetWindowsServerSnapshotAsync(
+        NodeAgentEndpoint agent,
+        string serverId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var url = $"{agent.InternalUrl.TrimEnd('/')}/api/servers/{Uri.EscapeDataString(serverId)}/stats";
+            var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var timestamp = root.TryGetProperty("timestamp", out var tsProp) && tsProp.TryGetDateTime(out var dt)
+                ? dt
+                : DateTime.UtcNow;
+            var cpuPercent = root.TryGetProperty("cpuPercent", out var cpuProp) ? cpuProp.GetDouble() : 0;
+            var memBytes = root.TryGetProperty("memoryWorkingSetBytes", out var memProp) ? memProp.GetInt64() : 0;
+            var pids = root.TryGetProperty("threadCount", out var pidsProp) ? (ulong)pidsProp.GetInt32() : 1;
+
+            return new ServerResourceUsage
+            {
+                ServerId = serverId,
+                ServiceId = serverId,
+                Timestamp = timestamp,
+                DesiredReplicas = 1,
+                RunningReplicas = 1,
+                TaskCount = 1,
+                LatestTaskState = "Running",
+                RealTimeStats = new ContainerStats
+                {
+                    ContainerId = serverId,
+                    Timestamp = timestamp,
+                    CpuUsagePercent = cpuPercent,
+                    MemoryUsageBytes = (ulong)Math.Max(0, memBytes),
+                    Pids = pids
+                }
+            };
+        }
+        catch
+        {
+            return null;
         }
     }
 }

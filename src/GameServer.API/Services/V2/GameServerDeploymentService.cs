@@ -25,7 +25,9 @@ public sealed class GameServerDeploymentService(
     GameServerValidationService validationService,
     GameServerSpecBuilder specBuilder,
     ILogger<GameServerDeploymentService> logger,
-    IGameServerResourceCollector? resourceCollector = null)
+    IGameServerResourceCollector? resourceCollector = null,
+    IWindowsAgentOperations? windowsAgentOperations = null,
+    INodeAgentDiscovery? nodeAgentDiscovery = null)
 {
     /// <summary>
     /// Creates the Swarm service for a V2 GameServer and marks the server as deployed.
@@ -39,6 +41,44 @@ public sealed class GameServerDeploymentService(
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
 
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
+        if (gameType is null || revision is null)
+        {
+            throw new InvalidOperationException($"GameTypeRevision '{server.GameTypeRevisionId}' was not found");
+        }
+
+        if (IsWindowsGameType(gameType))
+        {
+            var winAgent = await ResolveWindowsAgentAsync(serverId, cancellationToken).ConfigureAwait(false);
+            if (winAgent != null && windowsAgentOperations != null)
+            {
+                var effectiveSettings = BuildSettingValues(server, gameType, revision);
+                var startReq = new WindowsStartServerRequest
+                {
+                    ServerId = server.ServerId,
+                    Name = server.Name,
+                    GameTypeKey = gameType.Key,
+                    ExecutablePath = string.IsNullOrWhiteSpace(revision.ImageReference) ? "server.exe" : revision.ImageReference,
+                    EnvironmentVariables = effectiveSettings.Where(kv => kv.Value != null).ToDictionary(kv => kv.Key, kv => kv.Value!),
+                    AutoRestart = true
+                };
+                await windowsAgentOperations.StartServerAsync(winAgent.InternalUrl, startReq, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                logger.LogWarning("No Windows Agent available for server {ServerId}", serverId);
+            }
+
+            server = server with
+            {
+                Status = "Starting",
+                LastDeployedAt = DateTime.UtcNow
+            };
+
+            await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+            logger.LogInformation("Deployed Windows V2 GameServer {ServerId}", serverId);
+            _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
+            return;
+        }
 
         var saveRequest = new SaveGameServerRequestDto
         {
@@ -68,9 +108,9 @@ public sealed class GameServerDeploymentService(
 
         var resolutionContext = await validationService.ResolveAsync(saveRequest, cancellationToken).ConfigureAwait(false);
 
-        var effectiveSettings = BuildSettingValues(server, gameType, revision);
+        var dockerEffectiveSettings = BuildSettingValues(server, gameType, revision);
         var resolutions = await volumeSetupResolver
-            .ResolveForCreateAsync(server.ServerId, gameType.Key, revision.Volumes, volumeBindingLayout, driverOverrides: null, settingValues: effectiveSettings, cancellationToken)
+            .ResolveForCreateAsync(server.ServerId, gameType.Key, revision.Volumes, volumeBindingLayout, driverOverrides: null, settingValues: dockerEffectiveSettings, cancellationToken)
             .ConfigureAwait(false);
 
         // Provision each volume (one-time host-side work for NFS targets, no-op for named
@@ -106,6 +146,32 @@ public sealed class GameServerDeploymentService(
 
         var server = await gameServerRepository.GetByServerIdAsync(serverId)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
+
+        var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
+        if (gameType != null && revision != null && IsWindowsGameType(gameType))
+        {
+            var winAgent = await ResolveWindowsAgentAsync(serverId, cancellationToken).ConfigureAwait(false);
+            if (winAgent != null && windowsAgentOperations != null)
+            {
+                var effectiveSettings = BuildSettingValues(server, gameType, revision);
+                var startReq = new WindowsStartServerRequest
+                {
+                    ServerId = server.ServerId,
+                    Name = server.Name,
+                    GameTypeKey = gameType.Key,
+                    ExecutablePath = string.IsNullOrWhiteSpace(revision.ImageReference) ? "server.exe" : revision.ImageReference,
+                    EnvironmentVariables = effectiveSettings.Where(kv => kv.Value != null).ToDictionary(kv => kv.Key, kv => kv.Value!),
+                    AutoRestart = true
+                };
+                await windowsAgentOperations.StartServerAsync(winAgent.InternalUrl, startReq, cancellationToken).ConfigureAwait(false);
+            }
+
+            server = server with { Status = "Starting" };
+            await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+            logger.LogInformation("Started Windows V2 GameServer {ServerId}", serverId);
+            _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
+            return;
+        }
 
         var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
@@ -147,6 +213,21 @@ public sealed class GameServerDeploymentService(
         var server = await gameServerRepository.GetByServerIdAsync(serverId)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
 
+        var (gameType, _) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
+        if (IsWindowsGameType(gameType))
+        {
+            var winAgent = await ResolveWindowsAgentAsync(serverId, cancellationToken).ConfigureAwait(false);
+            if (winAgent != null && windowsAgentOperations != null)
+            {
+                await windowsAgentOperations.StopServerAsync(winAgent.InternalUrl, serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+
+            server = server with { Status = "Stopped" };
+            await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+            logger.LogInformation("Stopped Windows V2 GameServer {ServerId}", serverId);
+            return;
+        }
+
         var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
 
@@ -181,6 +262,22 @@ public sealed class GameServerDeploymentService(
 
         var server = await gameServerRepository.GetByServerIdAsync(serverId)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
+
+        var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
+        if (IsWindowsGameType(gameType))
+        {
+            var winAgent = await ResolveWindowsAgentAsync(serverId, cancellationToken).ConfigureAwait(false);
+            if (winAgent != null && windowsAgentOperations != null)
+            {
+                await windowsAgentOperations.RestartServerAsync(winAgent.InternalUrl, serverId, cancellationToken).ConfigureAwait(false);
+            }
+
+            server = server with { Status = "Starting" };
+            await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+            logger.LogInformation("Restarted Windows V2 GameServer {ServerId}", serverId);
+            _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
+            return;
+        }
 
         var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
@@ -236,6 +333,23 @@ public sealed class GameServerDeploymentService(
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
 
         var (gameType, revision) = await ResolveGameTypeAndRevisionAsync(server.GameTypeRevisionId, cancellationToken).ConfigureAwait(false);
+        if (gameType is null || revision is null)
+        {
+            throw new InvalidOperationException($"GameTypeRevision '{server.GameTypeRevisionId}' was not found");
+        }
+
+        if (IsWindowsGameType(gameType))
+        {
+            server = server with
+            {
+                Status = "Preparing",
+                LastDeployedAt = DateTime.UtcNow
+            };
+            await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
+            logger.LogInformation("Updated Windows V2 GameServer {ServerId} deployment", serverId);
+            _ = resourceCollector?.TriggerImmediateCollectionAsync(serverId, CancellationToken.None);
+            return;
+        }
 
         var layout = volumeBindingLayout ?? "standard";
         var saveRequest = CreateSaveRequest(server, layout);
@@ -543,21 +657,17 @@ public sealed class GameServerDeploymentService(
         return values;
     }
 
-    private async Task<(GameType GameType, GameTypeRevision Revision)> ResolveGameTypeAndRevisionAsync(
+    private async Task<(GameType? GameType, GameTypeRevision? Revision)> ResolveGameTypeAndRevisionAsync(
         int revisionId,
         CancellationToken cancellationToken)
     {
-        var gameTypes = await gameTypeRepository.GetAllAsync(includeInactive: true).ConfigureAwait(false);
+        var gameTypes = await gameTypeRepository.GetAllAsync(includeInactive: true).ConfigureAwait(false) ?? new List<GameType>();
         cancellationToken.ThrowIfCancellationRequested();
 
         var match = gameTypes
+            .Where(gt => gt?.Revisions != null)
             .SelectMany(gt => gt.Revisions.Select(rev => (GameType: gt, Revision: rev)))
-            .FirstOrDefault(t => t.Revision.Id == revisionId);
-
-        if (match.GameType is null)
-        {
-            throw new InvalidOperationException($"GameTypeRevision '{revisionId}' was not found");
-        }
+            .FirstOrDefault(t => t.Revision?.Id == revisionId);
 
         return match;
     }
@@ -578,6 +688,27 @@ public sealed class GameServerDeploymentService(
         var nsB = b.Nameservers ?? (IList<string>)Array.Empty<string>();
 
         return nsA.SequenceEqual(nsB, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsWindowsGameType(GameType? gameType) =>
+        gameType != null && string.Equals(gameType.Type, "windows", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<Models.NodeAgentEndpoint?> ResolveWindowsAgentAsync(string serverId, CancellationToken cancellationToken)
+    {
+        if (nodeAgentDiscovery == null)
+        {
+            return null;
+        }
+
+        var agent = await nodeAgentDiscovery.GetAgentForServerAsync(serverId).ConfigureAwait(false);
+        if (agent != null && string.Equals(agent.HostType, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            return agent;
+        }
+
+        var allAgents = await nodeAgentDiscovery.DiscoverAgentsAsync().ConfigureAwait(false);
+        return allAgents.FirstOrDefault(a => string.Equals(a.HostType, "windows", StringComparison.OrdinalIgnoreCase) && a.IsHealthy)
+            ?? allAgents.FirstOrDefault(a => string.Equals(a.HostType, "windows", StringComparison.OrdinalIgnoreCase));
     }
 }
 

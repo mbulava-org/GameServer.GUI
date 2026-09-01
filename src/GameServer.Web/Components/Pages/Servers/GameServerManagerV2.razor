@@ -296,27 +296,6 @@
         }
     }
 
-    private void EditServer(GameServerListItem server)
-    {
-        ArgumentNullException.ThrowIfNull(server);
-        Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(server.ServerId)}/edit");
-    }
-
-    private async Task DeleteServerAsync(GameServerListItem server)
-    {
-        ArgumentNullException.ThrowIfNull(server);
-
-        try
-        {
-            await GameServerApiV2.DeleteAsync(server.ServerId);
-            await LoadAsync();
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Game server '{server.Name}' was deleted.");
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
-        }
-    }
 
     private void OnRowClick(DataGridRowMouseEventArgs<GameServerListItem> args)
     {

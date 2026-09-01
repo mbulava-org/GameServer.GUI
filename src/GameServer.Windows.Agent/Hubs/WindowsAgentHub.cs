@@ -88,4 +88,44 @@ public class WindowsAgentHub : Hub
     {
         return _processManager.GetLogs(serverId, tailLines);
     }
+
+    /// <summary>
+    /// Compatibility alias for StreamServerLogs with containerId parameter name.
+    /// </summary>
+    public IAsyncEnumerable<string> StreamContainerLogs(
+        string containerId,
+        bool follow = true,
+        int tailLines = 100,
+        bool timestamps = true,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        return StreamServerLogs(containerId, follow, tailLines, cancellationToken);
+    }
+
+    /// <summary>
+    /// Compatibility alias for StreamServerStats with containerId parameter name.
+    /// </summary>
+    public IAsyncEnumerable<ProcessStatsSnapshot> StreamContainerStats(
+        string containerId,
+        int intervalSeconds = 2,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        return StreamServerStats(containerId, intervalSeconds, cancellationToken);
+    }
+
+    /// <summary>
+    /// Compatibility alias for GetServerStatsSnapshot.
+    /// </summary>
+    public ProcessStatsSnapshot? GetContainerStatsSnapshot(string containerId)
+    {
+        return GetServerStatsSnapshot(containerId);
+    }
+
+    /// <summary>
+    /// Compatibility alias for GetServerLogs.
+    /// </summary>
+    public ProcessLogsResponse GetContainerLogs(string containerId, int tailLines = 100)
+    {
+        return GetServerLogs(containerId, tailLines);
+    }
 }

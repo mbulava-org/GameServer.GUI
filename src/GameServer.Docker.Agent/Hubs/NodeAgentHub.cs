@@ -140,6 +140,46 @@ namespace GameServer.Docker.Agent.Hubs
         }
 
         /// <summary>
+        /// Standardized alias for StreamContainerLogs using serverId/targetId.
+        /// </summary>
+        public IAsyncEnumerable<string> StreamServerLogs(
+            string serverId,
+            bool follow = true,
+            int tailLines = 100,
+            bool timestamps = true,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default)
+        {
+            return StreamContainerLogs(serverId, follow, tailLines, timestamps, cancellationToken);
+        }
+
+        /// <summary>
+        /// Standardized alias for StreamContainerStats using serverId/targetId.
+        /// </summary>
+        public IAsyncEnumerable<object> StreamServerStats(
+            string serverId,
+            int intervalSeconds = 2,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default)
+        {
+            return StreamContainerStats(serverId, cancellationToken);
+        }
+
+        /// <summary>
+        /// Standardized alias for GetContainerStatsSnapshot using serverId/targetId.
+        /// </summary>
+        public Task<object?> GetServerStatsSnapshot(string serverId)
+        {
+            return GetContainerStatsSnapshot(serverId);
+        }
+
+        /// <summary>
+        /// Standardized alias for GetContainerLogs using serverId/targetId.
+        /// </summary>
+        public Task<object?> GetServerLogs(string serverId, int tailLines = 100)
+        {
+            return GetContainerLogs(serverId, tailLines);
+        }
+
+        /// <summary>
         /// Called when a client disconnects
         /// </summary>
         public override async Task OnDisconnectedAsync(Exception? exception)
