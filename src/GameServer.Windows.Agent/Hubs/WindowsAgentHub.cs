@@ -97,7 +97,7 @@ public class WindowsAgentHub : Hub
         bool follow = true,
         int tailLines = 100,
         bool timestamps = true,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         return StreamServerLogs(containerId, follow, tailLines, cancellationToken);
     }
@@ -108,7 +108,7 @@ public class WindowsAgentHub : Hub
     public IAsyncEnumerable<ProcessStatsSnapshot> StreamContainerStats(
         string containerId,
         int intervalSeconds = 2,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         return StreamServerStats(containerId, intervalSeconds, cancellationToken);
     }

@@ -1,0 +1,231 @@
+{
+  "formatVersion": "1.0",
+  "gameType": {
+    "key": "conan-exiles-dedicated",
+    "displayName": "Conan Exiles Dedicated Server",
+    "description": "Portable V2 GameType import for Conan Exiles Dedicated Server (Steam App ID 443030). Includes game (7777/udp), ping (7778/udp), Steam query (27015/udp), and RCON (25575/tcp) ports, persistent save volume, and core server configurations.",
+    "type": "docker",
+    "documentationUrl": "https://steamcommunity.com/app/440900/discussions/0/133256080240324203/",
+    "isActive": true,
+    "currentRevisionVersionTag": "latest",
+    "revisions": [
+      {
+        "versionTag": "latest",
+        "imageReference": "othrayte/docker-conanexiles",
+        "enableTTY": false,
+        "notes": "Configured for Conan Exiles dedicated hosting based on SteamCMD app ID 443030. When hosting on the same machine as the game client, verify port mappings or multihome binding.",
+        "isPublished": false,
+        "ports": [
+          {
+            "containerPort": 7777,
+            "protocol": "udp",
+            "advertisedPort": true,
+            "description": "Primary Conan Exiles game traffic port",
+            "displayOrder": 0
+          },
+          {
+            "containerPort": 7778,
+            "protocol": "udp",
+            "advertisedPort": false,
+            "description": "Raw UDP and server browser ping port",
+            "displayOrder": 1
+          },
+          {
+            "containerPort": 27015,
+            "protocol": "udp",
+            "advertisedPort": false,
+            "description": "Steam master server query port",
+            "displayOrder": 2
+          },
+          {
+            "containerPort": 25575,
+            "protocol": "tcp",
+            "advertisedPort": false,
+            "description": "RCON remote administration port",
+            "displayOrder": 3
+          }
+        ],
+        "volumes": [
+          {
+            "source": "/conanws",
+            "description": "Persistent Conan Exiles server database (game.db), logs, and configuration ini files",
+            "displayOrder": 0,
+            "usage": "saves"
+          }
+        ],
+        "settingDefinitions": [
+          {
+            "settingKey": "SERVER_NAME",
+            "defaultValue": "My Conan Exiles Server",
+            "description": "Server name shown in the in-game server browser.",
+            "displayOrder": 0,
+            "metadata": {
+              "dataType": "string",
+              "category": "General",
+              "isRequired": true,
+              "cannotBeEmpty": true,
+              "placeholder": "Enter server name"
+            }
+          },
+          {
+            "settingKey": "SERVER_PASSWORD",
+            "defaultValue": "",
+            "description": "Password required for players to join the server. Leave blank for an open public server.",
+            "displayOrder": 1,
+            "metadata": {
+              "dataType": "password",
+              "category": "Security",
+              "isRequired": false,
+              "placeholder": "Optional join password"
+            }
+          },
+          {
+            "settingKey": "ADMIN_PASSWORD",
+            "defaultValue": "ChangeMeAdminPassword123!",
+            "description": "Administrative password to gain admin privileges in-game and via RCON.",
+            "displayOrder": 2,
+            "metadata": {
+              "dataType": "password",
+              "category": "Security",
+              "isRequired": true,
+              "cannotBeEmpty": true,
+              "placeholder": "Required admin password"
+            }
+          },
+          {
+            "settingKey": "PORT",
+            "defaultValue": "7777",
+            "description": "Primary UDP game traffic port.",
+            "displayOrder": 3,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 7777,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "PING_PORT",
+            "defaultValue": "7778",
+            "description": "Raw UDP port used for server browser ping responses.",
+            "displayOrder": 4,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 7778,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "QUERY_PORT",
+            "defaultValue": "27015",
+            "description": "Steam server query port used to publish status to Steam server lists.",
+            "displayOrder": 5,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 27015,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "RCON_PORT",
+            "defaultValue": "25575",
+            "description": "TCP port for remote console administration (RCON).",
+            "displayOrder": 6,
+            "metadata": {
+              "dataType": "port",
+              "category": "Administration",
+              "isRequired": false,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 25575,
+                  "targetProtocol": "tcp",
+                  "isRequired": false,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "RCON_PASSWORD",
+            "defaultValue": "",
+            "description": "Dedicated RCON password. If left empty, the server uses ADMIN_PASSWORD.",
+            "displayOrder": 7,
+            "metadata": {
+              "dataType": "password",
+              "category": "Administration",
+              "isRequired": false,
+              "placeholder": "Optional RCON password"
+            }
+          },
+          {
+            "settingKey": "MAX_PLAYERS",
+            "defaultValue": "40",
+            "description": "Maximum number of simultaneous players allowed on the server.",
+            "displayOrder": 8,
+            "metadata": {
+              "dataType": "number",
+              "category": "General",
+              "isRequired": true,
+              "placeholder": "40"
+            }
+          },
+          {
+            "settingKey": "SERVER_REGION",
+            "defaultValue": "0",
+            "description": "Geographical region designation for server filtering.",
+            "displayOrder": 9,
+            "metadata": {
+              "dataType": "enum",
+              "category": "General",
+              "isRequired": false,
+              "allowedValuesJson": "[{\"value\":\"0\",\"label\":\"Europe\"},{\"value\":\"1\",\"label\":\"North America\"},{\"value\":\"2\",\"label\":\"Asia\"},{\"value\":\"3\",\"label\":\"Oceania\"},{\"value\":\"4\",\"label\":\"South America\"}]"
+            }
+          },
+          {
+            "settingKey": "MULTIHOME",
+            "defaultValue": "0.0.0.0",
+            "description": "Network interface IP binding. Recommended when running on the same PC as the game client to avoid socket conflicts.",
+            "displayOrder": 10,
+            "metadata": {
+              "dataType": "string",
+              "category": "Networking",
+              "isRequired": false,
+              "placeholder": "0.0.0.0 or specific host IP"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

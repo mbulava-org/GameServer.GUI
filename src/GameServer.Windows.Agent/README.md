@@ -70,7 +70,8 @@ This agent is kept completely decoupled from the Docker Swarm node agents (`Game
 │  ┌────────────────────────────────┐     ┌────────────────────────────────┐  │
 │  │   steamcmd.exe (CLI Tool)      │     │  Native Windows Game Processes │  │
 │  │   - C:\GameServers\_steamcmd\  │     │  - PalServer.exe               │  │
-│  │   - Downloads / updates games  │     │  - ShooterGameServer.exe       │  │
+│  │   - Downloads / updates games  │     │  - ConanSandboxServer.exe      │  │
+│  │                                │     │  - ShooterGameServer.exe       │  │
 │  └────────────────────────────────┘     └────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -236,7 +237,7 @@ Content-Type: application/json
 | `GET` | `/api/servers/{id}/stats` | Get current CPU % and memory working set metrics. |
 | `POST` | `/api/servers/{id}/command` | Send standard input or Source RCON command. |
 
-#### Example: Start a Server
+#### Example 1: Start a Palworld Server
 ```http
 POST /api/servers/start
 Content-Type: application/json
@@ -248,6 +249,22 @@ Content-Type: application/json
   "arguments": "-port=8211 -players=16 -log -useperfthreads",
   "workingDirectory": "C:\\GameServers\\instances\\palworld-01",
   "autoRestart": true
+}
+```
+
+#### Example 2: Start a Conan Exiles Dedicated Server
+```http
+POST /api/servers/start
+Content-Type: application/json
+
+{
+  "serverId": "conan-01",
+  "name": "My Conan Exiles Server",
+  "executablePath": "ConanSandboxServer.exe",
+  "arguments": "-log -Port=7777 -QueryPort=27015 -MaxPlayers=40 -MULTIHOME=0.0.0.0",
+  "workingDirectory": "C:\\GameServers\\instances\\conan-01",
+  "autoRestart": true,
+  "rconPort": 25575
 }
 ```
 

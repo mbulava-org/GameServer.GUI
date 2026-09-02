@@ -42,12 +42,14 @@ jobs:
       # Project change detection outputs (actual changes)
       backend_changed: ${{ steps.detect-project-changes.outputs.backend_changed }}
       agent_changed: ${{ steps.detect-project-changes.outputs.agent_changed }}
+      windows_agent_changed: ${{ steps.detect-project-changes.outputs.windows_agent_changed }}
       web_changed: ${{ steps.detect-project-changes.outputs.web_changed }}
       client_changed: ${{ steps.detect-project-changes.outputs.client_changed }}
       tests_changed: ${{ steps.detect-project-changes.outputs.tests_changed }}
       # Push decision outputs (changes OR force_publish)
       push_backend: ${{ steps.calculate-push-decisions.outputs.push_backend }}
       push_agent: ${{ steps.calculate-push-decisions.outputs.push_agent }}
+      push_windows_agent: ${{ steps.calculate-push-decisions.outputs.push_windows_agent }}
       push_web: ${{ steps.calculate-push-decisions.outputs.push_web }}
       push_client: ${{ steps.calculate-push-decisions.outputs.push_client }}
     steps:
@@ -148,6 +150,7 @@ jobs:
           # Detect changes in each project folder
           BACKEND_CHANGED="false"
           AGENT_CHANGED="false"
+          WINDOWS_AGENT_CHANGED="false"
           WEB_CHANGED="false"
           CLIENT_CHANGED="false"
           TESTS_CHANGED="false"
@@ -162,6 +165,12 @@ jobs:
           if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Docker\.Agent/'; then
             AGENT_CHANGED="true"
             echo "::notice::✅ GameServer.Docker.Agent project has changes"
+          fi
+
+          # Check GameServer.Windows.Agent (windows-agent)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Windows\.Agent/'; then
+            WINDOWS_AGENT_CHANGED="true"
+            echo "::notice::✅ GameServer.Windows.Agent project has changes"
           fi
 
           # Check GameServer.Web (web-gui)
@@ -185,6 +194,7 @@ jobs:
           # Output results
           echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
           echo "agent_changed=$AGENT_CHANGED" >> $GITHUB_OUTPUT
+          echo "windows_agent_changed=$WINDOWS_AGENT_CHANGED" >> $GITHUB_OUTPUT
           echo "web_changed=$WEB_CHANGED" >> $GITHUB_OUTPUT
           echo "client_changed=$CLIENT_CHANGED" >> $GITHUB_OUTPUT
           echo "tests_changed=$TESTS_CHANGED" >> $GITHUB_OUTPUT
@@ -193,6 +203,7 @@ jobs:
           echo "📊 Project Change Detection Summary:"
           echo "  - Backend (GameServer.API): $BACKEND_CHANGED"
           echo "  - Agent (GameServer.Docker.Agent): $AGENT_CHANGED"
+          echo "  - Windows Agent (GameServer.Windows.Agent): $WINDOWS_AGENT_CHANGED"
           echo "  - Web (GameServer.Web): $WEB_CHANGED"
           echo "  - Client (GameServer.API.Client): $CLIENT_CHANGED"
           echo "  - Tests: $TESTS_CHANGED"
@@ -206,6 +217,7 @@ jobs:
           # Get change detection results
           BACKEND_CHANGED="${{ steps.detect-project-changes.outputs.backend_changed }}"
           AGENT_CHANGED="${{ steps.detect-project-changes.outputs.agent_changed }}"
+          WINDOWS_AGENT_CHANGED="${{ steps.detect-project-changes.outputs.windows_agent_changed }}"
           WEB_CHANGED="${{ steps.detect-project-changes.outputs.web_changed }}"
           CLIENT_CHANGED="${{ steps.detect-project-changes.outputs.client_changed }}"
           TESTS_CHANGED="${{ steps.detect-project-changes.outputs.tests_changed }}"
@@ -229,6 +241,14 @@ jobs:
           else
             echo "push_agent=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Agent push skipped (no changes, not forced)"
+          fi
+
+          if [ "$WINDOWS_AGENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_windows_agent=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Windows Agent will be published (changed=$WINDOWS_AGENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_windows_agent=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Windows Agent publish skipped (no changes, not forced)"
           fi
 
           if [ "$WEB_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
@@ -270,6 +290,7 @@ jobs:
           | ------- | ------- | ----- | ------------- |
           | Backend (GameServer.API) | ${{ steps.detect-project-changes.outputs.backend_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_backend }}`** |
           | Agent (GameServer.Docker.Agent) | ${{ steps.detect-project-changes.outputs.agent_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_agent }}`** |
+          | Windows Agent (GameServer.Windows.Agent) | ${{ steps.detect-project-changes.outputs.windows_agent_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_windows_agent }}`** |
           | Web (GameServer.Web) | ${{ steps.detect-project-changes.outputs.web_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_web }}`** |
           | Client (GameServer.API.Client) | ${{ steps.detect-project-changes.outputs.client_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_client }}`** |
           | Tests | ${{ steps.detect-project-changes.outputs.tests_changed }} | — | _(runs always)_ |
@@ -433,3 +454,42 @@ jobs:
       version_tag: true
       semantic_version_rollup_tag: false 
       target_repo: 'gameserver-web'
+
+  windows-agent:
+    needs: [setup]
+    if: needs.setup.outputs.push_windows_agent == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+          source-url: https://nuget.pkg.github.com/mbulava-org/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore dependencies
+        run: dotnet restore src/GameServer.Windows.Agent/GameServer.Windows.Agent.csproj -r win-x64
+
+      - name: Publish Windows Agent (win-x64)
+        run: |
+          dotnet publish src/GameServer.Windows.Agent/GameServer.Windows.Agent.csproj \
+            -c Release \
+            -r win-x64 \
+            --no-restore \
+            --self-contained false \
+            -p:Version=${{ needs.setup.outputs.new_version }} \
+            -p:AssemblyVersion=${{ needs.setup.outputs.new_version }} \
+            -p:FileVersion=${{ needs.setup.outputs.new_version }} \
+            -p:InformationalVersion=${{ needs.setup.outputs.new_version }} \
+            -o ./publish/GameServer.Windows.Agent-win-x64
+
+      - name: Upload Windows Agent Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: GameServer.Windows.Agent-win-x64-${{ needs.setup.outputs.new_version }}
+          path: ./publish/GameServer.Windows.Agent-win-x64/
+
