@@ -296,6 +296,7 @@
         }
     }
 
+
     private void OnRowClick(DataGridRowMouseEventArgs<GameServerListItem> args)
     {
         Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(args.Data.ServerId)}");

@@ -40,23 +40,34 @@ namespace GameServer.API.Services
                 ConnectionId = connectionId,
                 TaskId = string.Empty, // Not used in registration-based system
                 ContainerId = string.Empty, // Agent's own container ID not needed
-                IsManagerNode = info.IsManagerNode
+                IsManagerNode = info.IsManagerNode,
+                HostType = string.IsNullOrWhiteSpace(info.HostType) ? "docker" : info.HostType.Trim().ToLowerInvariant(),
+                Capabilities = info.Capabilities != null ? new List<string>(info.Capabilities) : new List<string>()
             };
 
             _agentsByConnection[connectionId] = endpoint;
             _connectionByNode[info.NodeId] = connectionId;
 
             _logger.LogInformation(
-                "Agent registered: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Url={Url}, Capabilities={Capabilities}, Manager={IsManager}",
+                "Agent registered: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Url={Url}, HostType={HostType}, Capabilities={Capabilities}, Manager={IsManager}",
                 info.NodeName,
                 info.NodeId,
                 connectionId,
                 info.InternalUrl,
-                string.Join(", ", info.Capabilities),
+                endpoint.HostType,
+                string.Join(", ", endpoint.Capabilities),
                 info.IsManagerNode);
         }
 
         public void UpdateAgentContainers(string connectionId, List<string> containerIds)
+        {
+            UpdateAgentHeartbeat(connectionId, new AgentHeartbeatInfo
+            {
+                ContainerIds = containerIds ?? new List<string>()
+            });
+        }
+
+        public void UpdateAgentHeartbeat(string connectionId, AgentHeartbeatInfo heartbeat)
         {
             if (!_agentsByConnection.TryGetValue(connectionId, out var agent))
             {
@@ -67,6 +78,22 @@ namespace GameServer.API.Services
             // Update last heartbeat time
             agent.LastHeartbeat = DateTime.UtcNow;
             agent.IsHealthy = true;
+
+            var targetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (heartbeat.ContainerIds != null)
+            {
+                foreach (var id in heartbeat.ContainerIds.Where(s => !string.IsNullOrWhiteSpace(s)))
+                {
+                    targetIds.Add(id);
+                }
+            }
+            if (heartbeat.ServerIds != null)
+            {
+                foreach (var id in heartbeat.ServerIds.Where(s => !string.IsNullOrWhiteSpace(s)))
+                {
+                    targetIds.Add(id);
+                }
+            }
 
             // Remove old container mappings for this agent
             var oldContainers = _containerToConnection
@@ -80,17 +107,17 @@ namespace GameServer.API.Services
             }
 
             // Add new container mappings
-            foreach (var containerId in containerIds)
+            foreach (var id in targetIds)
             {
-                _containerToConnection[containerId] = connectionId;
+                _containerToConnection[id] = connectionId;
             }
 
             _logger.LogDebug(
-                "Agent heartbeat: Node={NodeName} ({NodeId}), Containers={ContainerCount} [{ContainerIds}]",
+                "Agent heartbeat: Node={NodeName} ({NodeId}), Targets={TargetCount} [{Targets}]",
                 agent.NodeName,
                 agent.NodeId,
-                containerIds.Count,
-                string.Join(", ", containerIds.Select(id => id.Substring(0, Math.Min(12, id.Length)))));
+                targetIds.Count,
+                string.Join(", ", targetIds.Select(id => id.Substring(0, Math.Min(12, id.Length)))));
         }
 
         public void MarkAgentDisconnected(string connectionId)
@@ -116,7 +143,7 @@ namespace GameServer.API.Services
             }
 
             _logger.LogWarning(
-                "Agent disconnected: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Containers={ContainerCount}",
+                "Agent disconnected: Node={NodeName} ({NodeId}), ConnectionId={ConnectionId}, Targets={TargetCount}",
                 agent.NodeName,
                 agent.NodeId,
                 connectionId,
@@ -125,6 +152,11 @@ namespace GameServer.API.Services
 
         public NodeAgentEndpoint? GetAgentForContainer(string containerId)
         {
+            if (string.IsNullOrWhiteSpace(containerId))
+            {
+                return null;
+            }
+
             if (_containerToConnection.TryGetValue(containerId, out var connectionId) &&
                 _agentsByConnection.TryGetValue(connectionId, out var agent))
             {
@@ -144,6 +176,16 @@ namespace GameServer.API.Services
             return null;
         }
 
+        public NodeAgentEndpoint? GetAgentForServer(string serverId)
+        {
+            if (string.IsNullOrWhiteSpace(serverId))
+            {
+                return null;
+            }
+
+            return GetAgentForContainer(serverId);
+        }
+
         public List<NodeAgentEndpoint> GetAllAgents()
         {
             return _agentsByConnection.Values.ToList();
@@ -153,6 +195,22 @@ namespace GameServer.API.Services
         {
             return _agentsByConnection.Values
                 .Where(a => a.IsHealthy)
+                .ToList();
+        }
+
+        public List<NodeAgentEndpoint> GetAgentsByHostType(string hostType)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(hostType);
+            return _agentsByConnection.Values
+                .Where(a => string.Equals(a.HostType, hostType, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        public List<NodeAgentEndpoint> GetAgentsByCapability(string capability)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(capability);
+            return _agentsByConnection.Values
+                .Where(a => a.Capabilities.Contains(capability, StringComparer.OrdinalIgnoreCase))
                 .ToList();
         }
 

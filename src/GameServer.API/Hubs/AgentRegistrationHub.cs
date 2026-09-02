@@ -55,7 +55,7 @@ namespace GameServer.API.Hubs
                 heartbeat.ContainerIds.Count,
                 heartbeat.Health);
 
-            _agentRegistry.UpdateAgentContainers(connectionId, heartbeat.ContainerIds);
+            _agentRegistry.UpdateAgentHeartbeat(connectionId, heartbeat);
 
             await Task.CompletedTask;
         }

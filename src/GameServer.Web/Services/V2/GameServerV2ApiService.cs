@@ -111,6 +111,17 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
         return await response.Content.ReadFromJsonAsync<GameServerDetail>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 GameServer update response did not contain a payload.");
     }
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    public async Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = CreateClient();
+        using var response = await client.DeleteAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}?softDelete={softDelete}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 
     /// <summary>
     /// Starts the Swarm service for a V2 GameServer.
@@ -172,17 +183,6 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
             ?? throw new InvalidOperationException("The V2 GameServer redeploy response did not contain a payload.");
     }
 
-    /// <summary>
-    /// Deletes a V2 GameServer.
-    /// </summary>
-    public async Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
-
-        using var client = CreateClient();
-        using var response = await client.DeleteAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}?softDelete={softDelete}", cancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
 
     /// <summary>
     /// Gets the historical resource utilization records for a V2 GameServer.

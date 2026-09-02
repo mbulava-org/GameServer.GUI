@@ -396,6 +396,71 @@ public class AgentRegistryServiceTests
     }
 
     // -----------------------------------------------------------------------
+    // HostType, Capabilities, and Server Routing
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void RegisterAgent_WithHostTypeAndCapabilities_StoresCorrectly()
+    {
+        var info = new AgentRegistrationInfo
+        {
+            NodeId = "win-host-1",
+            NodeName = "WIN-SERVER-01",
+            InternalUrl = "http://10.0.2.1:5000",
+            HostType = "windows",
+            Capabilities = new List<string> { "windows-process", "steamcmd", "filesystem" },
+            RegisteredAt = DateTime.UtcNow
+        };
+
+        _service.RegisterAgent(info, "conn-win-1");
+
+        var agent = _service.GetAgentByNodeId("win-host-1");
+        Assert.NotNull(agent);
+        Assert.Equal("windows", agent.HostType);
+        Assert.Contains("steamcmd", agent.Capabilities);
+
+        var winAgents = _service.GetAgentsByHostType("windows");
+        Assert.Single(winAgents);
+        Assert.Equal("win-host-1", winAgents[0].NodeId);
+
+        var steamAgents = _service.GetAgentsByCapability("steamcmd");
+        Assert.Single(steamAgents);
+        Assert.Equal("win-host-1", steamAgents[0].NodeId);
+    }
+
+    [Fact]
+    public void UpdateAgentHeartbeat_WithServerIds_AllowsDirectServerLookup()
+    {
+        var info = new AgentRegistrationInfo
+        {
+            NodeId = "win-host-1",
+            NodeName = "WIN-SERVER-01",
+            InternalUrl = "http://10.0.2.1:5000",
+            HostType = "windows",
+            Capabilities = new List<string> { "windows-process" },
+            RegisteredAt = DateTime.UtcNow
+        };
+
+        _service.RegisterAgent(info, "conn-win-1");
+        _service.UpdateAgentHeartbeat("conn-win-1", new AgentHeartbeatInfo
+        {
+            NodeId = "win-host-1",
+            ServerIds = new List<string> { "srv-palworld-01", "srv-valheim-01" },
+            Timestamp = DateTime.UtcNow
+        });
+
+        var agentForPalworld = _service.GetAgentForServer("srv-palworld-01");
+        Assert.NotNull(agentForPalworld);
+        Assert.Equal("win-host-1", agentForPalworld.NodeId);
+
+        var agentForValheim = _service.GetAgentForServer("srv-valheim-01");
+        Assert.NotNull(agentForValheim);
+        Assert.Equal("win-host-1", agentForValheim.NodeId);
+
+        Assert.Null(_service.GetAgentForServer("non-existent-server"));
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 

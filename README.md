@@ -7,6 +7,7 @@ Blazor Server application for deploying and managing game servers on Docker Swar
 - **V2 GameType System** — Revision-based GameType catalog with publish lifecycle, portable import/export packages, and Docker image detection
 - **V2 GameServer Management** — Deploy game servers from published revisions; port/volume/web host config derived from the revision
 - **Multi-node Docker Swarm** — Node Agents handle container operations on each Swarm node
+- **Windows Host Agent & SteamCMD** — Dedicated agent (`GameServer.Windows.Agent`) managing native Windows game processes, SteamCMD installs/updates, and Win32 Job Object process trees
 - **Real-time monitoring** — Log streaming, interactive terminal, and resource metrics via SignalR
 - **Dual database support** — V2 path uses PostgreSQL (default); legacy V1 path uses SQLite
 
@@ -21,6 +22,8 @@ See **[docs/QUICK-START.md](docs/QUICK-START.md)** for local development and Doc
 | [docs/QUICK-START.md](docs/QUICK-START.md) | Local dev setup, Swarm deployment, V2 workflow |
 | [docs/CURRENT-FEATURES.md](docs/CURRENT-FEATURES.md) | Full feature inventory, API endpoints, V2 pages |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture patterns, critical rules, persistence layers |
+| [docs/guides/Windows-Agent-Setup-And-Communication.md](docs/guides/Windows-Agent-Setup-And-Communication.md) | Windows Agent setup, SteamCMD lifecycle, and Primary API communication |
+| [src/GameServer.Windows.Agent/README.md](src/GameServer.Windows.Agent/README.md) | Windows Agent project overview, REST endpoints, and SignalR hubs |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Dev setup, coding standards, PR process |
 | [docs/guides/V2-GameType-Assembly-Instructions.md](docs/guides/V2-GameType-Assembly-Instructions.md) | Step-by-step V2 GameType creation workflow |
 | [docs/guides/V2-GameType-Editor-Components.md](docs/guides/V2-GameType-Editor-Components.md) | V2 editor component inventory and data flow |

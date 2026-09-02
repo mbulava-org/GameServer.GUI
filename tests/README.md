@@ -38,6 +38,16 @@ Unit tests for the `GameServer.Web` Blazor application. These tests focus on:
 **Mocking**: Moq  
 **UI Testing**: bUnit
 
+### GameServer.Windows.Agent.Tests
+Unit tests for the `GameServer.Windows.Agent` service. These tests focus on:
+- SteamCMD CLI lifecycle, installation, and status parsing
+- Native process supervision, Win32 Job Objects, and circular log buffers
+- REST API controllers (`Health`, `Ports`, `SteamCmd`, `Servers`, `Files`)
+- Port availability checking and host resource telemetry
+
+**Framework**: xUnit  
+**Mocking**: Moq
+
 ### GameServer.Integration.Tests
 Integration tests for the entire application. These tests focus on:
 - End-to-end workflows
@@ -60,6 +70,7 @@ dotnet test
 ```bash
 dotnet test tests/GameServer.API.Tests
 dotnet test tests/GameServer.Docker.Agent.Tests
+dotnet test tests/GameServer.Windows.Agent.Tests
 dotnet test tests/GameServer.Web.Tests
 dotnet test tests/GameServer.Integration.Tests
 ```
