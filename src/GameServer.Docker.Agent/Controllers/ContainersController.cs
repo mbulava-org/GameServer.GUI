@@ -36,7 +36,7 @@ namespace GameServer.Docker.Agent.Controllers
         {
             try
             {
-                _logger.LogInformation("Getting stats for container {ContainerId}", id);
+                _logger.LogDebug("Getting stats for container {ContainerId}", id);
                 var stats = await _containerService.GetContainerStatsAsync(id, cancellationToken);
                 return Ok(stats);
             }
