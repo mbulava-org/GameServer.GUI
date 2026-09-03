@@ -6,6 +6,7 @@
 @using GameServer.API.Client.Services
 @using System.Text
 @using XtermBlazor
+@using Radzen
 @inject IOptions<GameServerDockerApi> ApiConfig
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
@@ -13,6 +14,19 @@
 
 @* Shared container attach viewer. Multiple users of the same container see the same output.
    The first user to type becomes the input controller; others see a read-only indicator. *@
+
+@if (!isConnected && !isConnecting && !string.IsNullOrEmpty(connectionErrorMessage))
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Class="mb-3" Shade="Shade.Lighter" AllowClose="false">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenIcon Icon="error_outline" Style="font-size: 1.25rem;" />
+                <span><strong>Connection to Swarm manager agent failed:</strong> @connectionErrorMessage</span>
+            </div>
+            <RadzenButton Icon="refresh" Text="Retry Connection" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@ConnectAsync" />
+        </div>
+    </RadzenAlert>
+}
 
 <div class="console-container">
     <div class="console-header">
@@ -45,22 +59,43 @@
             }
             else if (isConnecting)
             {
+                <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" Style="width: 18px; height: 18px;" />
                 <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" Size="BadgeSize.Small" />
             }
             else
             {
-                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                <RadzenButton Icon="play_arrow" 
-                             Text="Connect" 
-                             Size="ButtonSize.Small" 
-                             ButtonStyle="ButtonStyle.Success"
-                             Click="@ConnectAsync"
-                             title="Connect to console" />
+                @if (!string.IsNullOrEmpty(connectionErrorMessage))
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Connection Failed" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    <RadzenButton Icon="refresh" 
+                                 Text="Retry" 
+                                 Size="ButtonSize.Small" 
+                                 ButtonStyle="ButtonStyle.Primary"
+                                 Click="@ConnectAsync"
+                                 title="Retry connection to console" />
+                }
+                else
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    <RadzenButton Icon="play_arrow" 
+                                 Text="Connect" 
+                                 Size="ButtonSize.Small" 
+                                 ButtonStyle="ButtonStyle.Success"
+                                 Click="@ConnectAsync"
+                                 title="Connect to console" />
+                }
             }
         </div>
     </div>
 
     <div class="terminal-wrapper" @ref="_terminalWrapperRef" @onclick="FocusTerminalAsync">
+        @if (isConnecting)
+        {
+            <div class="terminal-overlay">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+                <span class="mt-2 text-light small">Connecting to container console stream...</span>
+            </div>
+        }
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
                Addons="@_addons"
@@ -108,12 +143,28 @@
     }
 
     .terminal-wrapper {
+        position: relative;
         flex: 1;
         overflow: hidden;
         background: #000;
         cursor: text;
         width: 100%;
         height: 100%;
+    }
+
+    .terminal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.75);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+        backdrop-filter: blur(2px);
     }
 
     .terminal-wrapper:hover {
@@ -149,9 +200,9 @@
 </style>
 
 @code {
-[Parameter] public string? ServerId { get; set; }
-[Parameter] public bool AutoConnect { get; set; } = false;
-[Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
+    [Parameter] public string? ServerId { get; set; }
+    [Parameter] public bool AutoConnect { get; set; } = false;
+    [Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
 
     private Xterm? terminal;
     private ElementReference _terminalWrapperRef;
@@ -160,7 +211,7 @@
     {
         CursorBlink = true,
         CursorStyle = CursorStyle.Block,
-        DisableStdin = false, // ? Ensure stdin is enabled
+        DisableStdin = false, // Ensure stdin is enabled
         Theme = new XtermBlazor.Theme
         {
             Background = "#000000",
@@ -193,6 +244,8 @@
 
     private bool isConnected = false;
     private bool isConnecting = false;
+    private string? connectionErrorMessage;
+    private bool isDisposed = false;
     private IContainerConsoleClient? consoleClient;
     private CancellationTokenSource? connectionCts;
     private bool isJavaScriptAvailable = false;
@@ -225,7 +278,7 @@
 
     private async Task FitTerminalAsync()
     {
-        if (isJavaScriptAvailable)
+        if (isJavaScriptAvailable && !isDisposed)
         {
             try
             {
@@ -252,13 +305,20 @@
 
     private async Task OnTerminalFirstRender()
     {
-        if (terminal != null && isJavaScriptAvailable)
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
         {
-            await FitTerminalAsync();
-            await terminal.WriteLine("Terminal initialized. Click 'Connect' to attach to container console.");
-            await terminal.WriteLine("");
-            await terminal.WriteLine("Click anywhere in the terminal to focus and start typing.");
-            await FitTerminalAsync();
+            try
+            {
+                await FitTerminalAsync();
+                await terminal.WriteLine("Terminal initialized. Click 'Connect' to attach to container console.");
+                await terminal.WriteLine("");
+                await terminal.WriteLine("Click anywhere in the terminal to focus and start typing.");
+                await FitTerminalAsync();
+            }
+            catch
+            {
+                // Ignore JS errors during terminal init
+            }
         }
     }
 
@@ -266,16 +326,13 @@
 
     private async Task OnTerminalData(string data)
     {
-        if (!isConnected || consoleClient == null)
+        if (!isConnected || consoleClient == null || isDisposed)
             return;
 
         try
         {
             // Send the input to the container
             await consoleClient.SendInputAsync(data, connectionCts?.Token ?? CancellationToken.None);
-            
-            // Don't echo input - let the container echo it back for proper terminal behavior
-            // This ensures what you see matches what the container actually received
         }
         catch (Exception ex)
         {
@@ -287,18 +344,26 @@
     {
         if (string.IsNullOrEmpty(ServerId))
         {
+            connectionErrorMessage = "No server ID provided";
             await WriteSystemMessage("Error: No server ID provided", isError: true);
             return;
         }
 
-        if (isConnected || isConnecting) return;
+        if (isConnected || isConnecting || isDisposed) return;
 
         isConnecting = true;
+        connectionErrorMessage = null;
         await WriteSystemMessage($"Connecting to {ServerId}...");
         StateHasChanged();
 
         try
         {
+            // Clean up any prior client before connecting
+            if (consoleClient != null)
+            {
+                await SafeCleanupClientAsync();
+            }
+
             // Build hub URL from configuration
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
             var hubUrl = $"{baseUri}/hubs/attach";
@@ -316,6 +381,7 @@
             consoleClient.InputControlChanged += OnInputControlChanged;
 
             // Connect to the SignalR hub
+            connectionCts?.Dispose();
             connectionCts = new CancellationTokenSource();
             await consoleClient.ConnectAsync(connectionCts.Token);
 
@@ -324,6 +390,7 @@
 
             isConnected = true;
             isConnecting = false;
+            connectionErrorMessage = null;
 
             await WriteSystemMessage($"Connected to {ServerId} console (shared attach)");
             await WriteSystemMessage("Click the terminal and start typing. Output is shared with other viewers.");
@@ -342,6 +409,7 @@
         {
             isConnecting = false;
             isConnected = false;
+            connectionErrorMessage = ex.Message;
             await WriteSystemMessage($"Connection failed: {ex.Message}", isError: true);
 
             NotificationService.NotifyTimed(new NotificationMessage
@@ -358,157 +426,18 @@
 
     private async Task DisconnectAsync()
     {
-        if (consoleClient != null)
-        {
-            try
-            {
-                // Unsubscribe from events
-                consoleClient.OutputReceived -= OnOutputReceived;
-                consoleClient.ErrorReceived -= OnErrorReceived;
-                consoleClient.Connected -= OnConsoleConnected;
-                consoleClient.Disconnected -= OnConsoleDisconnected;
-                consoleClient.InputControlChanged -= OnInputControlChanged;
-
-                // Disconnect from shared attach stream
-                await consoleClient.DisconnectFromContainerAsync(CancellationToken.None);
-
-                // Dispose the client if it implements IDisposable/IAsyncDisposable
-                if (consoleClient is IAsyncDisposable asyncDisposable)
-                {
-                    await asyncDisposable.DisposeAsync();
-                }
-                else if (consoleClient is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
-            }
-            catch (Exception ex)
-            {
-                await WriteSystemMessage($"Error during disconnect: {ex.Message}", isError: true);
-            }
-
-            consoleClient = null;
-        }
-
-        connectionCts?.Cancel();
-        connectionCts?.Dispose();
-        connectionCts = null;
+        await SafeCleanupClientAsync();
 
         isConnected = false;
         isConnecting = false;
+        connectionErrorMessage = null;
 
         await WriteSystemMessage("Disconnected");
         StateHasChanged();
     }
 
-    private async Task ClearTerminal()
+    private async Task SafeCleanupClientAsync()
     {
-        if (terminal != null && isJavaScriptAvailable)
-        {
-            await terminal.Clear();
-            await WriteSystemMessage("Terminal cleared");
-        }
-    }
-
-    private async Task FocusTerminalAsync()
-    {
-        // The terminal will focus automatically when clicked due to XtermBlazor's built-in behavior
-        // This method is just a placeholder for the click event
-        await Task.CompletedTask;
-    }
-
-    // Event handlers for ContainerConsoleClient events
-    private void OnOutputReceived(object? sender, string data)
-    {
-        InvokeAsync(async () =>
-        {
-            if (terminal != null && isJavaScriptAvailable)
-            {
-                var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
-                await terminal.Write(normalized);
-                StateHasChanged(); // Ensure component updates
-            }
-        });
-    }
-
-    private void OnErrorReceived(object? sender, string error)
-    {
-        InvokeAsync(async () =>
-        {
-            await WriteSystemMessage($"ERROR: {error}", isError: true);
-            StateHasChanged(); // Ensure component updates
-        });
-    }
-
-    private void OnConsoleConnected(object? sender, string containerId)
-    {
-        InvokeAsync(async () =>
-        {
-            await WriteSystemMessage($"Attached to container: {containerId}");
-            StateHasChanged();
-        });
-    }
-
-    private void OnConsoleDisconnected(object? sender, string reason)
-    {
-        InvokeAsync(async () =>
-        {
-            await WriteSystemMessage($"Disconnected: {reason}", isError: true);
-            isConnected = false;
-            StateHasChanged();
-        });
-    }
-
-    private string? _inputControllerId;
-
-    private void OnInputControlChanged(object? sender, string controllerId)
-    {
-        InvokeAsync(async () =>
-        {
-            _inputControllerId = string.IsNullOrWhiteSpace(controllerId) ? null : controllerId;
-            var isController = _inputControllerId == consoleClient?.ConnectionId;
-
-            if (terminal != null && isJavaScriptAvailable)
-            {
-                terminal.Options.DisableStdin = !isController;
-            }
-
-            if (!isController && !string.IsNullOrWhiteSpace(controllerId))
-            {
-                await WriteSystemMessage($"Another user has input control ({controllerId.Substring(0, Math.Min(controllerId.Length, 8))}...). View-only mode.");
-            }
-            else if (isController)
-            {
-                await WriteSystemMessage("You have input control.");
-            }
-
-            StateHasChanged();
-        });
-    }
-
-    private async Task WriteSystemMessage(string message, bool isError = false)
-    {
-        // Only attempt JavaScript interop if it's available (after OnAfterRenderAsync firstRender)
-        if (terminal != null && isJavaScriptAvailable)
-        {
-            try
-            {
-                var color = isError ? "\x1b[31m" : "\x1b[32m"; // Red or Green
-                var reset = "\x1b[0m";
-                await terminal.WriteLine($"{color}[SYSTEM]{reset} {message}");
-            }
-            catch (InvalidOperationException)
-            {
-                // Silently ignore JS interop errors during disposal or prerendering
-                // This can happen when the component is being torn down or during SSR
-            }
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        // Clean up the SignalR connection and event handlers
-        // No need to write terminal messages during disposal
         if (consoleClient != null)
         {
             try
@@ -532,7 +461,7 @@
             }
             catch
             {
-                // Ignore errors during disposal
+                // Non-critical during cleanup
             }
 
             consoleClient = null;
@@ -543,20 +472,183 @@
         connectionCts = null;
     }
 
-    // Add this method to fix CS0103: The name 'OnLineFeed' does not exist in the current context
+    private async Task ClearTerminal()
+    {
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
+        {
+            try
+            {
+                await terminal.Clear();
+                await WriteSystemMessage("Terminal cleared");
+            }
+            catch
+            {
+                // Ignore JS interop failure
+            }
+        }
+    }
+
+    private async Task FocusTerminalAsync()
+    {
+        await Task.CompletedTask;
+    }
+
+    // Event handlers for ContainerConsoleClient events
+    private void OnOutputReceived(object? sender, string data)
+    {
+        InvokeAsync(async () =>
+        {
+            if (isDisposed) return;
+            try
+            {
+                if (terminal != null && isJavaScriptAvailable)
+                {
+                    var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
+                    await terminal.Write(normalized);
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // Suppress JS interop errors during rendering to prevent circuit crash
+            }
+        });
+    }
+
+    private void OnErrorReceived(object? sender, string error)
+    {
+        InvokeAsync(async () =>
+        {
+            if (isDisposed) return;
+            connectionErrorMessage = error;
+            try
+            {
+                await WriteSystemMessage($"ERROR: {error}", isError: true);
+            }
+            catch
+            {
+                // Suppress JS error
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnConsoleConnected(object? sender, string containerId)
+    {
+        InvokeAsync(async () =>
+        {
+            if (isDisposed) return;
+            connectionErrorMessage = null;
+            try
+            {
+                await WriteSystemMessage($"Attached to container: {containerId}");
+            }
+            catch
+            {
+                // Suppress JS error
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnConsoleDisconnected(object? sender, string reason)
+    {
+        InvokeAsync(async () =>
+        {
+            if (isDisposed) return;
+            isConnected = false;
+            isConnecting = false;
+            if (!string.IsNullOrWhiteSpace(reason) && reason != "Attach stream ended" && reason != "Attach stream cancelled")
+            {
+                connectionErrorMessage = reason;
+            }
+            try
+            {
+                await WriteSystemMessage($"Disconnected: {reason}", isError: true);
+            }
+            catch
+            {
+                // Suppress JS error
+            }
+            StateHasChanged();
+        });
+    }
+
+    private string? _inputControllerId;
+
+    private void OnInputControlChanged(object? sender, string controllerId)
+    {
+        InvokeAsync(async () =>
+        {
+            if (isDisposed) return;
+            _inputControllerId = string.IsNullOrWhiteSpace(controllerId) ? null : controllerId;
+            var isController = _inputControllerId == consoleClient?.ConnectionId;
+
+            try
+            {
+                if (terminal != null && isJavaScriptAvailable)
+                {
+                    terminal.Options.DisableStdin = !isController;
+                }
+
+                if (!isController && !string.IsNullOrWhiteSpace(controllerId))
+                {
+                    await WriteSystemMessage($"Another user has input control ({controllerId.Substring(0, Math.Min(controllerId.Length, 8))}...). View-only mode.");
+                }
+                else if (isController)
+                {
+                    await WriteSystemMessage("You have input control.");
+                }
+            }
+            catch
+            {
+                // Suppress JS error
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task WriteSystemMessage(string message, bool isError = false)
+    {
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
+        {
+            try
+            {
+                var color = isError ? "\x1b[31m" : "\x1b[32m"; // Red or Green
+                var reset = "\x1b[0m";
+                await terminal.WriteLine($"{color}[SYSTEM]{reset} {message}");
+            }
+            catch
+            {
+                // Silently ignore JS interop errors during disposal or prerendering
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        isDisposed = true;
+        isJavaScriptAvailable = false;
+        await SafeCleanupClientAsync();
+    }
 
     private async Task OnLineFeed()
     {
-        var test = stringBuilder.ToString();
-        //TODO: Process the accumulated input data in stringBuilder as needed
-        stringBuilder.Clear();
-        terminal?.ScrollLines(1); // Scroll down one line after processing input
-        
-        if (consoleClient != null)
-            await consoleClient.SendInputAsync(test, CancellationToken.None);
-        StateHasChanged();
+        if (isDisposed) return;
+        try
+        {
+            var test = stringBuilder.ToString();
+            stringBuilder.Clear();
+            terminal?.ScrollLines(1);
+            
+            if (consoleClient != null)
+                await consoleClient.SendInputAsync(test, CancellationToken.None);
+            StateHasChanged();
+        }
+        catch
+        {
+            // Suppress unhandled input exceptions
+        }
     }
 }
-
-
-

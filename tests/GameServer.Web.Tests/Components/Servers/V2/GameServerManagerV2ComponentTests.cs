@@ -22,6 +22,7 @@ public sealed class GameServerManagerV2ComponentTests : BunitContext
         Services.AddSingleton<TooltipService>();
         Services.AddSingleton(api.Object);
         Services.AddSingleton(thumbnailCache.Object);
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         thumbnailCache
             .Setup(t => t.GetCachedThumbnailUrlAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string? url, CancellationToken _) => url);
@@ -69,7 +70,56 @@ public sealed class GameServerManagerV2ComponentTests : BunitContext
             Assert.Contains("Creative Plot", cut.Markup);
             Assert.Contains("Running", cut.Markup);
             Assert.Contains("Stopped", cut.Markup);
-            Assert.Contains("25565/tcp", cut.Markup);
+            Assert.Contains("25565", cut.Markup);
+            Assert.DoesNotContain("25565/tcp", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameServerManagerV2_PortsColumn_ShouldOnlyDisplayPrimaryPublishedPort()
+    {
+        // Arrange
+        var servers = new List<GameServerListItem>
+        {
+            new()
+            {
+                ServerId = "srv-multi-port",
+                Name = "Palworld Server",
+                Status = "Running",
+                ResolvedPorts =
+                [
+                    new GameServerResolvedPort
+                    {
+                        ContainerPort = 15636,
+                        PublishedPort = 28211,
+                        Protocol = "udp",
+                        AdvertisedPort = true,
+                        DisplayOrder = 0
+                    },
+                    new GameServerResolvedPort
+                    {
+                        ContainerPort = 27015,
+                        PublishedPort = 27015,
+                        Protocol = "udp",
+                        AdvertisedPort = false,
+                        DisplayOrder = 1
+                    }
+                ]
+            }
+        };
+
+        api.Setup(a => a.GetListAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync(servers);
+
+        // Act
+        var cut = Render<GameServerManagerV2>();
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("28211", cut.Markup);
+            Assert.DoesNotContain("27015", cut.Markup);
+            Assert.DoesNotContain("15636", cut.Markup);
+            Assert.DoesNotContain("udp", cut.Markup);
         });
     }
 

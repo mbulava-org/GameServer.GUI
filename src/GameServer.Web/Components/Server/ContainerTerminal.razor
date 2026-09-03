@@ -10,6 +10,19 @@
 @inject ILogger<ContainerTerminal> Logger
 @implements IAsyncDisposable
 
+@if (!isConnected && !isConnecting && !string.IsNullOrEmpty(connectionErrorMessage))
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Class="mb-3" Shade="Shade.Lighter" AllowClose="false">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <RadzenIcon Icon="error_outline" Style="font-size: 1.25rem;" />
+                <span><strong>Connection to Swarm manager agent failed:</strong> @connectionErrorMessage</span>
+            </div>
+            <RadzenButton Icon="refresh" Text="Retry Connection" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@ConnectAsync" Disabled="@string.IsNullOrEmpty(ContainerId ?? ServerId)" />
+        </div>
+    </RadzenAlert>
+}
+
 <div class="terminal-container">
     <div class="terminal-header">
         <div class="terminal-title">
@@ -19,7 +32,7 @@
         <div class="terminal-controls">
             @if (isConnected)
             {
-                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="? Connected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" Variant="Variant.Flat" Size="BadgeSize.Small" />
                 <RadzenButton Icon="refresh" 
                              Size="ButtonSize.Small" 
                              ButtonStyle="ButtonStyle.Light"
@@ -33,24 +46,45 @@
             }
             else if (isConnecting)
             {
-                <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" Style="width: 20px; height: 20px;" />
+                <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" Style="width: 18px; height: 18px;" />
                 <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" Size="BadgeSize.Small" />
             }
             else
             {
-                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="? Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                <RadzenButton Icon="play_arrow" 
-                             Text="Connect" 
-                             Size="ButtonSize.Small" 
-                             ButtonStyle="ButtonStyle.Success"
-                             Click="@ConnectAsync"
-                             Disabled="@string.IsNullOrEmpty(ContainerId)"
-                             title="Connect to terminal" />
+                @if (!string.IsNullOrEmpty(connectionErrorMessage))
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Connection Failed" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    <RadzenButton Icon="refresh" 
+                                 Text="Retry" 
+                                 Size="ButtonSize.Small" 
+                                 ButtonStyle="ButtonStyle.Primary"
+                                 Click="@ConnectAsync"
+                                 Disabled="@string.IsNullOrEmpty(ContainerId ?? ServerId)"
+                                 title="Retry connection to terminal" />
+                }
+                else
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    <RadzenButton Icon="play_arrow" 
+                                 Text="Connect" 
+                                 Size="ButtonSize.Small" 
+                                 ButtonStyle="ButtonStyle.Success"
+                                 Click="@ConnectAsync"
+                                 Disabled="@string.IsNullOrEmpty(ContainerId ?? ServerId)"
+                                 title="Connect to terminal" />
+                }
             }
         </div>
     </div>
 
     <div class="xterm-wrapper" @ref="_terminalWrapperRef">
+        @if (isConnecting)
+        {
+            <div class="terminal-overlay">
+                <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+                <span class="mt-2 text-light small">Connecting to interactive shell session...</span>
+            </div>
+        }
         <Xterm @ref="terminal" 
                Options="@terminalOptions"
                Addons="@_addons"
@@ -96,11 +130,27 @@
     }
 
     .xterm-wrapper {
+        position: relative;
         flex: 1;
         overflow: hidden;
         background: #000;
         width: 100%;
         height: 100%;
+    }
+
+    .terminal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.75);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+        backdrop-filter: blur(2px);
     }
 
     .xterm-wrapper ::deep .xterm {
@@ -173,6 +223,8 @@
 
     private bool isConnected = false;
     private bool isConnecting = false;
+    private string? connectionErrorMessage;
+    private bool isDisposed = false;
     private bool isJavaScriptAvailable = false;
     private string? sessionId;
     private CancellationTokenSource? cts;
@@ -205,7 +257,7 @@
 
     private async Task FitTerminalAsync()
     {
-        if (isJavaScriptAvailable)
+        if (isJavaScriptAvailable && !isDisposed)
         {
             try
             {
@@ -232,19 +284,26 @@
 
     private async Task OnTerminalReady()
     {
-        if (terminal == null || !isJavaScriptAvailable) return;
+        if (terminal == null || !isJavaScriptAvailable || isDisposed) return;
 
-        await FitTerminalAsync();
-        await terminal.WriteLine("\x1b[1;32m=== Container Interactive Terminal ===\x1b[0m");
-        await terminal.WriteLine($"\x1b[36mShell: {Shell}\x1b[0m");
-        await terminal.WriteLine($"\x1b[36mTarget: {ContainerId ?? ServerId ?? "Unknown"}\x1b[0m");
-        await terminal.WriteLine("");
-        
-        if (!AutoConnect)
+        try
         {
-            await terminal.WriteLine("\x1b[33mClick 'Connect' to start an interactive shell session\x1b[0m");
+            await FitTerminalAsync();
+            await terminal.WriteLine("\x1b[1;32m=== Container Interactive Terminal ===\x1b[0m");
+            await terminal.WriteLine($"\x1b[36mShell: {Shell}\x1b[0m");
+            await terminal.WriteLine($"\x1b[36mTarget: {ContainerId ?? ServerId ?? "Unknown"}\x1b[0m");
+            await terminal.WriteLine("");
+            
+            if (!AutoConnect)
+            {
+                await terminal.WriteLine("\x1b[33mClick 'Connect' to start an interactive shell session\x1b[0m");
+            }
+            await FitTerminalAsync();
         }
-        await FitTerminalAsync();
+        catch
+        {
+            // Ignore JS errors during terminal init
+        }
     }
 
     private async Task ConnectAsync()
@@ -252,17 +311,21 @@
         var targetId = !string.IsNullOrWhiteSpace(ContainerId) ? ContainerId : ServerId;
         if (string.IsNullOrEmpty(targetId))
         {
+            connectionErrorMessage = "No server or container ID provided";
             await WriteError("Error: No server or container ID provided");
             return;
         }
 
-        if (isConnected || isConnecting) return;
+        if (isConnected || isConnecting || isDisposed) return;
 
         isConnecting = true;
+        connectionErrorMessage = null;
         StateHasChanged();
 
         try
         {
+            await SafeCleanupClientAsync();
+
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
             var hubUrl = $"{baseUri}/hubs/terminal";
 
@@ -283,6 +346,7 @@
 
             isConnected = true;
             isConnecting = false;
+            connectionErrorMessage = null;
             sessionId = terminalClient.ConnectionId;
 
             await WriteSuccess($"Connected! Shell session active.\n");
@@ -301,6 +365,7 @@
         {
             isConnecting = false;
             isConnected = false;
+            connectionErrorMessage = ex.Message;
             Logger.LogError(ex, "Failed to connect to terminal");
             await WriteError($"Connection failed: {ex.Message}");
 
@@ -318,7 +383,7 @@
 
     private async Task OnTerminalData(string data)
     {
-        if (!isConnected || terminalClient is null || !terminalClient.IsConnected)
+        if (!isConnected || terminalClient is null || !terminalClient.IsConnected || isDisposed)
             return;
 
         try
@@ -333,21 +398,46 @@
 
     private async Task DisconnectAsync()
     {
-        try
-        {
-            if (terminalClient != null)
-            {
-                await terminalClient.DisconnectAsync();
-            }
-        }
-        catch { }
+        await SafeCleanupClientAsync();
 
         isConnected = false;
-        cts?.Cancel();
+        isConnecting = false;
+        connectionErrorMessage = null;
         sessionId = null;
 
         await WriteInfo("Disconnected from terminal");
         StateHasChanged();
+    }
+
+    private async Task SafeCleanupClientAsync()
+    {
+        if (terminalClient != null)
+        {
+            try
+            {
+                terminalClient.OutputReceived -= OnTerminalOutput;
+                terminalClient.ErrorReceived -= OnTerminalError;
+                terminalClient.SessionStarted -= OnTerminalSessionStarted;
+                terminalClient.Disconnected -= OnTerminalDisconnected;
+
+                await terminalClient.DisconnectAsync();
+
+                if (terminalClient is IAsyncDisposable disposable)
+                {
+                    await disposable.DisposeAsync();
+                }
+            }
+            catch
+            {
+                // Non-critical during cleanup
+            }
+
+            terminalClient = null;
+        }
+
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = null;
     }
 
     private void WireTerminalEvents()
@@ -370,10 +460,18 @@
     {
         InvokeAsync(async () =>
         {
-            if (terminal != null && isJavaScriptAvailable)
+            if (isDisposed) return;
+            try
             {
-                var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
-                await terminal.Write(normalized);
+                if (terminal != null && isJavaScriptAvailable)
+                {
+                    var normalized = System.Text.RegularExpressions.Regex.Replace(data, @"(?<!\r)\n", "\r\n");
+                    await terminal.Write(normalized);
+                }
+            }
+            catch
+            {
+                // Suppress JS error to prevent circuit crash
             }
         });
     }
@@ -382,7 +480,17 @@
     {
         InvokeAsync(async () =>
         {
-            await WriteError($"Error: {error}");
+            if (isDisposed) return;
+            connectionErrorMessage = error;
+            try
+            {
+                await WriteError($"Error: {error}");
+            }
+            catch
+            {
+                // Suppress JS error
+            }
+            StateHasChanged();
         });
     }
 
@@ -390,7 +498,9 @@
     {
         InvokeAsync(() =>
         {
+            if (isDisposed) return;
             sessionId = sid;
+            connectionErrorMessage = null;
             Logger.LogInformation("Terminal session started: {SessionId}", sessionId);
             StateHasChanged();
         });
@@ -400,56 +510,81 @@
     {
         InvokeAsync(async () =>
         {
+            if (isDisposed) return;
             isConnected = false;
-            await WriteInfo($"Disconnected: {message}");
+            isConnecting = false;
+            if (!string.IsNullOrWhiteSpace(message) && message != "Session closed" && message != "Disconnected from terminal")
+            {
+                connectionErrorMessage = message;
+            }
+            try
+            {
+                await WriteInfo($"Disconnected: {message}");
+            }
+            catch
+            {
+                // Suppress JS error
+            }
             StateHasChanged();
         });
     }
 
     private async Task ClearTerminal()
     {
-        if (terminal != null && isJavaScriptAvailable)
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
         {
-            await terminal.Clear();
-            await terminal.WriteLine("\x1b[1;32m=== Terminal Cleared ===\x1b[0m\n");
+            try
+            {
+                await terminal.Clear();
+                await terminal.WriteLine("\x1b[1;32m=== Terminal Cleared ===\x1b[0m\n");
+            }
+            catch
+            {
+                // Suppress JS error
+            }
         }
     }
 
     private async Task WriteSuccess(string message)
     {
-        if (terminal != null && isJavaScriptAvailable)
-            await terminal.WriteLine($"\x1b[1;32m{message}\x1b[0m");
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
+        {
+            try
+            {
+                await terminal.WriteLine($"\x1b[1;32m{message}\x1b[0m");
+            }
+            catch { }
+        }
     }
 
     private async Task WriteError(string message)
     {
-        if (terminal != null && isJavaScriptAvailable)
-            await terminal.WriteLine($"\x1b[1;31m{message}\x1b[0m");
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
+        {
+            try
+            {
+                await terminal.WriteLine($"\x1b[1;31m{message}\x1b[0m");
+            }
+            catch { }
+        }
     }
 
     private async Task WriteInfo(string message)
     {
-        if (terminal != null && isJavaScriptAvailable)
-            await terminal.WriteLine($"\x1b[1;36m{message}\x1b[0m");
+        if (terminal != null && isJavaScriptAvailable && !isDisposed)
+        {
+            try
+            {
+                await terminal.WriteLine($"\x1b[1;36m{message}\x1b[0m");
+            }
+            catch { }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        isDisposed = true;
         isJavaScriptAvailable = false;
-        cts?.Cancel();
-        cts?.Dispose();
-
-        if (terminalClient != null)
-        {
-            terminalClient.OutputReceived -= OnTerminalOutput;
-            terminalClient.ErrorReceived -= OnTerminalError;
-            terminalClient.SessionStarted -= OnTerminalSessionStarted;
-            terminalClient.Disconnected -= OnTerminalDisconnected;
-
-            if (terminalClient is IAsyncDisposable disposable)
-            {
-                await disposable.DisposeAsync();
-            }
-        }
+        await SafeCleanupClientAsync();
     }
 }

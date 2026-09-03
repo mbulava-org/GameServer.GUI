@@ -53,7 +53,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         {
             Assert.Contains("Game Servers", cut.Markup);
             Assert.Contains("Minecraft Survival", cut.Markup);
-            Assert.Contains("25565/tcp", cut.Markup);
+            Assert.Contains("25565", cut.Markup);
         });
     }
 
@@ -265,6 +265,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IPublicIpService>(new StubPublicIpService());
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
         Services.AddSingleton(CreateMountTypeConfigApiService(handler));
