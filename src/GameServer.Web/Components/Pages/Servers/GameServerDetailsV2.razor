@@ -135,9 +135,9 @@
                         <div><strong>Key:</strong> <code>@server.GameTypeKey</code></div>
                     }
                     <div><strong>Service:</strong> @(string.IsNullOrWhiteSpace(server.ServiceName) ? "Not assigned" : server.ServiceName)</div>
-                    <div><strong>Last Deployed:</strong> @(server.LastDeployedAt?.ToLocalTime().ToString("g") ?? "Never")</div>
-                    <div><strong>Last Seen:</strong> @(server.LastSeenAt?.ToLocalTime().ToString("g") ?? "Never")</div>
-                    <div><strong>Updated:</strong> @server.UpdatedAt.ToLocalTime().ToString("g")</div>
+                    <div><strong>Last Deployed:</strong> @(server.LastDeployedAt.HasValue ? FormatLocalDateTime(server.LastDeployedAt.Value) : "Never")</div>
+                    <div><strong>Last Seen:</strong> @(server.LastSeenAt.HasValue ? FormatLocalDateTime(server.LastSeenAt.Value) : "Never")</div>
+                    <div><strong>Updated:</strong> @FormatLocalDateTime(server.UpdatedAt)</div>
                     @if (!string.IsNullOrWhiteSpace(server.Description))
                     {
                         <div class="mt-3 text-muted">@server.Description</div>
@@ -875,23 +875,21 @@
 
     private static BadgeStyle GetStatusBadgeStyle(string? status)
     {
-        return status?.Trim().ToLowerInvariant() switch
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
         {
-            "available" => BadgeStyle.Success,
-            "running" => BadgeStyle.Info,
-            "preparing" => BadgeStyle.Primary,
-            "starting" => BadgeStyle.Info,
-            "stopped" => BadgeStyle.Secondary,
-            "stopping" => BadgeStyle.Warning,
-            "failed" => BadgeStyle.Danger,
-            "scaling down" => BadgeStyle.Warning,
+            "running" or "available" => BadgeStyle.Success,
+            "preparing" or "starting" => BadgeStyle.Info,
+            "stopped" or "deleted" or "failed" => BadgeStyle.Danger,
+            "stopping" or "scalingdown" => BadgeStyle.Warning,
             _ => BadgeStyle.Secondary
         };
     }
 
     private static string GetStatusText(string? status)
     {
-        return status?.Trim().ToLowerInvariant() switch
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
         {
             "available" => "Available",
             "running" => "Running",
@@ -900,9 +898,22 @@
             "stopped" => "Stopped",
             "stopping" => "Stopping",
             "failed" => "Failed",
-            "scaling down" => "Scaling Down",
+            "deleted" => "Deleted",
+            "scalingdown" => "Scaling Down",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
+    }
+
+    private static string FormatLocalDateTime(DateTime dateTime)
+    {
+        var utc = dateTime.Kind switch
+        {
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+        };
+
+        return utc.ToLocalTime().ToString("g");
     }
 
     private string GetWebHostUrl(GameServerResolvedWebHost host)

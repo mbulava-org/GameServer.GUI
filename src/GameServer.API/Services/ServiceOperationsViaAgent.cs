@@ -213,7 +213,7 @@ namespace GameServer.API.Services
 
             // Read raw JSON for debugging
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
+            _logger.LogDebug("📥 Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
 
             // Deserialize using JsonElement to preserve type information
             var jsonDoc = JsonDocument.Parse(rawJson);
@@ -239,7 +239,7 @@ namespace GameServer.API.Services
                 throw new Exception("Response missing 'data.services' property");
             }
 
-            _logger.LogWarning("📦 Services JSON (first 500 chars): {Json}", 
+            _logger.LogDebug("📦 Services JSON (first 500 chars): {Json}", 
                 servicesProp.GetRawText().Length > 500 ? servicesProp.GetRawText()[..500] : servicesProp.GetRawText());
 
             // Deserialize services array directly from the JSON element (case-insensitive for camelCase from agent)
@@ -260,7 +260,7 @@ namespace GameServer.API.Services
             if (services.Count > 0)
             {
                 var first = services[0];
-                _logger.LogWarning("🔍 First service: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
+                _logger.LogDebug("🔍 First service: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
                     first.ID, 
                     first.Spec != null, 
                     first.Spec?.Name ?? "NULL");
@@ -300,7 +300,7 @@ namespace GameServer.API.Services
 
             // Read raw JSON for debugging
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [InspectService] Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
+            _logger.LogDebug("📥 [InspectService] Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
 
             // Use JsonDocument to preserve type information (avoid double serialization)
             var jsonDoc = JsonDocument.Parse(rawJson);
@@ -325,7 +325,7 @@ namespace GameServer.API.Services
                 throw new Exception("Response missing 'data.service' property");
             }
 
-            _logger.LogWarning("📦 [InspectService] Service JSON (first 300 chars): {Json}", 
+            _logger.LogDebug("📦 [InspectService] Service JSON (first 300 chars): {Json}", 
                 serviceProp.GetRawText().Length > 300 ? serviceProp.GetRawText()[..300] : serviceProp.GetRawText());
 
             // Deserialize service directly from the JSON element (case-insensitive for camelCase from agent)
@@ -338,7 +338,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to deserialize service: {serviceId}");
             }
 
-            _logger.LogWarning("🔍 [InspectService] Result: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
+            _logger.LogDebug("🔍 [InspectService] Result: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
                 service.ID, 
                 service.Spec != null,
                 service.Spec?.Name ?? "NULL");
@@ -370,7 +370,7 @@ namespace GameServer.API.Services
             response.EnsureSuccessStatusCode();
 
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [ListTasks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogDebug("📥 [ListTasks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             // Use camelCase options to match ASP.NET Core default
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -382,7 +382,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to list tasks: {result?.Message}");
             }
 
-            _logger.LogWarning("✅ [ListTasks] Found {Count} tasks, First task has Status: {HasStatus}", 
+            _logger.LogDebug("✅ [ListTasks] Found {Count} tasks, First task has Status: {HasStatus}", 
                 result.Tasks.Count, 
                 result.Tasks.Count > 0 ? result.Tasks[0].Status != null : false);
 
@@ -413,7 +413,7 @@ namespace GameServer.API.Services
             response.EnsureSuccessStatusCode();
 
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [ListNetworks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogDebug("📥 [ListNetworks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
@@ -424,7 +424,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to list networks: {result?.Message}");
             }
 
-            _logger.LogWarning("✅ [ListNetworks] Found {Count} networks", result.Networks.Count);
+            _logger.LogDebug("✅ [ListNetworks] Found {Count} networks", result.Networks.Count);
 
             return result.Networks;
         }
@@ -443,7 +443,7 @@ namespace GameServer.API.Services
             response.EnsureSuccessStatusCode();
 
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [InspectNetwork] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogDebug("📥 [InspectNetwork] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
@@ -454,7 +454,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to inspect network: {result?.Message}");
             }
 
-            _logger.LogWarning("✅ [InspectNetwork] Network: ID={Id}, Name={Name}", result.Network.ID, result.Network.Name);
+            _logger.LogDebug("✅ [InspectNetwork] Network: ID={Id}, Name={Name}", result.Network.ID, result.Network.Name);
 
             return result.Network;
         }

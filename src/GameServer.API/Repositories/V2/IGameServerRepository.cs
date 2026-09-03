@@ -14,5 +14,7 @@ public interface IGameServerRepository
 
     Task<GameServerModel> UpdateAsync(GameServerModel server);
 
+    Task UpdateStatusAsync(string serverId, string status);
+
     Task DeleteAsync(string serverId, bool softDelete = true);
 }

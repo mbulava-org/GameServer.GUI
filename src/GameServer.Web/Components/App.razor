@@ -30,9 +30,19 @@
     <script src="_content/XtermBlazor/XtermBlazor.min.js"></script>
     <script src="js/terminal-helpers.js"></script>
     <script>
-        if (window.XtermBlazor && window.FitAddon) {
-            window.XtermBlazor.registerAddons({ "addon-fit": new window.FitAddon.FitAddon() });
-        }
+        (function () {
+            function registerXtermAddons() {
+                if (window.XtermBlazor && window.FitAddon && window.FitAddon.FitAddon) {
+                    try {
+                        window.XtermBlazor.registerAddons({ "addon-fit": new window.FitAddon.FitAddon() });
+                    } catch (e) {
+                        console.warn("Could not register XtermBlazor addons:", e);
+                    }
+                }
+            }
+            registerXtermAddons();
+            document.addEventListener("DOMContentLoaded", registerXtermAddons);
+        })();
     </script>
     <script src="js/fileDownload.js"></script>
 </body>

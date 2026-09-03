@@ -1249,15 +1249,18 @@
         }
     }
 
-    private BadgeStyle GetStatusBadgeStyle(string? status) => status?.ToLowerInvariant() switch
+    private static BadgeStyle GetStatusBadgeStyle(string? status)
     {
-        "running" => BadgeStyle.Success,
-        "preparing" => BadgeStyle.Primary,
-        "starting" => BadgeStyle.Info,
-        "stopped" => BadgeStyle.Warning,
-        "failed" => BadgeStyle.Danger,
-        _ => BadgeStyle.Light
-    };
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
+        {
+            "running" or "available" => BadgeStyle.Success,
+            "preparing" or "starting" => BadgeStyle.Info,
+            "stopped" or "deleted" or "failed" => BadgeStyle.Danger,
+            "stopping" or "scalingdown" => BadgeStyle.Warning,
+            _ => BadgeStyle.Secondary
+        };
+    }
 
     private async Task LoadMountTypesAsync()
     {

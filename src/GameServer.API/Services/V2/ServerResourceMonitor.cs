@@ -158,6 +158,11 @@ public sealed class ServerResourceMonitor : IServerResourceMonitor
         {
             throw;
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("manager agent", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("Manager agent not currently available for resource snapshot of server {ServerId}: {Message}", serverId, ex.Message);
+            return null;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting resource snapshot for server {ServerId}", serverId);

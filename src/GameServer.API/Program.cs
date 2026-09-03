@@ -3,6 +3,7 @@ using GameServer.API.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
+using Serilog.Events;
 using System.Reflection;
 using Scalar.AspNetCore;
 using RepositoriesV2 = GameServer.API.Repositories.V2;
@@ -286,8 +287,37 @@ namespace GameServer.API
                 mainLogger.LogInformation("GameServer.API runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
                 mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
 
-                // Add Serilog request logging
-                app.UseSerilogRequestLogging();
+                // Add Serilog request logging with clean handling for client-aborted requests
+                app.UseSerilogRequestLogging(options =>
+                {
+                    options.GetLevel = (httpContext, elapsed, ex) =>
+                    {
+                        if (ex is OperationCanceledException || httpContext.Response.StatusCode == 499)
+                        {
+                            return LogEventLevel.Debug;
+                        }
+
+                        if (ex != null || httpContext.Response.StatusCode >= 500)
+                        {
+                            return LogEventLevel.Error;
+                        }
+
+                        return LogEventLevel.Information;
+                    };
+                });
+
+                // Handle client-aborted requests cleanly without unhandled 500 errors
+                app.Use(async (context, next) =>
+                {
+                    try
+                    {
+                        await next();
+                    }
+                    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                    {
+                        context.Response.StatusCode = 499; // Client Closed Request
+                    }
+                });
 
                 // Map OpenAPI endpoint and Scalar UI
                 app.MapOpenApi();

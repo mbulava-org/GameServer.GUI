@@ -101,8 +101,8 @@
 
                     <RadzenDataGridColumn TItem="GameServerListItem" Property="Status" Title="State" Width="120px">
                         <Template Context="server">
-                            <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status)"
-                                         Text="@GetStatusText(server.Status)" />
+                            <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status, server.IsDeleted)"
+                                         Text="@GetStatusText(server.Status, server.IsDeleted)" />
                         </Template>
                     </RadzenDataGridColumn>
 
@@ -115,25 +115,6 @@
                                     <div class="small text-muted">@server.GameTypeKey</div>
                                 }
                             </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerListItem" Title="Revision" Width="180px" Sortable="false" Filterable="false">
-                        <Template Context="server">
-                            @if (string.IsNullOrWhiteSpace(server.RevisionVersionTag))
-                            {
-                                <span class="text-muted">No revision context</span>
-                            }
-                            else
-                            {
-                                <div>
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@server.RevisionVersionTag" Variant="Variant.Outlined" />
-                                    @if (!string.IsNullOrWhiteSpace(server.RevisionImageReference))
-                                    {
-                                        <div class="small text-muted mt-1">@server.RevisionImageReference</div>
-                                    }
-                                </div>
-                            }
                         </Template>
                     </RadzenDataGridColumn>
 
@@ -152,16 +133,25 @@
 
                     <RadzenDataGridColumn TItem="GameServerListItem" Title="Ports" Width="220px" Sortable="false" Filterable="false">
                         <Template Context="server">
-                            @if (!server.ResolvedPorts.Any())
+                            @{
+                                var primaryPort = server.ResolvedPorts.FirstOrDefault(p => p.AdvertisedPort)
+                                    ?? server.ResolvedPorts.OrderBy(p => p.DisplayOrder).FirstOrDefault();
+                            }
+                            @if (primaryPort == null)
                             {
                                 <span class="text-muted">No resolved ports</span>
                             }
                             else
                             {
                                 <div class="gameserver-list-ports">
-                                    @foreach (var port in server.ResolvedPorts.OrderBy(port => port.DisplayOrder).Take(3))
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Success"
+                                                 Text="@FormatPort(primaryPort)"
+                                                 Size="BadgeSize.Small"
+                                                 class="me-1 mb-1"
+                                                 title="Primary Port (Exposed)" />
+                                    @foreach (var port in server.ResolvedPorts.Where(p => p != primaryPort).OrderBy(p => p.DisplayOrder).Take(2))
                                     {
-                                        <RadzenBadge BadgeStyle="@(port.AdvertisedPort ? BadgeStyle.Success : BadgeStyle.Light)"
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Light"
                                                      Text="@FormatPort(port)"
                                                      Size="BadgeSize.Small"
                                                      class="me-1 mb-1" />
@@ -177,7 +167,7 @@
 
                     <RadzenDataGridColumn TItem="GameServerListItem" Property="UpdatedAt" Title="Updated" Width="160px">
                         <Template Context="server">
-                            <span>@server.UpdatedAt.ToLocalTime().ToString("g")</span>
+                            <span>@FormatLocalDateTime(server.UpdatedAt)</span>
                         </Template>
                     </RadzenDataGridColumn>
 
@@ -350,35 +340,59 @@
     private static string FormatPort(GameServerResolvedPort port)
     {
         ArgumentNullException.ThrowIfNull(port);
-        return $"{port.ContainerPort}/{port.Protocol}";
+        var exposedPort = port.PublishedPort > 0 ? port.PublishedPort : port.ContainerPort;
+        return $"{exposedPort}/{port.Protocol}";
     }
 
-    private static BadgeStyle GetStatusBadgeStyle(string? status)
+    private static string FormatLocalDateTime(DateTime dateTime)
     {
-        return status?.Trim().ToLowerInvariant() switch
+        var utc = dateTime.Kind switch
         {
-            "running" => BadgeStyle.Success,
-            "preparing" => BadgeStyle.Primary,
-            "starting" => BadgeStyle.Info,
-            "stopped" => BadgeStyle.Secondary,
-            "stopping" => BadgeStyle.Warning,
-            "failed" => BadgeStyle.Danger,
-            "scaling down" => BadgeStyle.Warning,
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+        };
+
+        return utc.ToLocalTime().ToString("g");
+    }
+
+    private static BadgeStyle GetStatusBadgeStyle(string? status, bool isDeleted = false)
+    {
+        if (isDeleted)
+        {
+            return BadgeStyle.Danger;
+        }
+
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
+        {
+            "running" or "available" => BadgeStyle.Success,
+            "preparing" or "starting" => BadgeStyle.Info,
+            "stopped" or "deleted" or "failed" => BadgeStyle.Danger,
+            "stopping" or "scalingdown" => BadgeStyle.Warning,
             _ => BadgeStyle.Secondary
         };
     }
 
-    private static string GetStatusText(string? status)
+    private static string GetStatusText(string? status, bool isDeleted = false)
     {
-        return status?.Trim().ToLowerInvariant() switch
+        if (isDeleted)
+        {
+            return "Deleted";
+        }
+
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
         {
             "running" => "Running",
+            "available" => "Available",
             "preparing" => "Preparing",
             "starting" => "Starting",
             "stopped" => "Stopped",
             "stopping" => "Stopping",
             "failed" => "Failed",
-            "scaling down" => "Scaling Down",
+            "deleted" => "Deleted",
+            "scalingdown" => "Scaling Down",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
     }

@@ -145,7 +145,7 @@
 
                     <RadzenDataGridColumn TItem="GameTypeListItem" Property="UpdatedAt" Title="Updated" Width="160px">
                         <Template Context="gameType">
-                            <span>@gameType.UpdatedAt.ToLocalTime().ToString("g")</span>
+                            <span>@FormatLocalDateTime(gameType.UpdatedAt)</span>
                         </Template>
                     </RadzenDataGridColumn>
 
@@ -331,5 +331,17 @@
         {
             NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
         }
+    }
+
+    private static string FormatLocalDateTime(DateTime dateTime)
+    {
+        var utc = dateTime.Kind switch
+        {
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+        };
+
+        return utc.ToLocalTime().ToString("g");
     }
 }

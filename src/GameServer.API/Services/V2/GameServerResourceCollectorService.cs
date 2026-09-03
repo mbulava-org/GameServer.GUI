@@ -218,8 +218,7 @@ public sealed class GameServerResourceCollectorService : BackgroundService, IGam
                         {
                             _logger.LogInformation("Syncing GameServer {ServerId} status from '{OldStatus}' to '{NewStatus}'",
                                 serverId, server.Status, targetStatus);
-                            server = server with { Status = targetStatus };
-                            await serverRepo.UpdateAsync(server).ConfigureAwait(false);
+                            await serverRepo.UpdateStatusAsync(serverId, targetStatus).ConfigureAwait(false);
                         }
                     }
                 }
