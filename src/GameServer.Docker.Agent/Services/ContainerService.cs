@@ -479,6 +479,124 @@ namespace GameServer.Docker.Agent.Services
 
             _logger.LogDebug("Listing files in container {ContainerId} at path {Path}", containerId, normalizedPath);
 
+            // Fast path: use non-recursive exec inspection to avoid tar-streaming gigabytes of container files
+            try
+            {
+                var execItems = await ListFilesViaExecAsync(containerId, normalizedPath, cancellationToken);
+                if (execItems != null)
+                {
+                    return execItems;
+                }
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Exec-based file listing not available for container {ContainerId} at path {Path}, falling back to archive", containerId, normalizedPath);
+            }
+
+            return await ListFilesViaArchiveAsync(containerId, normalizedPath, cancellationToken);
+        }
+
+        private async Task<IReadOnlyList<Models.ContainerFileItemResponse>?> ListFilesViaExecAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            var script = "dir=\"$1\"\ncd \"$dir\" 2>/dev/null || exit 1\nfor f in .* *; do\n  [ \"$f\" = \".\" ] || [ \"$f\" = \"..\" ] && continue\n  [ -e \"$f\" ] || [ -L \"$f\" ] || continue\n  if [ -d \"$f\" ]; then\n    type=\"d\"\n    size=0\n  else\n    type=\"f\"\n    size=$(wc -c < \"$f\" 2>/dev/null || stat -c %s \"$f\" 2>/dev/null || echo 0)\n  fi\n  mtime=$(stat -c %Y \"$f\" 2>/dev/null || date +%s)\n  mode=$(stat -c %a \"$f\" 2>/dev/null || echo \"755\")\n  printf \"%s\\t%s\\t%s\\t%s\\t%s\\n\" \"$type\" \"$size\" \"$mtime\" \"$mode\" \"$f\"\ndone";
+
+            var execCreateParams = new ContainerExecCreateParameters
+            {
+                Cmd = ["/bin/sh", "-c", script, "--", normalizedPath],
+                AttachStdout = true,
+                AttachStderr = true,
+                AttachStdin = false,
+                TTY = false
+            };
+
+            var exec = await _dockerClient.Exec.CreateContainerExecAsync(containerId, execCreateParams, cancellationToken);
+            using var stream = await _dockerClient.Exec.StartContainerExecAsync(exec.ID, new ContainerExecStartParameters { Detach = false, TTY = false }, cancellationToken);
+
+            using var stdoutMs = new MemoryStream();
+            using var stderrMs = new MemoryStream();
+            await stream.CopyOutputToAsync(null, stdoutMs, stderrMs, cancellationToken);
+
+            var output = Encoding.UTF8.GetString(stdoutMs.ToArray());
+            var items = new List<Models.ContainerFileItemResponse>();
+            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.TrimEnd('\r');
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var parts = line.Split('\t', 5);
+                if (parts.Length < 5)
+                {
+                    continue;
+                }
+
+                var type = parts[0];
+                var sizeStr = parts[1];
+                var mtimeStr = parts[2];
+                var modeStr = parts[3];
+                var name = parts[4];
+
+                var isDir = type == "d";
+                long.TryParse(sizeStr, out var size);
+                var lastModified = DateTime.UtcNow;
+                if (long.TryParse(mtimeStr, out var mtimeSeconds) && mtimeSeconds > 0)
+                {
+                    lastModified = DateTimeOffset.FromUnixTimeSeconds(mtimeSeconds).UtcDateTime;
+                }
+
+                var itemSubPath = (normalizedPath.TrimEnd('/') + "/" + name.TrimStart('/')).Replace("//", "/");
+                var permissions = FormatOctalPermissions(modeStr, isDir);
+
+                items.Add(new Models.ContainerFileItemResponse
+                {
+                    Name = name,
+                    Path = itemSubPath,
+                    IsDirectory = isDir,
+                    Size = isDir ? 0 : size,
+                    LastModified = lastModified,
+                    Extension = isDir ? null : Path.GetExtension(name),
+                    Permissions = permissions
+                });
+            }
+
+            return items.OrderByDescending(i => i.IsDirectory).ThenBy(i => i.Name).ToList();
+        }
+
+        private static string FormatOctalPermissions(string modeStr, bool isDirectory)
+        {
+            var fallback = isDirectory ? "drwxr-xr-x" : "-rw-r--r--";
+            if (string.IsNullOrWhiteSpace(modeStr))
+            {
+                return fallback;
+            }
+
+            try
+            {
+                var octalValue = Convert.ToInt32(modeStr.Trim(), 8);
+                return FormatPermissions(octalValue, isDirectory);
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private async Task<IReadOnlyList<Models.ContainerFileItemResponse>> ListFilesViaArchiveAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
             try
             {
                 var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(

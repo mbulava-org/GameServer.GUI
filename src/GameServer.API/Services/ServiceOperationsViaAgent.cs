@@ -16,6 +16,16 @@ namespace GameServer.API.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<ServiceOperationsViaAgent> _logger;
 
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime CachedAt, IList<SwarmService> Services)> _servicesCache = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime CachedAt, IList<TaskResponse> Tasks)> _tasksCache = new();
+        private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(2);
+
+        private void InvalidateCache()
+        {
+            _servicesCache.Clear();
+            _tasksCache.Clear();
+        }
+
         public ServiceOperationsViaAgent(
             IAgentRegistry agentRegistry,
             IUdpAgentRegistry udpAgentRegistry,
@@ -83,6 +93,7 @@ namespace GameServer.API.Services
                 throw new InvalidOperationException($"Failed to create service: {message}");
             }
 
+            InvalidateCache();
             _logger.LogInformation("✅ [CreateService] Service created: {ServiceId}", result.ServiceId);
 
             return new ServiceCreateResponse
@@ -148,6 +159,7 @@ namespace GameServer.API.Services
                 throw new InvalidOperationException($"Failed to update service: {message}");
             }
 
+            InvalidateCache();
             _logger.LogInformation("✅ [UpdateService] Service updated: {ServiceId}", serviceId);
         }
 
@@ -186,6 +198,7 @@ namespace GameServer.API.Services
                 throw new InvalidOperationException($"Failed to delete service: {message}");
             }
 
+            InvalidateCache();
             _logger.LogInformation("✅ [RemoveService] Service deleted: {ServiceId}", serviceId);
         }
 
@@ -194,6 +207,12 @@ namespace GameServer.API.Services
             string? serviceName = null,
             CancellationToken cancellationToken = default)
         {
+            var cacheKey = $"{labelFilter ?? string.Empty}|{serviceName ?? string.Empty}";
+            if (_servicesCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.CachedAt) < CacheTtl)
+            {
+                return cached.Services;
+            }
+
             var managerAgent = GetManagerAgent();
 
             _logger.LogDebug("Listing services via agent on manager {NodeName}", managerAgent.NodeName);
@@ -266,6 +285,7 @@ namespace GameServer.API.Services
                     first.Spec?.Name ?? "NULL");
             }
 
+            _servicesCache[cacheKey] = (DateTime.UtcNow, services);
             return services;
         }
 
@@ -350,6 +370,18 @@ namespace GameServer.API.Services
             TasksListParameters? parameters = null,
             CancellationToken cancellationToken = default)
         {
+            var serviceId = "";
+            if (parameters?.Filters?.TryGetValue("service", out var serviceFilter) == true && serviceFilter.Any())
+            {
+                serviceId = serviceFilter.First().Key;
+            }
+
+            var cacheKey = serviceId;
+            if (_tasksCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.CachedAt) < CacheTtl)
+            {
+                return cached.Tasks;
+            }
+
             var managerAgent = GetManagerAgent();
 
             _logger.LogDebug("Listing tasks via agent on manager {NodeName}", managerAgent.NodeName);
@@ -359,12 +391,9 @@ namespace GameServer.API.Services
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             // Build query string for service filter
-            var queryString = "";
-            if (parameters?.Filters?.TryGetValue("service", out var serviceFilter) == true && serviceFilter.Any())
-            {
-                var serviceId = serviceFilter.First().Key;
-                queryString = $"?serviceId={Uri.EscapeDataString(serviceId)}";
-            }
+            var queryString = string.IsNullOrWhiteSpace(serviceId)
+                ? string.Empty
+                : $"?serviceId={Uri.EscapeDataString(serviceId)}";
 
             var response = await httpClient.GetAsync($"/api/tasks{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -386,6 +415,7 @@ namespace GameServer.API.Services
                 result.Tasks.Count, 
                 result.Tasks.Count > 0 ? result.Tasks[0].Status != null : false);
 
+            _tasksCache[cacheKey] = (DateTime.UtcNow, result.Tasks);
             return result.Tasks;
         }
 
