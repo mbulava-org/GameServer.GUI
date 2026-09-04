@@ -238,6 +238,15 @@
 
             try
             {
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.ensureAddons");
+            }
+            catch
+            {
+                // Fallback gracefully
+            }
+
+            try
+            {
                 await JSRuntime.InvokeVoidAsync("TerminalHelpers.initAutoFit", _terminalWrapperRef);
             }
             catch
