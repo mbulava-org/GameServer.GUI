@@ -640,7 +640,14 @@
         EnsureRevisionSelected();
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
-        await CheckPortAvailabilityAsync();
+        if (!isEditMode)
+        {
+            await AutoSuggestPortsIfUnavailableAsync();
+        }
+        else
+        {
+            await CheckPortAvailabilityAsync();
+        }
         TriggerLiveValidation();
     }
 
@@ -651,7 +658,14 @@
         deploymentPreview = null;
         EnsureSettingsInitialized();
         EnsurePortsInitialized();
-        await CheckPortAvailabilityAsync();
+        if (!isEditMode)
+        {
+            await AutoSuggestPortsIfUnavailableAsync();
+        }
+        else
+        {
+            await CheckPortAvailabilityAsync();
+        }
         TriggerLiveValidation();
     }
 
@@ -868,6 +882,236 @@
                 publishedPortSelections[targetPort.Id] = Math.Clamp(calculated, 1, 65535);
             }
         }
+    }
+
+    private List<(GameTypePort Port, int CalculatedPort)> GetRelatedPortCalculations(GameTypePort sourcePort, int basePortValue)
+    {
+        var results = new List<(GameTypePort Port, int CalculatedPort)>();
+
+        foreach (var definition in CurrentSettingDefinitions)
+        {
+            var portMappings = definition.Metadata?.PortMappings;
+            if (portMappings is null || portMappings.Count == 0)
+            {
+                continue;
+            }
+
+            var primaryMapping = portMappings.FirstOrDefault(pm =>
+                pm.TargetContainerPort == sourcePort.ContainerPort
+                && string.Equals(pm.TargetProtocol, sourcePort.Protocol, StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pm.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase)));
+
+            if (primaryMapping is null)
+            {
+                continue;
+            }
+
+            foreach (var relatedMapping in portMappings.Where(pm =>
+                !string.Equals(pm.RelationType, "Direct", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(pm.MappingRole, "Primary", StringComparison.OrdinalIgnoreCase)))
+            {
+                var targetPort = CurrentRevisionPorts.FirstOrDefault(p =>
+                    p.ContainerPort == relatedMapping.TargetContainerPort
+                    && string.Equals(p.Protocol, relatedMapping.TargetProtocol, StringComparison.OrdinalIgnoreCase));
+
+                if (targetPort is null)
+                {
+                    continue;
+                }
+
+                var calculated = relatedMapping.RelationType switch
+                {
+                    "Offset" => basePortValue + (relatedMapping.CalculationValue ?? 0),
+                    "Multiplier" => basePortValue * (relatedMapping.CalculationValue ?? 1),
+                    "Fixed" => relatedMapping.CalculationValue ?? targetPort.ContainerPort,
+                    _ => targetPort.ContainerPort
+                };
+
+                results.Add((targetPort, Math.Clamp(calculated, 1, 65535)));
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Automatically suggests and allocates available ports when creating a new server
+    /// if any default port mapping is in-use or reserved.
+    /// Validates the advertised port first along with any related ports, then resolves
+    /// any remaining independent exposed ports.
+    /// </summary>
+    private async Task AutoSuggestPortsIfUnavailableAsync()
+    {
+        if (isEditMode || selectedGameType is null || !CurrentRevisionPorts.Any())
+        {
+            return;
+        }
+
+        await CheckPortAvailabilityAsync();
+
+        if (!HasUnavailablePort)
+        {
+            return;
+        }
+
+        var advertisedPort = CurrentRevisionPorts.FirstOrDefault(p => p.AdvertisedPort)
+            ?? CurrentRevisionPorts.OrderBy(p => p.DisplayOrder).FirstOrDefault();
+
+        var allocatedPortKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (advertisedPort is not null)
+        {
+            var startPort = GetPublishedPort(advertisedPort);
+            if (startPort < 1024)
+            {
+                startPort = 1024;
+            }
+
+            var initialRelated = GetRelatedPortCalculations(advertisedPort, startPort);
+            var initialGroup = new List<(GameTypePort Port, int Value)> { (advertisedPort, startPort) };
+            initialGroup.AddRange(initialRelated);
+
+            var initialGroupValid = initialGroup.Select(g => $"{g.Value}/{g.Port.Protocol.ToLowerInvariant()}").Distinct(StringComparer.OrdinalIgnoreCase).Count() == initialGroup.Count
+                && initialGroup.All(g => portAvailability.TryGetValue(g.Port.Id, out var av) && av.IsAvailable && av.Port == g.Value);
+
+            if (!initialGroupValid)
+            {
+                var candidateFound = false;
+                const int batchSize = 25;
+                var currentBase = startPort;
+
+                while (!candidateFound && currentBase <= 65500)
+                {
+                    var batchCandidateGroups = new List<List<(GameTypePort Port, int Value)>>();
+
+                    for (var i = 0; i < batchSize && (currentBase + i) <= 65500; i++)
+                    {
+                        var candidateBase = currentBase + i;
+                        var related = GetRelatedPortCalculations(advertisedPort, candidateBase);
+                        var group = new List<(GameTypePort Port, int Value)> { (advertisedPort, candidateBase) };
+                        group.AddRange(related);
+
+                        if (group.All(g => g.Value is >= 1 and <= 65535)
+                            && group.Select(g => $"{g.Value}/{g.Port.Protocol.ToLowerInvariant()}").Distinct(StringComparer.OrdinalIgnoreCase).Count() == group.Count)
+                        {
+                            batchCandidateGroups.Add(group);
+                        }
+                    }
+
+                    if (batchCandidateGroups.Count == 0)
+                    {
+                        break;
+                    }
+
+                    foreach (var group in batchCandidateGroups)
+                    {
+                        var req = new GameServerPortAvailabilityRequest
+                        {
+                            ServerId = draft.ServerId,
+                            Ports = group.Select(g => new GameServerPortAvailabilityRequestPort
+                            {
+                                PortId = g.Port.Id,
+                                Port = g.Value,
+                                Protocol = g.Port.Protocol
+                            }).ToList()
+                        };
+
+                        try
+                        {
+                            var checkResult = await GameServerApiV2.CheckPortAvailabilityAsync(req);
+                            if (checkResult.Ports.All(p => p.IsAvailable))
+                            {
+                                publishedPortSelections[advertisedPort.Id] = group[0].Value;
+                                RecalculateAutoPortsFrom(advertisedPort);
+                                candidateFound = true;
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger?.LogDebug(ex, "Error checking candidate port availability");
+                        }
+                    }
+
+                    currentBase += batchSize;
+                }
+            }
+
+            allocatedPortKeys.Add($"{GetPublishedPort(advertisedPort)}/{advertisedPort.Protocol.ToLowerInvariant()}");
+            foreach (var related in GetRelatedPortCalculations(advertisedPort, GetPublishedPort(advertisedPort)))
+            {
+                allocatedPortKeys.Add($"{GetPublishedPort(related.Port)}/{related.Port.Protocol.ToLowerInvariant()}");
+            }
+        }
+
+        var otherIndependentPorts = CurrentRevisionPorts
+            .Where(p => (advertisedPort == null || p.Id != advertisedPort.Id) && !IsAutoCalculatedPort(p))
+            .OrderBy(p => p.DisplayOrder)
+            .ToList();
+
+        foreach (var otherPort in otherIndependentPorts)
+        {
+            var currentVal = GetPublishedPort(otherPort);
+            var currentKey = $"{currentVal}/{otherPort.Protocol.ToLowerInvariant()}";
+
+            var isCurrentlyAvailable = !allocatedPortKeys.Contains(currentKey)
+                && portAvailability.TryGetValue(otherPort.Id, out var av) && av.IsAvailable && av.Port == currentVal;
+
+            if (!isCurrentlyAvailable)
+            {
+                var candidateBase = currentVal < 1024 ? 1024 : currentVal;
+                var found = false;
+
+                while (!found && candidateBase <= 65535)
+                {
+                    var candKey = $"{candidateBase}/{otherPort.Protocol.ToLowerInvariant()}";
+                    if (!allocatedPortKeys.Contains(candKey))
+                    {
+                        var req = new GameServerPortAvailabilityRequest
+                        {
+                            ServerId = draft.ServerId,
+                            Ports =
+                            [
+                                new GameServerPortAvailabilityRequestPort
+                                {
+                                    PortId = otherPort.Id,
+                                    Port = candidateBase,
+                                    Protocol = otherPort.Protocol
+                                }
+                            ]
+                        };
+
+                        try
+                        {
+                            var checkResult = await GameServerApiV2.CheckPortAvailabilityAsync(req);
+                            if (checkResult.Ports.All(p => p.IsAvailable))
+                            {
+                                publishedPortSelections[otherPort.Id] = candidateBase;
+                                RecalculateAutoPortsFrom(otherPort);
+                                found = true;
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger?.LogDebug(ex, "Error checking other port candidate availability");
+                        }
+                    }
+
+                    candidateBase++;
+                }
+            }
+
+            allocatedPortKeys.Add($"{GetPublishedPort(otherPort)}/{otherPort.Protocol.ToLowerInvariant()}");
+            foreach (var rel in GetRelatedPortCalculations(otherPort, GetPublishedPort(otherPort)))
+            {
+                allocatedPortKeys.Add($"{GetPublishedPort(rel.Port)}/{rel.Port.Protocol.ToLowerInvariant()}");
+            }
+        }
+
+        SyncPortSettingsFromPublishedPorts();
+        await CheckPortAvailabilityAsync();
     }
 
     private IEnumerable<IGrouping<string, GameTypeSettingDefinition>> GetSettingCategories()

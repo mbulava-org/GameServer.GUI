@@ -1,20 +1,20 @@
+using System.Net.Http.Json;
 using GameServer.API.Dtos.V2;
-using GameServer.API.Models.V2;
+using GameServer.API.Interfaces;
+using GameServer.API.Models;
 using GameServer.API.Repositories.V2;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Logging;
 
 namespace GameServer.API.Services.V2;
 
 public sealed class GameServerFilesService(
     IGameServerRepository gameServerRepository,
-    IGameTypeRepository gameTypeRepository,
-    IMountTypeConfigRepository mountTypeConfigRepository,
-    ILogger<GameServerFilesService> logger)
+    INodeAgentDiscovery nodeAgentDiscovery,
+    IHttpClientFactory httpClientFactory,
+    ILogger<GameServerFilesService> logger,
+    IServerResourceMonitor? serverResourceMonitor = null)
     : IGameServerFilesService
 {
-    private static readonly FileExtensionContentTypeProvider ContentTypeProvider = new();
-
     public async Task<IReadOnlyList<FileItemDto>> ListFilesAsync(
         string serverId,
         string volumeContainerPath,
@@ -22,47 +22,27 @@ public sealed class GameServerFilesService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var (volumeRoot, relativeBase) = await ResolveTargetDirectoryAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
 
-        if (!Directory.Exists(volumeRoot))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
+            logger.LogDebug("No active container found for server {ServerId} when listing files; returning empty list", serverId);
             return [];
         }
 
-        var dirInfo = new DirectoryInfo(volumeRoot);
-        var result = new List<FileItemDto>();
+        var targetPath = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files?path={Uri.EscapeDataString(targetPath)}";
 
-        foreach (var dir in dirInfo.GetDirectories())
+        var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
         {
-            var relPath = string.IsNullOrEmpty(relativeBase) ? $"/{dir.Name}" : $"{relativeBase}/{dir.Name}";
-            result.Add(new FileItemDto
-            {
-                Name = dir.Name,
-                Path = relPath,
-                IsDirectory = true,
-                Size = 0,
-                LastModified = dir.LastWriteTimeUtc,
-                Extension = null,
-                Permissions = "drwxr-xr-x"
-            });
+            logger.LogWarning("Agent {AgentUrl} returned status {StatusCode} when listing files for container {ContainerId} at {Path}", agent.InternalUrl, response.StatusCode, containerId, targetPath);
+            return [];
         }
 
-        foreach (var file in dirInfo.GetFiles())
-        {
-            var relPath = string.IsNullOrEmpty(relativeBase) ? $"/{file.Name}" : $"{relativeBase}/{file.Name}";
-            result.Add(new FileItemDto
-            {
-                Name = file.Name,
-                Path = relPath,
-                IsDirectory = false,
-                Size = file.Length,
-                LastModified = file.LastWriteTimeUtc,
-                Extension = file.Extension,
-                Permissions = "-rw-r--r--"
-            });
-        }
-
-        return result.OrderByDescending(item => item.IsDirectory).ThenBy(item => item.Name).ToList();
+        var files = await response.Content.ReadFromJsonAsync<List<FileItemDto>>(cancellationToken: cancellationToken).ConfigureAwait(false);
+        return files ?? [];
     }
 
     public async Task<(Stream Stream, string ContentType, string FileName)> GetFileStreamAsync(
@@ -72,20 +52,34 @@ public sealed class GameServerFilesService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var filePath = await ResolveTargetFilePathAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
 
-        if (!File.Exists(filePath))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
-            throw new FileNotFoundException($"File not found: {subPath}");
+            throw new InvalidOperationException($"Game server '{serverId}' is not currently running. The server must be active to access container files.");
         }
 
-        var fileName = Path.GetFileName(filePath);
-        if (!ContentTypeProvider.TryGetContentType(fileName, out var contentType))
+        var targetPath = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files/download?path={Uri.EscapeDataString(targetPath)}";
+
+        var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
         {
-            contentType = "application/octet-stream";
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FileNotFoundException($"File not found in container at: {targetPath}");
+            }
+
+            throw new HttpRequestException($"Agent returned status code {response.StatusCode} when downloading {targetPath}");
         }
 
-        var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+            ?? Path.GetFileName(targetPath);
+
         return (stream, contentType, fileName);
     }
 
@@ -96,14 +90,29 @@ public sealed class GameServerFilesService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var filePath = await ResolveTargetFilePathAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
 
-        if (!File.Exists(filePath))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
-            throw new FileNotFoundException($"File not found: {subPath}");
+            throw new InvalidOperationException($"Game server '{serverId}' is not currently running. The server must be active to access container files.");
         }
 
-        return await File.ReadAllTextAsync(filePath, cancellationToken).ConfigureAwait(false);
+        var targetPath = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files/content?path={Uri.EscapeDataString(targetPath)}";
+
+        var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FileNotFoundException($"File not found in container at: {targetPath}");
+            }
+
+            throw new HttpRequestException($"Agent returned status code {response.StatusCode} when reading {targetPath}");
+        }
+
+        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SaveFileContentTextAsync(
@@ -114,16 +123,24 @@ public sealed class GameServerFilesService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var filePath = await ResolveTargetFilePathAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
 
-        var directory = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
-            Directory.CreateDirectory(directory);
+            throw new InvalidOperationException($"Game server '{serverId}' is not currently running. The server must be active to access container files.");
         }
 
-        await File.WriteAllTextAsync(filePath, content, cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("Saved text file {FilePath} for server {ServerId}", filePath, serverId);
+        var targetPath = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files/content?path={Uri.EscapeDataString(targetPath)}";
+
+        var response = await client.PutAsJsonAsync(url, new { Content = content }, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Agent returned status code {response.StatusCode} when saving {targetPath}");
+        }
+
+        logger.LogInformation("Saved text file via agent to container {ContainerId} at {Path}", containerId, targetPath);
     }
 
     public async Task UploadFileAsync(
@@ -139,18 +156,27 @@ public sealed class GameServerFilesService(
         cancellationToken.ThrowIfCancellationRequested();
 
         var safeFileName = Path.GetFileName(fileName);
-        var (dirPath, _) = await ResolveTargetDirectoryAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
-
-        if (!Directory.Exists(dirPath))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
-            Directory.CreateDirectory(dirPath);
+            throw new InvalidOperationException($"Game server '{serverId}' is not currently running. The server must be active to access container files.");
         }
 
-        var targetFilePath = Path.Combine(dirPath, safeFileName);
-        using var targetStream = new FileStream(targetFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        await content.CopyToAsync(targetStream, cancellationToken).ConfigureAwait(false);
+        var targetDir = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files/upload?path={Uri.EscapeDataString(targetDir)}";
 
-        logger.LogInformation("Uploaded file {FileName} to {DirPath} for server {ServerId}", safeFileName, dirPath, serverId);
+        using var form = new MultipartFormDataContent();
+        using var streamContent = new StreamContent(content);
+        form.Add(streamContent, "file", safeFileName);
+
+        var response = await client.PostAsync(url, form, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Agent returned status code {response.StatusCode} when uploading {safeFileName} to {targetDir}");
+        }
+
+        logger.LogInformation("Uploaded file {FileName} via agent to container {ContainerId} at {Dir}", safeFileName, containerId, targetDir);
     }
 
     public async Task CreateDirectoryAsync(
@@ -160,13 +186,24 @@ public sealed class GameServerFilesService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var (dirPath, _) = await ResolveTargetDirectoryAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
 
-        if (!Directory.Exists(dirPath))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
-            Directory.CreateDirectory(dirPath);
-            logger.LogInformation("Created directory {DirPath} for server {ServerId}", dirPath, serverId);
+            throw new InvalidOperationException($"Game server '{serverId}' is not currently running. The server must be active to access container files.");
         }
+
+        var targetDir = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files/directory?path={Uri.EscapeDataString(targetDir)}";
+
+        var response = await client.PostAsync(url, null, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Agent returned status code {response.StatusCode} when creating directory {targetDir}");
+        }
+
+        logger.LogInformation("Created directory {Path} via agent in container {ContainerId}", targetDir, containerId);
     }
 
     public async Task DeleteFileOrDirectoryAsync(
@@ -177,147 +214,70 @@ public sealed class GameServerFilesService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var targetPath = await ResolveTargetFilePathAsync(serverId, volumeContainerPath, subPath, cancellationToken).ConfigureAwait(false);
 
-        if (Directory.Exists(targetPath))
+        var (agent, containerId) = await ResolveAgentAndContainerAsync(serverId, cancellationToken).ConfigureAwait(false);
+        if (agent == null || string.IsNullOrWhiteSpace(containerId))
         {
-            Directory.Delete(targetPath, recursive);
-            logger.LogInformation("Deleted directory {Path} for server {ServerId}", targetPath, serverId);
-            return;
+            throw new InvalidOperationException($"Game server '{serverId}' is not currently running. The server must be active to access container files.");
         }
 
-        if (File.Exists(targetPath))
+        var targetPath = CombineContainerPath(volumeContainerPath, subPath);
+        var client = httpClientFactory.CreateClient();
+        var url = $"{agent.InternalUrl.TrimEnd('/')}/containers/{containerId}/files?path={Uri.EscapeDataString(targetPath)}&recursive={recursive}";
+
+        var response = await client.DeleteAsync(url, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
         {
-            File.Delete(targetPath);
-            logger.LogInformation("Deleted file {Path} for server {ServerId}", targetPath, serverId);
-            return;
+            throw new HttpRequestException($"Agent returned status code {response.StatusCode} when deleting {targetPath}");
         }
 
-        throw new FileNotFoundException($"Item not found: {subPath}");
+        logger.LogInformation("Deleted item {Path} (recursive={Recursive}) via agent in container {ContainerId}", targetPath, recursive, containerId);
     }
 
-    private async Task<(string ResolvedPath, string RelativeBase)> ResolveTargetDirectoryAsync(
+    private async Task<(NodeAgentEndpoint? Agent, string? ContainerId)> ResolveAgentAndContainerAsync(
         string serverId,
-        string volumeContainerPath,
-        string? subPath,
         CancellationToken cancellationToken)
     {
-        var localVolumeRoot = await GetLocalVolumeRootAsync(serverId, volumeContainerPath, cancellationToken).ConfigureAwait(false);
-        var normalizedSubPath = NormalizeSubPath(subPath);
+        if (serverResourceMonitor != null)
+        {
+            try
+            {
+                var snapshot = await serverResourceMonitor.GetSnapshotAsync(serverId, cancellationToken).ConfigureAwait(false);
+                var containerId = snapshot?.ContainerIds.FirstOrDefault() ?? snapshot?.RealTimeStats?.ContainerId;
+                if (!string.IsNullOrWhiteSpace(containerId))
+                {
+                    var agent = await nodeAgentDiscovery.GetAgentForContainerAsync(containerId).ConfigureAwait(false)
+                        ?? await nodeAgentDiscovery.GetAgentForServerAsync(serverId).ConfigureAwait(false);
+                    if (agent != null)
+                    {
+                        return (agent, containerId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Could not resolve container from resource monitor for server {ServerId}", serverId);
+            }
+        }
 
-        var combined = string.IsNullOrEmpty(normalizedSubPath)
-            ? localVolumeRoot
-            : Path.Combine(localVolumeRoot, normalizedSubPath.Replace('/', Path.DirectorySeparatorChar));
-
-        ValidatePathSafety(localVolumeRoot, combined);
-        var relativeBase = string.IsNullOrEmpty(normalizedSubPath) ? string.Empty : $"/{normalizedSubPath}";
-        return (combined, relativeBase);
+        var fallbackAgent = await nodeAgentDiscovery.GetAgentForServerAsync(serverId).ConfigureAwait(false);
+        return (fallbackAgent, null);
     }
 
-    private async Task<string> ResolveTargetFilePathAsync(
-        string serverId,
-        string volumeContainerPath,
-        string subPath,
-        CancellationToken cancellationToken)
+    private static string CombineContainerPath(string volumeContainerPath, string? subPath)
     {
-        var localVolumeRoot = await GetLocalVolumeRootAsync(serverId, volumeContainerPath, cancellationToken).ConfigureAwait(false);
-        var normalizedSubPath = NormalizeSubPath(subPath);
-
-        if (string.IsNullOrEmpty(normalizedSubPath))
+        var normalizedVolume = (volumeContainerPath ?? "/").Replace('\\', '/').TrimEnd('/');
+        if (!normalizedVolume.StartsWith('/'))
         {
-            throw new ArgumentException("A file path must be specified.", nameof(subPath));
+            normalizedVolume = "/" + normalizedVolume;
         }
 
-        var combined = Path.Combine(localVolumeRoot, normalizedSubPath.Replace('/', Path.DirectorySeparatorChar));
-        ValidatePathSafety(localVolumeRoot, combined);
-        return combined;
-    }
-
-    private async Task<string> GetLocalVolumeRootAsync(
-        string serverId,
-        string volumeContainerPath,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(volumeContainerPath);
-
-        var server = await gameServerRepository.GetByServerIdAsync(serverId).ConfigureAwait(false)
-            ?? throw new KeyNotFoundException($"GameServer '{serverId}' was not found.");
-
-        var normalizedContainerPath = volumeContainerPath.Trim();
-        if (!normalizedContainerPath.StartsWith('/'))
-        {
-            normalizedContainerPath = "/" + normalizedContainerPath;
-        }
-
-        var volume = server.Volumes.FirstOrDefault(v => string.Equals(v.ContainerPath, normalizedContainerPath, StringComparison.OrdinalIgnoreCase));
-        var mountType = volume?.MountType ?? "volume";
-
-        var config = await mountTypeConfigRepository.GetByKeyAsync(mountType).ConfigureAwait(false);
-
-        var localRoot = (config?.GetOption("LocalPath") ?? string.Empty).Replace('\\', '/').TrimEnd('/');
-        if (string.IsNullOrEmpty(localRoot))
-        {
-            // Default to data/volumes in application root
-            localRoot = Path.Combine(AppContext.BaseDirectory, "data", "volumes").Replace('\\', '/');
-            logger.LogDebug("No LocalPath configured for mount type '{MountType}'; using fallback '{LocalRoot}'", mountType, localRoot);
-        }
-
-        var gameTypes = await gameTypeRepository.GetAllAsync(includeInactive: true).ConfigureAwait(false);
-        var matchingType = gameTypes.FirstOrDefault(gt => gt.Revisions.Any(r => r.Id == server.GameTypeRevisionId));
-        var gameTypeKey = matchingType?.Key ?? "default";
-
-        var sourceToken = normalizedContainerPath.Trim('/').Replace('/', '-');
-        var devicePathFormat = config?.GetOption("DevicePathFormat");
-        string relativeDevicePath;
-
-        if (!string.IsNullOrWhiteSpace(devicePathFormat))
-        {
-            relativeDevicePath = devicePathFormat
-                .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
-                .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)
-                .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
-                .Trim('/');
-        }
-        else if (!string.IsNullOrWhiteSpace(volume?.VolumeName))
-        {
-            relativeDevicePath = volume.VolumeName.Trim('/');
-        }
-        else
-        {
-            relativeDevicePath = $"{gameTypeKey}/{serverId}/{sourceToken}";
-        }
-
-        var fullVolumeRoot = Path.Combine(localRoot, relativeDevicePath.Replace('/', Path.DirectorySeparatorChar));
-        if (!Directory.Exists(fullVolumeRoot))
-        {
-            Directory.CreateDirectory(fullVolumeRoot);
-            logger.LogInformation("Created volume root directory {FullVolumeRoot} for server {ServerId}", fullVolumeRoot, serverId);
-        }
-
-        return fullVolumeRoot;
-    }
-
-    private static string NormalizeSubPath(string? subPath)
-    {
         if (string.IsNullOrWhiteSpace(subPath))
         {
-            return string.Empty;
+            return normalizedVolume;
         }
 
-        return subPath.Replace('\\', '/').Trim('/');
-    }
-
-    private static void ValidatePathSafety(string root, string resolved)
-    {
-        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var fullResolved = Path.GetFullPath(resolved);
-
-        if (!fullResolved.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
-            && !fullResolved.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            && !fullResolved.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new UnauthorizedAccessException("Access denied: Invalid relative path outside of volume root.");
-        }
+        var normalizedSub = subPath.Replace('\\', '/').Trim('/');
+        return $"{normalizedVolume}/{normalizedSub}";
     }
 }

@@ -47,8 +47,18 @@ namespace GameServer.API
                         .Enrich.WithProperty("ApplicationInformationalVersion", informationalVersion));
                         // Console sink is configured in appsettings.json - don't add it here!
 
-                // Bind configuration classes directly from appsettings.json.
-                builder.Services.AddSingleton(builder.Configuration.GetSection("PortAllocation").Get<Configurations.PortAllocation>() ?? new Configurations.PortAllocation());
+                // Bind configuration classes directly from appsettings.json or environment variables.
+                var portAllocationConfig = builder.Configuration.GetSection("PortAllocation").Get<Configurations.PortAllocation>() ?? new Configurations.PortAllocation();
+                var rawReservedPorts = builder.Configuration["PortAllocation:ReservedPortRanges"] ?? builder.Configuration["PortAllocation__ReservedPortRanges"];
+                if (!string.IsNullOrWhiteSpace(rawReservedPorts))
+                {
+                    var rawTokens = rawReservedPorts.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    portAllocationConfig.ReservedPortRanges = (portAllocationConfig.ReservedPortRanges ?? Array.Empty<string>())
+                        .Concat(rawTokens)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                }
+                builder.Services.AddSingleton(portAllocationConfig);
                 builder.Services.AddSingleton(builder.Configuration.GetSection("NetworkOptions").Get<Configurations.NetworkOptions>() ?? new Configurations.NetworkOptions());
                 builder.Services.AddSingleton(builder.Configuration.GetSection("NodeAgentOptions").Get<Configurations.NodeAgentOptions>() ?? new Configurations.NodeAgentOptions());
                 builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName).Get<Configurations.UdpAgentDiscoveryOptions>() ?? new Configurations.UdpAgentDiscoveryOptions());
