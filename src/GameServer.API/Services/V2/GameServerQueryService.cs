@@ -9,7 +9,8 @@ namespace GameServer.API.Services.V2;
 public sealed class GameServerQueryService(
     IGameServerRepository gameServerRepository,
     IGameTypeRepository gameTypeRepository,
-    IGameServerResourceCollector? resourceCollector = null)
+    IGameServerResourceCollector? resourceCollector = null,
+    Interfaces.IGameServerReadinessWatcherService? readinessWatcher = null)
 {
     /// <summary>
     /// Gets the V2 GameServer list payload.
@@ -70,6 +71,11 @@ public sealed class GameServerQueryService(
 
     private string ResolveEffectiveStatus(string serverId, string fallbackStatus)
     {
+        if (readinessWatcher?.IsServerReady(serverId) == true)
+        {
+            return "Available";
+        }
+
         if (resourceCollector == null) return fallbackStatus;
         var cached = resourceCollector.GetCachedUsage(serverId);
         if (cached == null || string.IsNullOrWhiteSpace(cached.ServiceStatus))

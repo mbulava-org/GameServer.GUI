@@ -611,7 +611,7 @@ namespace GameServer.API.Services
             }
         }
 
-        public async Task<List<string>?> GetContainerLogsAsync(string containerId, int tailLines = 100)
+        public async Task<List<string>?> GetContainerLogsAsync(string containerId, int tailLines = 1000)
         {
             _logger.LogDebug("Fetching container logs for {ContainerId} (tail: {TailLines})", containerId, tailLines);
             

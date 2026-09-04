@@ -201,7 +201,7 @@
 
 @code {
     [Parameter] public string? ServerId { get; set; }
-    [Parameter] public bool AutoConnect { get; set; } = false;
+    [Parameter] public bool AutoConnect { get; set; } = true;
     [Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
 
     private Xterm? terminal;

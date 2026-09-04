@@ -329,6 +329,24 @@ public sealed class ContainerAttachAggregator : IContainerAttachAggregator, IAsy
                     return;
                 }
 
+                // Preload historical container logs so initial and subsequent subscribers receive existing output
+                try
+                {
+                    var initialLogs = await discovery.GetContainerLogsAsync(_containerId, tailLines: 1000).ConfigureAwait(false);
+                    if (initialLogs is not null && initialLogs.Count > 0)
+                    {
+                        foreach (var log in initialLogs)
+                        {
+                            var formatted = log.EndsWith('\n') ? log : log + "\r\n";
+                            BroadcastOutput(formatted);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to preload historical logs for container {ContainerId}", _containerId);
+                }
+
                 ClientWebSocket ws;
                 lock (_lock)
                 {

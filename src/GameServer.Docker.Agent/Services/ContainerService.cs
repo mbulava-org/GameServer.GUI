@@ -151,7 +151,7 @@ namespace GameServer.Docker.Agent.Services
                 ShowStdout = true,
                 ShowStderr = true,
                 Timestamps = true,
-                Tail = tailLines > 0 ? tailLines.ToString() : "100"
+                Tail = tailLines > 0 ? tailLines.ToString() : "all"
             };
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

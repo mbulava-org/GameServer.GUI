@@ -275,7 +275,7 @@
 
                 <RadzenTabsItem Text="Console / Logs" Icon="terminal" Disabled="@(!IsServerRunning)">
                     <div class="p-3">
-                        <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" />
+                        <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" AutoConnect="true" />
                     </div>
                 </RadzenTabsItem>
 

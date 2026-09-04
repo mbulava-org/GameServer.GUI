@@ -47,7 +47,7 @@ namespace GameServer.API.Interfaces
         /// This provides direct access to the container's stdout/stderr streams.
         /// Returns null if no agent is available or container is not running.
         /// </summary>
-        Task<List<string>?> GetContainerLogsAsync(string containerId, int tailLines = 100);
+        Task<List<string>?> GetContainerLogsAsync(string containerId, int tailLines = 1000);
 
         /// <summary>
         /// Get Docker Swarm service logs (aggregated from all replicas/tasks).

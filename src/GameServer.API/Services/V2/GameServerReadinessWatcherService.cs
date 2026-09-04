@@ -100,8 +100,61 @@ public sealed class GameServerReadinessWatcherService : IGameServerReadinessWatc
 
         // Expand tokens inside the ReadyLogPattern using server properties and environment variable settings
         var expandedPattern = ExpandPattern(pattern, server, gameType, revision);
-        _logger.LogInformation("Watching logs for GameServer {ServerId} with ready pattern: '{ExpandedPattern}' (original: '{OriginalPattern}')",
+        _logger.LogInformation("Checking readiness for GameServer {ServerId} with ready pattern: '{ExpandedPattern}' (original: '{OriginalPattern}')",
             serverId, expandedPattern, pattern);
+
+        // First, examine the entire service logs to see if the ready message was already produced
+        var discovery = scope.ServiceProvider.GetService<INodeAgentDiscovery>();
+        if (discovery != null)
+        {
+            try
+            {
+                List<string>? serviceLogs = null;
+                if (!string.IsNullOrWhiteSpace(server.ServiceName))
+                {
+                    serviceLogs = await discovery.GetServiceLogsAsync(server.ServiceName, tailLines: 0).ConfigureAwait(false);
+                }
+
+                if (serviceLogs is null || serviceLogs.Count == 0)
+                {
+                    var monitor = scope.ServiceProvider.GetService<IServerResourceMonitor>();
+                    if (monitor != null)
+                    {
+                        var snapshot = await monitor.GetSnapshotAsync(serverId, cancellationToken).ConfigureAwait(false);
+                        var containerId = snapshot?.ContainerIds.FirstOrDefault() ?? snapshot?.RealTimeStats?.ContainerId;
+                        if (!string.IsNullOrWhiteSpace(containerId))
+                        {
+                            serviceLogs = await discovery.GetContainerLogsAsync(containerId, tailLines: 0).ConfigureAwait(false);
+                        }
+                    }
+                }
+
+                if (serviceLogs is not null && serviceLogs.Count > 0)
+                {
+                    foreach (var logLine in serviceLogs)
+                    {
+                        if (MatchesPattern(logLine, expandedPattern))
+                        {
+                            _logger.LogInformation("GameServer {ServerId} is now Available! Found ready log pattern '{Pattern}' in existing service logs: '{LogLine}'",
+                                serverId, expandedPattern, logLine);
+
+                            MarkReady(serverId);
+                            if (!string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase))
+                            {
+                                server = server with { Status = "Available" };
+                                await serverRepo.UpdateAsync(server).ConfigureAwait(false);
+                            }
+
+                            return;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to examine service logs for server {ServerId}, proceeding to live log watcher", serverId);
+            }
+        }
 
         var cts = new CancellationTokenSource();
         if (!_activeWatchers.TryAdd(serverId, cts))

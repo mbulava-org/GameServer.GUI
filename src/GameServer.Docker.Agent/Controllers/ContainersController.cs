@@ -155,14 +155,14 @@ namespace GameServer.Docker.Agent.Controllers
                 using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
                 _logger.LogInformation("WebSocket connection established for container {ContainerId}", id);
 
-                // Create a multiplexed stream for Docker attach including previous logs
+                // Create a multiplexed stream for Docker attach
                 var parameters = new ContainerAttachParameters
                 {
                     Stream = true,
                     Stdin = true,
                     Stdout = true,
                     Stderr = true,
-                    Logs = true
+                    Logs = false
                 };
 
                 var dockerClient = HttpContext.RequestServices.GetRequiredService<IDockerClient>();
