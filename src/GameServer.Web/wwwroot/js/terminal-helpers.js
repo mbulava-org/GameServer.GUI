@@ -37,6 +37,15 @@
             instance.registerTerminal = function (terminalId, element, options, addons) {
                 ensureAddons(instance);
 
+                if (element && element.style) {
+                    element.style.width = '100%';
+                    element.style.height = '100%';
+                    element.style.minHeight = '0';
+                    element.style.flex = '1';
+                    element.style.display = 'flex';
+                    element.style.flexDirection = 'column';
+                }
+
                 var safeAddons = [];
                 if (Array.isArray(addons)) {
                     addons.forEach(function (addonName) {
@@ -56,7 +65,11 @@
                 }
 
                 try {
-                    return origRegisterTerminal(terminalId, element, options, safeAddons);
+                    var res = origRegisterTerminal(terminalId, element, options, safeAddons);
+                    setTimeout(function () {
+                        window.TerminalHelpers.fitAll();
+                    }, 50);
+                    return res;
                 } catch (err) {
                     console.error('TerminalHelpers: Handled error in XtermBlazor.registerTerminal:', err);
                 }
@@ -119,21 +132,46 @@
             if (window.XtermBlazor && window.XtermBlazor._terminals) {
                 window.XtermBlazor._terminals.forEach(function (termObj) {
                     try {
-                        var fitAddon = termObj.addons && termObj.addons.get('addon-fit');
-                        if (fitAddon && typeof fitAddon.fit === 'function') {
-                            fitAddon.fit();
-                        } else if (termObj.terminal) {
-                            var el = termObj.terminal.element;
-                            var parent = el ? el.parentElement : null;
-                            if (parent && parent.clientWidth > 0 && parent.clientHeight > 0) {
-                                var cellWidth = (termObj.terminal._core && termObj.terminal._core._renderService && termObj.terminal._core._renderService.dimensions && termObj.terminal._core._renderService.dimensions.actualCellWidth) || 9;
-                                var cellHeight = (termObj.terminal._core && termObj.terminal._core._renderService && termObj.terminal._core._renderService.dimensions && termObj.terminal._core._renderService.dimensions.actualCellHeight) || 17;
-                                var padding = 16;
-                                var cols = Math.max(10, Math.floor((parent.clientWidth - padding) / cellWidth));
-                                var rows = Math.max(5, Math.floor((parent.clientHeight - padding) / cellHeight));
-                                if (termObj.terminal.cols !== cols || termObj.terminal.rows !== rows) {
-                                    termObj.terminal.resize(cols, rows);
+                        var term = termObj.terminal;
+                        if (!term) return;
+
+                        var el = term.element;
+                        var host = el ? el.parentElement : null;
+                        var wrapper = el ? (el.closest('.terminal-wrapper, .xterm-wrapper') || host) : null;
+
+                        if (host && host.style) {
+                            if (host.style.height !== '100%') host.style.height = '100%';
+                            if (host.style.width !== '100%') host.style.width = '100%';
+                            if (host.style.flex !== '1') host.style.flex = '1';
+                            if (host.style.display !== 'flex') host.style.display = 'flex';
+                            if (host.style.flexDirection !== 'column') host.style.flexDirection = 'column';
+                            if (host.style.minHeight !== '0') host.style.minHeight = '0';
+                        }
+
+                        var targetContainer = wrapper || host;
+                        if (targetContainer && targetContainer.clientWidth > 0 && targetContainer.clientHeight > 0) {
+                            var cellWidth = (term._core && term._core._renderService && term._core._renderService.dimensions && term._core._renderService.dimensions.actualCellWidth) || 9;
+                            var cellHeight = (term._core && term._core._renderService && term._core._renderService.dimensions && term._core._renderService.dimensions.actualCellHeight) || 17;
+                            
+                            var paddingHor = 16;
+                            var paddingVer = 16;
+
+                            var availableWidth = Math.max(0, targetContainer.clientWidth - paddingHor);
+                            var availableHeight = Math.max(0, targetContainer.clientHeight - paddingVer);
+
+                            var cols = Math.max(10, Math.floor(availableWidth / cellWidth));
+                            var rows = Math.max(5, Math.floor(availableHeight / cellHeight));
+
+                            if (term.cols !== cols || term.rows !== rows) {
+                                if (term._core && term._core._renderService) {
+                                    term._core._renderService.clear();
                                 }
+                                term.resize(cols, rows);
+                            }
+                        } else {
+                            var fitAddon = termObj.addons && termObj.addons.get('addon-fit');
+                            if (fitAddon && typeof fitAddon.fit === 'function') {
+                                fitAddon.fit();
                             }
                         }
                     } catch (err) {

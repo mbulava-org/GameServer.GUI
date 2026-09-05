@@ -259,7 +259,7 @@
             </RadzenCard>
         }
 
-        <RadzenTabs @bind-SelectedIndex="SelectedTabIndex">
+        <RadzenTabs @bind-SelectedIndex="SelectedTabIndex" Change="@OnTabChange">
             <Tabs>
                 <RadzenTabsItem Text="Live Monitor" Icon="speed">
                     <div class="p-3">
@@ -495,6 +495,23 @@
 
     [Parameter]
     public int SelectedTabIndex { get; set; } = 0;
+
+    private async Task OnTabChange(int index)
+    {
+        SelectedTabIndex = index;
+        if (index == 2 || index == 3)
+        {
+            try
+            {
+                await Task.Delay(50);
+                await JSRuntime.InvokeVoidAsync("TerminalHelpers.fitAll");
+            }
+            catch
+            {
+                // Fallback gracefully if JS not ready
+            }
+        }
+    }
 
     private GameServerDetail? server;
     private GameServerValidationResult? validationPreview;

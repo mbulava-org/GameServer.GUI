@@ -136,6 +136,18 @@
         background: #000;
         width: 100%;
         height: 100%;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .xterm-wrapper ::deep > div:not(.terminal-overlay) {
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
     }
 
     .terminal-overlay {
@@ -154,6 +166,7 @@
     }
 
     .xterm-wrapper ::deep .xterm {
+        flex: 1;
         height: 100%;
         width: 100%;
         padding: 0.5rem;
@@ -163,11 +176,7 @@
     .xterm-wrapper ::deep .xterm-viewport {
         background-color: transparent !important;
         width: 100% !important;
-    }
-
-    .xterm-wrapper ::deep .xterm-screen {
-        height: 100%;
-        width: 100%;
+        height: 100% !important;
     }
 
     @@media (max-width: 768px) {
