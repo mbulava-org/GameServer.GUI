@@ -106,6 +106,18 @@ public sealed record GameServerDetailDto
     public List<GameServerConfigurationOptionDto> NetworkOptions { get; init; } = [];
 
     public List<GameServerValidationIssueDto> ConfigurationRules { get; init; } = [];
+
+    /// <summary>
+    /// Raw JSON descriptor list from the server's active revision declaring which
+    /// GUI-side Blazor extension components should be attached as tabs.
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="UiExtensionsJson"/> parsed server-side. The GUI
+    /// still enforces its assembly whitelist before rendering.
+    /// </summary>
+    public List<GameTypeUiExtensionDescriptorDto> UiExtensions { get; init; } = [];
 }
 
 public sealed record GameServerSettingDto

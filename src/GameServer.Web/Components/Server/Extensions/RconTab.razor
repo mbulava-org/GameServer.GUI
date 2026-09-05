@@ -1,0 +1,213 @@
+@using GameServer.Web.Models.V2
+@using GameServer.Web.Services.Extensions
+@using Radzen
+@using Radzen.Blazor
+@implements GameServer.Web.Components.Server.Extensions.IGameTypeExtensionComponent
+@inject IRconClient RconClient
+@inject NotificationService NotificationService
+
+@if (Server is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+        No server context provided to the RCON extension.
+    </RadzenAlert>
+}
+else if (!IsRconEnabled)
+{
+    <RadzenCard Style="padding: 1.5rem;">
+        <RadzenStack Gap="0.75rem">
+            <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">RCON Console</RadzenText>
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" Icon="warning" AllowClose="false">
+                <RadzenText TextStyle="TextStyle.Body2" Style="margin: 0;">
+                    RCON is disabled for this server. Set <code>RCON_ENABLED=True</code>,
+                    <code>RCON_PORT</code>, and <code>ADMIN_PASSWORD</code> (or <code>RCON_PASSWORD</code>)
+                    in the server settings, then restart the server.
+                </RadzenText>
+            </RadzenAlert>
+        </RadzenStack>
+    </RadzenCard>
+}
+else if (RequestContext is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" AllowClose="false">
+        RCON is enabled but <code>RCON_PORT</code> or the RCON password setting is missing on the server.
+    </RadzenAlert>
+}
+else
+{
+    <RadzenStack Gap="1rem">
+        <RadzenCard>
+            <RadzenStack Gap="0.75rem">
+                <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">RCON Console</RadzenText>
+
+                @if (PresetCommands.Count > 0)
+                {
+                    <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.5rem">
+                        @foreach (var preset in PresetCommands)
+                        {
+                            <RadzenButton Text="@preset" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                          Disabled="@_busy" Click="@(() => RunCommandAsync(preset))" />
+                        }
+                    </RadzenStack>
+                }
+
+                <div class="d-flex gap-2">
+                    <RadzenTextBox @bind-Value="_command" Placeholder="Enter RCON command…" Style="flex: 1;"
+                                   @onkeydown="@OnKeyDown" Disabled="@_busy" />
+                    <RadzenButton Text="Send" Icon="send" ButtonStyle="ButtonStyle.Primary"
+                                  Click="@SendAsync" IsBusy="@_busy" />
+                    <RadzenButton Text="Clear" Icon="delete_sweep" ButtonStyle="ButtonStyle.Light"
+                                  Click="@ClearLog" Disabled="@_busy" />
+                </div>
+
+                <div style="max-height: 400px; overflow-y: auto; background: var(--rz-base-900, #1e1e1e); color: var(--rz-base-100, #ddd); font-family: monospace; font-size: 0.85rem; padding: 0.75rem; border-radius: 4px; white-space: pre-wrap;">
+                    @if (_log.Count == 0)
+                    {
+                        <span style="opacity: 0.6;">No commands executed yet.</span>
+                    }
+                    else
+                    {
+                        @foreach (var entry in _log)
+                        {
+                            <div style="@(entry.IsError ? "color: var(--rz-danger, #f44);" : null)">@entry.Text</div>
+                        }
+                    }
+                </div>
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenStack>
+}
+
+@code {
+    [Parameter] public GameServerDetail? Server { get; set; }
+
+    [Parameter] public IReadOnlyDictionary<string, string>? ExtensionParameters { get; set; }
+
+    private string _command = string.Empty;
+    private bool _busy;
+    private readonly List<LogEntry> _log = [];
+
+    private sealed record LogEntry(string Text, bool IsError);
+
+    private string? GetSetting(string key)
+        => Server?.Settings.FirstOrDefault(s => string.Equals(s.SettingKey, key, StringComparison.OrdinalIgnoreCase))?.Value;
+
+    private bool IsRconEnabled
+    {
+        get
+        {
+            var raw = GetSetting("RCON_ENABLED");
+            return !string.IsNullOrWhiteSpace(raw)
+                && (raw.Equals("True", StringComparison.OrdinalIgnoreCase)
+                    || raw.Equals("1", StringComparison.OrdinalIgnoreCase)
+                    || raw.Equals("yes", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private IReadOnlyList<string> PresetCommands
+    {
+        get
+        {
+            if (ExtensionParameters is null
+                || !ExtensionParameters.TryGetValue("presetCommands", out var raw)
+                || string.IsNullOrWhiteSpace(raw))
+            {
+                return [];
+            }
+
+            return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+    }
+
+    private RconRequestContext? RequestContext
+    {
+        get
+        {
+            if (Server is null || string.IsNullOrWhiteSpace(Server.ServiceName))
+            {
+                return null;
+            }
+
+            var portText = GetSetting("RCON_PORT");
+            var password = GetSetting("RCON_PASSWORD");
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                password = GetSetting("ADMIN_PASSWORD");
+            }
+
+            if (!int.TryParse(portText, out var port) || port <= 0 || port > 65535)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return null;
+            }
+
+            return new RconRequestContext
+            {
+                ServiceName = Server.ServiceName,
+                Port = port,
+                Password = password
+            };
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !_busy)
+        {
+            await SendAsync();
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        var command = _command?.Trim();
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return;
+        }
+
+        _command = string.Empty;
+        await RunCommandAsync(command);
+    }
+
+    private async Task RunCommandAsync(string command)
+    {
+        var context = RequestContext;
+        if (context is null || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _log.Add(new LogEntry($"> {command}", IsError: false));
+        StateHasChanged();
+
+        try
+        {
+            var result = await RconClient.ExecuteAsync(context, command);
+            if (result.Success)
+            {
+                _log.Add(new LogEntry(string.IsNullOrWhiteSpace(result.Response) ? "(no output)" : result.Response, IsError: false));
+            }
+            else
+            {
+                _log.Add(new LogEntry(result.Error ?? "RCON command failed.", IsError: true));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Add(new LogEntry($"Error: {ex.Message}", IsError: true));
+            NotificationService.Notify(NotificationSeverity.Error, "RCON", ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ClearLog() => _log.Clear();
+}

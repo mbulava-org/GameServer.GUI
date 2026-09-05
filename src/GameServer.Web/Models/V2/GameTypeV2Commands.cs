@@ -16,6 +16,9 @@ public sealed record SaveGameTypeRevisionRequest
 
     public bool IsPublished { get; init; }
 
+    /// <summary>Raw JSON descriptor list for GUI-side extension tabs.</summary>
+    public string? UiExtensionsJson { get; init; }
+
     public List<GameTypePort> Ports { get; init; } = [];
 
     public List<GameTypeVolume> Volumes { get; init; } = [];
@@ -73,6 +76,9 @@ public sealed record PortableGameTypeRevision
     public string? Notes { get; init; }
 
     public bool IsPublished { get; init; }
+
+    /// <summary>Raw JSON descriptor list for GUI-side extension tabs.</summary>
+    public string? UiExtensionsJson { get; init; }
 
     public List<PortableGameTypePort> Ports { get; init; } = [];
 

@@ -22,6 +22,10 @@
     <Folder Include="Components\Server\Wizards\Steps\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GameServer.Web.Tests" />
+  </ItemGroup>
+
   <!-- Workaround for .NET 10 static web assets issue -->
   <!-- Manually copy Radzen and XtermBlazor assets to wwwroot/_content -->
   <Target Name="CopyStaticWebAssets" AfterTargets="Build">

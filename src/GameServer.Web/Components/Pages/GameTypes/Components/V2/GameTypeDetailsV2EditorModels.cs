@@ -271,3 +271,25 @@ public static partial class GameTypeRevisionWebHostDraftRules
     [GeneratedRegex("^[a-z0-9/-]*$", RegexOptions.CultureInvariant)]
     private static partial Regex LiteralPathCharacterRegex();
 }
+
+public sealed class GameTypeRevisionUiExtensionDraft
+{
+    public string Title { get; set; } = string.Empty;
+
+    public string ComponentTypeName { get; set; } = string.Empty;
+
+    public string? AssemblyName { get; set; }
+
+    public string? Icon { get; set; }
+
+    public int Order { get; set; }
+
+    public List<GameTypeRevisionUiExtensionParameterDraft> Parameters { get; set; } = new();
+}
+
+public sealed class GameTypeRevisionUiExtensionParameterDraft
+{
+    public string Key { get; set; } = string.Empty;
+
+    public string Value { get; set; } = string.Empty;
+}

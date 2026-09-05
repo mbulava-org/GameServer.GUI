@@ -67,6 +67,13 @@ public class GameTypeRevisionEntity
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// JSON-serialized list of GameTypeUiExtensionDescriptor declaring which
+    /// GUI-side Blazor components should be attached as extension tabs for servers
+    /// running this revision. Optional; null/empty means no custom extensions.
+    /// </summary>
+    public string? UiExtensionsJson { get; set; }
+
     [ForeignKey(nameof(GameTypeId))]
     public virtual GameTypeEntity GameType { get; set; } = null!;
 

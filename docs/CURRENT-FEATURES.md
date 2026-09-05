@@ -220,6 +220,14 @@ The application uses a single V2 persistence layer for game type and server conf
 - Import creates a new V2 GameType with nested revisions from the package and restores the current revision by version tag.
 - Sample portable imports now live under `docs/samples/gametype-imports/`, including starter presets for Palworld Dedicated Server, Minecraft Bedrock Server, and Minecraft Java Server based on the referenced upstream Docker image documentation.
 
+#### V2 GameType UI Extensions
+- `GameTypeRevision.UiExtensionsJson` declares custom Blazor tabs that render on the server details page after the built-in tabs.
+- Descriptors specify a component type name, optional assembly, title, icon, order, and a string parameter map (max 10 per revision).
+- Resolution is gated by `GameTypeExtensions:AllowedAssemblies` in `appsettings.json` (default `GameServer.Web`) and requires the type to implement `IComponent`.
+- Unresolved descriptors render a `NotYetImplementedTab` fallback with the failure reason and a copy-to-clipboard descriptor payload.
+- Palworld dedicated server ships with a `PalworldApiTab` extension (info, players with kick/ban, broadcast, save, shutdown) that talks to the Palworld REST API server-side via `IPalworldApiClient` using Basic auth from `ADMIN_PASSWORD`. See `docs/guides/GameType-UI-Extensions.md` for the authoring guide.
+- A generic `RconTab` extension provides a Source-RCON (Valve protocol) console for any GameType with an RCON port; it self-disables when `RCON_ENABLED` is not truthy and supports one-click `presetCommands` via descriptor parameters. Seeded for Palworld alongside the API tab.
+
 ### ? GameType Editor
 
 **Location:** `/gametypes/{key}` or `/gametypes/new`

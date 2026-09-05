@@ -1,0 +1,71 @@
+@using GameServer.Web.Models.V2
+@using System.Text.Json
+
+<RadzenCard Style="padding: 1.5rem;">
+    <RadzenStack Gap="1rem">
+        <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" Icon="warning" AllowClose="false">
+            <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">
+                @(string.IsNullOrWhiteSpace(Descriptor?.Title) ? "Extension not available" : Descriptor!.Title)
+            </RadzenText>
+            <RadzenText TextStyle="TextStyle.Body2">
+                This GameType revision requested a UI extension that could not be loaded by the current build.
+            </RadzenText>
+        </RadzenAlert>
+
+        @if (!string.IsNullOrWhiteSpace(FailureReason))
+        {
+            <RadzenText TextStyle="TextStyle.Body2"><strong>Reason:</strong> @FailureReason</RadzenText>
+        }
+
+        @if (Descriptor is not null)
+        {
+            <RadzenText TextStyle="TextStyle.Body2"><strong>Component:</strong> <code>@Descriptor.ComponentTypeName</code></RadzenText>
+            @if (!string.IsNullOrWhiteSpace(Descriptor.AssemblyName))
+            {
+                <RadzenText TextStyle="TextStyle.Body2"><strong>Assembly:</strong> <code>@Descriptor.AssemblyName</code></RadzenText>
+            }
+
+            <RadzenButton Text="Copy descriptor JSON" Icon="content_copy" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                          Click="@(() => CopyDescriptorAsync())" />
+
+            @if (!string.IsNullOrWhiteSpace(_copied))
+            {
+                <RadzenText TextStyle="TextStyle.Caption">@_copied</RadzenText>
+            }
+        }
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public GameTypeUiExtensionDescriptor? Descriptor { get; set; }
+
+    [Parameter] public string? FailureReason { get; set; }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private string? _copied;
+
+    private async Task CopyDescriptorAsync()
+    {
+        if (Descriptor is null)
+        {
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(Descriptor, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        });
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+            _copied = "Descriptor JSON copied to clipboard.";
+        }
+        catch
+        {
+            _copied = "Copy failed. Descriptor JSON: " + json;
+        }
+    }
+}

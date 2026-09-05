@@ -108,6 +108,18 @@ public sealed record GameServerDetail
     public List<GameServerValidationIssue> ConfigurationRules { get; init; } = [];
 
     /// <summary>
+    /// Raw JSON descriptor list from the server's active revision declaring which
+    /// GUI-side Blazor extension components should be attached as tabs. The
+    /// resolver still enforces the assembly whitelist before rendering.
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="UiExtensionsJson"/> as parsed by the API.
+    /// </summary>
+    public List<GameTypeUiExtensionDescriptor> UiExtensions { get; init; } = [];
+
+    /// <summary>
     /// Running containers for this server (when available).
     /// </summary>
     public List<GameServerContainer> Containers { get; init; } = [];

@@ -191,7 +191,9 @@ public sealed class GameServerQueryService(
                 ?? [],
             DockerVolumeOptions = [],
             NetworkOptions = [],
-            ConfigurationRules = []
+            ConfigurationRules = [],
+            UiExtensionsJson = revisionContext?.Revision.UiExtensionsJson,
+            UiExtensions = GameTypeUiExtensionsSerializer.Parse(revisionContext?.Revision.UiExtensionsJson)
         };
     }
 

@@ -261,6 +261,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         entity.ReadyLogPattern = revision.ReadyLogPattern;
         entity.Notes = revision.Notes;
         entity.IsPublished = revision.IsPublished;
+        entity.UiExtensionsJson = revision.UiExtensionsJson;
 
         context.GameTypePorts.RemoveRange(entity.Ports);
         context.GameTypeVolumes.RemoveRange(entity.Volumes);
@@ -486,6 +487,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Notes = entity.Notes,
             IsPublished = entity.IsPublished,
             CreatedAt = entity.CreatedAt,
+            UiExtensionsJson = entity.UiExtensionsJson,
             GameType = gameType,
             Ports = entity.Ports.OrderBy(x => x.DisplayOrder).Select(x => new GameTypePort
             {
@@ -572,6 +574,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ReadyLogPattern = model.ReadyLogPattern,
             Notes = model.Notes,
             IsPublished = model.IsPublished,
+            UiExtensionsJson = model.UiExtensionsJson,
             CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt,
             Ports = model.Ports.Select(x => new DataV2.GameTypePortEntity
             {

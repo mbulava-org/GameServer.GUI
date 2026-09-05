@@ -94,6 +94,17 @@ namespace GameServer.Web
                 builder.Services.AddScoped<Services.V2.IMountTypeConfigApiService, Services.V2.MountTypeConfigApiService>();
                 builder.Services.AddScoped<Services.V2.IGameServerFilesApiService, Services.V2.GameServerFilesApiService>();
 
+                // GameType UI extension framework: bind whitelist options and register the resolver.
+                builder.Services.Configure<Configurations.GameTypeExtensionsOptions>(
+                    builder.Configuration.GetSection(Configurations.GameTypeExtensionsOptions.SectionName));
+                builder.Services.AddSingleton<Services.V2.IGameTypeExtensionResolver, Services.V2.GameTypeExtensionResolver>();
+
+                // Palworld REST API extension client (registered typed HTTP client).
+                builder.Services.AddHttpClient(Services.Extensions.PalworldApiClient.HttpClientName);
+                builder.Services.AddSingleton<Services.Extensions.INodeAgentExtensionProxy, Services.Extensions.NotImplementedNodeAgentExtensionProxy>();
+                builder.Services.AddSingleton<Services.Extensions.IPalworldApiClient, Services.Extensions.PalworldApiClient>();
+                builder.Services.AddSingleton<Services.Extensions.IRconClient, Services.Extensions.RconClient>();
+
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
                 if (!apiBaseUrl.EndsWith('/'))
                 {

@@ -83,6 +83,35 @@ public sealed record GameTypeRevisionDto
     public List<GameTypeSettingDefinitionDto> SettingDefinitions { get; init; } = [];
 
     public List<GameTypeWebHostDto> WebHosts { get; init; } = [];
+
+    /// <summary>
+    /// Raw JSON descriptor list attached to this revision, declaring which GUI-side
+    /// Blazor extension components should be attached as extra tabs. Null / empty
+    /// means no custom extensions. Kept as raw JSON so the GUI can enforce its
+    /// assembly whitelist even when the server also sends typed descriptors.
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="UiExtensionsJson"/> parsed server-side, provided as
+    /// a convenience for callers. May be empty if the JSON is null or malformed.
+    /// </summary>
+    public List<GameTypeUiExtensionDescriptorDto> UiExtensions { get; init; } = [];
+}
+
+public sealed record GameTypeUiExtensionDescriptorDto
+{
+    public string ComponentTypeName { get; init; } = string.Empty;
+
+    public string? AssemblyName { get; init; }
+
+    public string Title { get; init; } = string.Empty;
+
+    public string? Icon { get; init; }
+
+    public int Order { get; init; }
+
+    public Dictionary<string, string> Parameters { get; init; } = new();
 }
 
 public sealed record GameTypePortDto
