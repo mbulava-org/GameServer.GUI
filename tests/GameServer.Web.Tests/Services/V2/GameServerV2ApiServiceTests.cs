@@ -232,6 +232,167 @@ public class GameServerV2ApiServiceTests
         Assert.Equal("Running", result.Status);
     }
 
+    [Fact]
+    public async Task UpdateAsync_WhenApiReturnsPayload_ShouldDeserializeDetail()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Put && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1")
+            {
+                return CreateJsonResponse(new GameServerDetail
+                {
+                    ServerId = "srv-1",
+                    Name = "Updated Server",
+                    Status = "Running"
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.UpdateAsync("srv-1", new SaveGameServerRequest
+        {
+            Name = "Updated Server",
+            GameTypeRevisionId = 10
+        });
+
+        Assert.Equal("srv-1", result.ServerId);
+        Assert.Equal("Updated Server", result.Name);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_WhenApiReturnsPayload_ShouldDeserializePreview()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/preview")
+            {
+                return CreateJsonResponse(new GameServerDeploymentPreview
+                {
+                    ServiceName = "gameserver-srv-1",
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "latest",
+                    Notices = ["Notice 1"]
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.PreviewAsync(new SaveGameServerRequest
+        {
+            Name = "Minecraft Server",
+            GameTypeRevisionId = 10
+        });
+
+        Assert.Equal("gameserver-srv-1", result.ServiceName);
+        Assert.Single(result.Notices);
+    }
+
+    [Fact]
+    public async Task CheckPortAvailabilityAsync_WhenApiReturnsPayload_ShouldDeserializeAvailabilityResult()
+    {
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/ports/availability")
+            {
+                return CreateJsonResponse(new GameServerPortAvailabilityResult
+                {
+                    Ports =
+                    [
+                        new GameServerPortAvailability { Port = 25565, Protocol = "tcp", IsAvailable = true }
+                    ]
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.CheckPortAvailabilityAsync(new GameServerPortAvailabilityRequest
+        {
+            Ports = [new GameServerPortAvailabilityRequestPort { Port = 25565, Protocol = "tcp" }]
+        });
+
+        var port = Assert.Single(result.Ports);
+        Assert.Equal(25565, port.Port);
+        Assert.True(port.IsAvailable);
+    }
+
+    [Fact]
+    public async Task GetResourceHistoryAsync_WithDatesAndLimit_ShouldPassQueryParamsAndDeserializeList()
+    {
+        var requestedUri = string.Empty;
+        var fromDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var toDate = new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+
+        var service = CreateService(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/resources/history")
+            {
+                requestedUri = request.RequestUri.ToString();
+                return CreateJsonResponse(new List<GameServerResourceHistoryItem>
+                {
+                    new()
+                    {
+                        Timestamp = fromDate,
+                        CpuUsagePercent = 12.5,
+                        MemoryUsageBytes = 1024 * 1024 * 500,
+                        MemoryLimitBytes = 1024 * 1024 * 1024
+                    }
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await service.GetResourceHistoryAsync("srv-1", from: fromDate, to: toDate, limit: 100);
+
+        Assert.Contains("limit=100", requestedUri);
+        Assert.Contains("from=", requestedUri);
+        Assert.Contains("to=", requestedUri);
+        var item = Assert.Single(result);
+        Assert.Equal(12.5, item.CpuUsagePercent);
+    }
+
+    [Fact]
+    public async Task NullOrWhitespaceServerId_ShouldThrowArgumentException()
+    {
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetByServerIdAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateAsync("", new SaveGameServerRequest()));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.StartAsync("   "));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.StopAsync("   "));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.RestartAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.RedeployAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.DeleteAsync(""));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetResourceHistoryAsync(""));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.StopAsync(null!));
+    }
+
+    [Fact]
+    public async Task NullRequestArguments_ShouldThrowArgumentNullException()
+    {
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.ValidateAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.PreviewAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.CheckPortAvailabilityAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.CreateAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => service.UpdateAsync("srv-1", null!));
+    }
+
+    [Fact]
+    public async Task MissingBaseUri_ShouldThrowInvalidOperationException()
+    {
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient());
+
+        var service = new GameServerV2ApiService(httpClientFactory.Object, new GameServerDockerApi { BaseUri = "" });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetListAsync());
+    }
+
     private static GameServerV2ApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();

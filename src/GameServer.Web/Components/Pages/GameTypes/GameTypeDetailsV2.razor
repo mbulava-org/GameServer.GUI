@@ -504,9 +504,9 @@
         ArgumentNullException.ThrowIfNull(revision);
         selectedRevisionId = revision.Id;
         LoadRevisionDraft(revision, asNewDraft: true);
-        if (!string.IsNullOrWhiteSpace(revisionVersionTag))
+        if (!string.IsNullOrWhiteSpace(revision.VersionTag))
         {
-            revisionVersionTag = $"{revisionVersionTag}-copy";
+            revisionVersionTag = $"{revision.VersionTag}-copy";
         }
     }
 

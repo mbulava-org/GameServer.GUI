@@ -105,4 +105,112 @@ public sealed class ServerFileManagerTests : BunitContext
 
         _filesApiMock.Verify(f => f.SaveContentAsync("srv-1", "/data", "server.properties", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task ServerFileManager_HelperMethodsAndActions_ExecuteCorrectly()
+    {
+        var volumes = new List<GameServerResolvedVolume>
+        {
+            new() { ContainerPath = "/data", Source = "vol_data", ReadOnly = false },
+            new() { ContainerPath = "/config", Source = "vol_config", ReadOnly = true }
+        };
+
+        _filesApiMock.Setup(f => f.ListFilesAsync("srv-1", "/data", "", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<FileItem>
+            {
+                new() { Name = "server.properties", Path = "server.properties", IsDirectory = false, Size = 500, LastModified = DateTime.UtcNow },
+                new() { Name = "backup.tar.gz", Path = "backup.tar.gz", IsDirectory = false, Size = 10485760, LastModified = DateTime.UtcNow },
+                new() { Name = "logs", Path = "logs", IsDirectory = true, Size = 0, LastModified = DateTime.UtcNow }
+            });
+
+        _filesApiMock.Setup(f => f.DeleteAsync("srv-1", "/data", "server.properties", false, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var cut = Render<ServerFileManager>(p => p
+            .Add(x => x.ServerId, "srv-1")
+            .Add(x => x.Volumes, volumes));
+
+        var instance = cut.Instance;
+        var methodGetIcon = typeof(ServerFileManager).GetMethod("GetFileIcon", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var methodFormat = typeof(ServerFileManager).GetMethod("FormatFileSize", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var methodEditable = typeof(ServerFileManager).GetMethod("IsEditable", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var methodNavigatePath = instance.GetType().GetMethod("NavigateToPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodVolumeChanged = instance.GetType().GetMethod("OnVolumeChanged", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        var txtFile = new FileItem { Name = "server.txt", Path = "server.txt", IsDirectory = false, Size = 500 };
+        var zipFile = new FileItem { Name = "server.zip", Path = "server.zip", IsDirectory = false, Size = 1048576 };
+        var imgFile = new FileItem { Name = "icon.png", Path = "icon.png", IsDirectory = false, Size = 2048 };
+        var jsonFile = new FileItem { Name = "config.json", Path = "config.json", IsDirectory = false, Size = 100 };
+        var dirItem = new FileItem { Name = "sub", Path = "sub", IsDirectory = true, Size = 0 };
+
+        Assert.Equal("description", methodGetIcon!.Invoke(null, [txtFile]));
+        Assert.Equal("folder", methodGetIcon.Invoke(null, [dirItem]));
+        Assert.Equal("archive", methodGetIcon.Invoke(null, [zipFile]));
+        Assert.Equal("image", methodGetIcon.Invoke(null, [imgFile]));
+        Assert.Equal("code", methodGetIcon.Invoke(null, [jsonFile]));
+
+        Assert.True((bool)methodEditable!.Invoke(null, [txtFile])!);
+        Assert.True((bool)methodEditable.Invoke(null, [jsonFile])!);
+        Assert.False((bool)methodEditable.Invoke(null, [zipFile])!);
+        Assert.False((bool)methodEditable.Invoke(null, [dirItem])!);
+
+        Assert.Equal("500 B", methodFormat!.Invoke(null, [500L]));
+        Assert.Equal("1 MB", methodFormat.Invoke(null, [1048576L]));
+        Assert.Equal("1 GB", methodFormat.Invoke(null, [1073741824L]));
+        Assert.Equal("1 TB", methodFormat.Invoke(null, [1099511627776L]));
+        Assert.Equal("0 B", methodFormat.Invoke(null, [0L]));
+
+        var shFile = new FileItem { Name = "start.sh", Path = "start.sh" };
+        var unknownFile = new FileItem { Name = "unknown.bin", Path = "unknown.bin" };
+        Assert.Equal("terminal", methodGetIcon.Invoke(null, [shFile]));
+        Assert.Equal("insert_drive_file", methodGetIcon.Invoke(null, [unknownFile]));
+
+        // Switch volume
+        await (Task)methodVolumeChanged!.Invoke(instance, ["/config"])!;
+
+        // Navigate path
+        await (Task)methodNavigatePath!.Invoke(instance, [""])!;
+    }
+
+    [Fact]
+    public async Task ServerFileManager_WhenLoadErrorOccurs_DisplaysWarningAlert()
+    {
+        var volumes = new List<GameServerResolvedVolume>
+        {
+            new() { ContainerPath = "/data", Source = "vol_data" }
+        };
+
+        _filesApiMock.Setup(f => f.ListFilesAsync("srv-1", "/data", "", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Agent offline"));
+
+        var cut = Render<ServerFileManager>(p => p
+            .Add(x => x.ServerId, "srv-1")
+            .Add(x => x.Volumes, volumes));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Agent offline", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public async Task ServerFileManager_WhenDirectoryIsEmpty_DisplaysEmptyMessage()
+    {
+        var volumes = new List<GameServerResolvedVolume>
+        {
+            new() { ContainerPath = "/data", Source = "vol_data" }
+        };
+
+        _filesApiMock.Setup(f => f.ListFilesAsync("srv-1", "/data", "", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<FileItem>());
+
+        var cut = Render<ServerFileManager>(p => p
+            .Add(x => x.ServerId, "srv-1")
+            .Add(x => x.Volumes, volumes));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("This directory is empty.", cut.Markup);
+        });
+    }
 }

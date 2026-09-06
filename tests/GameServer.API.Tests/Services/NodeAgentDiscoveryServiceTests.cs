@@ -379,5 +379,197 @@ namespace GameServer.API.Tests.Services
 
             Assert.Null(logs);
         }
+
+        [Fact]
+        public async Task GetServiceLogsAsync_WhenSuccessFalse_ReturnsNull()
+        {
+            var managerAgent = new NodeAgentEndpoint
+            {
+                NodeId = "mgr-node",
+                InternalUrl = "http://mgr-agent:5000",
+                IsManagerNode = true,
+                IsHealthy = true
+            };
+
+            _agentRegistryMock.Setup(r => r.GetAllAgents()).Returns(new List<NodeAgentEndpoint> { managerAgent });
+            _udpAgentRegistryMock.Setup(u => u.GetAllAgents()).Returns(new List<NodeAgentEndpoint>());
+
+            var payload = new { success = false, message = "service failed" };
+            var json = JsonSerializer.Serialize(payload);
+
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                });
+
+            var httpClient = new HttpClient(handlerMock.Object);
+            _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+            var logs = await _discoveryService.GetServiceLogsAsync("svc-1");
+
+            Assert.Null(logs);
+        }
+
+        [Fact]
+        public async Task GetAgentForServerAsync_WhenAgentReturnsMatchingContainers_ReturnsAgent()
+        {
+            var agent = new NodeAgentEndpoint
+            {
+                NodeId = "node-srv",
+                InternalUrl = "http://agent-srv:5000",
+                IsHealthy = true
+            };
+
+            _agentRegistryMock.Setup(r => r.GetAllAgents()).Returns(new List<NodeAgentEndpoint> { agent });
+            _udpAgentRegistryMock.Setup(u => u.GetAllAgents()).Returns(new List<NodeAgentEndpoint>());
+
+            var containersJson = "[{\"Id\":\"c-srv-1\",\"Names\":[\"/valheim\"]}]";
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.ToString().Contains("/containers?label=")),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(containersJson)
+                });
+
+            var httpClient = new HttpClient(handlerMock.Object);
+            _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+            var result = await _discoveryService.GetAgentForServerAsync("srv-1");
+
+            Assert.NotNull(result);
+            Assert.Equal("node-srv", result.NodeId);
+        }
+
+        [Fact]
+        public async Task GetAgentForServerAsync_WhenNoAgentsReturnContainers_ReturnsNull()
+        {
+            var agent = new NodeAgentEndpoint
+            {
+                NodeId = "node-empty",
+                InternalUrl = "http://agent-empty:5000",
+                IsHealthy = true
+            };
+
+            _agentRegistryMock.Setup(r => r.GetAllAgents()).Returns(new List<NodeAgentEndpoint> { agent });
+            _udpAgentRegistryMock.Setup(u => u.GetAllAgents()).Returns(new List<NodeAgentEndpoint>());
+
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("[]")
+                });
+
+            var httpClient = new HttpClient(handlerMock.Object);
+            _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+            var result = await _discoveryService.GetAgentForServerAsync("srv-empty");
+
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public async Task GetContainerStatsAsync_WhenAgentResponds_DeserializesStats()
+        {
+            var agent = new NodeAgentEndpoint
+            {
+                NodeId = "node-stats",
+                InternalUrl = "http://agent-stats:5000",
+                IsHealthy = true
+            };
+
+            _agentRegistryMock.Setup(r => r.GetAgentForContainer("c-stats")).Returns(agent);
+
+            var json = """
+                {
+                    "timestamp": "2026-09-06T12:00:00Z",
+                    "cpu": {
+                        "usagePercent": 25.5,
+                        "totalUsage": 1000,
+                        "systemUsage": 2000,
+                        "onlineCpus": 4
+                    },
+                    "memory": {
+                        "usageBytes": 536870912,
+                        "limitBytes": 1073741824,
+                        "usagePercent": 50.0,
+                        "maxUsageBytes": 800000000
+                    },
+                    "network": {
+                        "rxBytes": 1024,
+                        "txBytes": 2048
+                    },
+                    "blockIo": {
+                        "readBytes": 4096,
+                        "writeBytes": 8192
+                    },
+                    "pids": 12
+                }
+                """;
+
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.ToString().Contains("/containers/c-stats/stats")),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                });
+
+            var httpClient = new HttpClient(handlerMock.Object);
+            _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+            var result = await _discoveryService.GetContainerStatsAsync("c-stats");
+
+            Assert.NotNull(result);
+            Assert.Equal("c-stats", result.ContainerId);
+            Assert.Equal(25.5, result.CpuUsagePercent);
+            Assert.Equal((ulong)536870912, result.MemoryUsageBytes);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_WhenBackgroundDiscoveryEnabled_ExecutesAndCancels()
+        {
+            var options = new NodeAgentOptions
+            {
+                EnableBackgroundDiscovery = true,
+                BackgroundRefreshIntervalSeconds = 1,
+                TimeoutSeconds = 5
+            };
+
+            var service = new NodeAgentDiscoveryService(
+                _loggerMock.Object,
+                _httpClientFactoryMock.Object,
+                _serviceProvider,
+                options,
+                _agentRegistryMock.Object,
+                _udpAgentRegistryMock.Object);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+            await service.StartAsync(cts.Token);
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task DiscoveryService_StopAsync_DisposesCleanly()
+        {
+            await _discoveryService.StopAsync(CancellationToken.None);
+        }
     }
 }

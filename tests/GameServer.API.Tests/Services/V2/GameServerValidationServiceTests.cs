@@ -367,5 +367,152 @@ public class GameServerValidationServiceTests
         var resolvedPort = Assert.Single(resolution.Result.ResolvedPorts);
         Assert.Equal(26500, resolvedPort.PublishedPort);
     }
+
+    [Fact]
+    public async Task ValidateAsync_WhenInvalidVolumeLayout_ReturnsVolumeLayoutInvalid()
+    {
+        var service = CreateService(CreateRevision(), services: []);
+        var request = new SaveGameServerRequestDto
+        {
+            Name = "Server",
+            GameTypeRevisionId = 10,
+            VolumeBindingLayout = "custom-unsupported-layout",
+            Settings = [new GameServerSettingDto { SettingKey = "SERVER_PORT", Value = "25565" }]
+        };
+
+        var result = await service.ValidateAsync(request);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "VolumeLayoutInvalid");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenEmptyNameOrInvalidRevision_ReturnsCoreFieldIssues()
+    {
+        var service = CreateService(CreateRevision(), services: []);
+        var request = new SaveGameServerRequestDto
+        {
+            Name = "",
+            GameTypeRevisionId = 0
+        };
+
+        var result = await service.ValidateAsync(request);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "ServerNameRequired");
+        Assert.Contains(result.Issues, i => i.Code == "RevisionRequired");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenRequiredConfigOptionMissing_ReturnsConfigurationOptionRequired()
+    {
+        var service = CreateService(CreateRevision(), services: []);
+        var request = new SaveGameServerRequestDto
+        {
+            Name = "Server",
+            GameTypeRevisionId = 10,
+            DockerVolumeOptions = [new GameServerConfigurationOptionDto { Key = "opt1", DisplayName = "Option 1", Required = true, Value = "" }],
+            Settings = [new GameServerSettingDto { SettingKey = "SERVER_PORT", Value = "25565" }]
+        };
+
+        var result = await service.ValidateAsync(request);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "ConfigurationOptionRequired");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenDuplicateOrUnknownSettings_ReturnsIssues()
+    {
+        var service = CreateService(CreateRevision(), services: []);
+        var request = new SaveGameServerRequestDto
+        {
+            Name = "Server",
+            GameTypeRevisionId = 10,
+            Settings =
+            [
+                new GameServerSettingDto { SettingKey = "SERVER_PORT", Value = "25565" },
+                new GameServerSettingDto { SettingKey = "SERVER_PORT", Value = "25566" },
+                new GameServerSettingDto { SettingKey = "UNKNOWN_KEY", Value = "test" }
+            ]
+        };
+
+        var result = await service.ValidateAsync(request);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "DuplicateSetting");
+        Assert.Contains(result.Issues, i => i.Code == "UnknownSetting");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenSettingViolatesMetadataRules_ReturnsValidationIssues()
+    {
+        var gameType = new GameType
+        {
+            Id = 1,
+            Key = "custom",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 1,
+                    Ports = [],
+                    SettingDefinitions =
+                    [
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "NUM_PLAYERS",
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                DataType = "number"
+                            }
+                        },
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "MODE",
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                DataType = "enum",
+                                AllowedValuesJson = "[\"survival\",\"creative\"]"
+                            }
+                        },
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "CODE",
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                ValidationPattern = "^[A-Z]{3}$"
+                            }
+                        },
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "NON_EMPTY",
+                            Metadata = new GameTypeSettingMetadata
+                            {
+                                CannotBeEmpty = true
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var service = CreateService(gameType, services: []);
+        var request = new SaveGameServerRequestDto
+        {
+            Name = "Server",
+            GameTypeRevisionId = 1,
+            Settings =
+            [
+                new GameServerSettingDto { SettingKey = "NUM_PLAYERS", Value = "not-a-number" },
+                new GameServerSettingDto { SettingKey = "MODE", Value = "hardcore" },
+                new GameServerSettingDto { SettingKey = "CODE", Value = "invalid123" },
+                new GameServerSettingDto { SettingKey = "NON_EMPTY", Value = "" }
+            ]
+        };
+
+        var result = await service.ValidateAsync(request);
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Issues, i => i.Code == "NumberInvalid");
+        Assert.Contains(result.Issues, i => i.Code == "EnumInvalid");
+        Assert.Contains(result.Issues, i => i.Code == "PatternMismatch");
+        Assert.Contains(result.Issues, i => i.Code == "SettingEmpty");
+    }
 }
 

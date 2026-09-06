@@ -47,4 +47,19 @@ public class AgentShutdownNotificationServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task AgentShutdownNotificationService_StartAsync_And_ExceptionHandling_ExecutesSafely()
+    {
+        var notifierMock = new Mock<IAgentShutdownNotifier>();
+        var service = new AgentShutdownNotificationService(notifierMock.Object, Mock.Of<ILogger<AgentShutdownNotificationService>>());
+
+        await service.StartAsync(CancellationToken.None);
+
+        notifierMock.Setup(x => x.NotifyPrimaryServiceShuttingDownAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Notifier failed"));
+
+        // Should catch and log warning without throwing
+        await service.StopAsync(CancellationToken.None);
+    }
 }

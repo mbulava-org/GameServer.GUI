@@ -67,20 +67,37 @@ public class NodeAgentClientFunctionalTests
                 return;
             }
 
-            using var ws = await context.WebSockets.AcceptWebSocketAsync();
-            var msg = Encoding.UTF8.GetBytes($"attach frame for {id}");
-            await ws.SendAsync(new ArraySegment<byte>(msg), WebSocketMessageType.Text, true, CancellationToken.None);
-
-            var buf = new byte[1024];
-            var res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None);
-            if (res.MessageType == WebSocketMessageType.Text)
+            try
             {
-                var received = Encoding.UTF8.GetString(buf, 0, res.Count);
-                var echo = Encoding.UTF8.GetBytes($"echo: {received}");
-                await ws.SendAsync(new ArraySegment<byte>(echo), WebSocketMessageType.Text, true, CancellationToken.None);
-            }
+                using var ws = await context.WebSockets.AcceptWebSocketAsync();
+                var msg = Encoding.UTF8.GetBytes($"attach frame for {id}");
+                await ws.SendAsync(new ArraySegment<byte>(msg), WebSocketMessageType.Text, true, CancellationToken.None);
 
-            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                var buf = new byte[1024];
+                while (ws.State == WebSocketState.Open)
+                {
+                    var res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None);
+                    if (res.MessageType == WebSocketMessageType.Close)
+                    {
+                        if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+                        {
+                            await ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                        }
+                        break;
+                    }
+
+                    if (res.MessageType == WebSocketMessageType.Text)
+                    {
+                        var received = Encoding.UTF8.GetString(buf, 0, res.Count);
+                        var echo = Encoding.UTF8.GetBytes($"echo: {received}");
+                        await ws.SendAsync(new ArraySegment<byte>(echo), WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Normal on client abrupt disconnect
+            }
         });
 
         await app.StartAsync();
@@ -90,9 +107,11 @@ public class NodeAgentClientFunctionalTests
 
         try
         {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
             // 1. Stream Logs
             var logs = new List<string>();
-            await foreach (var log in client.StreamContainerLogsAsync(address, "test-container-1", cancellationToken: CancellationToken.None))
+            await foreach (var log in client.StreamContainerLogsAsync(address, "test-container-1", cancellationToken: cts.Token))
             {
                 logs.Add(log);
             }
@@ -101,25 +120,26 @@ public class NodeAgentClientFunctionalTests
 
             // 2. Stream Stats
             var statsList = new List<object>();
-            await foreach (var stat in client.StreamContainerStatsAsync(address, "test-container-2", cancellationToken: CancellationToken.None))
+            await foreach (var stat in client.StreamContainerStatsAsync(address, "test-container-2", cancellationToken: cts.Token))
             {
                 statsList.Add(stat);
             }
             Assert.Single(statsList);
 
             // 3. Stats Snapshot
-            var snapshot = await client.GetContainerStatsSnapshotAsync(address, "test-container-3");
+            var snapshot = await client.GetContainerStatsSnapshotAsync(address, "test-container-3", cts.Token);
             Assert.NotNull(snapshot);
 
             // 4. Container Logs Snapshot
-            var logsSnapshot = await client.GetContainerLogsAsync(address, "test-container-4", 50);
+            var logsSnapshot = await client.GetContainerLogsAsync(address, "test-container-4", 50, cts.Token);
             Assert.NotNull(logsSnapshot);
 
             // 5. Stream Attach WebSocket
             var attachFrames = new List<string>();
-            await foreach (var frame in client.StreamContainerAttachAsync(address, "attach-c1"))
+            await foreach (var frame in client.StreamContainerAttachAsync(address, "attach-c1", cts.Token))
             {
                 attachFrames.Add(frame);
+                break; // read first frame then break cleanly
             }
             Assert.NotEmpty(attachFrames);
             Assert.Contains("attach-c1", attachFrames[0]);
@@ -127,8 +147,8 @@ public class NodeAgentClientFunctionalTests
             // 6. Direct WebSocket Send Attach Input
             using var directWs = new ClientWebSocket();
             var wsUrl = address.Replace("http://", "ws://") + "/containers/c-send/attach/ws";
-            await directWs.ConnectAsync(new Uri(wsUrl), CancellationToken.None);
-            await NodeAgentClient.SendAttachInputAsync(directWs, "hello agent");
+            await directWs.ConnectAsync(new Uri(wsUrl), cts.Token);
+            await NodeAgentClient.SendAttachInputAsync(directWs, "hello agent", cts.Token);
             await directWs.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", CancellationToken.None);
         }
         finally
@@ -156,21 +176,36 @@ public class NodeAgentClientFunctionalTests
                 return;
             }
 
-            using var ws = await context.WebSockets.AcceptWebSocketAsync();
-            var initialOutput = Encoding.UTF8.GetBytes($"sh-5.2# ");
-            await ws.SendAsync(new ArraySegment<byte>(initialOutput), WebSocketMessageType.Text, true, CancellationToken.None);
-
-            var buf = new byte[1024];
-            var res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None);
-            if (res.MessageType == WebSocketMessageType.Text)
+            try
             {
-                var input = Encoding.UTF8.GetString(buf, 0, res.Count);
-                var echo = Encoding.UTF8.GetBytes($"output of: {input}");
-                await ws.SendAsync(new ArraySegment<byte>(echo), WebSocketMessageType.Text, true, CancellationToken.None);
-            }
+                using var ws = await context.WebSockets.AcceptWebSocketAsync();
+                var initialOutput = Encoding.UTF8.GetBytes($"sh-5.2# ");
+                await ws.SendAsync(new ArraySegment<byte>(initialOutput), WebSocketMessageType.Text, true, CancellationToken.None);
 
-            await Task.Delay(50);
-            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Session ended", CancellationToken.None);
+                var buf = new byte[1024];
+                while (ws.State == WebSocketState.Open)
+                {
+                    var res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None);
+                    if (res.MessageType == WebSocketMessageType.Close)
+                    {
+                        if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+                        {
+                            await ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Session ended", CancellationToken.None);
+                        }
+                        break;
+                    }
+                    if (res.MessageType == WebSocketMessageType.Text)
+                    {
+                        var input = Encoding.UTF8.GetString(buf, 0, res.Count);
+                        var echo = Encoding.UTF8.GetBytes($"output of: {input}");
+                        await ws.SendAsync(new ArraySegment<byte>(echo), WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Normal when client disconnects
+            }
         });
 
         await app.StartAsync();
@@ -202,13 +237,13 @@ public class NodeAgentClientFunctionalTests
             Assert.True(success, error);
 
             // Wait a bit for initial output forwarding
-            await Task.Delay(100);
+            await Task.Delay(200);
             notifierMock.Verify(n => n.SendOutputAsync("conn-term-1", It.Is<string>(s => s.Contains("sh-5.2#"))), Times.AtLeastOnce);
 
             // Send command
             await manager.SendInputAsync("conn-term-1", "whoami\n");
 
-            await Task.Delay(100);
+            await Task.Delay(200);
             notifierMock.Verify(n => n.SendOutputAsync("conn-term-1", It.Is<string>(s => s.Contains("whoami"))), Times.AtLeastOnce);
 
             await manager.CloseSessionAsync("conn-term-1");

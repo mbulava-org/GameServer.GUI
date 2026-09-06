@@ -41,7 +41,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GameServer.Contracts\GameServer.Contracts.csproj" />
-    <ProjectReference Include="..\GameServer.DB.PostgreSql\GameServer.DB.PostgreSql.csproj" />
+    <ProjectReference Include="..\GameServer.DB.PostgreSql\GameServer.DB.PostgreSql.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

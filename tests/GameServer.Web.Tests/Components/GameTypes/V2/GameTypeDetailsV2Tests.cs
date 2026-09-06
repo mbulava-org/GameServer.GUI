@@ -411,6 +411,131 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameTypeDetailsV2_Export_ShouldInvokeDownloadFileJs()
+    {
+        var package = new PortableGameTypePackage
+        {
+            GameType = new PortableGameType
+            {
+                Key = "minecraft",
+                DisplayName = "Minecraft",
+                Type = "docker"
+            }
+        };
+
+        var detail = new GameTypeDetail
+        {
+            Id = 1,
+            Key = "minecraft",
+            DisplayName = "Minecraft",
+            Type = "docker",
+            Revisions = []
+        };
+
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/minecraft")
+            {
+                return CreateJsonResponse(detail);
+            }
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/minecraft/export")
+            {
+                return CreateJsonResponse(package);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }));
+
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+        cut.WaitForAssertion(() => Assert.Contains("Minecraft", cut.Markup));
+
+        var exportButton = cut.FindAll("button").First(b => b.TextContent.Contains("Export"));
+        exportButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            JSInterop.VerifyInvoke("downloadFile");
+        });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_CloneRevision_ShouldCreateCopyDraft()
+    {
+        var detail = new GameTypeDetail
+        {
+            Id = 1,
+            Key = "minecraft",
+            DisplayName = "Minecraft",
+            Type = "docker",
+            CurrentRevisionId = 11,
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 11,
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "1.21",
+                    CreatedAt = DateTime.UtcNow,
+                    Ports = [ new GameTypePort { ContainerPort = 25565, Protocol = "tcp" } ]
+                }
+            ]
+        };
+
+        RegisterApi(detail);
+
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+        cut.WaitForAssertion(() => Assert.Contains("Minecraft", cut.Markup));
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Revisions", StringComparison.Ordinal)).Click();
+        var cloneButton = cut.Find("button[title='Clone to new draft']");
+        cloneButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("1.21-copy", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_GoBack_ShouldNavigateToGameTypesList()
+    {
+        var detail = new GameTypeDetail
+        {
+            Id = 1,
+            Key = "minecraft",
+            DisplayName = "Minecraft",
+            Type = "docker",
+            Revisions = []
+        };
+
+        RegisterApi(detail);
+        var nav = Services.GetRequiredService<NavigationManager>();
+
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+        cut.WaitForAssertion(() => Assert.Contains("Minecraft", cut.Markup));
+
+        var cancelButton = cut.FindAll("button").First(b => b.TextContent.Contains("Cancel"));
+        cancelButton.Click();
+
+        Assert.EndsWith("/gametypes-v2", nav.Uri);
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_WhenLoadFails_ShouldShowErrorNotification()
+    {
+        var notificationService = new NotificationService();
+        Services.AddSingleton(notificationService);
+        Services.AddSingleton(CreateApiService(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+
+        var cut = Render<GameTypeDetailsV2>(parameters => parameters.Add(p => p.Key, "minecraft"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains(notificationService.Messages, m => m.Summary == "Load failed");
+        });
+    }
+
     private void RegisterApi(GameTypeDetail detail)
     {
         Services.AddSingleton<NotificationService>();

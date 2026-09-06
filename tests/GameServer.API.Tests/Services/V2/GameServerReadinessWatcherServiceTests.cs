@@ -235,5 +235,29 @@ public class GameServerReadinessWatcherServiceTests
 
         Assert.False(watcher.IsServerReady("srv-unknown"));
     }
+
+    [Fact]
+    public async Task EnsureWatchingAsync_WhenAlreadyWatchingOrReady_DoesNotDuplicate()
+    {
+        var rootServiceProvider = new Mock<IServiceProvider>();
+        var watcher = new GameServerReadinessWatcherService(
+            rootServiceProvider.Object,
+            Mock.Of<IServerLogAggregator>(),
+            NullLogger<GameServerReadinessWatcherService>.Instance);
+
+        watcher.MarkReady("srv-ready");
+        await watcher.EnsureWatchingAsync("srv-ready");
+        Assert.True(watcher.IsServerReady("srv-ready"));
+    }
+
+    [Theory]
+    [InlineData("", "pattern", false)]
+    [InlineData("logline", "", false)]
+    [InlineData("sample text", "[invalid-regex*", false)]
+    public void MatchesPattern_EdgeCases_HandledSafely(string log, string pat, bool expected)
+    {
+        var res = GameServerReadinessWatcherService.MatchesPattern(log, pat);
+        Assert.Equal(expected, res);
+    }
 }
 

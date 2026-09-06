@@ -3,6 +3,7 @@ using GameServer.Docker.Agent.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Docker.DotNet;
 using Docker.DotNet.Models;
 using AgentModels = GameServer.Docker.Agent.Models;
 
@@ -548,5 +549,144 @@ public class ContainersControllerTests
 
         await controller.ExecInteractiveWebSocket("c1", ["/bin/bash"], tty: true);
         Assert.Equal(400, controller.HttpContext.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadFile_WhenFileNullOrEmpty_Returns400BadRequest()
+    {
+        var controller = CreateController();
+        var resultNull = await controller.UploadFile("c1", "/dir", file: null);
+        var badReq = Assert.IsType<BadRequestObjectResult>(resultNull);
+        var err = Assert.IsType<AgentModels.ErrorResponse>(badReq.Value);
+        Assert.Equal("No file was uploaded.", err.Error);
+
+        var emptyFormFile = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+        emptyFormFile.Setup(f => f.Length).Returns(0);
+        var resultEmpty = await controller.UploadFile("c1", "/dir", file: emptyFormFile.Object);
+        Assert.IsType<BadRequestObjectResult>(resultEmpty);
+    }
+
+    [Fact]
+    public async Task UploadFile_WhenValid_ReturnsOkWithDetails()
+    {
+        var controller = CreateController();
+        var formFileMock = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+        var stream = new MemoryStream(new byte[] { 1, 2, 3 });
+        formFileMock.Setup(f => f.Length).Returns(3);
+        formFileMock.Setup(f => f.FileName).Returns("test.txt");
+        formFileMock.Setup(f => f.OpenReadStream()).Returns(stream);
+
+        _mockContainerService.Setup(x => x.UploadFileAsync("c1", "/dir", "test.txt", It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await controller.UploadFile("c1", "/dir", formFileMock.Object, CancellationToken.None);
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task GetContainerLogs_WhenDockerContainerNotFound_Returns404()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.GetContainerLogsAsync("c_not_found", 100, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+
+        var result = await controller.GetContainerLogs("c_not_found", 100);
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var err = Assert.IsType<AgentModels.ErrorResponse>(notFound.Value);
+        Assert.Contains("not found", err.Error);
+    }
+
+    [Fact]
+    public async Task GetContainerLogs_WhenException_Returns500Problem()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.GetContainerLogsAsync("c_err", 100, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("general error"));
+
+        var result = await controller.GetContainerLogs("c_err", 100);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task InspectContainer_WhenDockerContainerNotFound_Returns404()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.InspectContainerAsync("c_not_found", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+
+        var result = await controller.InspectContainer("c_not_found", CancellationToken.None);
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var err = Assert.IsType<AgentModels.ErrorResponse>(notFound.Value);
+        Assert.Contains("not found", err.Error);
+    }
+
+    [Fact]
+    public async Task InspectContainer_WhenException_Returns500Problem()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.InspectContainerAsync("c_err", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("inspect error"));
+
+        var result = await controller.InspectContainer("c_err", CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListContainers_WhenException_Returns500Problem()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.ListContainersAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("list error"));
+
+        var result = await controller.ListContainers(CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task FileEndpoints_WhenDockerContainerNotFound_Returns404()
+    {
+        var controller = CreateController();
+
+        _mockContainerService.Setup(x => x.ListFilesAsync("c1", "/path", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var listRes = await controller.ListFiles("c1", "/path");
+        Assert.IsType<NotFoundObjectResult>(listRes);
+
+        _mockContainerService.Setup(x => x.GetFileContentTextAsync("c1", "/path", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var contentRes = await controller.GetFileContent("c1", "/path");
+        Assert.IsType<NotFoundObjectResult>(contentRes);
+
+        _mockContainerService.Setup(x => x.GetFileStreamAsync("c1", "/path", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var downloadRes = await controller.DownloadFile("c1", "/path");
+        Assert.IsType<NotFoundObjectResult>(downloadRes);
+
+        _mockContainerService.Setup(x => x.SaveFileContentTextAsync("c1", "/path", "abc", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var saveRes = await controller.SaveFileContent("c1", "/path", new AgentModels.SaveFileRequest { Content = "abc" });
+        Assert.IsType<NotFoundObjectResult>(saveRes);
+
+        var formFile = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+        formFile.Setup(f => f.Length).Returns(5);
+        formFile.Setup(f => f.FileName).Returns("f.txt");
+        formFile.Setup(f => f.OpenReadStream()).Returns(new MemoryStream(new byte[5]));
+        _mockContainerService.Setup(x => x.UploadFileAsync("c1", "/path", "f.txt", It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var uploadRes = await controller.UploadFile("c1", "/path", formFile.Object);
+        Assert.IsType<NotFoundObjectResult>(uploadRes);
+
+        _mockContainerService.Setup(x => x.CreateDirectoryAsync("c1", "/path", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var mkdirRes = await controller.CreateDirectory("c1", "/path");
+        Assert.IsType<NotFoundObjectResult>(mkdirRes);
+
+        _mockContainerService.Setup(x => x.DeleteFileOrDirectoryAsync("c1", "/path", false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerContainerNotFoundException(System.Net.HttpStatusCode.NotFound, "not found"));
+        var deleteRes = await controller.DeleteFileOrDirectory("c1", "/path");
+        Assert.IsType<NotFoundObjectResult>(deleteRes);
     }
 }

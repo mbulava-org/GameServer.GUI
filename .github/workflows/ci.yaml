@@ -320,6 +320,7 @@ jobs:
   test:
     needs: [setup]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -370,11 +371,21 @@ jobs:
           for proj in $(find tests -name '*.Tests.csproj' | sort); do
             name=$(basename "$proj" .csproj)
             echo "::group::Testing $name"
-            dotnet test --project "$proj" \
+            # timeout guard: a hung test host would otherwise stall the job
+            # until the job-level timeout; fail the individual project instead
+            timeout --kill-after=30s 10m \
+              dotnet test --project "$proj" \
               --no-build --configuration Release \
               --coverage --coverage-output-format cobertura \
               --results-directory ./test-results \
-              -- --report-xunit-trx --report-xunit-trx-filename "${name}.trx" || overall=1
+              -- --report-xunit-trx --report-xunit-trx-filename "${name}.trx"
+            rc=$?
+            if [ $rc -eq 124 ] || [ $rc -eq 137 ]; then
+              echo "::error::$name timed out after 10 minutes (hung test host)"
+              overall=1
+            elif [ $rc -ne 0 ]; then
+              overall=1
+            fi
             echo "::endgroup::"
           done
           exit $overall
