@@ -9,7 +9,14 @@
     <Project Path="src/GameServer.DB.PostgreSql/GameServer.DB.PostgreSql.csproj">
       <Build Solution="Release|*" Project="false" />
     </Project>
+    <Project Path="src/GameServer.Catalog/GameServer.Catalog.csproj" />
+    <Project Path="src/GameServer.Contracts/GameServer.Contracts.csproj" />
+    <Project Path="src/GameServer.Deployment/GameServer.Deployment.csproj" />
     <Project Path="src/GameServer.Docker.Agent/GameServer.Docker.Agent.csproj" />
+    <Project Path="src/GameServer.Monitoring/GameServer.Monitoring.csproj" />
+    <Project Path="src/GameServer.Monitoring.Host/GameServer.Monitoring.Host.csproj" />
+    <Project Path="src/GameServer.Orchestration/GameServer.Orchestration.csproj" />
+    <Project Path="src/GameServer.Orchestration.Host/GameServer.Orchestration.Host.csproj" />
     <Project Path="src/GameServer.Web/GameServer.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

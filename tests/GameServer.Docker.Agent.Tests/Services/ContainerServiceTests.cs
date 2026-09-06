@@ -3,6 +3,7 @@ using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System.Text;
 using DockerStatsResponse = Docker.DotNet.Models.ContainerStatsResponse;
 
 namespace GameServer.Docker.Agent.Tests.Services;
@@ -11,6 +12,7 @@ public class ContainerServiceTests
 {
     private readonly Mock<IDockerClient> _mockDockerClient;
     private readonly Mock<IContainerOperations> _mockContainerOperations;
+    private readonly Mock<IExecOperations> _mockExecOperations;
     private readonly Mock<ILogger<ContainerService>> _mockLogger;
     private readonly ContainerService _service;
 
@@ -18,9 +20,11 @@ public class ContainerServiceTests
     {
         _mockDockerClient = new Mock<IDockerClient>();
         _mockContainerOperations = new Mock<IContainerOperations>();
+        _mockExecOperations = new Mock<IExecOperations>();
         _mockLogger = new Mock<ILogger<ContainerService>>();
 
         _mockDockerClient.SetupGet(x => x.Containers).Returns(_mockContainerOperations.Object);
+        _mockDockerClient.SetupGet(x => x.Exec).Returns(_mockExecOperations.Object);
 
         _service = new ContainerService(_mockDockerClient.Object, _mockLogger.Object);
     }
@@ -142,49 +146,178 @@ public class ContainerServiceTests
     }
 
     [Fact]
-    public async Task GetContainerStatsAsync_WhenDockerReturnsPartiallyInitializedCpu_ShouldNotThrow()
+    public async Task InspectContainerAsync_ReturnsMappedResponse()
     {
-        // Arrange: Docker returns CPUStats without CPUUsage or SystemUsage
-        var containerId = "container-partial";
-        var dockerStats = new DockerStatsResponse
+        var inspect = new ContainerInspectResponse
         {
-            CPUStats = new CPUStats
+            Name = "/mc-server",
+            Created = DateTime.UtcNow,
+            Image = "itzg/minecraft",
+            Platform = "linux",
+            State = new()
             {
-                CPUUsage = null!,
-                SystemUsage = null,
-                OnlineCPUs = null
-            },
-            PreCPUStats = new CPUStats
-            {
-                CPUUsage = null!,
-                SystemUsage = null
-            },
-            MemoryStats = new MemoryStats
-            {
-                Usage = null,
-                Limit = null
+                Status = "running",
+                Running = true,
+                Pid = 1234,
+                StartedAt = DateTime.UtcNow.ToString("o"),
+                FinishedAt = DateTime.MinValue.ToString("o")
             }
         };
 
-        _mockContainerOperations
-            .Setup(x => x.GetContainerStatsAsync(
-                containerId,
-                It.IsAny<ContainerStatsParameters>(),
-                It.IsAny<IProgress<DockerStatsResponse>>(),
-                It.IsAny<CancellationToken>()))
-            .Callback<string, ContainerStatsParameters, IProgress<DockerStatsResponse>, CancellationToken>(
-                (id, param, progress, token) =>
-                {
-                    progress.Report(dockerStats);
-                })
-            .Returns(Task.CompletedTask);
+        _mockContainerOperations.Setup(c => c.InspectContainerAsync("c-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inspect);
 
-        // Act & Assert
-        var result = await _service.GetContainerStatsAsync(containerId, CancellationToken.None);
+        var result = await _service.InspectContainerAsync("c-1");
 
         Assert.NotNull(result);
-        Assert.Equal(containerId, result.ContainerId);
-        Assert.Equal(0.0, result.Cpu.UsagePercent);
-        Assert.Equal((ulong)0, result.Memory.UsageBytes);
+        Assert.Equal("c-1", result.ContainerId);
+        Assert.Equal("/mc-server", result.Name);
+        Assert.True(result.State.Running);
+    }
+
+    [Fact]
+    public async Task ListContainersAsync_ReturnsMappedContainers()
+    {
+        var containers = new List<ContainerListResponse>
+        {
+            new() { ID = "c-1", Names = ["/mc-1"], Image = "img1", State = "running", Status = "Up 1 hour" }
+        };
+
+        _mockContainerOperations.Setup(c => c.ListContainersAsync(It.IsAny<ContainersListParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(containers);
+
+        var result = await _service.ListContainersAsync();
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result.ContainerCount);
+        Assert.Single(result.Containers);
+        Assert.Equal("c-1", result.Containers[0].Id);
+    }
+
+    [Fact]
+    public async Task SaveFileContentTextAsync_ExtractsArchiveToContainer()
+    {
+        _mockContainerOperations.Setup(c => c.ExtractArchiveToContainerAsync(
+            "c-1",
+            It.IsAny<CopyToContainerParameters>(),
+            It.IsAny<Stream>(),
+            It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await _service.SaveFileContentTextAsync("c-1", "/data/server.properties", "motd=Minecraft");
+
+        _mockContainerOperations.Verify(c => c.ExtractArchiveToContainerAsync(
+            "c-1",
+            It.IsAny<CopyToContainerParameters>(),
+            It.IsAny<Stream>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UploadFileAsync_ExtractsArchiveToContainer()
+    {
+        _mockContainerOperations.Setup(c => c.ExtractArchiveToContainerAsync(
+            "c-1",
+            It.IsAny<CopyToContainerParameters>(),
+            It.IsAny<Stream>(),
+            It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
+        await _service.UploadFileAsync("c-1", "/data", "test.bin", stream);
+
+        _mockContainerOperations.Verify(c => c.ExtractArchiveToContainerAsync(
+            "c-1",
+            It.IsAny<CopyToContainerParameters>(),
+            It.IsAny<Stream>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetFileContentTextAsync_ReadsFromTarStream()
+    {
+        using var tarMs = new MemoryStream();
+        using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+        {
+            var dataBytes = Encoding.UTF8.GetBytes("hello server properties");
+            using var dataStream = new MemoryStream(dataBytes);
+            var entry = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, "server.properties")
+            {
+                DataStream = dataStream
+            };
+            await tarWriter.WriteEntryAsync(entry);
+        }
+        tarMs.Position = 0;
+
+        _mockContainerOperations.Setup(c => c.GetArchiveFromContainerAsync(
+            "c-1",
+            It.IsAny<ContainerPathStatParameters>(),
+            false,
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerArchiveResponse { Stream = tarMs });
+
+        var content = await _service.GetFileContentTextAsync("c-1", "/data/server.properties");
+        Assert.Equal("hello server properties", content);
+    }
+
+    [Fact]
+    public async Task GetFileStreamAsync_ReadsFromTarStream()
+    {
+        using var tarMs = new MemoryStream();
+        using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+        {
+            var dataBytes = new byte[] { 10, 20, 30 };
+            using var dataStream = new MemoryStream(dataBytes);
+            var entry = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, "world.zip")
+            {
+                DataStream = dataStream
+            };
+            await tarWriter.WriteEntryAsync(entry);
+        }
+        tarMs.Position = 0;
+
+        _mockContainerOperations.Setup(c => c.GetArchiveFromContainerAsync(
+            "c-1",
+            It.IsAny<ContainerPathStatParameters>(),
+            false,
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerArchiveResponse { Stream = tarMs });
+
+        var (stream, contentType, fileName) = await _service.GetFileStreamAsync("c-1", "/data/world.zip");
+        Assert.Equal("world.zip", fileName);
+        Assert.Equal(3, stream.Length);
+    }
+
+    [Fact]
+    public async Task ListFilesAsync_WhenExecThrows_FallsBackToArchive()
+    {
+        _mockExecOperations.Setup(e => e.CreateContainerExecAsync("c-1", It.IsAny<ContainerExecCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Exec not supported"));
+
+        using var tarMs = new MemoryStream();
+        using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+        {
+            var entry1 = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.Directory, "data");
+            await tarWriter.WriteEntryAsync(entry1);
+
+            var entry2 = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, "data/file1.txt")
+            {
+                DataStream = new MemoryStream(new byte[10])
+            };
+            await tarWriter.WriteEntryAsync(entry2);
+        }
+        tarMs.Position = 0;
+
+        _mockContainerOperations.Setup(c => c.GetArchiveFromContainerAsync(
+            "c-1",
+            It.IsAny<ContainerPathStatParameters>(),
+            false,
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerArchiveResponse { Stream = tarMs });
+
+        var files = await _service.ListFilesAsync("c-1", "/data");
+        Assert.NotNull(files);
+        Assert.Single(files);
+        Assert.Equal("file1.txt", files[0].Name);
     }
 }

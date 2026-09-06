@@ -170,4 +170,113 @@ public class ImagesControllerTests
 
         imageOperations.Verify(x => x.InspectImageAsync("othrayte/docker-conanexiles", It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task InspectImage_WhenNotFoundAndNoPull_Returns404()
+    {
+        var imageOperations = new Mock<IImageOperations>();
+        imageOperations
+            .Setup(x => x.InspectImageAsync("unknown:latest", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerApiException(HttpStatusCode.NotFound, "missing"));
+
+        var dockerClient = new Mock<IDockerClient>();
+        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+
+        var controller = new ImagesController(dockerClient.Object, Mock.Of<ILogger<ImagesController>>());
+        var result = await controller.InspectImage(new InspectImageRequest { ImageReference = "unknown:latest", PullIfMissing = false }, CancellationToken.None);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var err = Assert.IsType<ErrorResponse>(notFound.Value);
+        Assert.Contains("was not found on this node", err.Error);
+    }
+
+    [Fact]
+    public async Task InspectImage_WhenDockerApiException_ReturnsCustomStatusCode()
+    {
+        var imageOperations = new Mock<IImageOperations>();
+        imageOperations
+            .Setup(x => x.InspectImageAsync("bad:latest", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerApiException(HttpStatusCode.Forbidden, "forbidden access"));
+
+        var dockerClient = new Mock<IDockerClient>();
+        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+
+        var controller = new ImagesController(dockerClient.Object, Mock.Of<ILogger<ImagesController>>());
+        var result = await controller.InspectImage(new InspectImageRequest { ImageReference = "bad:latest" }, CancellationToken.None);
+
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(403, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task InspectImage_WhenOperationCancelled_Returns408()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var imageOperations = new Mock<IImageOperations>();
+        imageOperations
+            .Setup(x => x.InspectImageAsync("cancel:latest", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        var dockerClient = new Mock<IDockerClient>();
+        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+
+        var controller = new ImagesController(dockerClient.Object, Mock.Of<ILogger<ImagesController>>());
+        var result = await controller.InspectImage(new InspectImageRequest { ImageReference = "cancel:latest" }, cts.Token);
+
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(408, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task InspectImage_WhenGeneralException_Returns500()
+    {
+        var imageOperations = new Mock<IImageOperations>();
+        imageOperations
+            .Setup(x => x.InspectImageAsync("fail:latest", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("unexpected failure"));
+
+        var dockerClient = new Mock<IDockerClient>();
+        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+
+        var controller = new ImagesController(dockerClient.Object, Mock.Of<ILogger<ImagesController>>());
+        var result = await controller.InspectImage(new InspectImageRequest { ImageReference = "fail:latest" }, CancellationToken.None);
+
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task InspectImage_WhenImageReferenceWithDigest_PullsAndInspectsCorrectly()
+    {
+        var imageOperations = new Mock<IImageOperations>();
+        imageOperations
+            .SetupSequence(x => x.InspectImageAsync("repo/image@sha256:123456", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerApiException(HttpStatusCode.NotFound, "not found"))
+            .ReturnsAsync(new DockerModels.ImageInspectResponse
+            {
+                RepoDigests = ["repo/image@sha256:123456"]
+            });
+
+        imageOperations
+            .Setup(x => x.CreateImageAsync(
+                It.Is<DockerModels.ImagesCreateParameters>(p => p.FromImage == "repo/image@sha256:123456" && p.Tag == string.Empty),
+                null,
+                It.IsAny<IProgress<DockerModels.JSONMessage>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<DockerModels.ImagesCreateParameters, DockerModels.AuthConfig, IProgress<DockerModels.JSONMessage>, CancellationToken>(
+                (p, a, prog, ct) => prog.Report(new DockerModels.JSONMessage { Error = new DockerModels.JSONError { Message = "Warning message" } }))
+            .Returns(Task.CompletedTask);
+
+        var dockerClient = new Mock<IDockerClient>();
+        dockerClient.SetupGet(x => x.Images).Returns(imageOperations.Object);
+
+        var controller = new ImagesController(dockerClient.Object, Mock.Of<ILogger<ImagesController>>());
+        var result = await controller.InspectImage(new InspectImageRequest { ImageReference = "repo/image@sha256:123456", PullIfMissing = true }, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var resp = Assert.IsType<GameServer.Docker.Agent.Models.ImageInspectResponse>(okResult.Value);
+        Assert.Equal("repo/image@sha256:123456", resp.ImageReference);
+    }
 }

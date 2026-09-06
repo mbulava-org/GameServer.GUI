@@ -45,7 +45,7 @@
 
 ### 8. Docker.DotNet.Enhanced 4.3.3
 **What:** Agent and primary service use `Docker.DotNet.Enhanced` matching Testcontainers 4.x  
-**Where:** `src/GameServer.Docker.Agent`, `src/GameServer.Docker`  
+**Where:** `src/GameServer.API`, `src/GameServer.Docker.Agent`  
 **Test:** Build solution in Release; run `GameServer.Docker.Agent.Tests`
 
 ---
@@ -86,7 +86,10 @@ Include Quick Test above, plus:
 7. **Test:** Network section shows default port correctly
 8. **Test:** Resource monitoring shows live stats
 9. **Test:** Home page - all links work (now point to V2 paths)
-10. **Browse:** Documentation at `docs/CURRENT-FEATURES.md`
+10. **Test:** File manager - browse server files
+11. **Test:** GameType UI extensions - verify Palworld API tab and RCON tab render on Palworld server details
+12. **Test:** Password setting display - verify masked value with reveal/copy buttons
+13. **Browse:** Documentation at `docs/CURRENT-FEATURES.md`
 
 ---
 
@@ -130,9 +133,18 @@ Include Quick Test above, plus:
 - Settings display
 - All existing features
 
-### Not Yet Implemented / Known Limitations
-- V2 server start/stop/delete actions are delegated to service operations, not explicit V2 API endpoints
-- PostgreSQL V2 support exists in code but is not fully implemented / production-ready
+### Known Limitations & Notes
+- PostgreSQL schema deployment is managed via `GameServer.DB.PostgreSql` / `Deploy-V2PostgresDatabase.ps1` (external script), while SQLite and MySQL use EF Core migrations (`Deploy-V2Database.ps1`).
+
+### New Features to Test (September 2026)
+- [ ] GameType UI Extensions render custom tabs on server details (Palworld API, RCON)
+- [ ] Palworld API tab operations: info, players, kick/ban, broadcast, save, shutdown
+- [ ] RCON tab connects and sends commands
+- [ ] Password settings display masked values with reveal/copy buttons
+- [ ] Auto Port Allocation assigns free ports during server create (when `AutoAllocatePort` is set)
+- [ ] Server Readiness Watcher promotes status to "Available" when log pattern matches
+- [ ] Reserved Port Ranges are excluded from allocation and validation
+- [ ] File manager browse, upload, download, and text editing work correctly
 
 ---
 
@@ -212,7 +224,7 @@ cd src\GameServer.Web
 dotnet run
 
 # Run API
-cd src\GameServer.Docker
+cd src\GameServer.API
 dotnet run
 
 # View logs

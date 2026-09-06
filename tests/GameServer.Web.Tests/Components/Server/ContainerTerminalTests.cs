@@ -9,6 +9,7 @@ using Radzen;
 
 namespace GameServer.Web.Tests.Components.Server;
 
+[Collection("XtermTests")]
 public sealed class ContainerTerminalTests : BunitContext
 {
     public ContainerTerminalTests()
@@ -50,5 +51,36 @@ public sealed class ContainerTerminalTests : BunitContext
 
         // Assert - Component renders safely
         Assert.NotNull(cut.Markup);
+    }
+
+    [Fact]
+    public async Task ContainerTerminal_InternalEventHandlers_ShouldExecuteSafely()
+    {
+        // Arrange
+        var cut = Render<ContainerTerminal>(parameters => parameters
+            .Add(p => p.ServerId, "srv-1")
+            .Add(p => p.ContainerId, "cnt-1")
+            .Add(p => p.AutoConnect, false));
+
+        var instance = cut.Instance;
+        var methodClear = instance.GetType().GetMethod("ClearTerminal", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodDisconnect = instance.GetType().GetMethod("DisconnectAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodOutput = instance.GetType().GetMethod("OnTerminalOutput", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodError = instance.GetType().GetMethod("OnTerminalError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodStarted = instance.GetType().GetMethod("OnTerminalSessionStarted", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodDisconnected = instance.GetType().GetMethod("OnTerminalDisconnected", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodData = instance.GetType().GetMethod("OnTerminalData", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        // Act & Assert
+        await cut.InvokeAsync(async () =>
+        {
+            methodStarted!.Invoke(instance, [null, "sess-1"]);
+            methodOutput!.Invoke(instance, [null, "output line\n"]);
+            methodError!.Invoke(instance, [null, "error line\n"]);
+            await (Task)methodData!.Invoke(instance, ["ls\r"])!;
+            await (Task)methodClear!.Invoke(instance, [])!;
+            methodDisconnected!.Invoke(instance, [null, "closed"]);
+            await (Task)methodDisconnect!.Invoke(instance, [])!;
+        });
     }
 }

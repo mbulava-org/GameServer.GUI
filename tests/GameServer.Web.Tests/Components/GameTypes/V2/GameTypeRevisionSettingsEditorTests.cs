@@ -218,4 +218,219 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
             Assert.Contains("Password", cut.Markup);
         });
     }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_MoveSetting_ShouldReorderWithinCategory()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new() { SettingKey = "ITEM_1", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General" } },
+            new() { SettingKey = "ITEM_2", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General" } },
+            new() { SettingKey = "ITEM_3", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General" } }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string", "number" })
+            .Add(p => p.ProtocolOptions, new[] { "tcp" }));
+
+        // Select second item
+        cut.FindAll(".setting-list-item")[1].Click();
+
+        // Move up
+        var moveUpBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Icon == "arrow_upward");
+        moveUpBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("ITEM_2", settings[0].SettingKey);
+            Assert.Equal("ITEM_1", settings[1].SettingKey);
+        });
+
+        // Move down
+        var moveDownBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Icon == "arrow_downward");
+        moveDownBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("ITEM_1", settings[0].SettingKey);
+            Assert.Equal("ITEM_2", settings[1].SettingKey);
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_DeleteSetting_ShouldRemoveAndSelectNext()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new() { SettingKey = "ITEM_1", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General" } },
+            new() { SettingKey = "ITEM_2", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General" } }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string" })
+            .Add(p => p.ProtocolOptions, new[] { "tcp" }));
+
+        var deleteBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Icon == "delete");
+        deleteBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Single(settings);
+            Assert.Equal("ITEM_2", settings[0].SettingKey);
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_SearchFilter_FiltersSettingsList()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new() { SettingKey = "ALPHA", Description = "First", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "CatA" } },
+            new() { SettingKey = "BETA", Description = "Second", Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "CatB" } }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string" }));
+
+        var searchBox = cut.Find("input[placeholder='Search by key...']");
+        searchBox.Input("BETA");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("ALPHA", cut.Find(".settings-list-panel").TextContent);
+            Assert.Contains("BETA", cut.Find(".settings-list-panel").TextContent);
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_EnumDataType_AddAndRemoveValues()
+    {
+        var setting = new GameTypeRevisionSettingDraft
+        {
+            SettingKey = "DIFFICULTY",
+            Metadata = new GameTypeRevisionSettingMetadataDraft
+            {
+                DataType = "enum",
+                AllowedValuesJson = "[\"easy\",\"normal\",\"hard\"]",
+                ValueMappingsJson = "{\"easy\":\"Easy Mode\",\"normal\":\"Normal Mode\",\"hard\":\"Hard Mode\"}"
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, new List<GameTypeRevisionSettingDraft> { setting })
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string", "enum" }));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(3, setting.Metadata.EnumValues.Count);
+            Assert.Contains("Enum Configuration", cut.Markup);
+        });
+
+        // Click Add Value
+        var addValBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Text == "Add Value");
+        addValBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(4, setting.Metadata.EnumValues.Count);
+        });
+
+        // Click Remove Value
+        var removeValBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Icon == "close");
+        removeValBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(3, setting.Metadata.EnumValues.Count);
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_ServerVariable_RendersAndEditsTokens()
+    {
+        var setting = new GameTypeRevisionSettingDraft
+        {
+            SettingKey = "SERVER_NAME",
+            DefaultValue = "srv_{SERVER_ID}",
+            Metadata = new GameTypeRevisionSettingMetadataDraft
+            {
+                DataType = "servervariable"
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, new List<GameTypeRevisionSettingDraft> { setting })
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string", "servervariable" }));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Default Control:", cut.Markup);
+            Assert.Contains("Tokens:", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameTypeRevisionSettingsEditor_PortMappings_AddAndConfigure()
+    {
+        var ports = new List<GameTypeRevisionPortDraft>
+        {
+            new() { ContainerPort = 7777, Protocol = "udp", Description = "Game Port" },
+            new() { ContainerPort = 7778, Protocol = "udp", Description = "Query Port" }
+        };
+
+        var setting = new GameTypeRevisionSettingDraft
+        {
+            SettingKey = "GAME_PORT",
+            DefaultValue = "7777",
+            Metadata = new GameTypeRevisionSettingMetadataDraft
+            {
+                DataType = "port",
+                PortMappings = []
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, new List<GameTypeRevisionSettingDraft> { setting })
+            .Add(p => p.DefinedPorts, ports)
+            .Add(p => p.DataTypeOptions, new[] { "port", "string" })
+            .Add(p => p.ProtocolOptions, new[] { "udp", "tcp" })
+            .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
+            .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Multiplier" }));
+
+        // Add primary port mapping
+        var addMappingBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Text == "Add Port Mapping");
+        addMappingBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Single(setting.Metadata.PortMappings);
+            Assert.Equal("Primary", setting.Metadata.PortMappings[0].MappingRole);
+        });
+
+        // Add related port mapping
+        addMappingBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(2, setting.Metadata.PortMappings.Count);
+            Assert.Equal("Related", setting.Metadata.PortMappings[1].MappingRole);
+        });
+
+        // Remove mapping
+        var deleteMappingBtn = cut.FindComponents<Radzen.Blazor.RadzenButton>().First(b => b.Instance.Icon == "delete" && b.Instance.Text != "Delete");
+        deleteMappingBtn.Find("button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Single(setting.Metadata.PortMappings);
+        });
+    }
 }

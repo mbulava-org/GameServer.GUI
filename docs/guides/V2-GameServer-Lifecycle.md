@@ -61,7 +61,9 @@ Port configuration is derived from the selected revision. Volumes are resolved f
 
 ## Deleting a Server
 
-V2 servers use soft delete. After deletion, the server remains in the database with `IsDeleted = true`. Use the **include deleted** filter on the list page to see deleted servers. Hard/permanent deletion is not yet implemented in the V2 API.
+V2 servers support both soft delete and hard delete via the `DELETE /api/v2/gameservers/{serverId}?softDelete=true` endpoint.
+- **Soft delete (`softDelete=true`, default):** The server remains in the database with `IsDeleted = true`. Use the **include deleted** filter on the list page to see deleted servers.
+- **Hard delete (`softDelete=false`):** The server record is permanently deleted from the database.
 
 ## API Endpoints
 
@@ -74,12 +76,15 @@ V2 servers use soft delete. After deletion, the server remains in the database w
 | POST | `/api/v2/gameservers/ports/availability` | Check published port conflicts |
 | POST | `/api/v2/gameservers` | Create server |
 | PUT | `/api/v2/gameservers/{serverId}` | Update server |
+| POST | `/api/v2/gameservers/{serverId}/start` | Start Swarm service |
+| POST | `/api/v2/gameservers/{serverId}/stop` | Stop Swarm service |
+| POST | `/api/v2/gameservers/{serverId}/restart` | Restart Swarm service |
+| POST | `/api/v2/gameservers/{serverId}/redeploy` | Redeploy Swarm service |
+| DELETE | `/api/v2/gameservers/{serverId}?softDelete=true` | Delete server (soft or hard delete) |
 
 ## Known Limitations
 
 - Volumes are resolved from revision templates plus `MountTypeConfig`; per-server snapshot overrides are not available in the create/edit flow.
-- Soft delete is used; there is no V2 hard-delete endpoint yet.
-- Server start/stop actions are currently surfaced through service-level operations in the background, not as explicit V2 endpoints.
 
 ## Related Documentation
 

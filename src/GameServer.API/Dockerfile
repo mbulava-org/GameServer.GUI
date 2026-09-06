@@ -13,16 +13,29 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 WORKDIR /src
-COPY ["GameServer.API.csproj", "."]
-RUN dotnet restore "./GameServer.API.csproj"
-COPY . .
-WORKDIR "/src/."
-RUN dotnet build "./GameServer.API.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
+COPY ["./src/GameServer.Contracts/GameServer.Contracts.csproj", "GameServer.Contracts/"]
+COPY ["./src/GameServer.Catalog/GameServer.Catalog.csproj", "GameServer.Catalog/"]
+COPY ["./src/GameServer.Orchestration/GameServer.Orchestration.csproj", "GameServer.Orchestration/"]
+COPY ["./src/GameServer.Deployment/GameServer.Deployment.csproj", "GameServer.Deployment/"]
+COPY ["./src/GameServer.Monitoring/GameServer.Monitoring.csproj", "GameServer.Monitoring/"]
+COPY ["./src/GameServer.API/GameServer.API.csproj", "GameServer.API/"]
+
+RUN dotnet restore "GameServer.API/GameServer.API.csproj"
+
+COPY ["./src/GameServer.Contracts/", "GameServer.Contracts/"]
+COPY ["./src/GameServer.Catalog/", "GameServer.Catalog/"]
+COPY ["./src/GameServer.Orchestration/", "GameServer.Orchestration/"]
+COPY ["./src/GameServer.Deployment/", "GameServer.Deployment/"]
+COPY ["./src/GameServer.Monitoring/", "GameServer.Monitoring/"]
+COPY ["./src/GameServer.API/", "GameServer.API/"]
+
+WORKDIR "/src/GameServer.API"
+RUN dotnet build "GameServer.API.csproj" -c $BUILD_CONFIGURATION -o /app/build /p:Version=$VERSION_NUMBER
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./GameServer.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:Version=$VERSION_NUMBER
+RUN dotnet publish "GameServer.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:Version=$VERSION_NUMBER
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final

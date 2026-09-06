@@ -43,6 +43,7 @@ GameType
 | `DataType` | Editor | Notes |
 |---|---|---|
 | `string` | Text box | Default. |
+| `password` | Masked text box with reveal/copy | Value hidden behind dots; click to reveal or copy. Auto-detected from key (`PASSWORD`, `SECRET`, `TOKEN`). |
 | `number` | Numeric input | |
 | `boolean` | Switch | Emits `true` / `false`. |
 | `yesno` | Switch | Emits literal `yes` / `no`. |

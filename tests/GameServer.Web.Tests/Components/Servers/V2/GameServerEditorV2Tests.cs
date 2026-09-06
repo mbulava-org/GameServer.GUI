@@ -238,6 +238,70 @@ public sealed class GameServerEditorV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameServerEditorV2_SaveServer_ShouldCallUpdateApiAndNavigate()
+    {
+        // Arrange
+        gameServerApi
+            .Setup(api => api.UpdateAsync("srv-1", It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateServerDetail());
+
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = RenderEditor();
+        cut.WaitForAssertion(() => Assert.NotEmpty(FindPortMappingInputs(cut)));
+
+        // Act
+        var saveButton = cut.FindAll("button").First(button => button.TextContent.Contains("Save Changes"));
+        saveButton.Click();
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            gameServerApi.Verify(api => api.UpdateAsync("srv-1", It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()), Times.Once());
+            Assert.EndsWith("/gameservers-v2/srv-1", nav.Uri);
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_DeleteServer_ShouldCallDeleteApiAndNavigate()
+    {
+        // Arrange
+        gameServerApi
+            .Setup(api => api.DeleteAsync("srv-1", true, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = RenderEditor();
+        cut.WaitForAssertion(() => Assert.NotEmpty(FindPortMappingInputs(cut)));
+
+        // Act
+        var deleteButton = cut.FindAll("button").First(button => button.TextContent.Contains("Delete"));
+        deleteButton.Click();
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            gameServerApi.Verify(api => api.DeleteAsync("srv-1", true, It.IsAny<CancellationToken>()), Times.Once());
+            Assert.EndsWith("/gameservers-v2", nav.Uri);
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_GoBack_ShouldNavigateToDetailsPage()
+    {
+        // Arrange
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = RenderEditor();
+        cut.WaitForAssertion(() => Assert.NotEmpty(FindPortMappingInputs(cut)));
+
+        // Act
+        var backButton = cut.FindAll("button").First(button => button.TextContent.Contains("Back"));
+        backButton.Click();
+
+        // Assert
+        Assert.EndsWith("/gameservers-v2/srv-1", nav.Uri);
+    }
+
     private IRenderedComponent<GameServerEditorV2> RenderEditor()
     {
         return Render<GameServerEditorV2>(parameters => parameters.Add(p => p.ServerId, "srv-1"));

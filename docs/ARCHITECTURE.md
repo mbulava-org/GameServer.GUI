@@ -1,87 +1,85 @@
-# GameServer.Docker - Architecture Overview & Mandatory Patterns
+# GameServer Architecture Overview & Mandatory Patterns
 
-**?? READ THIS FIRST before implementing any new feature or fixing bugs**
+**📖 READ THIS FIRST before implementing any new feature or fixing bugs**
 
 ## System Architecture
 
-### Agent Registration (Current - Recommended)
+### Agent Registration (Push-Based Model)
 
-**As of 2025, the system uses push-based agent registration:**
+**The system uses push-based agent registration:**
 
 ```
-┌─────────────────────────────────┐
-│   Primary Service               │
-│   (GameServer.Docker)           │
-│                                 │
-│   ┌──────────────────────┐     │
-│   │  AgentRegistry       │     │
-│   │  (In-Memory)         │     │
-│   │  - Agent metadata    │     │
-│   │  - Container→Agent   │     │
-│   │    mappings          │     │
-│   └──────────────────────┘     │
-└──────────▲──────────────────────┘
-           │ SignalR Registration
-           │ + Heartbeats (every 30s)
-           │
-    ┌──────┴───────┬──────────────┬─────────────┐
-    │              │              │             │
-┌───▼────┐    ┌───▼────┐    ┌───▼────┐   ┌───▼────┐
-│ Agent  │    │ Agent  │    │ Agent  │   │ Agent  │
-│ Node 1 │    │ Node 2 │    │ Node 3 │   │ Node N │
-│        │    │        │    │        │   │        │
-│ Docker │    │ Docker │    │ Docker │   │ Docker │
-│ Socket │    │ Socket │    │ Socket │   │ Socket │
-└────────┘    └────────┘    └────────┘   └────────┘
+┌────────────────────────────────────────────────────────┐
+│   Central Service Host                                 │
+│   (GameServer.API or GameServer.Orchestration.Host)    │
+│                                                        │
+│   ┌──────────────────────────────────────────────┐     │
+│   │  AgentRegistry (In-Memory)                   │     │
+│   │  - Agent metadata & capabilities             │     │
+│   │  - Container → Agent mappings                │     │
+│   │  - O(1) route resolution                     │     │
+│   └──────────────────────────────────────────────┘     │
+└──────────────────────────▲─────────────────────────────┘
+                           │ SignalR Registration
+                           │ + Heartbeats (every 30s)
+                           │
+    ┌──────────────────────┼──────────────────────┬──────────────────────┐
+    │                      │                      │                      │
+┌───▼────────────┐   ┌─────▼──────────┐   ┌───────▼────────┐   ┌─────────▼────────┐
+│ Node Agent 1   │   │ Node Agent 2   │   │ Node Agent 3   │   │ Node Agent N     │
+│ (Swarm Manager)│   │ (Swarm Worker) │   │ (Swarm Worker) │   │ (Worker/Host)    │
+│                │   │                │   │                │   │                  │
+│ Docker Socket  │   │ Docker Socket  │   │ Docker Socket  │   │ Docker Socket    │
+└────────────────┘   └────────────────┘   └────────────────┘   └──────────────────┘
 ```
 
 **Benefits:**
-- ✅ No Docker Swarm queries needed from Primary Service
+- ✅ No direct Docker daemon queries needed from Central API
 - ✅ Real-time agent health tracking via heartbeats
-- ✅ O(1) container-to-agent lookups (dictionary, not API calls)
-- ✅ Agents can run outside Docker Swarm (standalone Docker, K8s, etc.)
-- ✅ Primary Service can run without Docker access
+- ✅ O(1) container-to-agent lookups (in-memory dictionary, not API calls)
+- ✅ Agents can run outside Docker Swarm (standalone Docker, K8s, Windows, etc.)
+- ✅ Primary Service can run completely containerized without host Docker socket access
 
 **Configuration:**
 - **Agent**: `appsettings.json` → `AgentRegistration:PrimaryServiceUrl`
-- **Primary**: Automatic - agents connect to `/hubs/agentregistration`
+- **Primary Host**: Agents connect to `/hubs/agentregistration`
 
 **Multi-node requirements:**
-- Agents and Primary Service must share the same overlay network.
+- Agents and Central Service must share the same overlay network.
 - At least one registered agent must report `IsManagerNode = true` and include the `services`, `tasks`, `nodes`, and `swarm` capabilities so service create/update/delete can be delegated to it.
 - Worker agents only need container-level capabilities (logs, exec, stats, attach).
 
 ### Multi-Node Docker Swarm Deployment
 
 ```
-???????????????????????????????????????????????????????????????
-?                     Docker Swarm Cluster                      ?
-?                                                               ?
-?  ???????????????      ???????????????      ??????????????? ?
-?  ?   Node 1    ?      ?   Node 2    ?      ?   Node 3    ? ?
-?  ?  (Manager)  ?      ?  (Worker)   ?      ?  (Worker)   ? ?
-?  ?             ?      ?             ?      ?             ? ?
-?  ?  ?????????  ?      ?  ?????????  ?      ?  ?????????  ? ?
-?  ?  ? Agent ?  ?      ?  ? Agent ?  ?      ?  ? Agent ?  ? ?
-?  ?  ?????????  ?      ?  ?????????  ?      ?  ?????????  ? ?
-?  ?      ?      ?      ?      ?      ?      ?      ?      ? ?
-?  ?  [Container] ?      ?  [Container] ?      ?  [Container] ? ?
-?  ?  [Container] ?      ?  [Container] ?      ?  [Container] ? ?
-?  ????????????????      ????????????????      ???????????????? ?
-?         ?                     ?                     ?         ?
-?????????????????????????????????????????????????????????????????
-          ?                     ?                     ?
-          ?????????????????????????????????????????????
-                                ?
-                    ??????????????????????????
-                    ?  GameServer.Docker API ?
-                    ?   (Central Orchestrator)?
-                    ??????????????????????????
-                                ?
-                    ??????????????????????????
-                    ?   GameServer.Web       ?
-                    ?   (Blazor Frontend)     ?
-                    ??????????????????????????
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Docker Swarm Cluster                           │
+│                                                                         │
+│  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐  │
+│  │     Node 1      │      │     Node 2      │      │     Node 3      │  │
+│  │ (Swarm Manager) │      │ (Swarm Worker)  │      │ (Swarm Worker)  │  │
+│  │                 │      │                 │      │                 │  │
+│  │  ┌───────────┐  │      │  ┌───────────┐  │      │  ┌───────────┐  │  │
+│  │  │   Agent   │  │      │  │   Agent   │  │      │  │   Agent   │  │  │
+│  │  └───────────┘  │      │  └───────────┘  │      │  └───────────┘  │  │
+│  │        │        │      │        │        │      │        │        │  │
+│  │   [Container]   │      │   [Container]   │      │   [Container]   │  │
+│  │   [Container]   │      │   [Container]   │      │   [Container]   │  │
+│  └─────────────────┘      └─────────────────┘      └─────────────────┘  │
+│           │                        │                        │           │
+└───────────┼────────────────────────┼────────────────────────┼───────────┘
+            │                        │                        │
+            └────────────────────────┼────────────────────────┘
+                                     │
+                        ┌─────────────────────────┐
+                        │   GameServer.API Host   │
+                        │  (Central Orchestrator) │
+                        └─────────────────────────┘
+                                     │
+                        ┌─────────────────────────┐
+                        │     GameServer.Web      │
+                        │    (Blazor Frontend)    │
+                        └─────────────────────────┘
 ```
 
 ## ?? CRITICAL RULES - NEVER VIOLATE THESE
@@ -144,19 +142,36 @@ public class MyHub : Hub
 
 ## Component Architecture
 
-### 1. GameServer.Docker (Central API)
+### 1. GameServer.API (Central REST API & Modular Host)
 
-**Purpose:** Orchestration, service management, data persistence
+**Purpose:** Primary API entry point, SignalR hubs, OpenAPI/Scalar reference, and DI composition for modular libraries.
 
-**Components:**
-- `Controllers/` - REST API endpoints for CRUD operations
-- `Hubs/` - SignalR hubs for real-time features
-  - **MUST use Node Agents for container operations**
-- `Services/` - Business logic, service orchestration
-- `Repositories/V2/` - V2 persistence layer
-- `Data/V2/` - V2 EF Core DbContext and entities
+**Modular Structure:**
+- **`GameServer.Contracts`** — Shared interfaces (`INodeAgentDiscovery`, `IAgentRegistry`, `IServiceOperations`), DTOs (`Dtos/V2/`), shared models, and `ServiceLabels` constants.
+- **`GameServer.Catalog`** — Persistence and metadata: EF Core `GameServerV2DbContext`, entity models, migrations, repositories (`GameTypeRepository`, `GameServerRepository`, `MountTypeConfigRepository`), and `GameTypeSetupDetectionService`.
+- **`GameServer.Orchestration`** — Node agent connectivity and discovery: `NodeAgentClient`, `NodeAgentDiscoveryService`, `AgentRegistryService`, `UdpAgentRegistryService`, `TerminalSessionManager`.
+- **`GameServer.Deployment`** — Swarm deployment and lifecycle: `GameServerSpecBuilder`, `ServiceOperationsViaAgent`, `GameServerCommandService`, `GameServerValidationService`, `PortAllocator`.
+- **`GameServer.Monitoring`** — Read-only monitoring and aggregation: `ServerResourceMonitor`, `ServerLogAggregator`, `ServerResourceAggregator`, `GameServerQueryService`.
 
-**Key Services:**
+**Standalone Host Microservices (Optional Promotion):**
+- **`GameServer.Orchestration.Host`** — Standalone service hosting `/hubs/agentregistration` and agent discovery.
+- **`GameServer.Monitoring.Host`** — Standalone service hosting `/hubs/resources`, `/hubs/serverlogs`, and `/hubs/attach`.
+
+**SignalR route map (which host owns which endpoint):**
+
+| Hub | GameServer.API route | Standalone host route |
+|---|---|---|
+| Agent registration | `/hubs/agentregistration` | `GameServer.Orchestration.Host` → `/hubs/agentregistration` |
+| Interactive terminal (per-user exec) | `/hubs/terminal` | *(still owned by `GameServer.API`)* |
+| Container attach (shared TTY) | `/hubs/attach` | `GameServer.Monitoring.Host` → `/hubs/attach` |
+| Server logs (shared) | `/hubs/serverlogs` | `GameServer.Monitoring.Host` → `/hubs/serverlogs` |
+| Resource monitoring (shared) | `/hubs/resources` | `GameServer.Monitoring.Host` → `/hubs/resources` |
+
+All standalone-host routes match the `GameServer.API` route names exactly, so a SignalR client can switch between hosts by changing only its base URI.
+
+> **Gateway model:** `GameServer.Web` always talks to `GameServer.API` only. When `ModularHosting:HostHubsInApi=false`, `GameServer.API` uses YARP to reverse-proxy `/hubs/agentregistration`, `/hubs/terminal` → `OrchestrationService:BaseUrl` and `/hubs/resources`, `/hubs/serverlogs`, `/hubs/attach` → `MonitoringService:BaseUrl` (WebSocket-aware). Standalone hosts are internal-only in this mode; the Web UI has no knowledge of them and its base URI never changes. When `HostHubsInApi=true` (default), the API maps the hubs in-process and no proxying happens.
+
+**Key Services & Abstractions:**
 - `IServiceOperations` - Abstraction for all Docker Swarm service operations
   - `ServiceOperationsViaAgent` - Delegates all service operations to a manager agent
 - `AgentRegistryService` - Agent registration and container→agent mappings
@@ -164,19 +179,16 @@ public class MyHub : Hub
 
 **Persistence:**
 - `GameServerV2DbContext` is the only persistence implementation and the single source of the V2 model.
-- Each relational provider has its own `DbContext` subclass (`SqliteGameServerV2DbContext`, `MySqlGameServerV2DbContext`) so EF Core keeps a separate, provider-correct migration set for each.
-- **Schema management is owned entirely by EF Core migrations.** There is no hand-rolled schema creation or repair at runtime; pending migrations are applied on startup and the operation is idempotent.
-- **SQLite is the default provider.** It requires no external server and is the best-tested local option.
-- **MySQL is supported** and selected via configuration.
-- **PostgreSQL is experimental.** Its schema is deployed out-of-band by the `GameServer.DB.PostgreSql` project and `pgpac` tooling rather than by EF migrations; startup verifies the schema exists and fails fast with deployment guidance if it does not.
-- Seed data (such as the built-in mount types) is declared with `HasData` in the model and delivered by the migrations.
+- EF Core migrations automatically apply on startup.
+- Supported providers: **PostgreSQL** (default in production stack), **SQLite** (default in local development), and **MySQL**.
+- Seed data (such as default mount types) is declared with `HasData` in the model and delivered by migrations.
 - The V2 schema is normalized around:
   - `GameType` owning catalog identity (key, display name, type)
-  - `GameTypeRevision` owning the version-tagged deployable template, including its `ImageReference`
+  - `GameTypeRevision` owning the version-tagged deployable template, including its `ImageReference` and UI extensions (`uiExtensionsJson`)
   - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
-- `GameServerPorts` and resolved Web Host state are not persisted in V2; `GameServerVolumes` are persisted as immutable per-server snapshots resolved from `GameTypeVolume` templates plus `MountTypeConfig` entries.
+- `GameServerPorts` and resolved Web Host state are derived and are not persisted in V2; `GameServerVolumes` are persisted as immutable per-server snapshots resolved from `GameTypeVolume` templates plus `MountTypeConfig` entries.
 
-**✅ PHASE 5 COMPLETE:**
+**✅ MODULAR ARCHITECTURE:**
 - Primary Service runs **without any Docker daemon connection**
 - All Docker operations (services, tasks, networks) are delegated to manager agents
 - Container operations always go through agents (logs, exec, stats, attach)
@@ -370,46 +382,37 @@ try {
 
 ```
 src/
-??? GameServer.Docker/              # Central API
-?   ??? Controllers/                # REST endpoints (service CRUD)
-?   ??? Hubs/                       # SignalR (MUST use aggregators / Node Agents)
-?   ??? Services/                   # Business logic
-?   ?   ??? V2/                       # V2 persistence-bound services
-?   ?   ??? NodeAgentDiscoveryService.cs # Agent discovery / container→agent lookup
-?   ??? Repositories/V2/            # V2 data persistence
-?
-??? GameServer.Docker.Agent/        # Node Agent (runs on each node)
-?   ??? Controllers/                # Container operations REST API
-?   ??? Hubs/                       # Container operations SignalR
-?   ??? Services/                   # Container operations
-?       ??? ContainerService.cs     # Direct Docker client (local only)
-?
-??? GameServer.Docker.Client/       # Client library
-?   ??? Services/
-?       ??? ContainerConsoleClient.cs    # Console operations
-?       ??? ResourceMonitoringClient.cs  # Resource monitoring
-?
-??? GameServer.Web/                 # Blazor frontend
-    ??? Components/
-        ??? Server/                 # Server UI components
+├── GameServer.Contracts/          # Core DTOs, interfaces, models, options, helpers
+├── GameServer.Catalog/            # EF Core DbContexts, migrations, repositories, setup detection
+├── GameServer.Orchestration/      # Agent registry, discovery, NodeAgentClient, terminal sessions
+├── GameServer.Orchestration.Host/ # Standalone Orchestration microservice host (Phase 2)
+├── GameServer.Deployment/         # Spec builder, deployment, validation, command services, volume handlers
+├── GameServer.Monitoring/         # Aggregators (logs, resources, attach), query services, resource monitors
+├── GameServer.Monitoring.Host/    # Standalone Monitoring streaming host (Phase 2)
+├── GameServer.DB.PostgreSql/      # PostgreSQL DAC and deployment scripts
+├── GameServer.API/                # Central REST API & Modular Host (Controllers, Hubs, SignalR notifiers)
+├── GameServer.API.Client/         # NSwag generated client library & typed services
+├── GameServer.Docker.Agent/       # Linux Node Agent daemon (runs on each swarm/docker node)
+├── GameServer.Windows.Agent/      # Windows Node Agent daemon
+└── GameServer.Web/                # Blazor frontend web application
 ```
 
 ## Dependency Injection Patterns
 
-### In GameServer.Docker Hubs (CORRECT):
+### In GameServer.API Hubs (CORRECT):
 ```csharp
-public SomeHub(
-    ILogger<SomeHub> logger,
-    IServerLogAggregator logAggregator,       // ? For shared log streaming
-    IServerResourceAggregator resourceAggregator) // ? For shared resource streaming
+public ServerLogsHub(
+    ILogger<ServerLogsHub> logger,
+    IServerLogAggregator logAggregator) // ✅ For shared log streaming
 {
 }
 ```
 
-### In GameServer.Docker Services (CORRECT):
+### In GameServer.Deployment Services (CORRECT):
 ```csharp
-public DockerServiceHelper(
-    IServiceOperations serviceOperations)  // ✅ For Swarm service operations
+public GameServerCommandService(
+    IServiceOperations serviceOperations, // ✅ For Swarm service operations
+    IGameServerRepository gameServerRepository)
 {
 }
 ```
@@ -417,7 +420,7 @@ public DockerServiceHelper(
 ### In GameServer.Docker.Agent (CORRECT):
 ```csharp
 public ContainerService(
-    IDockerClient dockerClient)  // ? OK - only sees local containers
+    IDockerClient dockerClient)  // ✅ OK - only sees local containers on this node
 {
 }
 ```
@@ -450,12 +453,12 @@ public ContainerService(
 
 | Operation | Component | Method |
 |-----------|-----------|--------|
-| Create game server | DockerServiceHelper | `IDockerClient.Swarm.CreateServiceAsync()` |
-| List game servers | DockerServiceHelper | `IDockerClient.Swarm.ListServicesAsync()` |
-| Update server | DockerServiceHelper | `IDockerClient.Swarm.UpdateServiceAsync()` |
-| Delete server | DockerServiceHelper | `IDockerClient.Swarm.RemoveServiceAsync()` |
+| Create game server | GameServerCommandService | `IServiceOperations.CreateServiceAsync()` |
+| List game servers | GameServerQueryService | `IGameServerRepository.GetAllAsync()` |
+| Update server | GameServerCommandService | `IServiceOperations.UpdateServiceAsync()` |
+| Delete server | GameServerCommandService | `IServiceOperations.RemoveServiceAsync()` |
 | Get container logs | ServerLogsHub (`/hubs/serverlogs`) | Node Agent ? `StreamContainerLogs()` |
-| Attach to console | ContainerConsoleHub (`/hubs/console`) | Node Agent ? WebSocket |
+| Attach to console | ContainerAttachHub (`/hubs/attach`) | Node Agent ? WebSocket |
 | Execute command | ContainerConsoleHub (`/hubs/terminal`) | Node Agent ? `/api/containers/{id}/exec` |
 | Get stats | ResourceMonitoringHub (`/hubs/resources`) | Node Agent ? `StreamContainerStats()` |
 | Agent registration | AgentRegistrationHub (`/hubs/agentregistration`) | SignalR bi-directional |
@@ -497,6 +500,6 @@ docker ps  # Run on each node
 
 ---
 
-**Last Updated:** 2026-02-18
+**Last Updated:** September 2026
 **Maintainer:** Architecture team
 **Review Required:** Before any Hub implementation or container operation changes

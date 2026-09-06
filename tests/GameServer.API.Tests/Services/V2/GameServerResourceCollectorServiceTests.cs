@@ -235,4 +235,61 @@ public class GameServerResourceCollectorServiceTests
 
         Assert.False(batchCalled, "Server without real-time stats should not be saved to the database.");
     }
+
+    [Fact]
+    public async Task GetCachedUsage_And_TriggerImmediateCollection_WithInvalidInput_HandledSafely()
+    {
+        var services = new ServiceCollection();
+        var collector = new GameServerResourceCollectorService(
+            services.BuildServiceProvider(),
+            new DatabaseReadinessGate(),
+            Mock.Of<IGameServerReadinessWatcherService>(),
+            Mock.Of<ILogger<GameServerResourceCollectorService>>());
+
+        Assert.Null(collector.GetCachedUsage(""));
+        Assert.Null(collector.GetCachedUsage("   "));
+
+        await collector.TriggerImmediateCollectionAsync("");
+        await collector.TriggerImmediateCollectionAsync("   ");
+    }
+
+    [Fact]
+    public async Task TriggerImmediateCollectionAsync_WhenStatusChanges_SyncsRepositoryAndReadiness()
+    {
+        var services = new ServiceCollection();
+        var mockMonitor = new Mock<IServerResourceMonitor>();
+        var mockServerRepo = new Mock<IGameServerRepository>();
+        var mockWatcher = new Mock<IGameServerReadinessWatcherService>();
+        var readinessGate = new DatabaseReadinessGate();
+        readinessGate.MarkReady();
+
+        mockMonitor
+            .Setup(m => m.GetSnapshotAsync("srv-status", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServerResourceUsage
+            {
+                ServerId = "srv-status",
+                Timestamp = DateTime.UtcNow,
+                DesiredReplicas = 0,
+                RunningReplicas = 0
+            });
+
+        mockServerRepo
+            .Setup(r => r.GetByServerIdAsync("srv-status"))
+            .ReturnsAsync(new Models.V2.GameServer { ServerId = "srv-status", Status = "Running" });
+
+        services.AddScoped(_ => mockMonitor.Object);
+        services.AddScoped(_ => mockServerRepo.Object);
+        services.AddScoped(_ => Mock.Of<IGameServerResourceUtilizationRepository>());
+
+        var collector = new GameServerResourceCollectorService(
+            services.BuildServiceProvider(),
+            readinessGate,
+            mockWatcher.Object,
+            Mock.Of<ILogger<GameServerResourceCollectorService>>());
+
+        await collector.TriggerImmediateCollectionAsync("srv-status");
+
+        mockWatcher.Verify(w => w.ResetReadiness("srv-status"), Times.Once);
+        mockServerRepo.Verify(r => r.UpdateStatusAsync("srv-status", "Stopped"), Times.Once);
+    }
 }

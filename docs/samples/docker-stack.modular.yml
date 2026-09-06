@@ -1,0 +1,185 @@
+version: '3.8'
+
+# ==============================================================================
+# GameServer.GUI — Distributed Modular Microservices Stack
+# ==============================================================================
+# Deploys:
+#   1. gameserver-postgres      - PostgreSQL 16 database backend
+#   2. gameserver-api           - REST API host (Catalog, Deployment, Spec generation)
+#   3. gameserver-orchestration - Dedicated Orchestration Host (Agent registry, discovery, terminal hub)
+#   4. gameserver-monitoring    - Dedicated Monitoring Host (Resource metrics, server logs, attach streaming)
+#   5. gameserver-web           - Blazor Server Web UI
+#   6. gameserver-agent         - Global node daemon on every Swarm host
+# ==============================================================================
+
+networks:
+  gameserver-network:
+    driver: overlay
+    attachable: true
+  public-ingress:
+    external: true
+
+volumes:
+  postgres-data:
+    driver: local
+  gameserver-data:
+    driver: local
+
+services:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. PostgreSQL Database
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gameserver-v2
+      POSTGRES_USER: gameserver
+      POSTGRES_PASSWORD: gameserver_secure_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameserver -d gameserver-v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. REST API & Deployment Host
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-api:
+    image: mbulava/gameserver-api:latest
+    ports:
+      - "5164:8080" # REST API & OpenAPI / Scalar UI
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - V2Database__Provider=PostgreSql
+      - V2Database__ConnectionStringName=GameServerV2PostgresDb
+      - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver_secure_password
+      - PortAllocation__StartPort=25565
+      - PortAllocation__EndPort=35565
+      - NetworkOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__ServiceName=gameserver_gameserver-agent
+      - NodeAgentOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__Port=8080
+      - ServiceOperations__Mode=Agent
+      # Modular hosting: delegate hubs + agent registry to the standalone hosts
+      - ModularHosting__HostHubsInApi=false
+      - ModularHosting__UseHttpAgentRegistry=true
+      - OrchestrationService__BaseUrl=http://gameserver-orchestration:8080
+      - MonitoringService__BaseUrl=http://gameserver-monitoring:8080
+    volumes:
+      - gameserver-data:/data
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    depends_on:
+      - gameserver-postgres
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Dedicated Orchestration Host
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-orchestration:
+    image: mbulava/gameserver-orchestration:latest
+    ports:
+      - "5165:8080" # Orchestration API & Hubs
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - NodeAgentOptions__ServiceName=gameserver_gameserver-agent
+      - NodeAgentOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__Port=8080
+      - NodeAgentOptions__TimeoutSeconds=45
+      - NodeAgentOptions__CacheTimeoutSeconds=30
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 4. Dedicated Monitoring Host
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-monitoring:
+    image: mbulava/gameserver-monitoring:latest
+    ports:
+      - "5166:8080" # Monitoring API & Streaming Hubs (/hubs/resources, /hubs/serverlogs, /hubs/attach)
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - V2Database__Provider=PostgreSql
+      - V2Database__ConnectionStringName=GameServerV2PostgresDb
+      - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver_secure_password
+      - NodeAgentOptions__ServiceName=gameserver_gameserver-agent
+      - NodeAgentOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__Port=8080
+      # Fetch agent registry + node discovery from Orchestration Host over HTTP
+      - OrchestrationService__BaseUrl=http://gameserver-orchestration:8080
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    depends_on:
+      - gameserver-postgres
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 5. Blazor Web UI
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-web:
+    image: mbulava/gameserver-web:latest
+    ports:
+      - "5102:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - GameServerDockerApi__BaseUri=http://gameserver-api:8080/
+    networks:
+      - gameserver-network
+      - public-ingress
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    depends_on:
+      - gameserver-api
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 6. Node Agent (Global Daemon)
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-agent:
+    image: mbulava/gameserver-docker-agent:latest
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - NODE_NAME={{.Node.Hostname}}
+      - NODE_ID={{.Node.ID}}
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-orchestration:8080/
+      - AgentRegistration__HeartbeatIntervalSeconds=30
+      - AgentRegistration__Enabled=true
+      - AgentRegistration__MaxStartupRetries=20
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - gameserver-network
+    deploy:
+      mode: global
+      restart_policy:
+        condition: any
+        delay: 5s

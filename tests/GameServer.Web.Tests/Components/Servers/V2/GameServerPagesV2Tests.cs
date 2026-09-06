@@ -266,6 +266,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IPublicIpService>(new StubPublicIpService());
         Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
+        Services.AddSingleton(new Mock<IGameTypeExtensionResolver>().Object);
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
         Services.AddSingleton(CreateMountTypeConfigApiService(handler));

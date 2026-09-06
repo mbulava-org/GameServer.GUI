@@ -26,7 +26,12 @@ public class GameTypeRepositoryMySqlTests : IAsyncLifetime
         await _container.StartAsync();
 
         var optionsBuilder = new DbContextOptionsBuilder<MySqlGameServerV2DbContext>();
-        GameServerV2DbContextFactory.ConfigureProvider(optionsBuilder, "mysql", _container.GetConnectionString());
+        var connectionString = _container.GetConnectionString();
+        if (!connectionString.Contains("SslMode", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionString += ";SslMode=Disabled;";
+        }
+        GameServerV2DbContextFactory.ConfigureProvider(optionsBuilder, "mysql", connectionString);
 
         _context = new MySqlGameServerV2DbContext(optionsBuilder.Options);
         _repository = new GameTypeRepository(_context, Mock.Of<ILogger<GameTypeRepository>>());

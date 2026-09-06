@@ -1,0 +1,92 @@
+version: '3.8'
+
+# ==============================================================================
+# GameServer.GUI — Local Development Docker Compose Setup
+# ==============================================================================
+# Useful for testing container images locally with Docker Compose.
+# ==============================================================================
+
+networks:
+  gameserver-local:
+    driver: bridge
+
+volumes:
+  postgres-data-local:
+  gameserver-data-local:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gameserver-postgres-local
+    environment:
+      POSTGRES_DB: gameserver-v2
+      POSTGRES_USER: gameserver
+      POSTGRES_PASSWORD: gameserver_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-local:/var/lib/postgresql/data
+    networks:
+      - gameserver-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameserver -d gameserver-v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: mbulava/gameserver-api:latest
+    container_name: gameserver-api-local
+    ports:
+      - "5164:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - V2Database__Provider=PostgreSql
+      - V2Database__ConnectionStringName=GameServerV2PostgresDb
+      - ConnectionStrings__GameServerV2PostgresDb=Host=postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver_password
+      - PortAllocation__StartPort=25565
+      - PortAllocation__EndPort=25600
+      - ServiceOperations__Mode=Agent
+      - NodeAgentOptions__ServiceName=agent
+      - NodeAgentOptions__NetworkName=gameserver-local
+      - NodeAgentOptions__Port=8080
+    volumes:
+      - gameserver-data-local:/data
+    networks:
+      - gameserver-local
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: mbulava/gameserver-web:latest
+    container_name: gameserver-web-local
+    ports:
+      - "5102:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - GameServerDockerApi__BaseUri=http://api:8080/
+    networks:
+      - gameserver-local
+    depends_on:
+      - api
+
+  agent:
+    image: mbulava/gameserver-docker-agent:latest
+    container_name: gameserver-agent-local
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - NODE_NAME=local-docker-node
+      - NODE_ID=local-node-1
+      - AgentRegistration__PrimaryServiceUrl=http://api:8080/
+      - AgentRegistration__HeartbeatIntervalSeconds=15
+      - AgentRegistration__Enabled=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - gameserver-local
+    depends_on:
+      - api

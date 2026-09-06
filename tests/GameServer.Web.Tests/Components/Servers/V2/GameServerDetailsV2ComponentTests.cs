@@ -16,6 +16,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
     private readonly Mock<IThumbnailCacheService> thumbnailCache = new();
     private readonly Mock<IPublicIpService> publicIpService = new();
     private readonly Mock<IGameServerFilesApiService> filesApi = new();
+    private readonly Mock<IGameTypeExtensionResolver> extensionResolver = new();
 
     public GameServerDetailsV2ComponentTests()
     {
@@ -28,6 +29,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         Services.AddSingleton(thumbnailCache.Object);
         Services.AddSingleton(publicIpService.Object);
         Services.AddSingleton(filesApi.Object);
+        Services.AddSingleton(extensionResolver.Object);
         publicIpService
             .Setup(p => p.GetPublicIpAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync("203.0.113.195");
@@ -303,6 +305,196 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         {
             Assert.Contains("SuperSecret123", cut.Markup);
             Assert.NotNull(cut.Find("button[title='Hide Password']"));
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_StartService_ShouldCallApiAndNotify()
+    {
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-start",
+            Name = "Stopped Minecraft",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-start",
+            Status = "Stopped"
+        };
+        var startedServer = new GameServerDetail
+        {
+            ServerId = "srv-start",
+            Name = "Stopped Minecraft",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-start",
+            Status = "Running"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-start", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.StartAsync("srv-start", It.IsAny<CancellationToken>())).ReturnsAsync(startedServer);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-start"));
+        cut.WaitForAssertion(() => Assert.Contains("Stopped", cut.Markup));
+
+        var startButton = cut.FindAll("button").First(b => b.TextContent.Contains("Start"));
+        startButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            serverApi.Verify(a => a.StartAsync("srv-start", It.IsAny<CancellationToken>()), Times.Once());
+            Assert.Contains("Running", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_StopService_ShouldCallApiAndNotify()
+    {
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-stop",
+            Name = "Running Minecraft",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-stop",
+            Status = "Running"
+        };
+        var stoppedServer = new GameServerDetail
+        {
+            ServerId = "srv-stop",
+            Name = "Running Minecraft",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-stop",
+            Status = "Stopped"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-stop", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.StopAsync("srv-stop", It.IsAny<CancellationToken>())).ReturnsAsync(stoppedServer);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-stop"));
+        cut.WaitForAssertion(() => Assert.Contains("Running", cut.Markup));
+
+        var stopButton = cut.FindAll("button").First(b => b.TextContent.Contains("Stop"));
+        stopButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            serverApi.Verify(a => a.StopAsync("srv-stop", It.IsAny<CancellationToken>()), Times.Once());
+            Assert.Contains("Stopped", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_RestartService_ShouldCallApi()
+    {
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-restart",
+            Name = "Running Server",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-restart",
+            Status = "Running"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-restart", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.RestartAsync("srv-restart", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-restart"));
+        cut.WaitForAssertion(() => Assert.Contains("Running", cut.Markup));
+
+        var restartButton = cut.FindAll("button").First(b => b.TextContent.Contains("Restart"));
+        restartButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            serverApi.Verify(a => a.RestartAsync("srv-restart", It.IsAny<CancellationToken>()), Times.Once());
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_RedeployService_ShouldCallApi()
+    {
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-redeploy",
+            Name = "Server To Redeploy",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-redeploy",
+            Status = "Running"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-redeploy", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.RedeployAsync("srv-redeploy", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-redeploy"));
+        cut.WaitForAssertion(() => Assert.Contains("Server To Redeploy", cut.Markup));
+
+        var updateButton = cut.FindAll("button").First(b => b.TextContent.Contains("Update Service"));
+        updateButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            serverApi.Verify(a => a.RedeployAsync("srv-redeploy", It.IsAny<CancellationToken>()), Times.Once());
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_DeleteServer_ShouldCallApiAndNavigate()
+    {
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-del",
+            Name = "Server To Delete",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv-del",
+            Status = "Stopped"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-del", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.DeleteAsync("srv-del", true, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-del"));
+        cut.WaitForAssertion(() => Assert.Contains("Server To Delete", cut.Markup));
+
+        var deleteButton = cut.FindAll("button").First(b => b.TextContent.Contains("Delete"));
+        deleteButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            serverApi.Verify(a => a.DeleteAsync("srv-del", true, It.IsAny<CancellationToken>()), Times.Once());
+            Assert.EndsWith("/gameservers-v2", nav.Uri);
+        });
+    }
+
+    [Theory]
+    [InlineData("Preparing", "Preparing")]
+    [InlineData("Starting", "Starting")]
+    [InlineData("Stopped", "Stopped")]
+    [InlineData("Stopping", "Stopping")]
+    [InlineData("Failed", "Failed")]
+    [InlineData("Deleted", "Deleted")]
+    [InlineData("ScalingDown", "Scaling Down")]
+    public void GameServerDetailsV2_DifferentStatuses_ShouldRenderExpectedStatusText(string status, string expectedText)
+    {
+        var server = new GameServerDetail
+        {
+            ServerId = $"srv-{status.ToLowerInvariant()}",
+            Name = $"Server {status}",
+            GameTypeDisplayName = "Minecraft",
+            ServiceName = "mc-srv",
+            Status = status
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync(server.ServerId, It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, server.ServerId));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains(expectedText, cut.Markup);
         });
     }
 }

@@ -14,18 +14,28 @@ ARG BUILD_CONFIGURATION=Release
 ARG VERSION_NUMBER=1.0.0.0
 
 WORKDIR /src
-COPY ["./src/GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
+COPY ["./src/GameServer.Contracts/GameServer.Contracts.csproj", "GameServer.Contracts/"]
+COPY ["./src/GameServer.Catalog/GameServer.Catalog.csproj", "GameServer.Catalog/"]
+COPY ["./src/GameServer.Orchestration/GameServer.Orchestration.csproj", "GameServer.Orchestration/"]
+COPY ["./src/GameServer.Deployment/GameServer.Deployment.csproj", "GameServer.Deployment/"]
+COPY ["./src/GameServer.Monitoring/GameServer.Monitoring.csproj", "GameServer.Monitoring/"]
+COPY ["./src/GameServer.API/GameServer.API.csproj", "GameServer.API/"]
 COPY ["./src/GameServer.API.Client/GameServer.API.Client.csproj", "GameServer.API.Client/"]
 COPY ["./src/GameServer.API.Client/nswag.json", "GameServer.API.Client/"]
-COPY ["./src/GameServer.API/GameServer.API.csproj", "GameServer.API/"]
+COPY ["./src/GameServer.Web/GameServer.Web.csproj", "GameServer.Web/"]
 
 RUN dotnet restore "GameServer.API/GameServer.API.csproj"	
 RUN dotnet restore "GameServer.API.Client/GameServer.API.Client.csproj"	
 RUN dotnet restore "GameServer.Web/GameServer.Web.csproj"
 
-COPY ["./src/GameServer.Web/", "GameServer.Web/"]
-COPY ["./src/GameServer.API.Client/", "GameServer.API.Client/"]
+COPY ["./src/GameServer.Contracts/", "GameServer.Contracts/"]
+COPY ["./src/GameServer.Catalog/", "GameServer.Catalog/"]
+COPY ["./src/GameServer.Orchestration/", "GameServer.Orchestration/"]
+COPY ["./src/GameServer.Deployment/", "GameServer.Deployment/"]
+COPY ["./src/GameServer.Monitoring/", "GameServer.Monitoring/"]
 COPY ["./src/GameServer.API/", "GameServer.API/"]
+COPY ["./src/GameServer.API.Client/", "GameServer.API.Client/"]
+COPY ["./src/GameServer.Web/", "GameServer.Web/"]
 
 # Build GameServer.API first (required for NSwag code generation)
 RUN dotnet build "GameServer.API/GameServer.API.csproj" -c $BUILD_CONFIGURATION /p:Version=$VERSION_NUMBER

@@ -75,4 +75,46 @@ public sealed class GameTypeRevisionWebHostsEditorTests : BunitContext
         Assert.Single(hosts);
         Assert.True(changed);
     }
+
+    [Fact]
+    public async Task WebHostsEditor_BuildPathMoveRemoveAndPortVariable_ShouldWorkCorrectly()
+    {
+        // Arrange
+        var h1 = new GameTypeRevisionWebHostDraft { Name = "Admin Panel", ContainerPort = 8080 };
+        var h2 = new GameTypeRevisionWebHostDraft { Name = "Status Page", ContainerPortVariable = "STATUS_PORT" };
+        var hosts = new List<GameTypeRevisionWebHostDraft> { h1, h2 };
+        var changedCount = 0;
+
+        var cut = Render<GameTypeRevisionWebHostsEditor>(parameters => parameters
+            .Add(p => p.WebHosts, hosts)
+            .Add(p => p.PortVariableOptions, [new WebHostPortVariableOption { SettingKey = "STATUS_PORT", Label = "STATUS_PORT (9090)", DefaultPort = 9090, IsCompatible = true }])
+            .Add(p => p.OnDraftChanged, () => changedCount++));
+
+        var instance = cut.Instance;
+        var methodBuild = instance.GetType().GetMethod("BuildPathSegment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodPortVar = instance.GetType().GetMethod("OnPortVariableChanged", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodMove = instance.GetType().GetMethod("MoveWebHostDraftAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var methodRemove = instance.GetType().GetMethod("RemoveWebHostDraftAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        // Build path segment from name
+        methodBuild!.Invoke(instance, [h1]);
+        Assert.Equal("admin-panel", h1.PathSegment);
+
+        // Change port variable on h1
+        methodPortVar!.Invoke(instance, [h1, "STATUS_PORT"]);
+        Assert.Equal("STATUS_PORT", h1.ContainerPortVariable);
+        Assert.Null(h1.ContainerPort);
+
+        // Move h1 down
+        await (Task)methodMove!.Invoke(instance, [h1, 1])!;
+        Assert.Equal(h2, hosts[0]);
+        Assert.Equal(h1, hosts[1]);
+
+        // Remove h2
+        await (Task)methodRemove!.Invoke(instance, [h2])!;
+        Assert.Single(hosts);
+        Assert.Equal(h1, hosts[0]);
+
+        Assert.True(changedCount > 0);
+    }
 }

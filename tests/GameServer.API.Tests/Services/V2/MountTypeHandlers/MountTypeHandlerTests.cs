@@ -202,4 +202,78 @@ public class NfsMountTypeHandlerTests
         Assert.NotNull(mount.VolumeOptions?.DriverConfig);
         Assert.Equal("nfs", mount.VolumeOptions!.DriverConfig!.Options["type"]);
     }
+
+    [Fact]
+    public async Task PrepareAsync_WhenLocalPathEmpty_SkipsProvisioning()
+    {
+        var handler = CreateHandler();
+        var spec = CreateSpec("", ensure: true);
+        await handler.PrepareAsync(spec);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WithPermissionsAndOwnership_ExecutesSafely()
+    {
+        var localRoot = Path.Combine(Path.GetTempPath(), "nfs-perm-tests", Guid.NewGuid().ToString("N"));
+        var handler = CreateHandler();
+        var spec = CreateSpec(localRoot, ensure: true) with
+        {
+            Permissions = "0775",
+            OwnerUid = 1000,
+            OwnerGid = 1000
+        };
+
+        try
+        {
+            await handler.PrepareAsync(spec);
+            Assert.True(Directory.Exists(localRoot));
+        }
+        finally
+        {
+            if (Directory.Exists(localRoot))
+            {
+                Directory.Delete(localRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WithInvalidOctalPermissions_DoesNotThrow()
+    {
+        var localRoot = Path.Combine(Path.GetTempPath(), "nfs-octal-tests", Guid.NewGuid().ToString("N"));
+        var handler = CreateHandler();
+        var spec = CreateSpec(localRoot, ensure: true) with
+        {
+            Permissions = "8888" // Invalid octal digits
+        };
+
+        try
+        {
+            await handler.PrepareAsync(spec);
+            Assert.True(Directory.Exists(localRoot));
+        }
+        finally
+        {
+            if (Directory.Exists(localRoot))
+            {
+                Directory.Delete(localRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BuildMount_WhenDriverOptionsInvalidJson_ReturnsMountWithoutVolumeOptions()
+    {
+        var handler = CreateHandler();
+        var volume = new GameServerVolume
+        {
+            MountType = "nfs",
+            VolumeName = "vol1",
+            ContainerPath = "/data",
+            DriverOptionsJson = "invalid-json"
+        };
+
+        var mount = handler.BuildMount(volume);
+        Assert.Null(mount.VolumeOptions);
+    }
 }

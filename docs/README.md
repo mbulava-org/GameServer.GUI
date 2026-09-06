@@ -39,9 +39,9 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 └─────────────────┬──────────────────────────────────────┘
                   │
 ┌─────────────────▼──────────────────────────────────────┐
-│              GameServer.Docker                         │
-│          (REST API & Orchestration)                    │
-│   Port: 5164 (dev) / 8080 (docker) | Swagger/API      │
+│               GameServer.API                           │
+│       (REST API & Modular Orchestration)               │
+│   Port: 5164 (dev) / 8080 (docker) | Scalar/API       │
 └─────────────────┬──────────────────────────────────────┘
                   │
         ┌─────────┴──────────┬──────────────┐
@@ -83,26 +83,39 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **[Terminal & Console](guides/Terminal-And-Console.md)** - Interactive terminal and TTY console
 - **[File Manager](guides/File-Manager.md)** - Browse and edit server files
 - **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - Push-based agent registration and heartbeats
+- **[GameType UI Extensions](guides/GameType-UI-Extensions.md)** - Build custom extension tabs (Palworld API, RCON, etc.)
+- **[Reverse Proxy & Blazor](guides/Reverse-Proxy-Blazor-Server.md)** - Configuring reverse proxies for Blazor Server
 
 ## 📂 Projects in this Solution
 
-### Main Applications
+### Core Applications & Modules
 
 | Project | Description | Technology | Dev Port | Docker Port |
 |---------|-------------|------------|----------|-------------|
-| **GameServer.Web** | Blazor Server UI | .NET 10, Radzen, SignalR | 5102 / 7198 | 8080 / 8081 |
-| **GameServer.Docker** | REST API & Orchestration | .NET 10, ASP.NET Core | 5164 / 7145 | 8080 / 8081 |
-| **GameServer.Docker.Agent** | Node Agent Service | .NET 10, Docker.DotNet | 54879 / 54878 | 8080 |
-| **GameServer.Docker.Client** | Shared Models & DTOs | .NET 10 Class Library | - | - |
+| **GameServer.API** | REST API, OpenAPI/Scalar, SignalR Hubs & Modular Host | .NET 10, ASP.NET Core | 5164 / 7145 | 8080 |
+| **GameServer.Web** | Blazor Server UI | .NET 10, Radzen, SignalR | 5102 / 7198 | 8080 |
+| **GameServer.Contracts** | Shared interfaces, DTOs, models & constants | .NET 10 Class Library | - | - |
+| **GameServer.Catalog** | EF Core DbContext, migrations, repositories | .NET 10 Class Library | - | - |
+| **GameServer.Orchestration** | Agent registry, discovery, session management | .NET 10 Class Library | - | - |
+| **GameServer.Deployment** | Swarm spec builder, port allocator, deploy services | .NET 10 Class Library | - | - |
+| **GameServer.Monitoring** | Real-time metric & log aggregators | .NET 10 Class Library | - | - |
+| **GameServer.Orchestration.Host** | Dedicated Orchestration microservice host | .NET 10 ASP.NET Core | 5165 | 8080 |
+| **GameServer.Monitoring.Host** | Dedicated Monitoring streaming host | .NET 10 ASP.NET Core | 5166 | 8080 |
+| **GameServer.Docker.Agent** | Linux Node Agent daemon (Docker.DotNet) | .NET 10, ASP.NET Core | 54879 / 54878 | 8080 |
+| **GameServer.Windows.Agent** | Windows Node Agent daemon | .NET 10, ASP.NET Core | - | - |
+| **GameServer.DB.PostgreSql** | PostgreSQL schema DAC & deployment tooling | MSBuild.Sdk.PostgreSql | - | - |
+| **GameServer.API.Client** | NSwag generated client library & typed services | .NET 10 Class Library | - | - |
 
 ### Test Projects
 
 | Project | Description |
 |---------|-------------|
-| **GameServer.Docker.Tests** | Unit tests for Docker service |
-| **GameServer.Web.Tests** | Unit tests for Web UI |
-| **GameServer.Docker.Agent.Tests** | Unit tests for Agent service |
-| **GameServer.Integration.Tests** | Integration tests |
+| **GameServer.API.Tests** | Unit tests for API, controllers, and services |
+| **GameServer.Web.Tests** | Unit and component tests for Blazor Web UI |
+| **GameServer.Docker.Agent.Tests** | Unit tests for Docker Node Agent |
+| **GameServer.Windows.Agent.Tests** | Unit tests for Windows Node Agent |
+| **GameServer.API.Client.Tests** | Unit tests for generated API client |
+| **GameServer.Integration.Tests** | End-to-end and multi-service integration tests |
 
 ## 📖 Documentation Structure
 
@@ -202,7 +215,7 @@ filters.Add("label", "gameserver.docker.managed");
 ### Setting Metadata System
 
 GameType revisions define settings with rich metadata:
-- **Data Types:** `string`, `number`, `boolean`, `enum`, `port`, `servervariable`
+- **Data Types:** `string`, `password`, `number`, `boolean`, `yesno`, `enum`, `port`, `servervariable`
 - **Validation:** required/non-empty flags, regex patterns, allowed values
 - **Enums:** edited as value/display pairs, persisted to `AllowedValuesJson` and `ValueMappingsJson`
 - **Server Variables:** `{Token}` expansion with a per-server on/off toggle
@@ -237,17 +250,17 @@ cd GameServer.GUI
 # Initialize Docker Swarm (if not already)
 docker swarm init
 
-# Run the Web UI
-cd src/GameServer.Web
+# Run the API
+cd src/GameServer.API
 dotnet run
 
-# Run the API (in another terminal)
-cd src/GameServer.Docker
+# Run the Web UI (in another terminal)
+cd src/GameServer.Web
 dotnet run
 
 # Access the application
 # Web UI: http://localhost:5102 (or https://localhost:7198)
-# API: http://localhost:5164/swagger (or https://localhost:7145/swagger)
+# Scalar API Docs: http://localhost:5164/scalar/v1
 ```
 
 **See [QUICK-START.md](QUICK-START.md) for complete setup instructions.**
@@ -290,6 +303,17 @@ All documentation follows these standards:
 - ✅ **Be concise** - Get to the point quickly
 
 ## 🔄 Recent Updates
+
+### September 2026
+- 🔌 GameType UI Extensions — declare custom Blazor tabs per revision (`PalworldApiTab`, `RconTab`)
+- 🎮 Palworld REST API integration — server info, player management, broadcast, save, shutdown
+- 🖥️ Generic RCON tab — Source-RCON console with preset commands for any RCON-capable game
+- 🔒 `password` DataType — masked input with reveal/copy in server details
+- 🚀 Auto Port Allocation — `AutoAllocatePort` metadata flag for automatic free-port assignment
+- ✅ Server Readiness Watcher — log-based detection promotes server status to "Available"
+- 📝 Reserved Port Ranges — `PortAllocation:ReservedPortRanges` configuration support
+- 🧪 Expanded test coverage and test timeout infrastructure
+- 📚 Comprehensive documentation and sample stack updates
 
 ### March 2026
 - ✨ Added web redirect configuration support
@@ -350,13 +374,20 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🎯 Project Status
 
-**Version:** 0.1.0 (Beta)  
+**Version:** 0.3.0 (Beta)  
 **Target Framework:** .NET 10  
 **Status:** Active Development  
-**Last Updated:** March 2026
+**Last Updated:** September 2026
 
 ### Recently Completed
 
+- ✅ GameType UI Extensions — custom Blazor tabs per revision (`PalworldApiTab`, `RconTab`)
+- ✅ Palworld REST API integration — info, player management, broadcast, save, shutdown
+- ✅ Generic RCON tab — Source-RCON console with one-click preset commands
+- ✅ `password` DataType — masked input with reveal/copy toggle
+- ✅ Auto Port Allocation — `AutoAllocatePort` flag for free-port assignment during create
+- ✅ Server Readiness Watcher — log-stream detection promotes status to "Available"
+- ✅ Reserved Port Ranges — `PortAllocation:ReservedPortRanges` configuration
 - ✅ Legacy V1 persistence fully removed
 - ✅ `Docker.DotNet.Enhanced` 4.3.3 adopted across agent and primary service
 - ✅ Shared multi-subscriber streaming aggregators for:

@@ -45,11 +45,15 @@ jobs:
       web_changed: ${{ steps.detect-project-changes.outputs.web_changed }}
       client_changed: ${{ steps.detect-project-changes.outputs.client_changed }}
       tests_changed: ${{ steps.detect-project-changes.outputs.tests_changed }}
+      orchestration_changed: ${{ steps.detect-project-changes.outputs.orchestration_changed }}
+      monitoring_changed: ${{ steps.detect-project-changes.outputs.monitoring_changed }}
       # Push decision outputs (changes OR force_publish)
       push_backend: ${{ steps.calculate-push-decisions.outputs.push_backend }}
       push_agent: ${{ steps.calculate-push-decisions.outputs.push_agent }}
       push_web: ${{ steps.calculate-push-decisions.outputs.push_web }}
       push_client: ${{ steps.calculate-push-decisions.outputs.push_client }}
+      push_orchestration: ${{ steps.calculate-push-decisions.outputs.push_orchestration }}
+      push_monitoring: ${{ steps.calculate-push-decisions.outputs.push_monitoring }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -151,11 +155,13 @@ jobs:
           WEB_CHANGED="false"
           CLIENT_CHANGED="false"
           TESTS_CHANGED="false"
+          ORCHESTRATION_CHANGED="false"
+          MONITORING_CHANGED="false"
 
-
-          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.API/'; then
+          # Backend: API host + Catalog, Contracts, Deployment (not the standalone Host projects)
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.(API|Catalog|Contracts|Deployment)/'; then
             BACKEND_CHANGED="true"
-            echo "::notice::✅ GameServer.API project has changes"
+            echo "::notice::✅ Backend module(s) have changes (API/Catalog/Contracts/Deployment)"
           fi
 
           # Check GameServer.Docker.Agent (agent-backend)
@@ -182,20 +188,36 @@ jobs:
             echo "::notice::✅ Test projects have changes"
           fi
 
+          # Check GameServer.Orchestration + GameServer.Orchestration.Host
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Orchestration(\.Host)?/'; then
+            ORCHESTRATION_CHANGED="true"
+            echo "::notice::✅ Orchestration module or host has changes"
+          fi
+
+          # Check GameServer.Monitoring + GameServer.Monitoring.Host
+          if echo "$CHANGED_FILES" | grep -qE '^src/GameServer\.Monitoring(\.Host)?/'; then
+            MONITORING_CHANGED="true"
+            echo "::notice::✅ Monitoring module or host has changes"
+          fi
+
           # Output results
           echo "backend_changed=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
           echo "agent_changed=$AGENT_CHANGED" >> $GITHUB_OUTPUT
           echo "web_changed=$WEB_CHANGED" >> $GITHUB_OUTPUT
           echo "client_changed=$CLIENT_CHANGED" >> $GITHUB_OUTPUT
           echo "tests_changed=$TESTS_CHANGED" >> $GITHUB_OUTPUT
+          echo "orchestration_changed=$ORCHESTRATION_CHANGED" >> $GITHUB_OUTPUT
+          echo "monitoring_changed=$MONITORING_CHANGED" >> $GITHUB_OUTPUT
 
           # Summary
           echo "📊 Project Change Detection Summary:"
-          echo "  - Backend (GameServer.API): $BACKEND_CHANGED"
+          echo "  - Backend (API + Catalog/Contracts/Deployment): $BACKEND_CHANGED"
           echo "  - Agent (GameServer.Docker.Agent): $AGENT_CHANGED"
           echo "  - Web (GameServer.Web): $WEB_CHANGED"
           echo "  - Client (GameServer.API.Client): $CLIENT_CHANGED"
           echo "  - Tests: $TESTS_CHANGED"
+          echo "  - Orchestration (GameServer.Orchestration + Host): $ORCHESTRATION_CHANGED"
+          echo "  - Monitoring (GameServer.Monitoring + Host): $MONITORING_CHANGED"
 
       - name: Calculate push decisions
         id: calculate-push-decisions
@@ -209,6 +231,8 @@ jobs:
           WEB_CHANGED="${{ steps.detect-project-changes.outputs.web_changed }}"
           CLIENT_CHANGED="${{ steps.detect-project-changes.outputs.client_changed }}"
           TESTS_CHANGED="${{ steps.detect-project-changes.outputs.tests_changed }}"
+          ORCHESTRATION_CHANGED="${{ steps.detect-project-changes.outputs.orchestration_changed }}"
+          MONITORING_CHANGED="${{ steps.detect-project-changes.outputs.monitoring_changed }}"
 
           echo "🔍 Push Decision Calculation:"
           echo "  - Force Publish: $FORCE_PUBLISH"
@@ -247,6 +271,22 @@ jobs:
             echo "  ⏭️  Client push skipped (no changes, not forced)"
           fi
 
+          if [ "$ORCHESTRATION_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_orchestration=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Orchestration will be pushed (changed=$ORCHESTRATION_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_orchestration=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Orchestration push skipped (no changes, not forced)"
+          fi
+
+          if [ "$MONITORING_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+            echo "push_monitoring=true" >> $GITHUB_OUTPUT
+            echo "  ✅ Monitoring will be pushed (changed=$MONITORING_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
+          else
+            echo "push_monitoring=false" >> $GITHUB_OUTPUT
+            echo "  ⏭️  Monitoring push skipped (no changes, not forced)"
+          fi
+
       - name: Write build summary
         id: build-summary
         run: |
@@ -268,9 +308,11 @@ jobs:
 
           | Project | Changed | Force | **Will Push** |
           | ------- | ------- | ----- | ------------- |
-          | Backend (GameServer.API) | ${{ steps.detect-project-changes.outputs.backend_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_backend }}`** |
+          | Backend (API + Catalog/Contracts/Deployment) | ${{ steps.detect-project-changes.outputs.backend_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_backend }}`** |
           | Agent (GameServer.Docker.Agent) | ${{ steps.detect-project-changes.outputs.agent_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_agent }}`** |
           | Web (GameServer.Web) | ${{ steps.detect-project-changes.outputs.web_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_web }}`** |
+          | Orchestration (GameServer.Orchestration + Host) | ${{ steps.detect-project-changes.outputs.orchestration_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_orchestration }}`** |
+          | Monitoring (GameServer.Monitoring + Host) | ${{ steps.detect-project-changes.outputs.monitoring_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_monitoring }}`** |
           | Client (GameServer.API.Client) | ${{ steps.detect-project-changes.outputs.client_changed }} | ${{ github.event.inputs.force_publish || 'false' }} | **`${{ steps.calculate-push-decisions.outputs.push_client }}`** |
           | Tests | ${{ steps.detect-project-changes.outputs.tests_changed }} | — | _(runs always)_ |
           EOF
@@ -278,6 +320,7 @@ jobs:
   test:
     needs: [setup]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -328,11 +371,21 @@ jobs:
           for proj in $(find tests -name '*.Tests.csproj' | sort); do
             name=$(basename "$proj" .csproj)
             echo "::group::Testing $name"
-            dotnet test --project "$proj" \
+            # timeout guard: a hung test host would otherwise stall the job
+            # until the job-level timeout; fail the individual project instead
+            timeout --kill-after=30s 10m \
+              dotnet test --project "$proj" \
               --no-build --configuration Release \
               --coverage --coverage-output-format cobertura \
               --results-directory ./test-results \
-              -- --report-xunit-trx --report-xunit-trx-filename "${name}.trx" || overall=1
+              -- --report-xunit-trx --report-xunit-trx-filename "${name}.trx"
+            rc=$?
+            if [ $rc -eq 124 ] || [ $rc -eq 137 ]; then
+              echo "::error::$name timed out after 10 minutes (hung test host)"
+              overall=1
+            elif [ $rc -ne 0 ]; then
+              overall=1
+            fi
             echo "::endgroup::"
           done
           exit $overall
@@ -381,7 +434,8 @@ jobs:
     with:
       dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
       semantic_version: ${{ needs.setup.outputs.new_version }}
-      docker_context: './src/GameServer.API'
+      docker_context: '.'
+      docker_file: './src/GameServer.API/Dockerfile'
       primary_branch: ${{ needs.setup.outputs.primary_branch }}
       push_output: ${{ needs.setup.outputs.push_backend == 'true' }}
       push_branch: true
@@ -433,3 +487,37 @@ jobs:
       version_tag: true
       semantic_version_rollup_tag: false 
       target_repo: 'gameserver-web'
+
+  orchestration:
+    needs: [setup]
+    if: needs.setup.outputs.push_orchestration == 'true'
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
+    secrets: inherit
+    with:
+      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+      semantic_version: ${{ needs.setup.outputs.new_version }}
+      docker_context: '.'
+      docker_file: './src/GameServer.Orchestration.Host/Dockerfile'
+      primary_branch: ${{ needs.setup.outputs.primary_branch }}
+      push_output: ${{ needs.setup.outputs.push_orchestration == 'true' }}
+      push_branch: true
+      version_tag: false
+      semantic_version_rollup_tag: false
+      target_repo: 'gameserver-orchestration'
+
+  monitoring:
+    needs: [setup]
+    if: needs.setup.outputs.push_monitoring == 'true'
+    uses: ./.github/workflows/BuildAndPublish-Docker-Local.yaml
+    secrets: inherit
+    with:
+      dotnet_version: ${{ needs.setup.outputs.dotnet_version }}
+      semantic_version: ${{ needs.setup.outputs.new_version }}
+      docker_context: '.'
+      docker_file: './src/GameServer.Monitoring.Host/Dockerfile'
+      primary_branch: ${{ needs.setup.outputs.primary_branch }}
+      push_output: ${{ needs.setup.outputs.push_monitoring == 'true' }}
+      push_branch: true
+      version_tag: false
+      semantic_version_rollup_tag: false
+      target_repo: 'gameserver-monitoring'

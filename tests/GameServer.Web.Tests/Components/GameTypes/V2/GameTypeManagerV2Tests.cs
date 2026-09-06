@@ -97,6 +97,84 @@ public sealed class GameTypeManagerV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void GameTypeManagerV2_CreateNewButton_ShouldNavigateToNewPage()
+    {
+        RegisterApi((request, _) => request.Method == HttpMethod.Get
+            ? CreateJsonResponse(new List<GameTypeListItem>())
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = Render<GameTypeManagerV2>();
+
+        var addButton = cut.FindAll("button").First(b => b.TextContent.Contains("Add Game Type"));
+        addButton.Click();
+
+        Assert.EndsWith("/gametypes-v2/new", nav.Uri);
+    }
+
+    [Fact]
+    public void GameTypeManagerV2_EditButton_ShouldNavigateToEditPage()
+    {
+        var gameTypes = new List<GameTypeListItem>
+        {
+            new() { Id = 1, Key = "minecraft", DisplayName = "Minecraft", Type = "docker", IsActive = true, RevisionCount = 1, PublishedRevisionCount = 1, UpdatedAt = DateTime.UtcNow, ThumbnailUrl = "http://example.com/mc.png" }
+        };
+
+        RegisterApi((request, _) => request.Method == HttpMethod.Get
+            ? CreateJsonResponse(gameTypes)
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var nav = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        var cut = Render<GameTypeManagerV2>();
+        cut.WaitForAssertion(() => Assert.Contains("Minecraft", cut.Markup));
+
+        var editButton = cut.Find("button[title='Edit']");
+        editButton.Click();
+
+        Assert.EndsWith("/gametypes-v2/minecraft", nav.Uri);
+    }
+
+    [Fact]
+    public void GameTypeManagerV2_ToggleIncludeInactive_ShouldReloadWithFlag()
+    {
+        var requestedUris = new List<string>();
+        RegisterApi((request, _) =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                requestedUris.Add(request.RequestUri?.ToString() ?? string.Empty);
+                return CreateJsonResponse(new List<GameTypeListItem>());
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var cut = Render<GameTypeManagerV2>();
+        cut.WaitForAssertion(() => Assert.NotEmpty(requestedUris));
+
+        var checkbox = cut.Find("input[type='checkbox']");
+        checkbox.Change(true);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains(requestedUris, u => u.Contains("includeInactive=True") || u.Contains("includeInactive=true"));
+        });
+    }
+
+    [Fact]
+    public void GameTypeManagerV2_WhenApiReturnsError_ShouldShowNotification()
+    {
+        RegisterApi((request, _) => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var notificationService = Services.GetRequiredService<NotificationService>();
+
+        var cut = Render<GameTypeManagerV2>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains(notificationService.Messages, m => m.Summary == "Load failed");
+        });
+    }
+
     private void RegisterApi(Func<HttpRequestMessage, HashSet<string>, HttpResponseMessage> responder)
     {
         var deletedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
