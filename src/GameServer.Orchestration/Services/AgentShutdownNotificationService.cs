@@ -1,5 +1,4 @@
-using GameServer.API.Hubs;
-using Microsoft.AspNetCore.SignalR;
+using GameServer.API.Interfaces;
 
 namespace GameServer.API.Services;
 
@@ -7,7 +6,7 @@ namespace GameServer.API.Services;
 /// Notifies connected agents that the Primary Service is shutting down so they can disconnect gracefully.
 /// </summary>
 public sealed class AgentShutdownNotificationService(
-    IHubContext<AgentRegistrationHub> hubContext,
+    IAgentShutdownNotifier notifier,
     ILogger<AgentShutdownNotificationService> logger) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
@@ -20,10 +19,7 @@ public sealed class AgentShutdownNotificationService(
         try
         {
             logger.LogInformation("Notifying connected agents that the Primary Service is shutting down...");
-            await hubContext.Clients.All.SendCoreAsync(
-                "PrimaryServiceShuttingDown",
-                ["Primary Service is shutting down."],
-                cancellationToken);
+            await notifier.NotifyPrimaryServiceShuttingDownAsync(cancellationToken);
 
             // Give the SignalR message a moment to flush to connected agents before the host completes shutdown.
             const int shutdownNotificationGraceMs = 1500;

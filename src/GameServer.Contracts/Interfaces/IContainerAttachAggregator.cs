@@ -19,7 +19,7 @@ namespace GameServer.API.Interfaces
         IAsyncEnumerable<AttachStreamFrame> SubscribeAsync(
             string connectionId,
             string containerId,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Send input into the shared attach stream. Only succeeds if the caller is the

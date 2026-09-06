@@ -685,9 +685,9 @@
             isLoading = true;
             cachedGameTypeThumbnailUrl = null;
             server = await GameServerApiV2.GetByServerIdAsync(ServerId);
-            extensionResolutions = server is null
+            extensionResolutions = (server is null
                 ? Array.Empty<Services.V2.GameTypeExtensionResolution>()
-                : GameTypeExtensionResolver.Resolve(server.UiExtensions);
+                : GameTypeExtensionResolver.Resolve(server.UiExtensions)) ?? Array.Empty<Services.V2.GameTypeExtensionResolution>();
             cachedGameTypeThumbnailUrl = server is null
                 ? null
                 : await ThumbnailCacheService.GetCachedThumbnailUrlAsync(server.GameTypeThumbnailUrl);

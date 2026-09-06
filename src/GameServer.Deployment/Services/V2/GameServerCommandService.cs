@@ -1,4 +1,5 @@
 using GameServer.API.Dtos.V2;
+using GameServer.API.Interfaces;
 using GameServer.API.Repositories.V2;
 using GameServerModel = GameServer.API.Models.V2.GameServer;
 using GameServerSettingModel = GameServer.API.Models.V2.GameServerSetting;
@@ -10,7 +11,7 @@ namespace GameServer.API.Services.V2;
 /// </summary>
 public sealed class GameServerCommandService(
     IGameServerRepository repository,
-    GameServerQueryService queryService,
+    IGameServerQueryService queryService,
     GameServerValidationService validationService,
     GameServerSpecBuilder specBuilder,
     GameServerDeploymentService deploymentService)

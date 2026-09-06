@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.SignalR;
-using GameServer.API.Hubs;
 using GameServer.API.Interfaces;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
@@ -12,19 +10,19 @@ namespace GameServer.API.Services
     public class TerminalSessionManager
     {
         private readonly ILogger<TerminalSessionManager> _logger;
-        private readonly IHubContext<ContainerConsoleHub> _hubContext;
+        private readonly ITerminalSessionNotifier _notifier;
         private readonly INodeAgentDiscovery _nodeAgentDiscovery;
         private readonly IServiceProvider _serviceProvider;
         private readonly ConcurrentDictionary<string, TerminalSession> _sessions = new();
 
         public TerminalSessionManager(
             ILogger<TerminalSessionManager> logger,
-            IHubContext<ContainerConsoleHub> hubContext,
+            ITerminalSessionNotifier notifier,
             INodeAgentDiscovery nodeAgentDiscovery,
             IServiceProvider serviceProvider)
         {
             _logger = logger;
-            _hubContext = hubContext;
+            _notifier = notifier;
             _nodeAgentDiscovery = nodeAgentDiscovery;
             _serviceProvider = serviceProvider;
         }
@@ -187,7 +185,7 @@ namespace GameServer.API.Services
                         var message = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
                         
                         // Send to SignalR client
-                        await _hubContext.Clients.Client(connectionId).SendAsync("Output", message);
+                        await _notifier.SendOutputAsync(connectionId, message);
                         
                         _logger.LogTrace("Forwarded {Length} bytes to client {ConnectionId}", 
                             result.Count, connectionId);
@@ -195,7 +193,7 @@ namespace GameServer.API.Services
                     else if (result.MessageType == WebSocketMessageType.Close)
                     {
                         _logger.LogInformation("Agent closed WebSocket for {ConnectionId}", connectionId);
-                        await _hubContext.Clients.Client(connectionId).SendAsync("Disconnected", "Shell exited");
+                        await _notifier.SendDisconnectedAsync(connectionId);
                         break;
                     }
                 }
@@ -206,7 +204,7 @@ namespace GameServer.API.Services
                 
                 try
                 {
-                    await _hubContext.Clients.Client(connectionId).SendAsync("Error", $"Connection error: {ex.Message}");
+                    await _notifier.SendErrorAsync(connectionId, $"Connection error: {ex.Message}");
                 }
                 catch
                 {

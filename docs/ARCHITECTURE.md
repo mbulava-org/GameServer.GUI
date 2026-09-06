@@ -370,28 +370,15 @@ try {
 
 ```
 src/
-??? GameServer.Docker/              # Central API
-?   ??? Controllers/                # REST endpoints (service CRUD)
-?   ??? Hubs/                       # SignalR (MUST use aggregators / Node Agents)
-?   ??? Services/                   # Business logic
-?   ?   ??? V2/                       # V2 persistence-bound services
-?   ?   ??? NodeAgentDiscoveryService.cs # Agent discovery / container→agent lookup
-?   ??? Repositories/V2/            # V2 data persistence
-?
-??? GameServer.Docker.Agent/        # Node Agent (runs on each node)
-?   ??? Controllers/                # Container operations REST API
-?   ??? Hubs/                       # Container operations SignalR
-?   ??? Services/                   # Container operations
-?       ??? ContainerService.cs     # Direct Docker client (local only)
-?
-??? GameServer.Docker.Client/       # Client library
-?   ??? Services/
-?       ??? ContainerConsoleClient.cs    # Console operations
-?       ??? ResourceMonitoringClient.cs  # Resource monitoring
-?
-??? GameServer.Web/                 # Blazor frontend
-    ??? Components/
-        ??? Server/                 # Server UI components
+├── GameServer.Contracts/          # Core DTOs, interfaces, models, options, helpers
+├── GameServer.Catalog/            # EF Core DbContexts, migrations, repositories, setup detection
+├── GameServer.Orchestration/      # Agent registry, discovery, NodeAgentClient, terminal sessions
+├── GameServer.Deployment/         # Spec builder, deployment, validation, command services, volume handlers
+├── GameServer.Monitoring/         # Aggregators (logs, resources, attach), query services, resource monitors
+├── GameServer.API/                # Thin ASP.NET Core host (Controllers, Hubs, SignalR notifiers)
+├── GameServer.API.Client/         # NSwag generated client library & typed services
+├── GameServer.Docker.Agent/       # Node Agent daemon (runs on each swarm/docker node)
+└── GameServer.Web/                # Blazor frontend web application
 ```
 
 ## Dependency Injection Patterns

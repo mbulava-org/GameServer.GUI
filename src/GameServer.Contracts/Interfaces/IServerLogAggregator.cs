@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.SignalR;
-
 namespace GameServer.API.Interfaces;
 
 /// <summary>

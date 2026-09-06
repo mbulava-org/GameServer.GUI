@@ -31,6 +31,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameServer.API\GameServer.API.csproj" />
+    <ProjectReference Include="..\..\src\GameServer.Contracts\GameServer.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\GameServer.Catalog\GameServer.Catalog.csproj" />
+    <ProjectReference Include="..\..\src\GameServer.Orchestration\GameServer.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\GameServer.Deployment\GameServer.Deployment.csproj" />
+    <ProjectReference Include="..\..\src\GameServer.Monitoring\GameServer.Monitoring.csproj" />
   </ItemGroup>
 
 </Project>

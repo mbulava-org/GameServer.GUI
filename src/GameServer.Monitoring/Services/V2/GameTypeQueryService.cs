@@ -1,10 +1,11 @@
 using GameServer.API.Dtos.V2;
+using GameServer.API.Interfaces;
 using GameServer.API.Models.V2;
 using GameServer.API.Repositories.V2;
 
 namespace GameServer.API.Services.V2;
 
-public sealed class GameTypeQueryService(IGameTypeRepository repository)
+public sealed class GameTypeQueryService(IGameTypeRepository repository) : IGameTypeQueryService
 {
     /// <summary>
     /// Gets the V2 GameType list view.

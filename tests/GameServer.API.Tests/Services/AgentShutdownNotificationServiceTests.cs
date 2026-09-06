@@ -1,4 +1,5 @@
 using GameServer.API.Hubs;
+using GameServer.API.Interfaces;
 using GameServer.API.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,20 @@ public class AgentShutdownNotificationServiceTests
     public async Task StopAsync_ShouldNotifyAllAgents()
     {
         // Arrange
+        var notifierMock = new Mock<IAgentShutdownNotifier>();
+        var service = new AgentShutdownNotificationService(notifierMock.Object, Mock.Of<ILogger<AgentShutdownNotificationService>>());
+
+        // Act
+        await service.StopAsync(CancellationToken.None);
+
+        // Assert
+        notifierMock.Verify(x => x.NotifyPrimaryServiceShuttingDownAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SignalRAgentShutdownNotifier_ShouldBroadcastToAllClients()
+    {
+        // Arrange
         var clientProxy = new Mock<IClientProxy>();
         var hubClients = new Mock<IHubClients>();
         hubClients.SetupGet(x => x.All).Returns(clientProxy.Object);
@@ -19,10 +34,10 @@ public class AgentShutdownNotificationServiceTests
         var hubContext = new Mock<IHubContext<AgentRegistrationHub>>();
         hubContext.SetupGet(x => x.Clients).Returns(hubClients.Object);
 
-        var service = new AgentShutdownNotificationService(hubContext.Object, Mock.Of<ILogger<AgentShutdownNotificationService>>());
+        var notifier = new SignalRAgentShutdownNotifier(hubContext.Object);
 
         // Act
-        await service.StopAsync(CancellationToken.None);
+        await notifier.NotifyPrimaryServiceShuttingDownAsync(CancellationToken.None);
 
         // Assert
         clientProxy.Verify(

@@ -1,4 +1,5 @@
 using GameServer.API.Dtos.V2;
+using GameServer.API.Interfaces;
 using GameServer.API.Repositories.V2;
 using GameServerModel = GameServer.API.Models.V2.GameServer;
 using GameTypeModel = GameServer.API.Models.V2.GameType;
@@ -10,7 +11,7 @@ public sealed class GameServerQueryService(
     IGameServerRepository gameServerRepository,
     IGameTypeRepository gameTypeRepository,
     IGameServerResourceCollector? resourceCollector = null,
-    Interfaces.IGameServerReadinessWatcherService? readinessWatcher = null)
+    IGameServerReadinessWatcherService? readinessWatcher = null) : IGameServerQueryService
 {
     /// <summary>
     /// Gets the V2 GameServer list payload.

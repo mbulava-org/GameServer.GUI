@@ -40,6 +40,13 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\GameServer.Contracts\GameServer.Contracts.csproj" />
+    <ProjectReference Include="..\GameServer.Catalog\GameServer.Catalog.csproj" />
+    <ProjectReference Include="..\GameServer.Orchestration\GameServer.Orchestration.csproj" />
+    <ProjectReference Include="..\GameServer.Deployment\GameServer.Deployment.csproj" />
+    <ProjectReference Include="..\GameServer.Monitoring\GameServer.Monitoring.csproj" />
+  </ItemGroup>
 
 </Project>
 

@@ -7,7 +7,7 @@ namespace GameServer.API.Services.V2;
 /// Helpers for reading the JSON descriptor list on <c>GameTypeRevision.UiExtensionsJson</c>.
 /// The GUI still enforces its own assembly whitelist before actually rendering these.
 /// </summary>
-internal static class GameTypeUiExtensionsSerializer
+public static class GameTypeUiExtensionsSerializer
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 

@@ -16,6 +16,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
     private readonly Mock<IThumbnailCacheService> thumbnailCache = new();
     private readonly Mock<IPublicIpService> publicIpService = new();
     private readonly Mock<IGameServerFilesApiService> filesApi = new();
+    private readonly Mock<IGameTypeExtensionResolver> extensionResolver = new();
 
     public GameServerDetailsV2ComponentTests()
     {
@@ -28,6 +29,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         Services.AddSingleton(thumbnailCache.Object);
         Services.AddSingleton(publicIpService.Object);
         Services.AddSingleton(filesApi.Object);
+        Services.AddSingleton(extensionResolver.Object);
         publicIpService
             .Setup(p => p.GetPublicIpAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync("203.0.113.195");

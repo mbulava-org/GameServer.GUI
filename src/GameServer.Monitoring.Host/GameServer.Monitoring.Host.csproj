@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileContext>..\..\</DockerfileContext>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Monitoring depends on Orchestration (IAgentRegistry, INodeAgentDiscovery)
+         and Catalog (IGameTypeRepository, IGameServerRepository, etc.) -->
+    <ProjectReference Include="..\GameServer.Contracts\GameServer.Contracts.csproj" />
+    <ProjectReference Include="..\GameServer.Catalog\GameServer.Catalog.csproj" />
+    <ProjectReference Include="..\GameServer.Orchestration\GameServer.Orchestration.csproj" />
+    <ProjectReference Include="..\GameServer.Monitoring\GameServer.Monitoring.csproj" />
+  </ItemGroup>
+
+</Project>

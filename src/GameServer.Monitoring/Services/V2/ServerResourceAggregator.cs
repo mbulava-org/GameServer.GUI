@@ -164,8 +164,6 @@ public sealed class ServerResourceAggregator : IServerResourceAggregator, IAsync
                     List<Channel<ServerResourceUsage>> targets;
                     lock (_lock)
                     {
-                        // Remove completed channels lazily.
-                        _subscribers.RemoveAll(ch => ch.Writer.TryComplete() == false && false);
                         targets = new List<Channel<ServerResourceUsage>>(_subscribers);
                     }
 

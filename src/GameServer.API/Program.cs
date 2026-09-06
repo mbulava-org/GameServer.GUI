@@ -1,15 +1,15 @@
 using GameServer.API.Interfaces;
 using GameServer.API.Services;
+using GameServer.Catalog;
+using GameServer.Deployment;
+using GameServer.Monitoring;
+using GameServer.Orchestration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
 using System.Reflection;
 using Scalar.AspNetCore;
-using RepositoriesV2 = GameServer.API.Repositories.V2;
-using DataV2 = GameServer.API.Data.V2;
-using ServicesV2 = GameServer.API.Services.V2;
-using ServicesV2Detection = GameServer.API.Services.V2.Detection;
 
 namespace GameServer.API
 {
@@ -47,170 +47,17 @@ namespace GameServer.API
                         .Enrich.WithProperty("ApplicationInformationalVersion", informationalVersion));
                         // Console sink is configured in appsettings.json - don't add it here!
 
-                // Bind configuration classes directly from appsettings.json or environment variables.
-                var portAllocationConfig = builder.Configuration.GetSection("PortAllocation").Get<Configurations.PortAllocation>() ?? new Configurations.PortAllocation();
-                var rawReservedPorts = builder.Configuration["PortAllocation:ReservedPortRanges"] ?? builder.Configuration["PortAllocation__ReservedPortRanges"];
-                if (!string.IsNullOrWhiteSpace(rawReservedPorts))
-                {
-                    var rawTokens = rawReservedPorts.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    portAllocationConfig.ReservedPortRanges = (portAllocationConfig.ReservedPortRanges ?? Array.Empty<string>())
-                        .Concat(rawTokens)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
-                }
-                builder.Services.AddSingleton(portAllocationConfig);
-                builder.Services.AddSingleton(builder.Configuration.GetSection("NetworkOptions").Get<Configurations.NetworkOptions>() ?? new Configurations.NetworkOptions());
-                builder.Services.AddSingleton(builder.Configuration.GetSection("NodeAgentOptions").Get<Configurations.NodeAgentOptions>() ?? new Configurations.NodeAgentOptions());
-                builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName).Get<Configurations.UdpAgentDiscoveryOptions>() ?? new Configurations.UdpAgentDiscoveryOptions());
                 builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
 
-                // Gate that flips to "ready" once background database initialization (migrations + seeding)
-                // has completed. Requests made while a migration is mid-flight (e.g. a column rename) can
-                // otherwise fail with transient "Unknown column" errors, so API requests are held back with
-                // a 503 until this is signaled.
-                builder.Services.AddSingleton<Services.IDatabaseReadinessGate, Services.DatabaseReadinessGate>();
+                // Add Orchestration module (Agent registry, discovery, SignalR client, session manager)
+                builder.Services.AddOrchestrationModule(builder.Configuration);
+                builder.Services.AddSingleton<ITerminalSessionNotifier, SignalRTerminalSessionNotifier>();
+                builder.Services.AddSingleton<IAgentShutdownNotifier, SignalRAgentShutdownNotifier>();
 
-                // Agent Registry (new registration-based system) - MUST BE BEFORE ServiceOperations and NodeAgentDiscovery
-                // Agents connect to the Primary Service and push their state
-                // This will eventually replace NodeAgentDiscoveryService
-                builder.Services.AddSingleton<IAgentRegistry, AgentRegistryService>();
-                builder.Services.AddSingleton<IUdpAgentRegistry, UdpAgentRegistryService>();
-                builder.Services.AddHostedService<UdpAgentAnnouncementListenerService>();
+                // Add Deployment module (Spec builder, volume resolver, port allocator, command/deployment services)
+                builder.Services.AddDeploymentModule(builder.Configuration);
 
-                // Service Operations - Always use agent-based implementation
-                builder.Services.AddSingleton<IServiceOperations, ServiceOperationsViaAgent>();
-
-                // Node Agent Discovery (for real-time container stats)
-                // Registered as both singleton and hosted service for background discovery
-                // HttpClient instances are created per node agent for optimal connection pooling
-                // Timeout is configured per-client via NodeAgentOptions in the service
-                builder.Services.AddHttpClient(); // Default factory for creating per-node clients
-                builder.Services.AddSingleton<NodeAgentDiscoveryService>(sp =>
-                {
-                    var logger = sp.GetRequiredService<ILogger<NodeAgentDiscoveryService>>();
-                    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-                    var agentOptions = sp.GetRequiredService<Configurations.NodeAgentOptions>();
-                    var agentRegistry = sp.GetRequiredService<IAgentRegistry>();
-                    var udpAgentRegistry = sp.GetRequiredService<IUdpAgentRegistry>();
-
-                    return new NodeAgentDiscoveryService(
-                        logger,
-                        httpClientFactory,
-                        sp, // Pass IServiceProvider to avoid circular dependency
-                        agentOptions,
-                        agentRegistry,
-                        udpAgentRegistry);
-                });
-                builder.Services.AddSingleton<INodeAgentDiscovery>(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
-                builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeAgentDiscoveryService>());
-
-                // Add SignalR Client for Node Agent connections (log streaming, stats streaming)
-                builder.Services.AddSingleton<NodeAgentClient>();
-                builder.Services.AddHostedService<Services.AgentShutdownNotificationService>();
-
-                // PortAllocator
-                builder.Services.AddSingleton<PortAllocator>();
-
-                // Add V2 database context for the persistence implementation.
-                // Provider selection is isolated from the legacy DbContext so both paths can coexist.
-                // The provider-specific subclasses (Sqlite/MySql) own their EF Core migration sets, so the
-                // matching concrete context must be registered for MigrateAsync() to discover its migrations.
-                // GameServerV2DbContext is aliased to whichever concrete context is active so repositories
-                // (which depend on the base type) resolve the correct instance.
-                {
-                    var v2Options = builder.Configuration
-                        .GetSection(Configurations.V2DatabaseOptions.SectionName)
-                        .Get<Configurations.V2DatabaseOptions>() ?? new Configurations.V2DatabaseOptions();
-                    var provider = (v2Options.Provider ?? "sqlite").Trim().ToLowerInvariant();
-                    var defaultConnectionName = provider switch
-                    {
-                        "postgres" or "postgresql" => "GameServerV2PostgresDb",
-                        "mysql" => "GameServerV2MySqlDb",
-                        _ => "GameServerV2Db"
-                    };
-                    var connectionName = string.IsNullOrWhiteSpace(v2Options.ConnectionStringName)
-                        ? defaultConnectionName
-                        : v2Options.ConnectionStringName;
-
-                    var v2ConnectionString = builder.Configuration.GetConnectionString(connectionName)
-                        ?? builder.Configuration.GetConnectionString(defaultConnectionName)
-                        ?? builder.Configuration.GetConnectionString("GameServerV2Db")
-                        ?? "Data Source=./data/gameserver-v2.db";
-
-                    void ConfigureV2Options(DbContextOptionsBuilder options)
-                    {
-                        DataV2.GameServerV2DbContextFactory.ConfigureProvider(
-                            options,
-                            provider,
-                            v2ConnectionString);
-
-                        if (builder.Environment.IsDevelopment())
-                        {
-                            options.EnableSensitiveDataLogging();
-                        }
-
-                        options.EnableServiceProviderCaching(false);
-                    }
-
-                    switch (provider)
-                    {
-                        case "mysql":
-                            builder.Services.AddDbContext<DataV2.MySqlGameServerV2DbContext>((_, options) => ConfigureV2Options(options));
-                            builder.Services.AddScoped<DataV2.GameServerV2DbContext>(sp => sp.GetRequiredService<DataV2.MySqlGameServerV2DbContext>());
-                            break;
-
-                        case "postgres":
-                        case "postgresql":
-                            // PostgreSQL schema is deployed via the dedicated pgPac database project, so the
-                            // base context (without an EF migration set) is used directly.
-                            builder.Services.AddDbContext<DataV2.GameServerV2DbContext>((_, options) => ConfigureV2Options(options));
-                            break;
-
-                        default:
-                            builder.Services.AddDbContext<DataV2.SqliteGameServerV2DbContext>((_, options) => ConfigureV2Options(options));
-                            builder.Services.AddScoped<DataV2.GameServerV2DbContext>(sp => sp.GetRequiredService<DataV2.SqliteGameServerV2DbContext>());
-                            break;
-                    }
-                }
-
-                // Add V2 repositories
-                // Register IMemoryCache for GameType caching
-                builder.Services.AddMemoryCache();
-                builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
-                builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
-                builder.Services.AddScoped<RepositoriesV2.IGameServerResourceUtilizationRepository, RepositoriesV2.GameServerResourceUtilizationRepository>();
-                builder.Services.AddScoped<RepositoriesV2.IMountTypeConfigRepository, RepositoriesV2.MountTypeConfigRepository>();
-                builder.Services.AddScoped<ServicesV2.GameServerQueryService>();
-                builder.Services.AddScoped<ServicesV2.GameServerValidationService>();
-                builder.Services.AddScoped<ServicesV2.GameServerSpecBuilder>();
-                builder.Services.AddScoped<ServicesV2.GameServerDeploymentService>();
-                builder.Services.AddScoped<ServicesV2.GameServerCommandService>();
-                builder.Services.AddScoped<ServicesV2.GameTypeQueryService>();
-                builder.Services.AddScoped<ServicesV2.GameTypeCommandService>();
-                builder.Services.AddScoped<ServicesV2.IVolumeSetupResolver, ServicesV2.VolumeSetupResolver>();
-                builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandler, ServicesV2.MountTypeHandlers.VolumeMountTypeHandler>();
-                builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandler, ServicesV2.MountTypeHandlers.NfsMountTypeHandler>();
-                builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandlerFactory, ServicesV2.MountTypeHandlers.MountTypeHandlerFactory>();
-                builder.Services.AddScoped<ServicesV2.IGameServerFilesService, ServicesV2.GameServerFilesService>();
-                builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
-                    new ServicesV2Detection.GameTypeSetupDetectionService(
-                        sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),
-                        sp.GetRequiredService<IAgentRegistry>(),
-                        sp.GetRequiredService<IHttpClientFactory>(),
-                        sp.GetRequiredService<ILogger<ServicesV2Detection.GameTypeSetupDetectionService>>()));
-
-                // V2-compatible resource monitor/aggregator for SignalR streaming hubs
-                builder.Services.AddScoped<Interfaces.IServerResourceMonitor, ServicesV2.ServerResourceMonitor>();
-                builder.Services.AddSingleton<Interfaces.IServerResourceAggregator, ServicesV2.ServerResourceAggregator>();
-                builder.Services.AddSingleton<ServicesV2.IGameServerResourceCollector, ServicesV2.GameServerResourceCollectorService>();
-                builder.Services.AddHostedService(sp => (ServicesV2.GameServerResourceCollectorService)sp.GetRequiredService<ServicesV2.IGameServerResourceCollector>());
-                builder.Services.AddSingleton<Interfaces.IServerLogAggregator, ServicesV2.ServerLogAggregator>();
-                builder.Services.AddSingleton<Interfaces.IContainerAttachAggregator, ServicesV2.ContainerAttachAggregator>();
-                builder.Services.AddSingleton<Interfaces.IGameServerReadinessWatcherService, ServicesV2.GameServerReadinessWatcherService>();
-
-                // Database Initialization - Runs in background after webhost starts
-                // This allows the webhost and SignalR hubs to be available immediately
-                // Skip if running under NSwag or if --no-db-init flag is present
+                // Database Initialization flag - Skip if running under NSwag or if --no-db-init flag is present
                 var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
                 var commandLine = Environment.CommandLine;
                 var isNSwagExecution = entryAssembly.Contains("NSwag", StringComparison.OrdinalIgnoreCase) ||
@@ -219,14 +66,11 @@ namespace GameServer.API
                                  Environment.GetEnvironmentVariable("SKIP_DB_INIT") == "true" ||
                                  isNSwagExecution;
 
-                if (!skipDbInit)
-                {
-                    builder.Services.AddHostedService<Services.DatabaseInitializationService>();
-                }
-                else
-                {
-                    Log.Debug("Database initialization will be skipped (NSwag={NSwag}, Entry={Entry})", isNSwagExecution, entryAssembly);
-                }
+                // Add Catalog module (DbContext, Migrations, Repositories, Setup Detection, DB Init)
+                builder.Services.AddCatalogModule(builder.Configuration, builder.Environment, skipDbInit);
+
+                // Add Monitoring module (Resource monitors, collectors, aggregators, query services)
+                builder.Services.AddMonitoringModule();
 
                 builder.Services.AddControllers();
                 

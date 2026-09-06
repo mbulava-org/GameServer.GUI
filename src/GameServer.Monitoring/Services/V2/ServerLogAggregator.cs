@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Channels;
 using GameServer.API.Interfaces;
 using GameServer.API.Services;
@@ -174,7 +175,7 @@ public sealed class ServerLogAggregator : IServerLogAggregator, IAsyncDisposable
                     return;
                 }
 
-                var containerId = await Hubs.ServerLogsHub.ResolveContainerIdAsync(agent, _serverId, cancellationToken).ConfigureAwait(false);
+                var containerId = await ResolveContainerIdAsync(agent, _serverId, cancellationToken).ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(containerId))
                 {
                     _logger.LogWarning("Cannot aggregate logs: no container for server {ServerId} on agent {AgentUrl}", _serverId, agent.InternalUrl);
@@ -222,6 +223,40 @@ public sealed class ServerLogAggregator : IServerLogAggregator, IAsyncDisposable
                     channel.Writer.TryComplete();
                 }
             }
+        }
+
+        private static async Task<string?> ResolveContainerIdAsync(
+            Models.NodeAgentEndpoint agent,
+            string serverId,
+            CancellationToken cancellationToken)
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var url = $"{agent.InternalUrl}/containers?label={Uri.EscapeDataString($"{GameServer.API.Constants.ServiceLabels.ServerId}={serverId}")}";
+
+            var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            if (doc.RootElement[0].TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String)
+            {
+                return idProp.GetString();
+            }
+
+            if (doc.RootElement[0].TryGetProperty("Id", out var idPropUpper) && idPropUpper.ValueKind == JsonValueKind.String)
+            {
+                return idPropUpper.GetString();
+            }
+
+            return null;
         }
     }
 }
