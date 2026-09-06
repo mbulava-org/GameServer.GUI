@@ -27,16 +27,17 @@ try
            .Enrich.WithProperty("ApplicationName", "GameServer.Monitoring.Host")
            .Enrich.WithProperty("ApplicationVersion", assemblyVersion));
 
-    // Phase 2: No-op notifiers — terminal sessions and agent shutdown are owned by
-    // GameServer.Orchestration.Host. Monitoring Host only needs these to satisfy
-    // Orchestration module's DI requirements (it co-hosts Orchestration in Phase 2).
+    // Phase 3: No-op notifiers — terminal sessions and agent shutdown are owned by
+    // GameServer.Orchestration.Host and GameServer.API. Monitoring.Host still needs
+    // these to satisfy DI for shared consumers even though it no longer co-hosts
+    // the orchestration module in-process.
     builder.Services.AddSingleton<IAgentShutdownNotifier, NoOpAgentShutdownNotifier>();
     builder.Services.AddSingleton<ITerminalSessionNotifier, NoOpTerminalSessionNotifier>();
 
-    // Phase 2: Orchestration is still co-hosted here so IAgentRegistry and INodeAgentDiscovery
-    // are available in-process for the Monitoring aggregators.
-    // Phase 3 (future): Replace with typed HTTP clients pointing at Orchestration.Host.
-    builder.Services.AddOrchestrationModule(builder.Configuration);
+    // Phase 3: Orchestration state is fetched from GameServer.Orchestration.Host over HTTP.
+    // The registry + discovery are read-only from this host's perspective; write paths
+    // (agent registration, shutdown broadcasts, terminal I/O) live on the Orchestration Host.
+    builder.Services.AddOrchestrationHttpClientModule(builder.Configuration);
 
     // Catalog (repositories used by GameServerQueryService + GameTypeQueryService).
     // skipDbInit: true — database schema migrations are owned by GameServer.API.
@@ -69,10 +70,12 @@ try
     app.UseAuthorization();
     app.MapControllers();
 
-    // Phase 2 hubs — web clients now connect here for all streaming data
-    app.MapHub<ResourceMonitoringHub>("/hubs/resourcemonitoring");
+    // Phase 3 hubs — web clients connect here for shared streaming data.
+    // Route names intentionally match the aliases exposed by GameServer.API so
+    // clients can switch host base URIs without any code changes.
+    app.MapHub<ResourceMonitoringHub>("/hubs/resources");
     app.MapHub<ServerLogsHub>("/hubs/serverlogs");
-    app.MapHub<ContainerAttachHub>("/hubs/containerattach");
+    app.MapHub<ContainerAttachHub>("/hubs/attach");
 
     app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 

@@ -258,7 +258,7 @@ The application uses a single V2 persistence layer for game type and server conf
    - **Expandable cards** for each setting
    - **Extended Metadata** (per setting):
      - Description, Category, Display Order
-     - Data Type (string, number, boolean, enum, list, port)
+      - Data Type (string, password, number, boolean, enum, list, port, yesno, servervariable)
      - Required, Cannot Be Empty
      - Placeholder, Validation Pattern/Message
      - Allowed Values, Value Mappings
@@ -277,7 +277,7 @@ The application uses a single V2 persistence layer for game type and server conf
        - **Relationship Types**:
          - **Offset**: Target = Source + Offset (e.g., Query Port = Game Port + 1)
          - **Fixed**: Target always has a fixed value (e.g., RCON always at 27020)
-         - **Multiplier**: Target = Source � Multiplier
+         - **Multiplier**: Target = Source  Multiplier
        - **Validation**: Checks if target port exists in port definitions
        - **Visual warnings**: Red border and alert if target port not found
        - Per relationship fields:
@@ -423,13 +423,35 @@ Example (Valheim `SERVER_PORT`):
 - ASP.NET Core Web API
 - Docker.DotNet (Docker API client)
 - Entity Framework Core
-  - V2 persistence: SQLite (default), MySQL (supported), or PostgreSQL (coming soon) based on configuration
+  - V2 persistence: SQLite (default), MySQL (supported), or PostgreSQL (experimental) based on configuration
 - SignalR Hubs
 
 **Infrastructure:**
 - Docker Swarm
-- V2 persistence: SQLite (default), MySQL (supported), PostgreSQL (coming soon)
+- V2 persistence: SQLite (default), MySQL (supported), PostgreSQL (experimental)
 - Volume Drivers (local, NFS)
+
+### Server Readiness Watcher
+
+**Component:** `GameServerReadinessWatcherService`
+
+The system monitors container logs to detect when a game server is ready to accept players. When the readiness pattern is matched, the server status is promoted from "Running" to "Available". This provides a more accurate status indication than simply checking container health.
+
+- Log-based readiness detection per server ID
+- Integrates with `GameServerQueryService` to update status
+- Works alongside the resource monitoring pipeline (`GameServerResourceCollectorService`)
+
+### Auto Port Allocation
+
+**Configuration:** `PortAllocation:StartPort`, `PortAllocation:EndPort`
+
+When a setting has the `AutoAllocatePort` metadata flag set, the system automatically assigns a free published port from the configured allocation range during server creation. This eliminates manual port selection and prevents conflicts.
+
+- `PortAllocator` service in `GameServer.Deployment` scans existing servers for used ports
+- Reserved port ranges can be excluded via `PortAllocation:ReservedPortRanges`
+  - Supports single ports (`8080`), ranges (`8000-9002`), and mixed lists
+- Validation service enforces port range and reservation rules
+- Auto-allocated ports respect offset and multiplier port relationships
 
 ### Persistence Architecture
 

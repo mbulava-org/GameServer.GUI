@@ -63,14 +63,15 @@ The default provider is SQLite at `./data/gameserver-v2.db`. To use MySQL instea
 Open a terminal and start the API:
 
 ```bash
-cd src/GameServer.Docker
+cd src/GameServer.API
 dotnet run
 ```
 
 The API will start at:
 - **HTTP**: http://localhost:5164
 - **HTTPS**: https://localhost:7145
-- **Swagger UI**: http://localhost:5164/swagger
+- **Scalar API Reference**: http://localhost:5164/scalar/v1
+- **OpenAPI Document**: http://localhost:5164/openapi/v1.json
 
 ### Step 6: Run the Web UI (Optional)
 
@@ -89,7 +90,7 @@ The Web UI will start at:
 
 Open your browser:
 - **Web UI**: http://localhost:5102
-- **API Docs**: http://localhost:5164/swagger
+- **Scalar API Docs**: http://localhost:5164/scalar/v1
 
 You should see the dashboard with no servers yet. Time to create one!
 
@@ -97,7 +98,7 @@ You should see the dashboard with no servers yet. Time to create one!
 
 ## 🐳 Docker Swarm Deployment
 
-This section covers deploying GameServer.Docker to a Docker Swarm cluster for production use.
+This section covers deploying GameServer to a Docker Swarm cluster for production use.
 
 ### Prerequisites
 
@@ -108,36 +109,38 @@ This section covers deploying GameServer.Docker to a Docker Swarm cluster for pr
 ### Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────┐
-│              Docker Swarm Cluster               │
-│                                                 │
-│  ┌──────────────────────────────────────────┐   │
-│  │  Manager Node                            │   │
-│  │  • GameServer.Docker (Primary Service)   │   │
-│  │  • GameServer.Web (Web UI)               │   │
-│  │  • GameServer.Docker.Agent               │   │
-│  └──────────────────────────────────────────┘   │
-│                                                 │
-│  ┌──────────────────────────────────────────┐   │
-│  │  Worker Node 1                           │   │
-│  │  • GameServer.Docker.Agent               │   │
-│  │  • Game Server Containers                │   │
-│  └──────────────────────────────────────────┘   │
-│                                                 │
-│  ┌─────────────────────────────────────────-─┐  │
-│  │  Worker Node 2                            │  │
-│  │  • GameServer.Docker.Agent                │  │
-│  │  • Game Server Containers                 │  │
-│  └─────────────────────────────────────────-─┘  │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Docker Swarm Cluster                           │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  Manager Node                                                     │  │
+│  │  • PostgreSQL 16 (V2 Database Backend)                            │  │
+│  │  • GameServer.API (REST API & Modular Core Host)                  │  │
+│  │  • GameServer.Web (Blazor Web UI)                                 │  │
+│  │  • GameServer.Docker.Agent (Global Daemon)                        │  │
+│  │  • Optional: GameServer.Orchestration.Host / Monitoring.Host     │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  Worker Node 1                                                    │  │
+│  │  • GameServer.Docker.Agent (Container stats, logs, exec, attach)  │  │
+│  │  • Managed Game Server Containers (Palworld, Minecraft, etc.)     │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  Worker Node 2                                                    │  │
+│  │  • GameServer.Docker.Agent                                        │  │
+│  │  • Managed Game Server Containers                                 │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Step 1: Build Docker Images
 
 ```bash
-# Build GameServer.Docker API
-docker build -t your-registry/gameserver-docker:latest \
-  -f src/GameServer.Docker/Dockerfile \
+# Build GameServer.API
+docker build -t your-registry/gameserver-api:latest \
+  -f src/GameServer.API/Dockerfile \
   --build-arg VERSION_NUMBER=0.1.0.0 \
   .
 
@@ -152,39 +155,89 @@ docker build -t your-registry/gameserver-agent:latest \
   -f src/GameServer.Docker.Agent/Dockerfile \
   --build-arg VERSION_NUMBER=0.2.0.0 \
   .
+
+# Optional: Build standalone Orchestration Host
+docker build -t your-registry/gameserver-orchestration:latest \
+  -f src/GameServer.Orchestration.Host/Dockerfile \
+  --build-arg VERSION_NUMBER=0.1.0.0 \
+  .
+
+# Optional: Build standalone Monitoring Host
+docker build -t your-registry/gameserver-monitoring:latest \
+  -f src/GameServer.Monitoring.Host/Dockerfile \
+  --build-arg VERSION_NUMBER=0.1.0.0 \
+  .
 ```
 
 ### Step 2: Push Images to Registry
 
 ```bash
-# Login to your registry (Docker Hub, GitHub Container Registry, etc.)
+# Login to your registry
 docker login your-registry
 
-# Push images
-docker push your-registry/gameserver-docker:latest
+# Push primary images
+docker push your-registry/gameserver-api:latest
 docker push your-registry/gameserver-web:latest
 docker push your-registry/gameserver-agent:latest
+
+# Optional standalone hosts
+# docker push your-registry/gameserver-orchestration:latest
+# docker push your-registry/gameserver-monitoring:latest
 ```
 
 ### Step 3: Create Docker Stack File
 
-Create `docker-stack.yml`:
+Create `docker-stack.yml` (see also [`docs/samples/docker-stack.yml`](samples/docker-stack.yml) and [`docs/samples/docker-stack.modular.yml`](samples/docker-stack.modular.yml)):
 
 ```yaml
 version: "3.8"
 
 services:
-  # Primary Service (API & Orchestration)
-  gameserver-docker:
-    image: your-registry/gameserver-docker:latest
+  # 1. PostgreSQL Database (V2 Data Store)
+  gameserver-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gameserver-v2
+      POSTGRES_USER: gameserver
+      POSTGRES_PASSWORD: gameserver_secure_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameserver -d gameserver-v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Primary Service (REST API & Modular Host)
+  gameserver-api:
+    image: your-registry/gameserver-api:latest
     ports:
-      - "5164:8080"  # API port
+      - "5164:8080"  # API port & Scalar UI (/scalar/v1)
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - NodeAgentOptions__EnableBackgroundDiscovery=false
-      - ConnectionStrings__GameServerV2Db=Data Source=/data/gameserver-v2.db
+      - ASPNETCORE_URLS=http://+:8080
+      - V2Database__Provider=PostgreSql
+      - V2Database__ConnectionStringName=GameServerV2PostgresDb
+      - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver_secure_password
       - PortAllocation__StartPort=25565
       - PortAllocation__EndPort=35565
+      - NetworkOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__ServiceName=gameserver_gameserver-agent
+      - NodeAgentOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__Port=8080
+      - NodeAgentOptions__EnableBackgroundDiscovery=false
+      - ServiceOperations__Mode=Agent
     volumes:
       - gameserver-data:/data
     networks:
@@ -198,15 +251,18 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+    depends_on:
+      - gameserver-postgres
 
-  # Web UI
+  # 3. Web UI
   gameserver-web:
     image: your-registry/gameserver-web:latest
     ports:
       - "5102:8080"  # Web UI port
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - GameServerApiUrl=http://gameserver-docker:8080
+      - ASPNETCORE_URLS=http://+:8080
+      - GameServerDockerApi__BaseUri=http://gameserver-api:8080/
     networks:
       - gameserver-network
     deploy:
@@ -219,19 +275,21 @@ services:
         delay: 5s
         max_attempts: 3
     depends_on:
-      - gameserver-docker
+      - gameserver-api
 
-  # Node Agents (one per node)
+  # 4. Node Agents (one per node)
   gameserver-agent:
     image: your-registry/gameserver-agent:latest
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker:8080
+      - ASPNETCORE_URLS=http://+:8080
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-api:8080/
       - AgentRegistration__HeartbeatIntervalSeconds=30
       - AgentRegistration__Enabled=true
       - AGENT_HOST={{.Node.Hostname}}
       - NODE_NAME={{.Node.Hostname}}
       - NODE_ID={{.Node.ID}}
+      - ContainerStatsStreamOptions__MaxStreamDurationSeconds=10
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -248,6 +306,8 @@ networks:
     attachable: true
 
 volumes:
+  postgres-data:
+    driver: local
   gameserver-data:
     driver: local
 ```
@@ -265,7 +325,8 @@ docker stack services gameserver
 **Expected output:**
 ```
 ID             NAME                            MODE         REPLICAS   IMAGE
-abc123def456   gameserver_gameserver-docker    replicated   1/1        your-registry/gameserver-docker:latest
+abc123def456   gameserver_gameserver-postgres  replicated   1/1        postgres:16-alpine
+def456ghi789   gameserver_gameserver-api       replicated   1/1        your-registry/gameserver-api:latest
 ghi789jkl012   gameserver_gameserver-web       replicated   1/1        your-registry/gameserver-web:latest
 mno345pqr678   gameserver_gameserver-agent     global       3/3        your-registry/gameserver-agent:latest
 ```
@@ -275,8 +336,11 @@ mno345pqr678   gameserver_gameserver-agent     global       3/3        your-regi
 **Check service logs:**
 
 ```bash
-# Primary Service logs
-docker service logs gameserver_gameserver-docker --follow
+# PostgreSQL logs
+docker service logs gameserver_gameserver-postgres --follow
+
+# API Service logs
+docker service logs gameserver_gameserver-api --follow
 
 # Web UI logs
 docker service logs gameserver_gameserver-web --follow
@@ -287,18 +351,18 @@ docker service logs gameserver_gameserver-agent --follow
 
 **Look for successful startup messages:**
 
-**Primary Service:**
+**Primary Service (`gameserver-api`):**
 ```
 [INFO] Service operations mode: AGENT
 [INFO] Agent registered: Node=worker-1, Manager=False
 [INFO] Agent registered: Node=manager-1, Manager=True
-[INFO] All agents registered successfully
+[INFO] WebHost built successfully. Configuring middleware...
 ```
 
 **Agents:**
 ```
 [INFO] Agent initialized: IsManager=True, Hostname=manager-1
-[INFO] Connected to Primary Service at http://gameserver-docker:8080
+[INFO] Connected to Primary Service at http://gameserver-api:8080/
 [INFO] Heartbeat sent: Containers=0, Status=Healthy
 ```
 
@@ -306,73 +370,58 @@ docker service logs gameserver_gameserver-agent --follow
 
 Once deployed, access:
 - **Web UI**: http://your-manager-ip:5102
-- **API Docs**: http://your-manager-ip:5164/swagger
+- **Scalar API Docs**: http://your-manager-ip:5164/scalar/v1
+- **OpenAPI Schema**: http://your-manager-ip:5164/openapi/v1.json
 
 ### Configuration Options
 
 #### Environment Variables
 
-**GameServer.Docker (Primary Service):**
+**GameServer.API (Central API & Orchestrator):**
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PortAllocation__StartPort` | First port to allocate | `25565` |
-| `PortAllocation__EndPort` | Last port to allocate | `35565` |
+| `V2Database__Provider` | V2 DB provider: `PostgreSql`, `Sqlite`, `MySql` | `PostgreSql` |
+| `V2Database__ConnectionStringName` | Connection string key to use | `GameServerV2PostgresDb` |
+| `ConnectionStrings__GameServerV2PostgresDb` | PostgreSQL V2 connection string | `Host=...;Database=...` |
 | `ConnectionStrings__GameServerV2Db` | SQLite V2 database path | `Data Source=/data/gameserver-v2.db` |
 | `ConnectionStrings__GameServerV2MySqlDb` | MySQL V2 connection string | _(optional)_ |
-| `ConnectionStrings__GameServerV2PostgresDb` | PostgreSQL V2 connection string | _(optional, coming soon)_ |
-| `V2Database__Provider` | V2 DB provider: `Sqlite`, `MySql`, `PostgreSql` | `Sqlite` |
-| `V2Database__ConnectionStringName` | Connection string key to use | `GameServerV2Db` |
+| `PortAllocation__StartPort` | First port to allocate | `25565` |
+| `PortAllocation__EndPort` | Last port to allocate | `35565` |
+| `PortAllocation__ReservedPortRanges` | Excluded ports/ranges (e.g., `8080,9000-9100`) | _(empty)_ |
+| `ServiceOperations__Mode` | Container/service operations mode (`Agent` or `Local`) | `Agent` |
+| `NetworkOptions__NetworkName` | Shared overlay network name | `gameserver-network` |
 | `NetworkOptions__LoadBalancerNetwork` | Docker overlay network for Traefik | `traefik-public` |
 | `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
-| `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | — |
+| `NodeAgentOptions__ServiceName` | Swarm service name of agent | `gameserver_gameserver-agent` |
+| `NodeAgentOptions__NetworkName` | Swarm network name for agent communication | `gameserver-network` |
+| `NodeAgentOptions__Port` | Internal agent listening port | `8080` |
 | `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
-
-**V2 SQLite example:**
-
-```yaml
-environment:
-  - ConnectionStrings__GameServerV2Db=Data Source=/data/gameserver-v2.db
-  - V2Database__Provider=Sqlite
-```
-
-**V2 MySQL example:**
-
-```yaml
-environment:
-  - ConnectionStrings__GameServerV2MySqlDb=Server=mysql;Database=gameserver-v2;Uid=gsuser;Pwd=gspass
-  - V2Database__Provider=MySql
-  - V2Database__ConnectionStringName=GameServerV2MySqlDb
-```
-
-**V2 PostgreSQL example (experimental / coming soon):**
-
-```yaml
-environment:
-  - ConnectionStrings__GameServerV2PostgresDb=Host=postgres;Database=gameserver_v2;Username=gsuser;Password=gspass
-  - V2Database__Provider=PostgreSql
-  - V2Database__ConnectionStringName=GameServerV2PostgresDb
-```
+| `GameTypeExtensions__AllowedAssemblies` | Assemblies allowed for UI extension tabs | `GameServer.Web` |
+| `MountTypeConfigs` | Managed in database via `/settings/mount-types` UI or API; seed defaults exist for `volume`, `bind`, `tmpfs`, `nfs`. | — |
 
 **GameServer.Docker.Agent:**
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AgentRegistration__PrimaryServiceUrl` | URL of primary service | Required |
+| `AgentRegistration__PrimaryServiceUrl` | URL of primary service | Required (`http://gameserver-api:8080/`) |
 | `AgentRegistration__HeartbeatIntervalSeconds` | Heartbeat interval | `30` |
 | `AgentRegistration__Enabled` | Enable push registration | `true` |
 | `AgentRegistration__Capabilities` | Comma-separated capabilities: `logs,exec,stats,attach,services` | `logs,exec,stats,attach,services` |
 | `AgentRegistration__ConnectionTimeoutSeconds` | SignalR connection timeout | `30` |
 | `AgentRegistration__ReconnectDelaySeconds` | Reconnect delays in seconds | `0,2,10,30` |
 | `AGENT_HOST` / `NODE_NAME` | Agent hostname/IP | Node hostname |
+| `ContainerStatsStreamOptions__MaxStreamDurationSeconds` | Stats streaming timeout | `10` |
 
 **GameServer.Web:**
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GameServerDockerApi__BaseUri` | Base URL of `GameServer.Docker` API | `http://localhost:5164/` |
+| `GameServerDockerApi__BaseUri` | Base URL of `GameServer.API` | `http://localhost:5164/` |
+**Standalone Host Microservices (Optional):**
 
-**The agent only needs `AgentRegistration__PrimaryServiceUrl` to register with the Primary Service. See the swarm deployment section above for a complete stack file.**
+- **`GameServer.Orchestration.Host`**: Dedicated agent registration and terminal session manager host.
+- **`GameServer.Monitoring.Host`**: Dedicated resource monitoring, server log streaming, and container attach hub host.
 
 ### Scaling
 
@@ -690,6 +739,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 - **[CURRENT-FEATURES.md](CURRENT-FEATURES.md)** - See all features
 - **[Agent Registration Flow](guides/Agent-Registration-Flow.md)** - How agents register with the Primary Service
 - **[V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md)** - Create custom game types
+- **[GameType UI Extensions](guides/GameType-UI-Extensions.md)** - Build custom extension tabs (Palworld API, RCON, etc.)
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribute to the project
 
 ### Advanced Topics
@@ -697,6 +747,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 - **Adding Custom Game Types** - [V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md)
 - **Setting Data Types** - [V2 Settings & Metadata](guides/V2-GameType-Settings-And-Metadata.md)
 - **Port Mappings** - [V2 Ports & Web Hosts](guides/V2-Ports-And-WebHosts.md)
+- **UI Extension Tabs** - [GameType UI Extensions](guides/GameType-UI-Extensions.md)
 - **Performance Tuning** - [Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md)
 - **Security** - [Agent Security](architecture/Agent-Security.md)
 
@@ -708,7 +759,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 
 ```bash
 # Terminal 1: API
-cd src/GameServer.Docker && dotnet run
+cd src/GameServer.API && dotnet run
 
 # Terminal 2: Web UI
 cd src/GameServer.Web && dotnet run
@@ -728,13 +779,14 @@ docker stack deploy -c docker-stack.yml gameserver
 docker stack services gameserver
 
 # Logs
-docker service logs gameserver_gameserver-docker --follow
+docker service logs gameserver_gameserver-api --follow
 ```
 
 ### Access URLs
 
 - **Web UI**: http://localhost:5102
-- **API**: http://localhost:5164/swagger
+- **Scalar API Docs**: http://localhost:5164/scalar/v1
+- **OpenAPI Schema**: http://localhost:5164/openapi/v1.json
 - **Health**: http://localhost:5164/health
 
 ---
@@ -743,403 +795,3 @@ docker service logs gameserver_gameserver-docker --follow
 
 For issues or questions, see [CONTRIBUTING.md](CONTRIBUTING.md) or open a GitHub issue.
 
----
-
-## Step 1: Verify Configuration
-
-Game types and extended metadata are now stored in the V2 database. Ensure your `appsettings.Development.json` (or `appsettings.json`) points to the desired V2 provider:
-
-```json
-{
-  "ConnectionStrings": {
-    "GameServerV2Db": "Data Source=./data/gameserver-v2.db"
-  },
-  "V2Database": {
-    "Provider": "Sqlite",
-    "ConnectionStringName": "GameServerV2Db"
-  }
-}
-```
-
----
-
-## Step 2: Start the Application
-
-Run your application:
-
-```bash
-dotnet run --project src/GameServer.Docker
-```
-
-On first startup the V2 database is initialized and any built-in seed data is applied through `DatabaseInitializationService`.
-
----
-
-## Step 3: Explore the API
-
-### Get Minecraft Extended Metadata
-
-```bash
-curl http://localhost:5000/api/gametypes/extended/minecraft | jq
-```
-
-**Response:**
-```json
-{
-  "gameTypeKey": "minecraft",
-  "enableTTY": true,
-  "attachStdin": false,
-  "settingsMetadata": {
-    "EULA": {
-      "key": "EULA",
-      "description": "You must accept the Minecraft EULA...",
-      "isRequired": true,
-      "cannotBeEmpty": true,
-      "dataType": "boolean",
-      "category": "Legal",
-      "displayOrder": 1
-    },
-    // ... more settings
-  }
-}
-```
-
-### Get All Extended Metadata
-
-```bash
-curl http://localhost:5000/api/gametypes/extended | jq
-```
-
----
-
-## Step 4: Create Extended Metadata for Your Game Type
-
-### Example: Terraria Server
-
-```bash
-curl -X POST http://localhost:5000/api/gametypes/extended \
-  -H "Content-Type: application/json" \
-  -d '{
-    "gameTypeKey": "terraria",
-    "enableTTY": true,
-    "attachStdin": false,
-    "settingsMetadata": {
-      "WORLD_NAME": {
-        "key": "WORLD_NAME",
-        "description": "Name of the world to create or load",
-        "isRequired": true,
-        "cannotBeEmpty": true,
-        "dataType": "string",
-        "category": "World",
-        "displayOrder": 1,
-        "placeholder": "MyWorld"
-      },
-      "MAX_PLAYERS": {
-        "key": "MAX_PLAYERS",
-        "description": "Maximum number of players (1-255)",
-        "dataType": "number",
-        "category": "Server",
-        "displayOrder": 2,
-        "validationPattern": "^([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$",
-        "validationMessage": "Must be between 1 and 255"
-      },
-      "SERVER_PORT": {
-        "key": "SERVER_PORT",
-        "description": "Server port number",
-        "dataType": "port",
-        "mapsToContainerPort": true,
-        "portProtocol": "tcp",
-        "category": "Network",
-        "displayOrder": 3,
-        "placeholder": "7777"
-      }
-    }
-  }'
-```
-
----
-
-## Step 5: Use Extended Metadata in Your Application
-
-### Validate Server Settings
-
-```csharp
-[ApiController]
-[Route("api/gameservers")]
-public class GameServerController : ControllerBase
-{
-    private readonly GameTypeMetadataApplier _metadataApplier;
-    
-    [HttpPost]
-    public async Task<IActionResult> CreateServer([FromBody] GameServer server)
-    {
-        // Validate using extended metadata
-        var errors = await _metadataApplier.ValidateSettings(server, server.GameType);
-        
-        if (errors.Any())
-        {
-            return BadRequest(new 
-            { 
-                message = "Validation failed", 
-                errors 
-            });
-        }
-        
-        // Continue with server creation...
-        return Ok(server);
-    }
-}
-```
-
-### Apply Metadata to Container
-
-```csharp
-// In your deployment service using V2 models
-private async Task<ServiceSpec> BuildServiceSpecAsync(
-    GameServerDetailDto server,
-    GameTypeRevisionDetailDto revision)
-{
-    var containerSpec = new ContainerSpec
-    {
-        Image = revision.ImageReference,
-        Env = BuildEnvironmentVariables(server, revision),
-        // ... other properties
-    };
-
-    var ports = revision.Ports
-        .Select(p => new PortConfig
-        {
-            TargetPort = p.ContainerPort,
-            PublishedPort = p.PublishedPort,
-            Protocol = p.Protocol
-        })
-        .ToList();
-
-    // Continue building...
-}
-```
-
----
-
-## Step 6: Test the System
-
-### Test 1: Validation with Missing Required Field
-
-```bash
-# This should fail because EULA is required
-curl -X POST http://localhost:5000/api/gameservers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test Server",
-    "gameType": "minecraft",
-    "settings": {
-      "VERSION": "LATEST"
-    }
-  }'
-```
-
-**Expected Response:**
-```json
-{
-  "message": "Validation failed",
-  "errors": [
-    "Setting 'EULA' is required but not provided. You must accept the Minecraft EULA..."
-  ]
-}
-```
-
-### Test 2: Valid Server Creation
-
-```bash
-curl -X POST http://localhost:5000/api/gameservers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test Server",
-    "gameType": "minecraft",
-    "settings": {
-      "EULA": "true",
-      "VERSION": "LATEST",
-      "MEMORY": "2G",
-      "MAX_PLAYERS": "10"
-    }
-  }'
-```
-
-**Expected:** Server created successfully with TTY enabled!
-
-### Test 3: Dynamic Port Mapping
-
-```bash
-# Create server with custom port
-curl -X POST http://localhost:5000/api/gameservers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Custom Port Server",
-    "gameType": "minecraft",
-    "settings": {
-      "EULA": "true",
-      "SERVER_PORT": "25566"
-    }
-  }'
-```
-
-**Expected:** Container exposes port 25566 in addition to default 25565!
-
----
-
-## Step 7: Update Individual Setting Metadata
-
-```bash
-# Make MEMORY setting required
-curl -X PUT http://localhost:5000/api/gametypes/extended/minecraft/settings/MEMORY \
-  -H "Content-Type: application/json" \
-  -d '{
-    "key": "MEMORY",
-    "description": "Server memory allocation (REQUIRED)",
-    "isRequired": true,
-    "cannotBeEmpty": true,
-    "dataType": "string",
-    "category": "Performance",
-    "validationPattern": "^\\d+[MG]$",
-    "validationMessage": "Must be a number followed by M or G (e.g., 1G, 2048M)"
-  }'
-```
-
----
-
-## Common Use Cases
-
-### 1. Make a Setting Required
-
-```bash
-curl -X PUT http://localhost:5000/api/gametypes/extended/{gameType}/settings/{settingKey} \
-  -H "Content-Type: application/json" \
-  -d '{ "key": "...", "isRequired": true, ... }'
-```
-
-### 2. Add Port Mapping
-
-```bash
-curl -X PUT http://localhost:5000/api/gametypes/extended/{gameType}/settings/{settingKey} \
-  -H "Content-Type: application/json" \
-  -d '{ 
-    "key": "SERVER_PORT", 
-    "dataType": "port", 
-    "mapsToContainerPort": true,
-    "portProtocol": "tcp"
-  }'
-```
-
-### 3. Add Validation Pattern
-
-```bash
-curl -X PUT http://localhost:5000/api/gametypes/extended/{gameType}/settings/{settingKey} \
-  -H "Content-Type: application/json" \
-  -d '{ 
-    "key": "EMAIL",
-    "validationPattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
-    "validationMessage": "Must be a valid email address"
-  }'
-```
-
-### 4. Enable TTY for Interactive Servers
-
-```bash
-curl -X POST http://localhost:5000/api/gametypes/extended \
-  -H "Content-Type: application/json" \
-  -d '{ 
-    "gameTypeKey": "your-game",
-    "enableTTY": true,
-    "attachStdin": true
-  }'
-```
-
----
-
-## Verification
-
-### Check File Persistence
-
-```bash
-# View the extended metadata file
-cat /data/game-types-extended.json | jq
-
-# Restart the service
-docker restart gameserver-docker
-
-# Verify data is still there
-curl http://localhost:5000/api/gametypes/extended/minecraft | jq
-```
-
-**Expected:** All your metadata is preserved after restart! ?
-
----
-
-## Troubleshooting
-
-### Issue: Metadata not persisting
-**Solution:** Check file permissions and path configuration
-
-```bash
-# Check file exists
-ls -la /data/game-types-extended.json
-
-# Check logs
-docker logs gameserver-docker | grep "GameTypeExtendedMetadata"
-```
-
-### Issue: Validation not working
-**Solution:** Ensure GameTypeMetadataApplier is injected and used in your controller
-
-```csharp
-// In ConfigureServices
-services.AddSingleton<GameTypeMetadataApplier>();
-
-// In Controller constructor
-public GameServerController(GameTypeMetadataApplier metadataApplier)
-{
-    _metadataApplier = metadataApplier;
-}
-```
-
-### Issue: TTY not being applied
-**Solution:** Ensure you're calling ApplyMetadata when building ContainerSpec
-
-```csharp
-containerSpec = await _metadataApplier.ApplyMetadata(containerSpec, server.GameType);
-```
-
----
-
-## Next Steps
-
-1. ? Explore the full documentation: `docs/GameType-Extended-Metadata.md`
-2. ? Check integration examples: `docs/GameType-Extended-Metadata-Integration.md`
-3. ? Add metadata for your game types
-4. ? Build UI forms using the categorization features
-5. ? Implement validation in your controllers
-
----
-
-## Quick Reference
-
-### File Locations
-- V2 Repository: `src/GameServer.Docker/Repositories/V2/GameTypeRepository.cs`
-- V2 Service: `src/GameServer.Docker/Services/V2/GameTypeCommandService.cs`
-- Docs: `docs/GameType-Extended-Metadata.md`
-
-### Key Services
-- `IGameTypeRepository` (V2) - CRUD operations for game types, revisions, and metadata
-- `GameTypeCommandService` - Create/update revisions and metadata
-
-### API Endpoints (V2)
-- `GET /api/v2/gametypes` - List all
-- `GET /api/v2/gametypes/{key}` - Get one
-- `POST /api/v2/gametypes` - Create
-- `PUT /api/v2/gametypes/{key}` - Update
-- `DELETE /api/v2/gametypes/{key}` - Delete
-- `POST /api/v2/gametypes/{key}/revisions` - Add revision
-
----
-
-**You're all set!** Start extending your game types with rich metadata! ??

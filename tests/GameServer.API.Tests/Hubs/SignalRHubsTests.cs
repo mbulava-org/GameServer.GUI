@@ -1,5 +1,6 @@
 using GameServer.API.Hubs;
 using GameServer.API.Interfaces;
+using GameServer.Orchestration.Hubs;
 using GameServer.API.Models;
 using GameServer.API.Models.V2;
 using GameServer.API.Repositories.V2;

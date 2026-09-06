@@ -25,7 +25,7 @@ See **[docs/QUICK-START.md](docs/QUICK-START.md)** for local development and Doc
 | [docs/guides/V2-GameType-Assembly-Instructions.md](docs/guides/V2-GameType-Assembly-Instructions.md) | Step-by-step V2 GameType creation workflow |
 | [docs/guides/V2-GameType-Editor-Components.md](docs/guides/V2-GameType-Editor-Components.md) | V2 editor component inventory and data flow |
 | [docs/reference/V2-Database-Diagram.md](docs/reference/V2-Database-Diagram.md) | V2 schema ERD and table descriptions |
-| [docs/samples/gametype-imports/](docs/samples/gametype-imports/) | Starter presets (Minecraft Java/Bedrock, Palworld) |
+| [docs/samples/](docs/samples/) | Production Swarm stacks, local compose, and portable GameType import packages |
 
 ## Key Routes
 
@@ -37,11 +37,13 @@ See **[docs/QUICK-START.md](docs/QUICK-START.md)** for local development and Doc
 | `/gameservers-v2` | V2 GameServer list |
 | `/gameservers-v2/new` | Create V2 game server |
 | `/gameservers-v2/{serverId}` | V2 GameServer detail |
+| `/settings/mount-types` | Mount-type configuration and drivers |
 | `/gametypes` | V1 (legacy) GameType manager |
 | `/servers` | V1 (legacy) server dashboard |
 
-## API Base URLs
+## API & Documentation Endpoints
 
-- **V2**: `/api/v2/gametypes`, `/api/v2/gameservers`
-- **V1 (legacy)**: `/api/gametypes`, `/api/gameserver`
-- **Swagger**: `http://localhost:5164/swagger`
+- **V2 Endpoints**: `/api/v2/gametypes`, `/api/v2/gameservers`, `/api/v2/mounttypeconfigs`
+- **Scalar API Reference**: `http://localhost:5164/scalar/v1`
+- **OpenAPI Document**: `http://localhost:5164/openapi/v1.json`
+- **SignalR Streaming Hubs**: `/hubs/attach`, `/hubs/terminal`, `/hubs/serverlogs`, `/hubs/resources`, `/hubs/agentregistration`

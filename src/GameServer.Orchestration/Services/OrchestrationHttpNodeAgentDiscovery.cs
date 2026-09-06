@@ -1,9 +1,10 @@
 using GameServer.API.Interfaces;
 using GameServer.API.Models;
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 
-namespace GameServer.API.Services;
+namespace GameServer.Orchestration.Services;
 
 /// <summary>
 /// HTTP client implementation of INodeAgentDiscovery.

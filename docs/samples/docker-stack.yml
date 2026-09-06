@@ -1,0 +1,151 @@
+version: '3.8'
+
+# ==============================================================================
+# GameServer.GUI — Production Docker Swarm Stack (Unified API Architecture)
+# ==============================================================================
+# Deploys:
+#   1. gameserver-postgres     - PostgreSQL 16 database backend for V2 schema
+#   2. gameserver-api          - Unified REST API host (Catalog, Deployment, Orchestration, Monitoring)
+#   3. gameserver-web          - Blazor Server Web UI
+#   4. gameserver-agent        - Global node daemon on every Swarm host for container operations
+# ==============================================================================
+
+networks:
+  gameserver-network:
+    driver: overlay
+    attachable: true
+  public-ingress:
+    external: true
+
+volumes:
+  postgres-data:
+    driver: local
+  gameserver-data:
+    driver: local
+
+services:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. PostgreSQL Database
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gameserver-v2
+      POSTGRES_USER: gameserver
+      POSTGRES_PASSWORD: gameserver_secure_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameserver -d gameserver-v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. REST API & Core Service Host
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-api:
+    image: mbulava/gameserver-api:latest
+    ports:
+      - "5164:8080" # REST API & OpenAPI/Scalar UI
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+
+      # Database Configuration (EF Core Auto-Migrations on Startup)
+      - V2Database__Provider=PostgreSql
+      - V2Database__ConnectionStringName=GameServerV2PostgresDb
+      - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver_secure_password
+
+      # Port Allocation Range for Managed Game Servers
+      - PortAllocation__StartPort=25565
+      - PortAllocation__EndPort=35565
+
+      # Node Agent Discovery & Ingress Network Configuration
+      - NetworkOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__ServiceName=gameserver_gameserver-agent
+      - NodeAgentOptions__NetworkName=gameserver-network
+      - NodeAgentOptions__Port=8080
+      - NodeAgentOptions__TimeoutSeconds=45
+      - NodeAgentOptions__CacheTimeoutSeconds=30
+      - NodeAgentOptions__EnableBackgroundDiscovery=false
+      - ServiceOperations__Mode=Agent
+    volumes:
+      - gameserver-data:/data
+    networks:
+      - gameserver-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - gameserver-postgres
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Blazor Web UI
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-web:
+    image: mbulava/gameserver-web:latest
+    ports:
+      - "5102:8080" # Web UI
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - GameServerDockerApi__BaseUri=http://gameserver-api:8080/
+    networks:
+      - gameserver-network
+      - public-ingress
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - gameserver-api
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 4. Node Agent (Global Daemon on all Swarm Nodes)
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-agent:
+    image: mbulava/gameserver-docker-agent:latest
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - NODE_NAME={{.Node.Hostname}}
+      - NODE_ID={{.Node.ID}}
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-api:8080/
+      - AgentRegistration__HeartbeatIntervalSeconds=30
+      - AgentRegistration__Enabled=true
+      - AgentRegistration__MaxStartupRetries=20
+      - ContainerStatsStreamOptions__MaxStreamDurationSeconds=10
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - gameserver-network
+    deploy:
+      mode: global # Runs on manager and worker nodes
+      restart_policy:
+        condition: any
+        delay: 5s

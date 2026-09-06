@@ -1,6 +1,7 @@
 using GameServer.API.Interfaces;
 using GameServer.Orchestration;
 using GameServer.Orchestration.Host.Hubs;
+using GameServer.Orchestration.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Serilog;
 using Serilog.Events;
@@ -27,17 +28,11 @@ try
            .Enrich.WithProperty("ApplicationName", "GameServer.Orchestration.Host")
            .Enrich.WithProperty("ApplicationVersion", assemblyVersion));
 
-    // Phase 2: Real SignalR-backed notifier — the shutdown hub notifies connected agents.
-    // IAgentShutdownNotifier sends via the AgentRegistrationHub context.
+    // Real SignalR-backed shutdown notifier — broadcasts via AgentRegistrationHub.
     builder.Services.AddSingleton<IAgentShutdownNotifier, SignalRAgentShutdownNotifier>();
 
-    // Phase 2: TerminalSessionNotifier — terminal output forwarded via SignalR.
-    builder.Services.AddSingleton<ITerminalSessionNotifier, SignalRTerminalSessionNotifier>();
-
-    // Orchestration background services:
-    //   - IAgentRegistry, IUdpAgentRegistry, UdpAnnouncementListenerService
-    //   - NodeAgentDiscoveryService, INodeAgentDiscovery
-    //   - NodeAgentClient, AgentShutdownNotificationService, TerminalSessionManager
+    // Orchestration background services (also registers TerminalSessionManager +
+    // ITerminalSessionNotifier bound to ContainerConsoleHub).
     builder.Services.AddOrchestrationModule(builder.Configuration);
 
     builder.Services.AddControllers();
@@ -64,6 +59,7 @@ try
     app.UseAuthorization();
     app.MapControllers();
     app.MapHub<AgentRegistrationHub>("/hubs/agentregistration");
+    app.MapHub<ContainerConsoleHub>("/hubs/terminal");
     app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
     Log.Information("GameServer.Orchestration.Host started — listening for agent connections.");
@@ -91,23 +87,4 @@ file sealed class SignalRAgentShutdownNotifier(
 {
     public Task NotifyPrimaryServiceShuttingDownAsync(CancellationToken cancellationToken = default)
         => hubContext.Clients.All.SendAsync("PrimaryServiceShuttingDown", cancellationToken);
-}
-
-/// <summary>
-/// Forwards terminal session output through a dedicated terminal SignalR hub.
-/// In Phase 2 the terminal hub lives in GameServer.API; this notifier connects back to it.
-/// Replace with a direct hub call when the terminal hub moves here in a future phase.
-/// </summary>
-file sealed class SignalRTerminalSessionNotifier : ITerminalSessionNotifier
-{
-    // Terminal output is still handled by GameServer.API's ContainerConsoleHub in Phase 2.
-    // These methods are no-ops here; the API hub owns the terminal session lifecycle.
-    public Task SendOutputAsync(string connectionId, string output, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
-
-    public Task SendDisconnectedAsync(string connectionId, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
-
-    public Task SendErrorAsync(string connectionId, string error, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
 }

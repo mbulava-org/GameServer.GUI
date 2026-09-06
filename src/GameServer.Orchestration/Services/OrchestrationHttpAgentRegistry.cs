@@ -1,17 +1,16 @@
 using GameServer.API.Interfaces;
 using GameServer.API.Models;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
-using GameServer.API.Configurations;
 
-namespace GameServer.API.Services;
+namespace GameServer.Orchestration.Services;
 
 /// <summary>
 /// HTTP client implementation of IAgentRegistry.
 /// Reads agent registry state from the GameServer.Orchestration.Host REST API.
 /// Mutations (RegisterAgent, UpdateAgentContainers, MarkAgentDisconnected) are
 /// performed by the Orchestration Host's AgentRegistrationHub directly — this
-/// client provides read-only access for the API layer.
+/// client provides read-only access for consumers hosted outside Orchestration.Host.
 /// </summary>
 public class OrchestrationHttpAgentRegistry(
     HttpClient httpClient,
@@ -47,8 +46,6 @@ public class OrchestrationHttpAgentRegistry(
         }
     }
 
-    // ── IAgentRegistry reads (delegated to Orchestration.Host) ────────────────
-
     public List<NodeAgentEndpoint> GetAllAgents()         => FetchAgents("api/agents");
     public List<NodeAgentEndpoint> GetHealthyAgents()     => FetchAgents("api/agents/healthy");
     public List<NodeAgentEndpoint> GetManagerAgents()     => FetchAgents("api/agents/managers");
@@ -63,10 +60,9 @@ public class OrchestrationHttpAgentRegistry(
     public NodeAgentEndpoint? GetAgentByConnectionId(string connectionId)
         => FetchAgent($"api/agents/by-connection/{Uri.EscapeDataString(connectionId)}");
 
-    // ── Write operations: no-op in API — owned by Orchestration.Host hub ─────
-    // These methods are called by AgentRegistrationHub (which lives in Orchestration.Host).
-    // The API no longer hosts that hub, so these should never be called. They are implemented
-    // as no-ops to satisfy the interface contract and for test compatibility.
+    // Write operations are owned by AgentRegistrationHub in GameServer.Orchestration.Host.
+    // Consumers using the HTTP registry should never call these — implemented as
+    // no-ops so the IAgentRegistry contract is satisfied.
 
     public void RegisterAgent(AgentRegistrationInfo info, string connectionId)
         => logger.LogWarning("RegisterAgent called on OrchestrationHttpAgentRegistry — this is a no-op. Agents should register with Orchestration.Host.");

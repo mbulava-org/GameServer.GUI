@@ -9,14 +9,14 @@ Game Server Manager provides two container interaction surfaces:
 
 ## Backend Implementation
 
-Both surfaces share the same SignalR hub, `ContainerConsoleHub`, mapped to two different routes in `GameServer.Docker`:
+In `GameServer.API`:
 
 ```csharp
-app.MapHub<Hubs.ContainerConsoleHub>("/hubs/console");   // TTY attach
-app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Exec shell
+app.MapHub<Hubs.ContainerAttachHub>("/hubs/attach");     // Shared multi-subscriber container attach
+app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell (per-user)
 ```
 
-The hub delegates session management to `TerminalSessionManager` and routes container operations through the registered Node Agent. The hub never connects directly to the Docker daemon.
+The hub delegates session management to `TerminalSessionManager` (from `GameServer.Orchestration`) and routes container operations through the registered Node Agent. The hub never connects directly to the Docker daemon.
 
 ## Hub Methods
 

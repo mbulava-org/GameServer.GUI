@@ -1,8 +1,8 @@
 # GameServer.API Modularization — Implementation Plan
 
-> Status: **Completed**
+> Status: **Phases 1–6 completed; §7 host promotion delivered (Orchestration.Host, Monitoring.Host); §7 follow-up items tracked below**
 > Last updated: 2026-09-05
-> Related docs: [ARCHITECTURE.md](../ARCHITECTURE.md), [CURRENT-FEATURES.md](../CURRENT-FEATURES.md)
+> Related docs: [ARCHITECTURE.md](../ARCHITECTURE.md), [CURRENT-FEATURES.md](../CURRENT-FEATURES.md), [samples/docker-stack.modular.yml](../samples/docker-stack.modular.yml)
 
 ## 1. Goal
 
@@ -141,10 +141,28 @@ Each phase must end with a green build and passing test suites
 | DI lifetime regressions (hosted services, singletons) | Copy registrations verbatim into module extensions; integration tests cover agent registration + deploy paths |
 | EF migration discovery after assembly move | Set `MigrationsAssembly` explicitly in Catalog DI extension |
 
-## 7. Future: promoting modules to services (out of scope)
+## 7. Future: promoting modules to services (delivered, with follow-up)
 
 Promote only when a concrete pressure exists:
-- **Monitoring** first if stats polling adds load — read-only, cleanest boundary.
-- **Deployment** if long-running deploys need queued/worker-based reliability.
-- **Orchestration hubs** only if SignalR connection counts require a dedicated realtime service with a backplane.
-- **Catalog stays in-process** — splitting the persistence layer adds latency and transaction complexity for little gain.
+- **Monitoring** first if stats polling adds load — read-only, cleanest boundary. **Delivered as `GameServer.Monitoring.Host`** exposing `/hubs/resources`, `/hubs/serverlogs`, `/hubs/attach` (route names match `GameServer.API` so clients can swap base URIs). It consumes `IAgentRegistry` and `INodeAgentDiscovery` via `AddOrchestrationHttpClientModule` against `GameServer.Orchestration.Host` — no in-process orchestration co-hosting.
+- **Deployment** if long-running deploys need queued/worker-based reliability. *(Not yet promoted.)*
+- **Orchestration hubs** only if SignalR connection counts require a dedicated realtime service with a backplane. **Delivered as `GameServer.Orchestration.Host`** exposing `/hubs/agentregistration`. The interactive terminal hub (`/hubs/terminal`) still lives in `GameServer.API`; see follow-up.
+- **Catalog stays in-process** — splitting the persistence layer adds latency and transaction complexity for little gain. `Monitoring.Host` therefore references `AddCatalogModule(..., skipDbInit: true)` so schema migrations remain owned exclusively by `GameServer.API`.
+
+### API host-mode toggle
+
+`GameServer.API` reads `ModularHostingOptions` (`ModularHosting` section):
+
+| Setting | Default | Modular stack | Effect |
+|---|---|---|---|
+| `HostHubsInApi` | `true` | `false` | Maps `/hubs/attach`, `/hubs/terminal`, `/hubs/serverlogs`, `/hubs/resources`, `/hubs/agentregistration` in-process when `true`; leaves them to the standalone hosts when `false`. |
+| `UseHttpAgentRegistry` | `false` | `true` | When `true`, replaces `AddOrchestrationModule` with `AddOrchestrationHttpClientModule`, so `IAgentRegistry`/`INodeAgentDiscovery` are HTTP clients against `OrchestrationService:BaseUrl`. |
+
+Both defaults preserve the single-host `docker-stack.yml` deployment. The modular sample stack (`docker-stack.modular.yml`) sets both to the modular values.
+
+### Follow-up
+
+1. **`ContainerConsoleHub` + `SignalRTerminalSessionNotifier` relocated to `GameServer.Orchestration`** so `/hubs/terminal` runs in `GameServer.Orchestration.Host` alongside `/hubs/agentregistration`. `GameServer.API` still hosts them in-process when `HostHubsInApi=true`.
+2. **API acts as a SignalR gateway** — `GameServer.Web` continues to use a single `GameServerDockerApi__BaseUri`. When modular hosting is enabled, `GameServer.API` uses YARP (`Yarp.ReverseProxy`) to relay `/hubs/*` traffic to `OrchestrationService:BaseUrl` and `MonitoringService:BaseUrl`. The Web UI is unchanged and unaware of the split.
+3. **Optional Deployment host** — only if deployment throughput demands it.
+

@@ -1,5 +1,5 @@
 version: '3.7'
-##TEST Deployments — V2 Stack
+## TEST Deployments — V2 Modular Stack
 networks:
   exposed-services:
     external: true
@@ -19,7 +19,9 @@ volumes:
     driver: local
 
 services:
-  # PostgreSQL — V2 database backend
+  # ────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL — V2 Database Backend
+  # ────────────────────────────────────────────────────────────────────────────
   gameserver-postgres:
     image: postgres:16-alpine
     networks:
@@ -40,23 +42,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # ────────────────────────────────────────────────────────────────────────────
   # Blazor Web UI
+  # ────────────────────────────────────────────────────────────────────────────
   gameserver-web:
     image: mbulava/gameserver-web:latest
     ports:
       - 7071:8080
     networks:
       - exposed-services
+      - gameserver-network
     environment:
-      - GameServerDockerApi__BaseUri=http://gameserver-docker-test_gameserver-docker:8080/
+      - GameServerDockerApi__BaseUri=http://gameserver-docker-test_gameserver-api:8080/
+      - ASPNETCORE_ENVIRONMENT=Production
     deploy:
       placement:
         constraints:
           - "node.labels.size == small"
 
-  # REST API + Orchestration (V2)
-  gameserver-docker:
-    image: mbulava/gameserver-docker:latest
+  # ────────────────────────────────────────────────────────────────────────────
+  # REST API Host (Unified Modular Monolith)
+  # Includes Catalog, Deployment, Orchestration, and Monitoring modules
+  # ────────────────────────────────────────────────────────────────────────────
+  gameserver-api:
+    image: mbulava/gameserver-api:latest
     user: "1000:1000"
     networks:
       - gameserver-network
@@ -83,19 +92,15 @@ services:
       - V2Database__ConnectionStringName=GameServerV2PostgresDb
       - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-docker-test_gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver
 
-      # Legacy SQLite kept for reference; V2 uses PostgreSQL above
+      # Legacy SQLite fallback (optional)
       - ConnectionStrings__GameServerDb=Data Source=/data/test-data/gameserver-test.db
 
-      # Mount type configuration now lives in the V2 database (MountTypeConfigs table).
-      # Seed defaults exist for volume/bind/tmpfs/nfs; configure or extend them through
-      # the /settings/mount-types UI or the api/v2/mounttypeconfigs endpoints instead of
-      # environment variables.
-      # - VolumeDriverConfigOptions__Name=local      # removed
-
+      # Network and Ingress Options
       - NetworkOptions__NetworkName=gameserver-network-test
       - NetworkOptions__LoadBalancerNetwork=external-2
       - NetworkOptions__LoadBalancerProvider=traefik
 
+      # Orchestration & Agent Options
       - NodeAgentOptions__ServiceName=gameserver-docker-test_gameserver-agent
       - NodeAgentOptions__NetworkName=gameserver-network-test
       - NodeAgentOptions__Port=8080
@@ -104,7 +109,9 @@ services:
       - NodeAgentOptions__EnableBackgroundDiscovery=false
       - ServiceOperations__Mode=Agent
 
-  # Node Agent — one replica per swarm node
+  # ────────────────────────────────────────────────────────────────────────────
+  # Node Agent — One replica per swarm node (global mode)
+  # ────────────────────────────────────────────────────────────────────────────
   gameserver-agent:
     image: mbulava/gameserver-docker-agent:latest
     deploy:
@@ -122,7 +129,36 @@ services:
       - Logging__LogLevel__Default=Trace
       - Logging__LogLevel__Microsoft.AspNetCore=Information
       - ContainerStatsStreamOptions__MaxStreamDurationSeconds=10
-      - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker-test_gameserver-docker:8080/
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker-test_gameserver-api:8080/
       - AgentRegistration__HeartbeatIntervalSeconds=30
       - AgentRegistration__Enabled=true
       - AgentRegistration__MaxStartupRetries=20
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Optional Standalone Microservices (Phase 2 Expanded Topology)
+  # Uncomment when promoting to distributed service architecture
+  # ────────────────────────────────────────────────────────────────────────────
+  # gameserver-orchestration:
+  #   image: mbulava/gameserver-orchestration:latest
+  #   networks:
+  #     - gameserver-network
+  #   ports:
+  #     - 5165:8080
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Production
+  #     - NodeAgentOptions__ServiceName=gameserver-docker-test_gameserver-agent
+  #     - NodeAgentOptions__NetworkName=gameserver-network-test
+  #     - NodeAgentOptions__Port=8080
+  #
+  # gameserver-monitoring:
+  #   image: mbulava/gameserver-monitoring:latest
+  #   networks:
+  #     - gameserver-network
+  #   ports:
+  #     - 5166:8080
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Production
+  #     - V2Database__Provider=PostgreSql
+  #     - V2Database__ConnectionStringName=GameServerV2PostgresDb
+  #     - ConnectionStrings__GameServerV2PostgresDb=Host=gameserver-docker-test_gameserver-postgres;Database=gameserver-v2;Username=gameserver;Password=gameserver
+

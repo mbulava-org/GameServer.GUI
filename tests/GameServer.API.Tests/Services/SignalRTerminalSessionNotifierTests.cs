@@ -1,5 +1,5 @@
-using GameServer.API.Hubs;
-using GameServer.API.Services;
+using GameServer.Orchestration.Hubs;
+using GameServer.Orchestration.Services;
 using Microsoft.AspNetCore.SignalR;
 using Moq;
 using Xunit;

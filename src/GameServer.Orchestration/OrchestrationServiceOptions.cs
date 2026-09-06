@@ -1,4 +1,4 @@
-namespace GameServer.API.Configurations;
+namespace GameServer.Orchestration;
 
 /// <summary>
 /// Configuration for the standalone Orchestration service (GameServer.Orchestration.Host).

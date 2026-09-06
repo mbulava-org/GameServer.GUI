@@ -49,10 +49,26 @@ namespace GameServer.API
 
                 builder.Services.Configure<Configurations.V2DatabaseOptions>(builder.Configuration.GetSection(Configurations.V2DatabaseOptions.SectionName));
 
-                // Add Orchestration module (Agent registry, discovery, SignalR client, session manager)
-                builder.Services.AddOrchestrationModule(builder.Configuration);
-                builder.Services.AddSingleton<ITerminalSessionNotifier, SignalRTerminalSessionNotifier>();
-                builder.Services.AddSingleton<IAgentShutdownNotifier, SignalRAgentShutdownNotifier>();
+                // Bind modular-hosting options up front so we can branch the
+                // Orchestration + hub registrations below.
+                var modularHosting = builder.Configuration
+                    .GetSection(Configurations.ModularHostingOptions.SectionName)
+                    .Get<Configurations.ModularHostingOptions>() ?? new Configurations.ModularHostingOptions();
+                builder.Services.Configure<Configurations.ModularHostingOptions>(
+                    builder.Configuration.GetSection(Configurations.ModularHostingOptions.SectionName));
+
+                if (modularHosting.UseHttpAgentRegistry)
+                {
+                    // Delegate agent registry + discovery to the standalone GameServer.Orchestration.Host.
+                    builder.Services.AddOrchestrationHttpClientModule(builder.Configuration);
+                }
+                else
+                {
+                    // Add Orchestration module (Agent registry, discovery, SignalR client,
+                    // session manager, and ITerminalSessionNotifier bound to ContainerConsoleHub).
+                    builder.Services.AddOrchestrationModule(builder.Configuration);
+                    builder.Services.AddSingleton<IAgentShutdownNotifier, SignalRAgentShutdownNotifier>();
+                }
 
                 // Add Deployment module (Spec builder, volume resolver, port allocator, command/deployment services)
                 builder.Services.AddDeploymentModule(builder.Configuration);
@@ -76,7 +92,54 @@ namespace GameServer.API
                 
                 // Add SignalR for real-time features (console, logs, monitoring)
                 builder.Services.AddSignalR();
-                
+
+                // When modular hosting is enabled, register YARP so the API can act as a
+                // gateway that relays SignalR hubs and standalone-host REST endpoints to
+                // GameServer.Orchestration.Host and GameServer.Monitoring.Host. The Web UI
+                // continues to talk to GameServer.API only.
+                if (!modularHosting.HostHubsInApi)
+                {
+                    var orchestrationBase = builder.Configuration
+                        .GetSection(GameServer.Orchestration.OrchestrationServiceOptions.SectionName)
+                        .Get<GameServer.Orchestration.OrchestrationServiceOptions>()
+                        ?? new GameServer.Orchestration.OrchestrationServiceOptions();
+                    var monitoringBase = builder.Configuration
+                        .GetSection(Configurations.MonitoringServiceOptions.SectionName)
+                        .Get<Configurations.MonitoringServiceOptions>()
+                        ?? new Configurations.MonitoringServiceOptions();
+
+                    var routes = new[]
+                    {
+                        BuildHubRoute("hub-agentregistration", "/hubs/agentregistration/{**catch-all}", "orchestration-cluster"),
+                        BuildHubRoute("hub-terminal",          "/hubs/terminal/{**catch-all}",          "orchestration-cluster"),
+                        BuildHubRoute("hub-resources",         "/hubs/resources/{**catch-all}",         "monitoring-cluster"),
+                        BuildHubRoute("hub-serverlogs",        "/hubs/serverlogs/{**catch-all}",        "monitoring-cluster"),
+                        BuildHubRoute("hub-attach",            "/hubs/attach/{**catch-all}",            "monitoring-cluster"),
+                    };
+
+                    var clusters = new[]
+                    {
+                        new Yarp.ReverseProxy.Configuration.ClusterConfig
+                        {
+                            ClusterId = "orchestration-cluster",
+                            Destinations = new Dictionary<string, Yarp.ReverseProxy.Configuration.DestinationConfig>
+                            {
+                                ["primary"] = new() { Address = orchestrationBase.BaseUrl }
+                            }
+                        },
+                        new Yarp.ReverseProxy.Configuration.ClusterConfig
+                        {
+                            ClusterId = "monitoring-cluster",
+                            Destinations = new Dictionary<string, Yarp.ReverseProxy.Configuration.DestinationConfig>
+                            {
+                                ["primary"] = new() { Address = monitoringBase.BaseUrl }
+                            }
+                        },
+                    };
+
+                    builder.Services.AddReverseProxy().LoadFromMemory(routes, clusters);
+                }
+
                 // Add CORS for Blazor frontend (required for SignalR WebSockets)
                 builder.Services.AddCors(options =>
                 {
@@ -213,12 +276,21 @@ namespace GameServer.API
                     await next();
                 });
 
-                // Map SignalR hubs
-                app.MapHub<Hubs.ContainerAttachHub>("/hubs/attach");      // Shared multi-subscriber container attach
-                app.MapHub<Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell (per-user)
-                app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
-                app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
-                app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration"); // Agent registration
+                // Map SignalR hubs (only when this host owns them — in modular deployments
+                // ownership moves to GameServer.Orchestration.Host and GameServer.Monitoring.Host).
+                if (modularHosting.HostHubsInApi)
+                {
+                    app.MapHub<Hubs.ContainerAttachHub>("/hubs/attach");      // Shared multi-subscriber container attach
+                    app.MapHub<GameServer.Orchestration.Hubs.ContainerConsoleHub>("/hubs/terminal");  // Interactive exec shell (per-user)
+                    app.MapHub<Hubs.ServerLogsHub>("/hubs/serverlogs");
+                    app.MapHub<Hubs.ResourceMonitoringHub>("/hubs/resources");
+                    app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration"); // Agent registration
+                }
+                else
+                {
+                    mainLogger.LogInformation("ModularHosting:HostHubsInApi is false — SignalR hubs are relayed to GameServer.Orchestration.Host and GameServer.Monitoring.Host via YARP.");
+                    app.MapReverseProxy();
+                }
 
                 app.MapControllers();
 
@@ -248,5 +320,13 @@ namespace GameServer.API
                 Log.CloseAndFlush();
             }
         }
+
+        private static Yarp.ReverseProxy.Configuration.RouteConfig BuildHubRoute(string routeId, string path, string clusterId)
+            => new()
+            {
+                RouteId = routeId,
+                ClusterId = clusterId,
+                Match = new Yarp.ReverseProxy.Configuration.RouteMatch { Path = path },
+            };
     }
 }
