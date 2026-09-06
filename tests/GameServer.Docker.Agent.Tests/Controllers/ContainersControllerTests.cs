@@ -251,4 +251,302 @@ public class ContainersControllerTests
             x => x.GetContainerLogsAsync(containerId, tail, It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task ListContainers_WhenCalled_ReturnsOkWithContainers()
+    {
+        var controller = CreateController();
+        var expected = new AgentModels.ContainerListResponse
+        {
+            Containers = new List<AgentModels.ContainerSummary>
+            {
+                new() { Id = "c1", Names = new List<string> { "/web" }, State = "running", Status = "Up 2 hours" }
+            }
+        };
+
+        _mockContainerService
+            .Setup(x => x.ListContainersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var result = await controller.ListContainers(CancellationToken.None);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var list = Assert.IsType<AgentModels.ContainerListResponse>(okResult.Value);
+        Assert.Single(list.Containers);
+    }
+
+    [Fact]
+    public async Task ListFiles_WhenCalled_ReturnsOkWithFileList()
+    {
+        var controller = CreateController();
+        var items = new List<AgentModels.ContainerFileItemResponse>
+        {
+            new() { Name = "test.txt", Path = "/data/test.txt", Size = 100, IsDirectory = false, LastModified = DateTime.UtcNow }
+        };
+
+        _mockContainerService
+            .Setup(x => x.ListFilesAsync("c1", "/data", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(items);
+
+        var result = await controller.ListFiles("c1", "/data", CancellationToken.None);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsAssignableFrom<IReadOnlyList<AgentModels.ContainerFileItemResponse>>(okResult.Value);
+        Assert.Single(response);
+    }
+
+    [Fact]
+    public async Task ListFiles_WhenFileNotFound_ReturnsNotFound()
+    {
+        var controller = CreateController();
+        _mockContainerService
+            .Setup(x => x.ListFilesAsync("c1", "/missing", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FileNotFoundException("Not found"));
+
+        var result = await controller.ListFiles("c1", "/missing", CancellationToken.None);
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var error = Assert.IsType<AgentModels.ErrorResponse>(notFound.Value);
+        Assert.Equal("Not found", error.Error);
+    }
+
+    [Fact]
+    public async Task GetFileContent_WhenCalled_ReturnsOkWithContent()
+    {
+        var controller = CreateController();
+        _mockContainerService
+            .Setup(x => x.GetFileContentTextAsync("c1", "/data/file.txt", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("hello world");
+
+        var result = await controller.GetFileContent("c1", "/data/file.txt", CancellationToken.None);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("hello world", okResult.Value);
+    }
+
+    [Fact]
+    public async Task GetFileContent_WhenFileNotFound_ReturnsNotFound()
+    {
+        var controller = CreateController();
+        _mockContainerService
+            .Setup(x => x.GetFileContentTextAsync("c1", "/data/file.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FileNotFoundException("Path not found"));
+
+        var result = await controller.GetFileContent("c1", "/data/file.txt", CancellationToken.None);
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task DownloadFile_WhenCalled_ReturnsFileResult()
+    {
+        var controller = CreateController();
+        var stream = new MemoryStream(new byte[] { 1, 2, 3 });
+        _mockContainerService
+            .Setup(x => x.GetFileStreamAsync("c1", "/data/file.zip", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((stream, "application/zip", "file.zip"));
+
+        var result = await controller.DownloadFile("c1", "/data/file.zip", CancellationToken.None);
+        var fileResult = Assert.IsType<FileStreamResult>(result);
+        Assert.Equal("application/zip", fileResult.ContentType);
+        Assert.Equal("file.zip", fileResult.FileDownloadName);
+    }
+
+    [Fact]
+    public async Task SaveFileContent_WhenCalled_ReturnsOk()
+    {
+        var controller = CreateController();
+        _mockContainerService
+            .Setup(x => x.SaveFileContentTextAsync("c1", "/data/file.txt", "updated content", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await controller.SaveFileContent("c1", "/data/file.txt", new AgentModels.SaveFileRequest { Content = "updated content" }, CancellationToken.None);
+        Assert.IsType<OkResult>(result);
+    }
+
+    [Fact]
+    public async Task UploadFile_WhenFileNullOrEmpty_ReturnsBadRequest()
+    {
+        var controller = CreateController();
+        var result = await controller.UploadFile("c1", "/data", null, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task UploadFile_WhenFileProvided_ReturnsOk()
+    {
+        var controller = CreateController();
+        var formFileMock = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+        var stream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+        formFileMock.Setup(f => f.Length).Returns(4);
+        formFileMock.Setup(f => f.FileName).Returns("uploaded.txt");
+        formFileMock.Setup(f => f.OpenReadStream()).Returns(stream);
+
+        _mockContainerService
+            .Setup(x => x.UploadFileAsync("c1", "/data", "uploaded.txt", It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await controller.UploadFile("c1", "/data", formFileMock.Object, CancellationToken.None);
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateDirectory_WhenCalled_ReturnsOk()
+    {
+        var controller = CreateController();
+        _mockContainerService
+            .Setup(x => x.CreateDirectoryAsync("c1", "/data/newdir", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await controller.CreateDirectory("c1", "/data/newdir", CancellationToken.None);
+        Assert.IsType<OkResult>(result);
+    }
+
+    [Fact]
+    public async Task DeleteFileOrDirectory_WhenCalled_ReturnsOk()
+    {
+        var controller = CreateController();
+        _mockContainerService
+            .Setup(x => x.DeleteFileOrDirectoryAsync("c1", "/data/olddir", true, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await controller.DeleteFileOrDirectory("c1", "/data/olddir", recursive: true, CancellationToken.None);
+        Assert.IsType<OkResult>(result);
+    }
+
+    [Fact]
+    public async Task ListContainers_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.ListContainersAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Docker daemon error"));
+
+        var result = await controller.ListContainers(CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListFiles_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.ListFilesAsync("c1", "/path", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("I/O error"));
+
+        var result = await controller.ListFiles("c1", "/path", CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFileContent_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.GetFileContentTextAsync("c1", "/file.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Read error"));
+
+        var result = await controller.GetFileContent("c1", "/file.txt", CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task DownloadFile_WhenFileNotFound_ReturnsNotFound()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.GetFileStreamAsync("c1", "/missing.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FileNotFoundException("file missing"));
+
+        var result = await controller.DownloadFile("c1", "/missing.txt", CancellationToken.None);
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var err = Assert.IsType<AgentModels.ErrorResponse>(notFound.Value);
+        Assert.Equal("file missing", err.Error);
+    }
+
+    [Fact]
+    public async Task DownloadFile_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.GetFileStreamAsync("c1", "/file.txt", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Stream error"));
+
+        var result = await controller.DownloadFile("c1", "/file.txt", CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task SaveFileContent_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.SaveFileContentTextAsync("c1", "/file.txt", "abc", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Write error"));
+
+        var result = await controller.SaveFileContent("c1", "/file.txt", new AgentModels.SaveFileRequest { Content = "abc" }, CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadFile_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        var formFileMock = new Mock<Microsoft.AspNetCore.Http.IFormFile>();
+        var stream = new MemoryStream(new byte[] { 1 });
+        formFileMock.Setup(f => f.Length).Returns(1);
+        formFileMock.Setup(f => f.FileName).Returns("uploaded.txt");
+        formFileMock.Setup(f => f.OpenReadStream()).Returns(stream);
+
+        _mockContainerService.Setup(x => x.UploadFileAsync("c1", "/dir", "uploaded.txt", It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Upload error"));
+
+        var result = await controller.UploadFile("c1", "/dir", formFileMock.Object, CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateDirectory_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.CreateDirectoryAsync("c1", "/dir", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Mkdir error"));
+
+        var result = await controller.CreateDirectory("c1", "/dir", CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteFileOrDirectory_WhenException_Returns500()
+    {
+        var controller = CreateController();
+        _mockContainerService.Setup(x => x.DeleteFileOrDirectoryAsync("c1", "/dir", false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Delete error"));
+
+        var result = await controller.DeleteFileOrDirectory("c1", "/dir", recursive: false, CancellationToken.None);
+        var objResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task AttachToContainerWebSocket_WhenNotWebSocket_SetsBadRequest400()
+    {
+        var controller = CreateController();
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+
+        await controller.AttachToContainerWebSocket("c1");
+        Assert.Equal(400, controller.HttpContext.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExecInteractiveWebSocket_WhenNotWebSocket_SetsBadRequest400()
+    {
+        var controller = CreateController();
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+
+        await controller.ExecInteractiveWebSocket("c1", ["/bin/bash"], tty: true);
+        Assert.Equal(400, controller.HttpContext.Response.StatusCode);
+    }
 }

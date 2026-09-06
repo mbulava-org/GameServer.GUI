@@ -332,24 +332,275 @@ public class ServiceOperationsViaAgentTests
     }
 
     [Fact]
-    public async Task ListServicesAsync_WhenNoManagerAvailable_ShouldThrowInvalidOperationException()
+    public async Task CreateServiceAsync_WhenAgentReturnsSuccess_ReturnsServiceCreateResponse()
     {
-        // Arrange
         var service = CreateService();
-        
-        _mockAgentRegistry.Setup(x => x.GetHealthyManagerAgent())
-            .Returns((NodeAgentEndpoint?)null);
-        
-        _mockAgentRegistry.Setup(x => x.GetAllAgents())
-            .Returns(new List<NodeAgentEndpoint>());
-        
-        _mockAgentRegistry.Setup(x => x.GetManagerAgents())
-            .Returns(new List<NodeAgentEndpoint>());
+        SetupManagerAgent();
 
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.ListServicesAsync(cancellationToken: CancellationToken.None));
-        
-        Assert.Contains("No healthy manager agent available", exception.Message);
+        var agentResponse = new
+        {
+            success = true,
+            serviceId = "new-service-123",
+            message = "Created"
+        };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Post && req.RequestUri!.PathAndQuery.Contains("/api/services")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        var parameters = new ServiceCreateParameters
+        {
+            Service = new ServiceSpec
+            {
+                Name = "test-create-svc",
+                TaskTemplate = new TaskSpec
+                {
+                    ContainerSpec = new ContainerSpec
+                    {
+                        Image = "alpine:latest",
+                        Env = new List<string> { "FOO=BAR", "BAZ=QUX" },
+                        Mounts = new List<Mount>
+                        {
+                            new()
+                            {
+                                Type = "volume",
+                                Source = "testvol",
+                                Target = "/data",
+                                VolumeOptions = new VolumeOptions
+                                {
+                                    DriverConfig = new Driver
+                                    {
+                                        Name = "local",
+                                        Options = new Dictionary<string, string> { ["opt1"] = "val1" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Resources = new ResourceRequirements
+                    {
+                        Limits = new SwarmLimit { MemoryBytes = 1024 * 1024 * 512, NanoCPUs = 1000000000 }
+                    },
+                    RestartPolicy = new SwarmRestartPolicy { Condition = "on-failure", Delay = TimeSpan.FromSeconds(5), MaxAttempts = 3 },
+                    Placement = new Placement { Constraints = new List<string> { "node.role == worker" } },
+                    Networks = new List<NetworkAttachmentConfig> { new() { Target = "gameserver-net" } }
+                },
+                EndpointSpec = new EndpointSpec
+                {
+                    Ports = new List<PortConfig>
+                    {
+                        new() { TargetPort = 8080, PublishedPort = 80, Protocol = "tcp", PublishMode = "ingress" }
+                    }
+                }
+            }
+        };
+
+        var result = await service.CreateServiceAsync(parameters);
+        Assert.NotNull(result);
+        Assert.Equal("new-service-123", result.ID);
+    }
+
+    [Fact]
+    public async Task CreateServiceAsync_WhenAgentReturnsFailure_ThrowsInvalidOperationException()
+    {
+        var service = CreateService();
+        SetupManagerAgent();
+
+        var agentResponse = new
+        {
+            success = false,
+            message = "Port conflict"
+        };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        var parameters = new ServiceCreateParameters
+        {
+            Service = new ServiceSpec
+            {
+                Name = "fail-svc",
+                TaskTemplate = new TaskSpec
+                {
+                    ContainerSpec = new ContainerSpec { Image = "img" }
+                }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateServiceAsync(parameters));
+        Assert.Contains("Port conflict", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateServiceAsync_WhenAgentReturnsSuccess_CompletesSuccessfully()
+    {
+        var service = CreateService();
+        SetupManagerAgent();
+
+        var agentResponse = new { success = true, serviceId = "svc-upd", message = "Updated" };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Put && req.RequestUri!.PathAndQuery.Contains("/api/services/svc-upd")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        var parameters = new ServiceUpdateParameters
+        {
+            Service = new ServiceSpec
+            {
+                TaskTemplate = new TaskSpec
+                {
+                    ContainerSpec = new ContainerSpec { Image = "alpine:3.19", Env = new List<string> { "A=B" } },
+                    ForceUpdate = 1
+                },
+                Mode = new ServiceMode { Replicated = new ReplicatedService { Replicas = 1 } }
+            }
+        };
+
+        await service.UpdateServiceAsync("svc-upd", parameters);
+    }
+
+    [Fact]
+    public async Task RemoveServiceAsync_WhenAgentReturnsSuccess_CompletesSuccessfully()
+    {
+        var service = CreateService();
+        SetupManagerAgent();
+
+        var agentResponse = new { success = true, serviceId = "svc-del", message = "Deleted" };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Delete && req.RequestUri!.PathAndQuery.Contains("/api/services/svc-del")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        await service.RemoveServiceAsync("svc-del");
+    }
+
+    [Fact]
+    public async Task ListNetworksAsync_WithFilter_ReturnsNetworks()
+    {
+        var service = CreateService();
+        SetupManagerAgent();
+
+        var testNetwork = new NetworkResponse { ID = "net-1", Name = "gameserver-bridge", Driver = "overlay" };
+        var agentResponse = new
+        {
+            success = true,
+            count = 1,
+            networks = new List<NetworkResponse> { testNetwork }
+        };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.PathAndQuery.Contains("/api/networks")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        var parameters = new NetworksListParameters
+        {
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["name"] = new Dictionary<string, bool> { ["gameserver-bridge"] = true }
+            }
+        };
+
+        var result = await service.ListNetworksAsync(parameters);
+        Assert.NotNull(result);
+        Assert.Single(result);
+        Assert.Equal("gameserver-bridge", result[0].Name);
+    }
+
+    [Fact]
+    public async Task InspectNetworkAsync_ReturnsNetwork()
+    {
+        var service = CreateService();
+        SetupManagerAgent();
+
+        var testNetwork = new NetworkResponse { ID = "net-123", Name = "overlay-net", Driver = "overlay" };
+        var agentResponse = new
+        {
+            success = true,
+            network = testNetwork
+        };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.PathAndQuery.Contains("/api/networks/net-123")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        var result = await service.InspectNetworkAsync("net-123");
+        Assert.NotNull(result);
+        Assert.Equal("net-123", result.ID);
+        Assert.Equal("overlay-net", result.Name);
+    }
+
+    [Fact]
+    public async Task GetManagerAgent_WhenNotInRegistry_FallsBackToUdpRegistry()
+    {
+        var service = CreateService();
+        _mockAgentRegistry.Setup(x => x.GetHealthyManagerAgent()).Returns((NodeAgentEndpoint?)null);
+
+        var udpAgent = new NodeAgentEndpoint
+        {
+            NodeId = "udp-node-1",
+            NodeName = "udp-node",
+            InternalUrl = "http://udp-agent:8080",
+            IsHealthy = true,
+            IsManagerNode = true
+        };
+        _mockUdpAgentRegistry.Setup(x => x.GetAllAgents()).Returns(new List<NodeAgentEndpoint> { udpAgent });
+
+        var agentResponse = new { success = true, serviceId = "svc-udp", message = "Deleted" };
+        var responseMessage = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(agentResponse), System.Text.Encoding.UTF8, "application/json")
+        };
+
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(responseMessage);
+
+        await service.RemoveServiceAsync("svc-udp");
     }
 }

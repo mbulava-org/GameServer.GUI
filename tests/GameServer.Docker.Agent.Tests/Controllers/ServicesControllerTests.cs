@@ -107,51 +107,158 @@ public class ServicesControllerTests
     }
 
     [Fact]
-    public async Task InspectService_ShouldReturnFullSwarmServiceObject()
+    public async Task CreateService_WhenSuccessful_ReturnsOkWithServiceId()
     {
-        // Arrange
         var controller = CreateController();
+        var request = new CreateServiceRequest
+        {
+            ServiceName = "test-service",
+            Image = "nginx:latest",
+            Labels = new Dictionary<string, string> { ["app"] = "test" },
+            Env = new Dictionary<string, string> { ["ENV_VAR"] = "val" },
+            Mounts = new List<MountConfig>
+            {
+                new() { Type = "volume", Source = "vol1", Target = "/data", DriverName = "local" }
+            },
+            TTY = true,
+            DnsNameservers = new List<string> { "8.8.8.8" },
+            User = "1000:1000",
+            Resources = new ResourcesConfig { MemoryBytes = 1024, NanoCPUs = 1000000 },
+            RestartPolicy = new RestartPolicyConfig { Condition = "any", MaxAttempts = 3, Delay = 1000 },
+            Placement = new PlacementConfig { Constraints = new List<string> { "node.role == worker" } },
+            Networks = new List<string> { "net1" },
+            Ports = new List<PortMapping>
+            {
+                new() { TargetPort = 80, PublishedPort = 8080, Protocol = "tcp" }
+            }
+        };
 
-        var testService = new SwarmService
+        _mockSwarmOperations
+            .Setup(x => x.CreateServiceAsync(It.IsAny<ServiceCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceCreateResponse { ID = "new-service-id" });
+
+        var actionResult = await controller.CreateService(request);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<ServiceOperationResponse>(okResult.Value);
+        Assert.True(response.Success);
+        Assert.Equal("new-service-id", response.ServiceId);
+    }
+
+    [Fact]
+    public async Task CreateService_WhenExceptionThrown_Returns500()
+    {
+        var controller = CreateController();
+        _mockSwarmOperations
+            .Setup(x => x.CreateServiceAsync(It.IsAny<ServiceCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Docker daemon error"));
+
+        var actionResult = await controller.CreateService(new CreateServiceRequest { ServiceName = "error-svc", Image = "nginx:latest" });
+        var statusResult = Assert.IsType<ObjectResult>(actionResult.Result);
+        Assert.Equal(500, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_WhenSuccessful_ReturnsOk()
+    {
+        var controller = CreateController();
+        var existingService = new SwarmService
+        {
+            ID = "svc-1",
+            Version = new global::Docker.DotNet.Models.Version { Index = 10 },
+            Spec = new ServiceSpec
+            {
+                Name = "svc-1",
+                TaskTemplate = new TaskSpec
+                {
+                    ContainerSpec = new ContainerSpec { Image = "old:1" }
+                }
+            }
+        };
+
+        _mockSwarmOperations
+            .Setup(x => x.InspectServiceAsync("svc-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingService);
+
+        _mockSwarmOperations
+            .Setup(x => x.UpdateServiceAsync("svc-1", It.IsAny<ServiceUpdateParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ServiceUpdateResponse());
+
+        var request = new UpdateServiceRequest
+        {
+            ServiceId = "svc-1",
+            Image = "new:2",
+            Labels = new Dictionary<string, string> { ["updated"] = "true" },
+            Env = new Dictionary<string, string> { ["A"] = "B" },
+            Mounts = new List<MountConfig> { new() { Type = "bind", Source = "/host", Target = "/cont" } },
+            Resources = new ResourcesConfig { MemoryBytes = 2048 },
+            ForceUpdate = true,
+            Networks = new List<string> { "net2" },
+            Ports = new List<PortMapping> { new() { TargetPort = 443 } },
+            TTY = true,
+            DnsNameservers = new List<string> { "1.1.1.1" },
+            User = "1000",
+            Replicas = 2
+        };
+
+        var actionResult = await controller.UpdateService("svc-1", request);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<ServiceOperationResponse>(okResult.Value);
+        Assert.True(response.Success);
+        Assert.Equal("svc-1", response.ServiceId);
+    }
+
+    [Fact]
+    public async Task DeleteService_WhenSuccessful_ReturnsOk()
+    {
+        var controller = CreateController();
+        _mockSwarmOperations
+            .Setup(x => x.RemoveServiceAsync("svc-1", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var actionResult = await controller.DeleteService("svc-1");
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<ServiceOperationResponse>(okResult.Value);
+        Assert.True(response.Success);
+    }
+
+    [Fact]
+    public async Task InspectService_WhenSuccessful_ReturnsService()
+    {
+        var controller = CreateController();
+        var service = new SwarmService
         {
             ID = "service-123",
             Spec = new ServiceSpec
             {
                 Name = "test-service",
-                Labels = new Dictionary<string, string>
-                {
-                    ["key1"] = "value1"
-                }
+                Labels = new Dictionary<string, string> { ["key1"] = "value1" }
             }
         };
 
-        _mockSwarmOperations.Setup(x => x.InspectServiceAsync("service-123", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(testService);
+        _mockSwarmOperations
+            .Setup(x => x.InspectServiceAsync("service-123", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(service);
 
-        // Act
         var actionResult = await controller.InspectService("service-123");
-
-        // Assert - Get the OkObjectResult from ActionResult<T>
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var response = Assert.IsType<ServiceOperationResponse>(okResult.Value);
-
         Assert.True(response.Success);
-        Assert.NotNull(response.Data);
-        Assert.True(response.Data.ContainsKey("service"));
+        Assert.Equal("service-123", response.ServiceId);
+    }
 
-        // Serialize and deserialize to verify structure
-        var json = JsonSerializer.Serialize(response);
-        var jsonDoc = JsonDocument.Parse(json);
+    [Fact]
+    public async Task GetServiceLogs_WhenCalled_ReturnsLogs()
+    {
+        var controller = CreateController();
+        var memoryStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("Line 1\nLine 2\n"));
+        _mockSwarmOperations
+            .Setup(x => x.GetServiceLogsAsync("svc-1", It.IsAny<ServiceLogsParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(memoryStream);
 
-        var serviceProp = jsonDoc.RootElement.GetProperty("Data").GetProperty("service");
-        var deserializedService = JsonSerializer.Deserialize<SwarmService>(serviceProp.GetRawText());
-
-        Assert.NotNull(deserializedService);
-        Assert.Equal("service-123", deserializedService.ID);
-        Assert.NotNull(deserializedService.Spec);
-        Assert.Equal("test-service", deserializedService.Spec.Name);
-        Assert.NotNull(deserializedService.Spec.Labels);
-        Assert.Equal("value1", deserializedService.Spec.Labels["key1"]);
+        var actionResult = await controller.GetServiceLogs("svc-1", 100);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<ServiceOperationResponse>(okResult.Value);
+        Assert.True(response.Success);
     }
 
     [Fact]

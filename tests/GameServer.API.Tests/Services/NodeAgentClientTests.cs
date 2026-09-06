@@ -29,12 +29,51 @@ namespace GameServer.API.Tests.Services
                 NodeAgentClient.SendAttachInputAsync(null!, "test"));
         }
 
-        [Fact]
-        public async Task SendAttachInputAsync_WhenInputEmpty_ShouldThrowArgumentException()
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData(null)]
+        public async Task SendAttachInputAsync_WhenInputInvalid_ShouldThrowArgumentException(string? invalidInput)
         {
             using var ws = new ClientWebSocket();
             await Assert.ThrowsAnyAsync<ArgumentException>(() =>
-                NodeAgentClient.SendAttachInputAsync(ws, ""));
+                NodeAgentClient.SendAttachInputAsync(ws, invalidInput!));
+        }
+
+        [Fact]
+        public async Task SendAttachInputAsync_WhenWebSocketNotOpen_ShouldThrowInvalidOperationException()
+        {
+            using var ws = new ClientWebSocket();
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                NodeAgentClient.SendAttachInputAsync(ws, "test input"));
+        }
+
+        [Theory]
+        [InlineData("", "container-1")]
+        [InlineData("   ", "container-1")]
+        [InlineData(null, "container-1")]
+        public async Task StreamContainerAttachAsync_WhenAgentUrlInvalid_ThrowsArgumentException(string? url, string containerId)
+        {
+            await Assert.ThrowsAnyAsync<ArgumentException>(async () =>
+            {
+                await foreach (var _ in _client.StreamContainerAttachAsync(url!, containerId))
+                {
+                }
+            });
+        }
+
+        [Theory]
+        [InlineData("http://agent:8080", "")]
+        [InlineData("http://agent:8080", "   ")]
+        [InlineData("http://agent:8080", null)]
+        public async Task StreamContainerAttachAsync_WhenContainerIdInvalid_ThrowsArgumentException(string url, string? containerId)
+        {
+            await Assert.ThrowsAnyAsync<ArgumentException>(async () =>
+            {
+                await foreach (var _ in _client.StreamContainerAttachAsync(url, containerId!))
+                {
+                }
+            });
         }
     }
 }

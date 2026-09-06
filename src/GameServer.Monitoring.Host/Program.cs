@@ -1,11 +1,12 @@
 using GameServer.API.Interfaces;
 using GameServer.Catalog;
 using GameServer.Monitoring;
+using GameServer.Monitoring.Host.Hubs;
 using GameServer.Orchestration;
 using Serilog;
+using Serilog.Events;
 using System.Reflection;
 
-// Bootstrap logger for startup errors
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .Enrich.FromLogContext()
@@ -17,9 +18,8 @@ try
     var assemblyVersion = assembly.GetName().Version?.ToString() ?? "unknown";
     Log.Information("Starting GameServer.Monitoring.Host v{Version}", assemblyVersion);
 
-    var builder = Host.CreateApplicationBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 
-    // Serilog — reads from appsettings.json
     builder.Services.AddSerilog((services, cfg) =>
         cfg.ReadFrom.Configuration(builder.Configuration)
            .ReadFrom.Services(services)
@@ -27,34 +27,57 @@ try
            .Enrich.WithProperty("ApplicationName", "GameServer.Monitoring.Host")
            .Enrich.WithProperty("ApplicationVersion", assemblyVersion));
 
-    // Phase 1: Orchestration services are co-hosted here so Monitoring can resolve
-    // IAgentRegistry and INodeAgentDiscovery in-process.
-    // Phase 2: These will be replaced with HTTP clients pointing at the standalone
-    // GameServer.Orchestration.Host container.
-
-    // No-op stubs for SignalR-backed notifiers (API owns the hubs in Phase 1)
+    // Phase 2: No-op notifiers — terminal sessions and agent shutdown are owned by
+    // GameServer.Orchestration.Host. Monitoring Host only needs these to satisfy
+    // Orchestration module's DI requirements (it co-hosts Orchestration in Phase 2).
     builder.Services.AddSingleton<IAgentShutdownNotifier, NoOpAgentShutdownNotifier>();
     builder.Services.AddSingleton<ITerminalSessionNotifier, NoOpTerminalSessionNotifier>();
 
-    // Register Orchestration module (provides IAgentRegistry, INodeAgentDiscovery, etc.)
+    // Phase 2: Orchestration is still co-hosted here so IAgentRegistry and INodeAgentDiscovery
+    // are available in-process for the Monitoring aggregators.
+    // Phase 3 (future): Replace with typed HTTP clients pointing at Orchestration.Host.
     builder.Services.AddOrchestrationModule(builder.Configuration);
 
-    // Register Catalog module (provides repositories used by Monitoring query services)
-    // skipDbInit: true — database initialization is owned by GameServer.API.
+    // Catalog (repositories used by GameServerQueryService + GameTypeQueryService).
+    // skipDbInit: true — database schema migrations are owned by GameServer.API.
     builder.Services.AddCatalogModule(builder.Configuration, skipDbInit: true);
 
-    // Register all monitoring background services:
-    //   - GameServerQueryService, GameTypeQueryService
-    //   - IServerResourceMonitor, IServerResourceAggregator, IGameServerResourceCollector (hosted)
-    //   - IServerLogAggregator
-    //   - IContainerAttachAggregator
-    //   - IGameServerReadinessWatcherService
+    // Monitoring services: aggregators, resource collector, readiness watcher, query services.
     builder.Services.AddMonitoringModule();
 
-    var host = builder.Build();
+    builder.Services.AddControllers();
+    builder.Services.AddSignalR();
 
-    Log.Information("GameServer.Monitoring.Host built successfully — starting background services.");
-    await host.RunAsync();
+    builder.Services.AddCors(options =>
+        options.AddDefaultPolicy(policy =>
+            policy.SetIsOriginAllowed(_ => true)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials()));
+
+    var app = builder.Build();
+
+    app.UseSerilogRequestLogging(opts =>
+    {
+        opts.GetLevel = (ctx, _, ex) =>
+            ex != null || ctx.Response.StatusCode >= 500 ? LogEventLevel.Error :
+            ctx.Request.Path.StartsWithSegments("/health") ? LogEventLevel.Verbose :
+            LogEventLevel.Information;
+    });
+
+    app.UseCors();
+    app.UseAuthorization();
+    app.MapControllers();
+
+    // Phase 2 hubs — web clients now connect here for all streaming data
+    app.MapHub<ResourceMonitoringHub>("/hubs/resourcemonitoring");
+    app.MapHub<ServerLogsHub>("/hubs/serverlogs");
+    app.MapHub<ContainerAttachHub>("/hubs/containerattach");
+
+    app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+    Log.Information("GameServer.Monitoring.Host started — streaming hubs active.");
+    app.Run();
 }
 catch (Exception ex)
 {
@@ -67,7 +90,7 @@ finally
     Log.CloseAndFlush();
 }
 
-// ── Phase 1 no-op stubs ───────────────────────────────────────────────────────
+// ── Phase 2 no-op stubs ────────────────────────────────────────────────────────
 
 file sealed class NoOpAgentShutdownNotifier : IAgentShutdownNotifier
 {
@@ -77,12 +100,7 @@ file sealed class NoOpAgentShutdownNotifier : IAgentShutdownNotifier
 
 file sealed class NoOpTerminalSessionNotifier : ITerminalSessionNotifier
 {
-    public Task SendOutputAsync(string connectionId, string output, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
-
-    public Task SendDisconnectedAsync(string connectionId, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
-
-    public Task SendErrorAsync(string connectionId, string error, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+    public Task SendOutputAsync(string connectionId, string output, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SendDisconnectedAsync(string connectionId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SendErrorAsync(string connectionId, string error, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

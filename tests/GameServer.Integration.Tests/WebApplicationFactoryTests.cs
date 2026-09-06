@@ -14,14 +14,14 @@ public class WebApplicationFactoryTests
         _factory = factory;
     }
 
-    [Fact(Skip = "Integration tests temporarily disabled - revisit later.")]
+    [Fact]
     public void WebApplicationFactory_ShouldCreateApplication()
     {
         // Act & Assert
         Assert.NotNull(_factory);
     }
 
-    [Fact(Skip = "Integration tests temporarily disabled - revisit later.")]
+    [Fact]
     public void WebApplicationFactory_ShouldHaveServices()
     {
         // Arrange
@@ -31,7 +31,7 @@ public class WebApplicationFactoryTests
         Assert.NotNull(services);
     }
 
-    [Fact(Skip = "Integration tests temporarily disabled - revisit later.")]
+    [Fact]
     public void WebApplicationFactory_ShouldResolveRequiredServices()
     {
         // Arrange
@@ -42,17 +42,16 @@ public class WebApplicationFactoryTests
         Assert.NotNull(serviceProvider.GetService<IHostEnvironment>());
     }
 
-    [Fact(Skip = "Integration tests temporarily disabled - revisit later.")]
+    [Fact]
     public async Task Application_ShouldStartSuccessfully()
     {
         // Arrange
         var client = _factory.CreateClient();
 
         // Act
-        var response = await client.GetAsync("/");
+        var response = await client.GetAsync("/api/port/range");
 
         // Assert
         Assert.NotNull(response);
-        // Note: We don't assert success status code because the home page might require authentication
     }
 }

@@ -135,5 +135,105 @@ public class GameServerReadinessWatcherServiceTests
         Assert.True(watcher.IsServerReady("srv-valheim-1"));
         serverRepo.Verify(r => r.UpdateAsync(It.Is<Models.V2.GameServer>(s => s.Status == "Available")), Times.Once);
     }
+
+    [Fact]
+    public async Task ReadinessService_ReadinessStateOperations_WorkCorrectly()
+    {
+        var rootServiceProvider = new Mock<IServiceProvider>();
+        var logAggregator = new Mock<IServerLogAggregator>();
+
+        var watcher = new GameServerReadinessWatcherService(
+            rootServiceProvider.Object,
+            logAggregator.Object,
+            NullLogger<GameServerReadinessWatcherService>.Instance);
+
+        Assert.False(watcher.IsServerReady(string.Empty));
+        Assert.False(watcher.IsServerReady("srv-test"));
+
+        watcher.MarkReady(string.Empty);
+        watcher.MarkReady("srv-test");
+        Assert.True(watcher.IsServerReady("srv-test"));
+
+        watcher.ResetReadiness(string.Empty);
+        watcher.ResetReadiness("srv-test");
+        Assert.False(watcher.IsServerReady("srv-test"));
+
+        await watcher.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task EnsureWatchingAsync_WhenNoReadyLogPattern_MarksReadyAndSetsAvailable()
+    {
+        var server = new Models.V2.GameServer
+        {
+            ServerId = "srv-no-pattern",
+            Name = "Server Without Pattern",
+            Status = "Running",
+            GameTypeRevisionId = 20
+        };
+
+        var gameType = new GameType
+        {
+            Key = "generic",
+            DisplayName = "Generic",
+            Revisions = [new GameTypeRevision { Id = 20, ReadyLogPattern = null }]
+        };
+
+        var serverRepo = new Mock<IGameServerRepository>();
+        serverRepo.Setup(r => r.GetByServerIdAsync("srv-no-pattern")).ReturnsAsync(server);
+
+        var gameTypeRepo = new Mock<IGameTypeRepository>();
+        gameTypeRepo.Setup(r => r.GetAllAsync(true)).ReturnsAsync([gameType]);
+
+        var scopeMock = new Mock<IServiceScope>();
+        var scopeServiceProvider = new Mock<IServiceProvider>();
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(IGameServerRepository))).Returns(serverRepo.Object);
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(IGameTypeRepository))).Returns(gameTypeRepo.Object);
+        scopeMock.Setup(s => s.ServiceProvider).Returns(scopeServiceProvider.Object);
+
+        var scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
+
+        var rootServiceProvider = new Mock<IServiceProvider>();
+        rootServiceProvider.Setup(sp => sp.GetService(typeof(IServiceScopeFactory))).Returns(scopeFactoryMock.Object);
+
+        var watcher = new GameServerReadinessWatcherService(
+            rootServiceProvider.Object,
+            Mock.Of<IServerLogAggregator>(),
+            NullLogger<GameServerReadinessWatcherService>.Instance);
+
+        await watcher.EnsureWatchingAsync("srv-no-pattern");
+
+        Assert.True(watcher.IsServerReady("srv-no-pattern"));
+        serverRepo.Verify(r => r.UpdateAsync(It.Is<Models.V2.GameServer>(s => s.Status == "Available")), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnsureWatchingAsync_WhenServerNotFound_DoesNothing()
+    {
+        var serverRepo = new Mock<IGameServerRepository>();
+        serverRepo.Setup(r => r.GetByServerIdAsync("srv-unknown")).ReturnsAsync((Models.V2.GameServer?)null);
+
+        var scopeMock = new Mock<IServiceScope>();
+        var scopeServiceProvider = new Mock<IServiceProvider>();
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(IGameServerRepository))).Returns(serverRepo.Object);
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(IGameTypeRepository))).Returns(Mock.Of<IGameTypeRepository>());
+        scopeMock.Setup(s => s.ServiceProvider).Returns(scopeServiceProvider.Object);
+
+        var scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
+
+        var rootServiceProvider = new Mock<IServiceProvider>();
+        rootServiceProvider.Setup(sp => sp.GetService(typeof(IServiceScopeFactory))).Returns(scopeFactoryMock.Object);
+
+        var watcher = new GameServerReadinessWatcherService(
+            rootServiceProvider.Object,
+            Mock.Of<IServerLogAggregator>(),
+            NullLogger<GameServerReadinessWatcherService>.Instance);
+
+        await watcher.EnsureWatchingAsync("srv-unknown");
+
+        Assert.False(watcher.IsServerReady("srv-unknown"));
+    }
 }
 

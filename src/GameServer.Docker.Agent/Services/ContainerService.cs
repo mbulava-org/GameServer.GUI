@@ -605,8 +605,15 @@ namespace GameServer.Docker.Agent.Services
                     false,
                     cancellationToken);
 
+                using var archiveMs = new MemoryStream();
+                if (archive.Stream != null)
+                {
+                    await archive.Stream.CopyToAsync(archiveMs, cancellationToken);
+                    archiveMs.Position = 0;
+                }
+
                 var items = new List<Models.ContainerFileItemResponse>();
-                using var tarReader = new System.Formats.Tar.TarReader(archive.Stream);
+                using var tarReader = new System.Formats.Tar.TarReader(archiveMs);
 
                 string? rootEntryPrefix = null;
 
@@ -620,11 +627,9 @@ namespace GameServer.Docker.Agent.Services
 
                     if (rootEntryPrefix == null)
                     {
-                        // The first entry is usually the queried directory itself
                         rootEntryPrefix = entryName.TrimEnd('/') + "/";
                         if (entry.EntryType != System.Formats.Tar.TarEntryType.Directory)
                         {
-                            // If the queried path itself was a single file, return it
                             var fileName = Path.GetFileName(normalizedPath);
                             items.Add(new Models.ContainerFileItemResponse
                             {
@@ -641,41 +646,41 @@ namespace GameServer.Docker.Agent.Services
                         continue;
                     }
 
-                    // Strip root prefix if present
-                    var relative = entryName;
-                    if (relative.StartsWith(rootEntryPrefix, StringComparison.OrdinalIgnoreCase))
+                    var relativePath = entryName;
+                    if (relativePath.StartsWith(rootEntryPrefix, StringComparison.Ordinal))
                     {
-                        relative = relative[rootEntryPrefix.Length..];
+                        relativePath = relativePath[rootEntryPrefix.Length..];
                     }
 
-                    relative = relative.Trim('/');
-                    if (string.IsNullOrEmpty(relative))
-                    {
-                        continue;
-                    }
-
-                    // Only take immediate children (no subsequent slashes)
-                    if (relative.Contains('/'))
+                    if (string.IsNullOrEmpty(relativePath))
                     {
                         continue;
                     }
 
                     var isDir = entry.EntryType == System.Formats.Tar.TarEntryType.Directory;
-                    var itemSubPath = normalizedPath.TrimEnd('/') + "/" + relative;
+                    var parts = relativePath.TrimEnd('/').Split('/');
+
+                    if (parts.Length > 1)
+                    {
+                        continue;
+                    }
+
+                    var name = parts[0];
+                    var fullItemPath = $"{normalizedPath.TrimEnd('/')}/{name}";
 
                     items.Add(new Models.ContainerFileItemResponse
                     {
-                        Name = relative,
-                        Path = itemSubPath,
+                        Name = name,
+                        Path = fullItemPath,
                         IsDirectory = isDir,
                         Size = isDir ? 0 : entry.Length,
                         LastModified = entry.ModificationTime.UtcDateTime,
-                        Extension = isDir ? null : Path.GetExtension(relative),
+                        Extension = isDir ? null : Path.GetExtension(name),
                         Permissions = FormatPermissions((int)entry.Mode, isDir)
                     });
                 }
 
-                return items.OrderByDescending(i => i.IsDirectory).ThenBy(i => i.Name).ToList();
+                return items.OrderByDescending(x => x.IsDirectory).ThenBy(x => x.Name).ToList();
             }
             catch (DockerContainerNotFoundException)
             {
@@ -683,8 +688,8 @@ namespace GameServer.Docker.Agent.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to list archive in container {ContainerId} at path {Path}", containerId, normalizedPath);
-                return [];
+                _logger.LogError(ex, "Error listing files in container {ContainerId} at path {Path}", containerId, normalizedPath);
+                throw;
             }
         }
 
@@ -702,7 +707,14 @@ namespace GameServer.Docker.Agent.Services
                 false,
                 cancellationToken);
 
-            using var tarReader = new System.Formats.Tar.TarReader(archive.Stream);
+            using var archiveMs = new MemoryStream();
+            if (archive.Stream != null)
+            {
+                await archive.Stream.CopyToAsync(archiveMs, cancellationToken);
+                archiveMs.Position = 0;
+            }
+
+            using var tarReader = new System.Formats.Tar.TarReader(archiveMs);
             while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
             {
                 if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
@@ -730,7 +742,14 @@ namespace GameServer.Docker.Agent.Services
                 false,
                 cancellationToken);
 
-            using var tarReader = new System.Formats.Tar.TarReader(archive.Stream);
+            using var archiveMs = new MemoryStream();
+            if (archive.Stream != null)
+            {
+                await archive.Stream.CopyToAsync(archiveMs, cancellationToken);
+                archiveMs.Position = 0;
+            }
+
+            using var tarReader = new System.Formats.Tar.TarReader(archiveMs);
             while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
             {
                 if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
@@ -771,10 +790,11 @@ namespace GameServer.Docker.Agent.Services
                 await tarWriter.WriteEntryAsync(entry, cancellationToken);
             }
 
+            if (string.IsNullOrEmpty(parentDir)) parentDir = "/";
             tarMs.Position = 0;
             await _dockerClient.Containers.ExtractArchiveToContainerAsync(
                 containerId,
-                new CopyToContainerParameters { AllowOverwriteDirWithFile = true },
+                new CopyToContainerParameters { Path = parentDir, AllowOverwriteDirWithFile = true },
                 tarMs,
                 cancellationToken);
 
@@ -791,6 +811,7 @@ namespace GameServer.Docker.Agent.Services
             ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
             ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
             var normalizedDir = NormalizeContainerPath(directoryPath);
+            if (string.IsNullOrEmpty(normalizedDir)) normalizedDir = "/";
             var safeFileName = Path.GetFileName(fileName);
 
             using var memoryContent = new MemoryStream();
@@ -812,7 +833,7 @@ namespace GameServer.Docker.Agent.Services
             tarMs.Position = 0;
             await _dockerClient.Containers.ExtractArchiveToContainerAsync(
                 containerId,
-                new CopyToContainerParameters { AllowOverwriteDirWithFile = true },
+                new CopyToContainerParameters { Path = normalizedDir, AllowOverwriteDirWithFile = true },
                 tarMs,
                 cancellationToken);
 
@@ -827,6 +848,7 @@ namespace GameServer.Docker.Agent.Services
             ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
             var normalizedPath = NormalizeContainerPath(path);
             var parentDir = Path.GetDirectoryName(normalizedPath)?.Replace('\\', '/') ?? "/";
+            if (string.IsNullOrEmpty(parentDir)) parentDir = "/";
             var dirName = Path.GetFileName(normalizedPath.TrimEnd('/')) + "/";
 
             using var tarMs = new MemoryStream();
@@ -843,7 +865,7 @@ namespace GameServer.Docker.Agent.Services
             tarMs.Position = 0;
             await _dockerClient.Containers.ExtractArchiveToContainerAsync(
                 containerId,
-                new CopyToContainerParameters { AllowOverwriteDirWithFile = true },
+                new CopyToContainerParameters { Path = parentDir, AllowOverwriteDirWithFile = true },
                 tarMs,
                 cancellationToken);
 

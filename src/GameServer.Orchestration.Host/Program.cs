@@ -1,10 +1,12 @@
 using GameServer.API.Interfaces;
 using GameServer.Orchestration;
+using GameServer.Orchestration.Host.Hubs;
+using Microsoft.AspNetCore.SignalR;
 using Serilog;
 using Serilog.Events;
 using System.Reflection;
 
-// Bootstrap logger for startup errors
+// Bootstrap logger
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .Enrich.FromLogContext()
@@ -16,9 +18,8 @@ try
     var assemblyVersion = assembly.GetName().Version?.ToString() ?? "unknown";
     Log.Information("Starting GameServer.Orchestration.Host v{Version}", assemblyVersion);
 
-    var builder = Host.CreateApplicationBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 
-    // Serilog — reads from appsettings.json
     builder.Services.AddSerilog((services, cfg) =>
         cfg.ReadFrom.Configuration(builder.Configuration)
            .ReadFrom.Services(services)
@@ -26,29 +27,47 @@ try
            .Enrich.WithProperty("ApplicationName", "GameServer.Orchestration.Host")
            .Enrich.WithProperty("ApplicationVersion", assemblyVersion));
 
-    // Register a no-op IAgentShutdownNotifier — in Phase 1 the Orchestration Host has no
-    // SignalR hub. Phase 2 will replace this with a real hub-backed implementation.
-    builder.Services.AddSingleton<IAgentShutdownNotifier, NoOpAgentShutdownNotifier>();
+    // Phase 2: Real SignalR-backed notifier — the shutdown hub notifies connected agents.
+    // IAgentShutdownNotifier sends via the AgentRegistrationHub context.
+    builder.Services.AddSingleton<IAgentShutdownNotifier, SignalRAgentShutdownNotifier>();
 
-    // Register a no-op ITerminalSessionNotifier — terminal session routing is handled
-    // by GameServer.API's SignalR hubs. Phase 2 will wire this up properly.
-    builder.Services.AddSingleton<ITerminalSessionNotifier, NoOpTerminalSessionNotifier>();
+    // Phase 2: TerminalSessionNotifier — terminal output forwarded via SignalR.
+    builder.Services.AddSingleton<ITerminalSessionNotifier, SignalRTerminalSessionNotifier>();
 
-    // Register all orchestration background services:
-    //   - IAgentRegistry (AgentRegistryService)
-    //   - IUdpAgentRegistry (UdpAgentRegistryService)
-    //   - UdpAgentAnnouncementListenerService (hosted)
-    //   - NodeAgentDiscoveryService (hosted)
-    //   - INodeAgentDiscovery
-    //   - NodeAgentClient
-    //   - AgentShutdownNotificationService (hosted)
-    //   - TerminalSessionManager
+    // Orchestration background services:
+    //   - IAgentRegistry, IUdpAgentRegistry, UdpAnnouncementListenerService
+    //   - NodeAgentDiscoveryService, INodeAgentDiscovery
+    //   - NodeAgentClient, AgentShutdownNotificationService, TerminalSessionManager
     builder.Services.AddOrchestrationModule(builder.Configuration);
 
-    var host = builder.Build();
+    builder.Services.AddControllers();
+    builder.Services.AddSignalR();
 
-    Log.Information("GameServer.Orchestration.Host built successfully — starting background services.");
-    await host.RunAsync();
+    builder.Services.AddCors(options =>
+        options.AddDefaultPolicy(policy =>
+            policy.SetIsOriginAllowed(_ => true)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials()));
+
+    var app = builder.Build();
+
+    app.UseSerilogRequestLogging(opts =>
+    {
+        opts.GetLevel = (ctx, _, ex) =>
+            ex != null || ctx.Response.StatusCode >= 500 ? LogEventLevel.Error :
+            ctx.Request.Path.StartsWithSegments("/health") ? LogEventLevel.Verbose :
+            LogEventLevel.Information;
+    });
+
+    app.UseCors();
+    app.UseAuthorization();
+    app.MapControllers();
+    app.MapHub<AgentRegistrationHub>("/hubs/agentregistration");
+    app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+    Log.Information("GameServer.Orchestration.Host started — listening for agent connections.");
+    app.Run();
 }
 catch (Exception ex)
 {
@@ -61,27 +80,28 @@ finally
     Log.CloseAndFlush();
 }
 
-// ── Phase 1 no-op stubs ───────────────────────────────────────────────────────
-// These are replaced in Phase 2 when the Orchestration service exposes its own
-// SignalR hub and the API switches to HTTP clients.
+// ── Phase 2 SignalR-backed implementations ─────────────────────────────────────
 
 /// <summary>
-/// No-op implementation of IAgentShutdownNotifier for Phase 1.
-/// The Orchestration Host does not have a SignalR hub yet; shutdown notifications
-/// are sent by GameServer.API which still runs its own SignalR hub.
+/// Notifies connected agents that the Orchestration service is shutting down
+/// by broadcasting via the AgentRegistrationHub.
 /// </summary>
-file sealed class NoOpAgentShutdownNotifier : IAgentShutdownNotifier
+file sealed class SignalRAgentShutdownNotifier(
+    IHubContext<AgentRegistrationHub> hubContext) : IAgentShutdownNotifier
 {
     public Task NotifyPrimaryServiceShuttingDownAsync(CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+        => hubContext.Clients.All.SendAsync("PrimaryServiceShuttingDown", cancellationToken);
 }
 
 /// <summary>
-/// No-op implementation of ITerminalSessionNotifier for Phase 1.
-/// Terminal session output is forwarded by GameServer.API's SignalR hub.
+/// Forwards terminal session output through a dedicated terminal SignalR hub.
+/// In Phase 2 the terminal hub lives in GameServer.API; this notifier connects back to it.
+/// Replace with a direct hub call when the terminal hub moves here in a future phase.
 /// </summary>
-file sealed class NoOpTerminalSessionNotifier : ITerminalSessionNotifier
+file sealed class SignalRTerminalSessionNotifier : ITerminalSessionNotifier
 {
+    // Terminal output is still handled by GameServer.API's ContainerConsoleHub in Phase 2.
+    // These methods are no-ops here; the API hub owns the terminal session lifecycle.
     public Task SendOutputAsync(string connectionId, string output, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 

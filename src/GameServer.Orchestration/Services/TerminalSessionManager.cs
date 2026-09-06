@@ -27,7 +27,7 @@ namespace GameServer.API.Services
             _serviceProvider = serviceProvider;
         }
 
-        public async Task<(bool Success, string? Error)> StartSessionAsync(
+        public virtual async Task<(bool Success, string? Error)> StartSessionAsync(
             string connectionId, 
             string containerId, 
             string shell = "/bin/sh")
@@ -108,7 +108,7 @@ namespace GameServer.API.Services
             }
         }
 
-        public async Task SendInputAsync(string connectionId, string input)
+        public virtual async Task SendInputAsync(string connectionId, string input)
         {
             if (!_sessions.TryGetValue(connectionId, out var session))
             {
@@ -138,7 +138,7 @@ namespace GameServer.API.Services
             }
         }
 
-        public async Task CloseSessionAsync(string connectionId)
+        public virtual async Task CloseSessionAsync(string connectionId)
         {
             if (_sessions.TryRemove(connectionId, out var session))
             {

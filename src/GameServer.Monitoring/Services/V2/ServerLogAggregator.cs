@@ -159,7 +159,7 @@ public sealed class ServerLogAggregator : IServerLogAggregator, IAsyncDisposable
                 using var scope = _serviceProvider.CreateScope();
                 var discovery = scope.ServiceProvider.GetRequiredService<INodeAgentDiscovery>();
                 var nodeAgentClient = scope.ServiceProvider.GetRequiredService<NodeAgentClient>();
-                var queryService = scope.ServiceProvider.GetRequiredService<GameServerQueryService>();
+                var queryService = scope.ServiceProvider.GetRequiredService<IGameServerQueryService>();
                 var server = await queryService.GetByServerIdAsync(_serverId, cancellationToken).ConfigureAwait(false);
 
                 if (server is null)
