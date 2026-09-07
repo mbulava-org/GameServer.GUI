@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using MySql.EntityFrameworkCore.Metadata;
 
@@ -117,7 +117,7 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
             migrationBuilder.InsertData(
                 table: "Users",
                 columns: new[] { "Id", "CreatedAt", "Email", "IsActive", "LastLoginAt", "PasswordHash", "Role", "UpdatedAt", "Username" },
-                values: new object[] { 1, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "admin@gameserver.local", true, null, "100000.AQIDBAUGBwgJCgsMDQ4PEA==.4xti9xpXRpEAp4FOPgwvpC3vDN0DTAOpbsXWezzugGM=", "Admin", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "admin" });
+                values: new object[] { 1, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "admin@gameserver.local", true, null, "100000.AQIDBAUGBwgJCgsMDQ4PEA==.HcXuAK10SjWLJPp2fjPLGDZzYBUHjuLTj/VUPgmfEuE=", "Admin", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "admin" });
 
             migrationBuilder.InsertData(
                 table: "UserGroups",

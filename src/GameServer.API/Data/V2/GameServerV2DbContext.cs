@@ -371,7 +371,7 @@ public class GameServerV2DbContext : DbContext
                     Id = 1,
                     Username = "admin",
                     Email = "admin@gameserver.local",
-                    PasswordHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.4xti9xpXRpEAp4FOPgwvpC3vDN0DTAOpbsXWezzugGM=",
+                    PasswordHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.HcXuAK10SjWLJPp2fjPLGDZzYBUHjuLTj/VUPgmfEuE=",
                     Role = "Admin",
                     IsActive = true,
                     CreatedAt = SeedTimestamp,

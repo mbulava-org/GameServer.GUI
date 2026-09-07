@@ -36,7 +36,23 @@
 
                     <RadzenFormField Text="Password" Variant="Variant.Outlined" Style="width: 100%;">
                         <ChildContent>
-                            <RadzenPassword @bind-Value="@_loginModel.Password" Name="Password" Style="width: 100%;" />
+                            <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                                @if (_showPassword)
+                                {
+                                    <RadzenTextBox @bind-Value="@_loginModel.Password" Name="Password" Style="width: 100%; padding-right: 2.5rem;" />
+                                }
+                                else
+                                {
+                                    <RadzenPassword @bind-Value="@_loginModel.Password" Name="Password" Style="width: 100%; padding-right: 2.5rem;" />
+                                }
+                                <RadzenButton Icon="@(_showPassword ? "visibility_off" : "visibility")"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Variant="Variant.Text"
+                                              Size="ButtonSize.Small"
+                                              Click="@(() => _showPassword = !_showPassword)"
+                                              Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem;"
+                                              Title="@(_showPassword ? "Hide password" : "Show password")" />
+                            </div>
                         </ChildContent>
                         <Helper>
                             <RadzenRequiredValidator Component="Password" Text="Password is required" />
@@ -84,6 +100,7 @@
 
     private readonly LoginModel _loginModel = new();
     private bool _isBusy;
+    private bool _showPassword;
     private string? _errorMessage;
 
     [SupplyParameterFromQuery]

@@ -12,8 +12,16 @@
     <div class="nav-scrollable">
         <RadzenPanelMenu>
             <RadzenPanelMenuItem Text="Home" Icon="home" Path="/" />
-            <RadzenPanelMenuItem Text="Servers" Icon="dns" Path="/gameservers-v2" />
-            <RadzenPanelMenuItem Text="Game Types" Icon="inventory_2" Path="/gametypes-v2" />
+            <AuthorizeView>
+                <Authorized>
+                    <RadzenPanelMenuItem Text="Servers" Icon="dns" Path="/gameservers-v2" />
+                </Authorized>
+            </AuthorizeView>
+            <AuthorizeView Roles="Admin,GameManager">
+                <Authorized>
+                    <RadzenPanelMenuItem Text="Game Types" Icon="inventory_2" Path="/gametypes-v2" />
+                </Authorized>
+            </AuthorizeView>
             <AuthorizeView Roles="Admin">
                 <Authorized>
                     <RadzenPanelMenuItem Text="Mount Types" Icon="storage" Path="/settings/mount-types" />

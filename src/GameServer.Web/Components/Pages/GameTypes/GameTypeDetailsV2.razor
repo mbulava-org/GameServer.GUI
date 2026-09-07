@@ -1,6 +1,6 @@
 @page "/gametypes-v2/{Key}"
 @page "/gametypes-v2/new"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,GameManager")]
 @rendermode InteractiveServer
 @using System.Text
 @using System.Text.Json

@@ -26,6 +26,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             }
 
             await MigrateRelationalDatabaseAsync().ConfigureAwait(false);
+            await EnsureDefaultAdminPasswordAsync().ConfigureAwait(false);
 
             var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
             if (!hasGameTypes)
@@ -41,6 +42,24 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         {
             logger.LogError(ex, "Error initializing V2 database");
             throw;
+        }
+    }
+
+    private async Task EnsureDefaultAdminPasswordAsync()
+    {
+        try
+        {
+            var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Username == "admin").ConfigureAwait(false);
+            if (adminUser != null && adminUser.PasswordHash == "100000.AQIDBAUGBwgJCgsMDQ4PEA==.4xti9xpXRpEAp4FOPgwvpC3vDN0DTAOpbsXWezzugGM=")
+            {
+                adminUser.PasswordHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.HcXuAK10SjWLJPp2fjPLGDZzYBUHjuLTj/VUPgmfEuE=";
+                await context.SaveChangesAsync().ConfigureAwait(false);
+                logger.LogInformation("Updated seed admin user password hash to match Admin123! default credentials.");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not verify/update default admin user password hash during database initialization.");
         }
     }
 

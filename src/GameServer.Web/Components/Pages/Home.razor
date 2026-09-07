@@ -15,18 +15,30 @@
             <h1 class="hero-title">Game Server Manager</h1>
             <p class="hero-subtitle">Deploy, manage, and monitor game servers with ease using Docker Swarm</p>
             <div class="hero-actions">
-                <RadzenButton Text="View Servers" 
-                              Icon="dns" 
-                              ButtonStyle="ButtonStyle.Primary" 
-                              Size="ButtonSize.Large"
-                              Path="/gameservers-v2"
-                              Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
-                <RadzenButton Text="Create Server" 
-                              Icon="add" 
-                              ButtonStyle="ButtonStyle.Success" 
-                              Size="ButtonSize.Large"
-                              Path="/gameservers-v2/new"
-                              Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
+                <AuthorizeView>
+                    <Authorized>
+                        <RadzenButton Text="View Servers" 
+                                      Icon="dns" 
+                                      ButtonStyle="ButtonStyle.Primary" 
+                                      Size="ButtonSize.Large"
+                                      Path="/gameservers-v2"
+                                      Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
+                        <RadzenButton Text="Create Server" 
+                                      Icon="add" 
+                                      ButtonStyle="ButtonStyle.Success" 
+                                      Size="ButtonSize.Large"
+                                      Path="/gameservers-v2/new"
+                                      Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
+                    </Authorized>
+                    <NotAuthorized>
+                        <RadzenButton Text="Sign In" 
+                                      Icon="login" 
+                                      ButtonStyle="ButtonStyle.Primary" 
+                                      Size="ButtonSize.Large"
+                                      Path="/login"
+                                      Click='@(() => Navigation.NavigateTo("/login"))' />
+                    </NotAuthorized>
+                </AuthorizeView>
             </div>
         </div>
     </div>
@@ -206,12 +218,24 @@
                         </p>
                     </div>
                     <div class="col-md-4 text-end">
-                        <RadzenButton Text="Create Your First Server" 
-                                      Icon="rocket_launch" 
-                                      ButtonStyle="ButtonStyle.Success" 
-                                      Size="ButtonSize.Large"
-                                      Path="/gameservers-v2/new"
-                                      Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
+                        <AuthorizeView>
+                            <Authorized>
+                                <RadzenButton Text="Create Your First Server" 
+                                              Icon="rocket_launch" 
+                                              ButtonStyle="ButtonStyle.Success" 
+                                              Size="ButtonSize.Large"
+                                              Path="/gameservers-v2/new"
+                                              Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
+                            </Authorized>
+                            <NotAuthorized>
+                                <RadzenButton Text="Sign In to Get Started" 
+                                              Icon="login" 
+                                              ButtonStyle="ButtonStyle.Success" 
+                                              Size="ButtonSize.Large"
+                                              Path="/login"
+                                              Click='@(() => Navigation.NavigateTo("/login"))' />
+                            </NotAuthorized>
+                        </AuthorizeView>
                     </div>
                 </div>
             </RadzenCard>
@@ -221,22 +245,30 @@
                     <RadzenCard>
                         <h4 class="mb-3">Quick Links</h4>
                         <div class="row">
-                            <div class="col-md-3 mb-3">
-                                <RadzenButton Text="View Servers" 
-                                              Icon="dns" 
-                                              ButtonStyle="ButtonStyle.Light" 
-                                              Style="width: 100%;"
-                                              Path="/gameservers-v2"
-                                              Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <RadzenButton Text="Manage Game Types" 
-                                              Icon="sports_esports" 
-                                              ButtonStyle="ButtonStyle.Light" 
-                                              Style="width: 100%;"
-                                              Path="/gametypes-v2"
-                                              Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
-                            </div>
+                            <AuthorizeView>
+                                <Authorized>
+                                    <div class="col-md-3 mb-3">
+                                        <RadzenButton Text="View Servers" 
+                                                      Icon="dns" 
+                                                      ButtonStyle="ButtonStyle.Light" 
+                                                      Style="width: 100%;"
+                                                      Path="/gameservers-v2"
+                                                      Click='@(() => Navigation.NavigateTo("/gameservers-v2"))' />
+                                    </div>
+                                </Authorized>
+                            </AuthorizeView>
+                            <AuthorizeView Roles="Admin,GameManager">
+                                <Authorized>
+                                    <div class="col-md-3 mb-3">
+                                        <RadzenButton Text="Manage Game Types" 
+                                                      Icon="sports_esports" 
+                                                      ButtonStyle="ButtonStyle.Light" 
+                                                      Style="width: 100%;"
+                                                      Path="/gametypes-v2"
+                                                      Click='@(() => Navigation.NavigateTo("/gametypes-v2"))' />
+                                    </div>
+                                </Authorized>
+                            </AuthorizeView>
                             <div class="col-md-3 mb-3">
                                 <RadzenButton Text="Documentation" 
                                               Icon="description" 

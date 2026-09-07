@@ -27,6 +27,9 @@ public sealed class TokenServiceAndHasherTests
         Assert.Contains(".", hash);
         Assert.True(isValid);
         Assert.False(isInvalid);
+
+        const string seedHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.HcXuAK10SjWLJPp2fjPLGDZzYBUHjuLTj/VUPgmfEuE=";
+        Assert.True(hasher.VerifyPassword(seedHash, "Admin123!"), "Admin123! should verify against the seeded admin password hash");
     }
 
     [Fact]
