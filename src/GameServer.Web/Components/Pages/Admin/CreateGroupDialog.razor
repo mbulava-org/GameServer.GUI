@@ -27,6 +27,9 @@
 </RadzenTemplateForm>
 
 @code {
+    [Parameter]
+    public CreateGroupRequest? Model { get; set; }
+
     public class CreateGroupViewModel
     {
         public string Name { get; set; } = string.Empty;
@@ -35,6 +38,15 @@
 
     private readonly CreateGroupViewModel _model = new();
     private bool _isBusy;
+
+    protected override void OnParametersSet()
+    {
+        if (Model is not null)
+        {
+            _model.Name = Model.Name;
+            _model.Description = Model.Description;
+        }
+    }
 
     private async Task HandleSubmit()
     {
