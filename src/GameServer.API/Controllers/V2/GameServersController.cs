@@ -138,12 +138,26 @@ public sealed class GameServersController(
 
             if (request.InitialGroupId.HasValue && groupRepository is not null)
             {
+                if (!User.IsInRole("Admin"))
+                {
+                    if (currentUserId is null)
+                    {
+                        return Forbid();
+                    }
+
+                    var userGroupIds = await groupRepository.GetUserGroupIdsAsync(currentUserId.Value, cancellationToken).ConfigureAwait(false);
+                    if (!userGroupIds.Contains(request.InitialGroupId.Value))
+                    {
+                        return Forbid();
+                    }
+                }
+
                 var accessLevel = string.Equals(request.InitialGroupAccessLevel, "View", StringComparison.OrdinalIgnoreCase) ? "View" : "Edit";
                 await groupRepository.AddOrUpdateServerAccessAsync(
                     request.InitialGroupId.Value,
                     created.ServerId,
                     accessLevel,
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return CreatedAtAction(nameof(GetByServerId), new { serverId = created.ServerId }, created);
