@@ -41,9 +41,16 @@ namespace GameServer.Docker.Agent.Services
             {
                 _logger.LogTrace("Starting stats collection for container {ContainerId}", containerId);
 
+                // NOTE: OneShot=true causes the Docker daemon to return stats WITHOUT
+                // populating PreCPUStats, which breaks the standard CPU% delta formula
+                // (cpu_delta / system_delta * cpus * 100). The result is a lifetime average
+                // instead of instantaneous CPU%, causing readings that are off by an order
+                // of magnitude (typically far too low) versus what Portainer/`docker stats`
+                // report. With OneShot=false + Stream=false the daemon internally samples
+                // twice ~1s apart and returns a single response with proper pre-stats.
                 var statsTask = _dockerClient.Containers.GetContainerStatsAsync(
                     containerId,
-                    new ContainerStatsParameters { Stream = false, OneShot = true },
+                    new ContainerStatsParameters { Stream = false, OneShot = false },
                     progress,
                     cts.Token);
 

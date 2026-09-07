@@ -102,23 +102,20 @@
                             <span class="badge bg-primary-subtle text-primary">Avg: @GetAvgCpu()%</span>
                         </div>
                         <RadzenChart Style="height: 250px;">
-                            <RadzenLineSeries Data="@chartPoints"
+                            <RadzenAreaSeries Data="@chartPoints"
                                               CategoryProperty="AxisLabel"
                                               ValueProperty="CpuPercent"
                                               Title="CPU %"
                                               Smooth="true"
                                               Stroke="var(--rz-primary)"
                                               LineType="LineType.Solid">
-                                <ChildContent>
-                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
-                                </ChildContent>
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
                                         <div class="fw-bold text-primary">@data.CpuPercent.ToString("F1")% CPU</div>
                                     </div>
                                 </TooltipTemplate>
-                            </RadzenLineSeries>
+                            </RadzenAreaSeries>
                             <RadzenCategoryAxis Padding="10">
                                 <RadzenAxisTitle Text="Time" />
                                 <RadzenGridLines Visible="true" />
@@ -143,23 +140,20 @@
                             <span class="badge bg-info-subtle text-info">Latest: @GetLatestMemoryMB() MB</span>
                         </div>
                         <RadzenChart Style="height: 250px;">
-                            <RadzenLineSeries Data="@chartPoints"
+                            <RadzenAreaSeries Data="@chartPoints"
                                               CategoryProperty="AxisLabel"
                                               ValueProperty="MemoryPercent"
                                               Title="Memory %"
                                               Smooth="true"
                                               Stroke="var(--rz-info)"
                                               LineType="LineType.Solid">
-                                <ChildContent>
-                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
-                                </ChildContent>
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
                                         <div class="fw-bold text-info">@data.MemoryPercent.ToString("F1")% (@data.MemoryMB.ToString("F1") MB)</div>
                                     </div>
                                 </TooltipTemplate>
-                            </RadzenLineSeries>
+                            </RadzenAreaSeries>
                             <RadzenCategoryAxis Padding="10">
                                 <RadzenAxisTitle Text="Time" />
                                 <RadzenGridLines Visible="true" />
@@ -179,50 +173,44 @@
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="d-flex align-items-center gap-2">
                                 <RadzenIcon Icon="swap_vert" Style="color: var(--rz-success);" />
-                                <strong class="small text-uppercase">Network I/O (MB)</strong>
+                                <strong class="small text-uppercase">Network I/O (KB/s)</strong>
                             </div>
                         </div>
                         <RadzenChart Style="height: 250px;">
-                            <RadzenLineSeries Data="@chartPoints"
+                            <RadzenAreaSeries Data="@chartPoints"
                                               CategoryProperty="AxisLabel"
-                                              ValueProperty="NetworkRxMB"
-                                              Title="Rx In (MB)"
+                                              ValueProperty="NetworkRxKBps"
+                                              Title="Rx In (KB/s)"
                                               Smooth="true"
                                               Stroke="var(--rz-success)"
                                               LineType="LineType.Solid">
-                                <ChildContent>
-                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
-                                </ChildContent>
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-success small">Rx In: @data.NetworkRxMB.ToString("F2") MB</div>
+                                        <div class="text-success small">Rx In: @data.NetworkRxKBps.ToString("F2") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
-                            </RadzenLineSeries>
-                            <RadzenLineSeries Data="@chartPoints"
+                            </RadzenAreaSeries>
+                            <RadzenAreaSeries Data="@chartPoints"
                                               CategoryProperty="AxisLabel"
-                                              ValueProperty="NetworkTxMB"
-                                              Title="Tx Out (MB)"
+                                              ValueProperty="NetworkTxKBps"
+                                              Title="Tx Out (KB/s)"
                                               Smooth="true"
                                               Stroke="var(--rz-info)"
                                               LineType="LineType.Solid">
-                                <ChildContent>
-                                    <RadzenMarkers MarkerType="MarkerType.Diamond" Size="3" />
-                                </ChildContent>
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-info small">Tx Out: @data.NetworkTxMB.ToString("F2") MB</div>
+                                        <div class="text-info small">Tx Out: @data.NetworkTxKBps.ToString("F2") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
-                            </RadzenLineSeries>
+                            </RadzenAreaSeries>
                             <RadzenCategoryAxis Padding="10">
                                 <RadzenAxisTitle Text="Time" />
                                 <RadzenGridLines Visible="true" />
                             </RadzenCategoryAxis>
                             <RadzenValueAxis Min="0">
-                                <RadzenAxisTitle Text="MB" />
+                                <RadzenAxisTitle Text="KB/s" />
                                 <RadzenGridLines Visible="true" />
                             </RadzenValueAxis>
                             <RadzenLegend Position="LegendPosition.Top" />
@@ -236,50 +224,44 @@
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="d-flex align-items-center gap-2">
                                 <RadzenIcon Icon="storage" Style="color: var(--rz-warning);" />
-                                <strong class="small text-uppercase">Disk I/O (MB)</strong>
+                                <strong class="small text-uppercase">Disk I/O (KB/s)</strong>
                             </div>
                         </div>
                         <RadzenChart Style="height: 250px;">
-                            <RadzenLineSeries Data="@chartPoints"
+                            <RadzenAreaSeries Data="@chartPoints"
                                               CategoryProperty="AxisLabel"
-                                              ValueProperty="BlockReadMB"
-                                              Title="Read (MB)"
+                                              ValueProperty="BlockReadKBps"
+                                              Title="Read (KB/s)"
                                               Smooth="true"
                                               Stroke="var(--rz-warning)"
                                               LineType="LineType.Solid">
-                                <ChildContent>
-                                    <RadzenMarkers MarkerType="MarkerType.Circle" Size="3" />
-                                </ChildContent>
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-warning small">Read: @data.BlockReadMB.ToString("F2") MB</div>
+                                        <div class="text-warning small">Read: @data.BlockReadKBps.ToString("F2") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
-                            </RadzenLineSeries>
-                            <RadzenLineSeries Data="@chartPoints"
+                            </RadzenAreaSeries>
+                            <RadzenAreaSeries Data="@chartPoints"
                                               CategoryProperty="AxisLabel"
-                                              ValueProperty="BlockWriteMB"
-                                              Title="Write (MB)"
+                                              ValueProperty="BlockWriteKBps"
+                                              Title="Write (KB/s)"
                                               Smooth="true"
                                               Stroke="var(--rz-danger)"
                                               LineType="LineType.Solid">
-                                <ChildContent>
-                                    <RadzenMarkers MarkerType="MarkerType.Diamond" Size="3" />
-                                </ChildContent>
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-danger small">Write: @data.BlockWriteMB.ToString("F2") MB</div>
+                                        <div class="text-danger small">Write: @data.BlockWriteKBps.ToString("F2") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
-                            </RadzenLineSeries>
+                            </RadzenAreaSeries>
                             <RadzenCategoryAxis Padding="10">
                                 <RadzenAxisTitle Text="Time" />
                                 <RadzenGridLines Visible="true" />
                             </RadzenCategoryAxis>
                             <RadzenValueAxis Min="0">
-                                <RadzenAxisTitle Text="MB" />
+                                <RadzenAxisTitle Text="KB/s" />
                                 <RadzenGridLines Visible="true" />
                             </RadzenValueAxis>
                             <RadzenLegend Position="LegendPosition.Top" />
@@ -337,10 +319,18 @@
         public double CpuPercent { get; init; }
         public double MemoryPercent { get; init; }
         public double MemoryMB { get; init; }
-        public double NetworkRxMB { get; init; }
-        public double NetworkTxMB { get; init; }
-        public double BlockReadMB { get; init; }
-        public double BlockWriteMB { get; init; }
+
+        // Raw cumulative counter values (bytes) used to compute per-second throughput
+        public long NetworkRxBytesRaw { get; init; }
+        public long NetworkTxBytesRaw { get; init; }
+        public long BlockReadBytesRaw { get; init; }
+        public long BlockWriteBytesRaw { get; init; }
+
+        // Computed instantaneous throughput between this and the previous sample (KB/s)
+        public double NetworkRxKBps { get; set; }
+        public double NetworkTxKBps { get; set; }
+        public double BlockReadKBps { get; set; }
+        public double BlockWriteKBps { get; set; }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -408,12 +398,13 @@
                 CpuPercent = Math.Round(r.CpuUsagePercent ?? 0, 1),
                 MemoryPercent = Math.Round(r.MemoryUsagePercent ?? 0, 1),
                 MemoryMB = Math.Round((r.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
-                NetworkRxMB = Math.Round((r.NetworkRxBytes ?? 0) / (1024.0 * 1024.0), 2),
-                NetworkTxMB = Math.Round((r.NetworkTxBytes ?? 0) / (1024.0 * 1024.0), 2),
-                BlockReadMB = Math.Round((r.BlockReadBytes ?? 0) / (1024.0 * 1024.0), 2),
-                BlockWriteMB = Math.Round((r.BlockWriteBytes ?? 0) / (1024.0 * 1024.0), 2)
+                NetworkRxBytesRaw = r.NetworkRxBytes ?? 0,
+                NetworkTxBytesRaw = r.NetworkTxBytes ?? 0,
+                BlockReadBytesRaw = r.BlockReadBytes ?? 0,
+                BlockWriteBytesRaw = r.BlockWriteBytes ?? 0
             }).ToList();
 
+            ComputeThroughput(chartPoints);
             ComputeAxisLabels(chartPoints);
         }
         catch (Exception ex)
@@ -556,10 +547,10 @@
             CpuPercent = Math.Round(usage.CpuUsagePercent ?? 0, 1),
             MemoryPercent = Math.Round(usage.MemoryUsagePercent ?? 0, 1),
             MemoryMB = Math.Round((usage.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
-            NetworkRxMB = Math.Round((usage.NetworkRxBytes ?? 0) / (1024.0 * 1024.0), 2),
-            NetworkTxMB = Math.Round((usage.NetworkTxBytes ?? 0) / (1024.0 * 1024.0), 2),
-            BlockReadMB = Math.Round((usage.BlockReadBytes ?? 0) / (1024.0 * 1024.0), 2),
-            BlockWriteMB = Math.Round((usage.BlockWriteBytes ?? 0) / (1024.0 * 1024.0), 2)
+            NetworkRxBytesRaw = usage.NetworkRxBytes ?? 0,
+            NetworkTxBytesRaw = usage.NetworkTxBytes ?? 0,
+            BlockReadBytesRaw = usage.BlockReadBytes ?? 0,
+            BlockWriteBytesRaw = usage.BlockWriteBytes ?? 0
         };
 
         // If not already in the collection (within 1 second)
@@ -575,7 +566,41 @@
                 chartPoints.RemoveAll(p => p.Timestamp < cutoff);
             }
 
+            ComputeThroughput(chartPoints);
             ComputeAxisLabels(chartPoints);
+        }
+    }
+
+    private static void ComputeThroughput(List<ResourceHistoryChartPoint> points)
+    {
+        for (int i = 0; i < points.Count; i++)
+        {
+            var cur = points[i];
+            if (i == 0)
+            {
+                cur.NetworkRxKBps = 0;
+                cur.NetworkTxKBps = 0;
+                cur.BlockReadKBps = 0;
+                cur.BlockWriteKBps = 0;
+                continue;
+            }
+
+            var prev = points[i - 1];
+            var seconds = (cur.Timestamp - prev.Timestamp).TotalSeconds;
+            if (seconds <= 0)
+            {
+                cur.NetworkRxKBps = 0;
+                cur.NetworkTxKBps = 0;
+                cur.BlockReadKBps = 0;
+                cur.BlockWriteKBps = 0;
+                continue;
+            }
+
+            // Counters are monotonic; a negative delta indicates a container restart -> treat as 0
+            cur.NetworkRxKBps = Math.Round(Math.Max(0, (cur.NetworkRxBytesRaw - prev.NetworkRxBytesRaw) / 1024.0 / seconds), 2);
+            cur.NetworkTxKBps = Math.Round(Math.Max(0, (cur.NetworkTxBytesRaw - prev.NetworkTxBytesRaw) / 1024.0 / seconds), 2);
+            cur.BlockReadKBps = Math.Round(Math.Max(0, (cur.BlockReadBytesRaw - prev.BlockReadBytesRaw) / 1024.0 / seconds), 2);
+            cur.BlockWriteKBps = Math.Round(Math.Max(0, (cur.BlockWriteBytesRaw - prev.BlockWriteBytesRaw) / 1024.0 / seconds), 2);
         }
     }
 
