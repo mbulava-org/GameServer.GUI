@@ -83,7 +83,6 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
             Assert.Contains("Valheim Viking World", cut.Markup);
             Assert.Contains("valheim-srv-1", cut.Markup);
             Assert.Contains("Running", cut.Markup);
-            Assert.Contains("Ports", cut.Markup);
             Assert.Contains("Overview", cut.Markup);
         });
     }

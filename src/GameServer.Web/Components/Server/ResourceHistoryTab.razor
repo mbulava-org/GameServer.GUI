@@ -543,23 +543,13 @@
             format = "MM/dd";
         }
 
-        DateTime? lastLabeledSlot = null;
+        // Every point MUST have a unique category value, otherwise
+        // RadzenCategoryAxis collapses points that share a label onto
+        // the same x-position, producing overlapping "sweeps" back to 0.
+        // Tick labels are hidden by FormatBlank; the range is shown by the card footer instead.
         for (int i = 0; i < points.Count; i++)
         {
-            var p = points[i];
-            var localTime = p.Timestamp.ToLocalTime();
-            long ticks = localTime.Ticks - (localTime.Ticks % step.Ticks);
-            var slot = new DateTime(ticks, localTime.Kind);
-
-            if (lastLabeledSlot == null || slot > lastLabeledSlot)
-            {
-                p.AxisLabel = localTime.ToString(format);
-                lastLabeledSlot = slot;
-            }
-            else
-            {
-                p.AxisLabel = string.Empty;
-            }
+            points[i].AxisLabel = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 

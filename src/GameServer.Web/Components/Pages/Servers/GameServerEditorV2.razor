@@ -573,7 +573,11 @@
     private int portCheckToken;
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
-    private bool CanConfigureSettingAccessPolicy => string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase);
+    // Any authenticated user acting as a Game Server Creator/Editor may scope
+    // password visibility (Group vs. Only Me). Admins additionally get a user picker
+    // populated below to allow granular "Specific Users" selection.
+    private bool CanConfigureSettingAccessPolicy => currentUser is not null;
+    private bool IsAdminUser => string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase);
 
     private IReadOnlyList<GameTypeSettingDefinition> CurrentSettingDefinitions =>
         selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.SettingDefinitions
@@ -620,7 +624,7 @@
                 currentUser = await AuthApi.GetCurrentUserAsync();
 
 
-                if (CanConfigureSettingAccessPolicy)
+                if (IsAdminUser)
                 {
                     var allGroups = await AuthApi.GetGroupsAsync();
                     availableGroups.AddRange(allGroups);
