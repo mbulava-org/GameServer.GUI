@@ -164,6 +164,16 @@ public sealed class GameServerCommandService(
         var existing = await repository.GetByServerIdAsync(serverId).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
 
+        try
+        {
+            await deploymentService.RemoveAsync(existing.ServerId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Swarm cleanup failures are logged inside RemoveAsync; continue with repository delete
+            // so the server is not left in an inconsistent visible state.
+        }
+
         await repository.DeleteAsync(existing.ServerId, softDelete).ConfigureAwait(false);
     }
 
