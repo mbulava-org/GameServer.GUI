@@ -1,5 +1,6 @@
 @using System.Text.Json
 @using GameServer.Web.Models.V2
+@using GameServer.Web.Services
 @using Radzen
 @using Radzen.Blazor
 
@@ -54,6 +55,19 @@ else if (dataType == "port")
             <div class="small text-danger">@ValidationMessage</div>
         }
     </div>
+}
+else if (dataType == "timezone" || dataType == "time zone")
+{
+    <RadzenDropDown TValue="string"
+                    Value="@Value"
+                    ValueChanged="@OnStringChanged"
+                    Data="@LinuxTimeZoneProvider.AllTimeZones"
+                    AllowFiltering="true"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    FilterOperator="StringFilterOperator.Contains"
+                    Placeholder="@GetTimeZonePlaceholder()"
+                    AllowClear="true"
+                    class="w-100" />
 }
 else if (dataType == ServerVariableSetting.DataType)
 {
@@ -212,6 +226,21 @@ else
         }
 
         return "no";
+    }
+
+    private string GetTimeZonePlaceholder()
+    {
+        if (!string.IsNullOrWhiteSpace(Definition?.Metadata?.Placeholder))
+        {
+            return Definition.Metadata.Placeholder;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Definition?.DefaultValue))
+        {
+            return $"Select timezone (Default: {Definition.DefaultValue})";
+        }
+
+        return "Select timezone...";
     }
 
     private static IReadOnlyList<EnumOption> GetEnumOptions(GameTypeSettingDefinition definition)

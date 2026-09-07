@@ -218,4 +218,33 @@ public sealed class GameTypeRevisionSettingsEditorTests : BunitContext
             Assert.Contains("Password", cut.Markup);
         });
     }
+
+    [Fact]
+    public void TimezoneSetting_ShouldDisplayTimezoneDisplayName()
+    {
+        var settings = new List<GameTypeRevisionSettingDraft>
+        {
+            new()
+            {
+                SettingKey = "TZ",
+                DefaultValue = "UTC",
+                Metadata = new GameTypeRevisionSettingMetadataDraft { Category = "General", DataType = "timezone" }
+            }
+        };
+
+        var cut = Render<GameTypeRevisionSettingsEditor>(parameters => parameters
+            .Add(p => p.Settings, settings)
+            .Add(p => p.DefinedPorts, Array.Empty<GameTypeRevisionPortDraft>())
+            .Add(p => p.DataTypeOptions, new[] { "string", "password", "number", "boolean", "yesno", "enum", "port", "timezone" })
+            .Add(p => p.ProtocolOptions, new[] { "tcp", "udp" })
+            .Add(p => p.PortMappingRoleOptions, new[] { "Primary", "Related" })
+            .Add(p => p.PortRelationTypeOptions, new[] { "Direct", "Offset", "Fixed", "Multiplier" }));
+
+        cut.Find(".setting-list-item").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Time Zone", cut.Markup);
+        });
+    }
 }

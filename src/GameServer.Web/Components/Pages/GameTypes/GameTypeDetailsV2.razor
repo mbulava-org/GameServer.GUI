@@ -290,7 +290,7 @@
     private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
     private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
     private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "saves", "backups", "gamefiles", "logs"];
-    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "password", "number", "boolean", "yesno", "enum", "port", "servervariable"];
+    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "password", "number", "boolean", "yesno", "enum", "port", "timezone", "servervariable"];
     private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
     private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
     private static readonly HashSet<string> supportedWebHostVariableDataTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -1118,6 +1118,14 @@
         if (key.Contains("PORT", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out _))
         {
             return "port";
+        }
+
+        if (key.Equals("TZ", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("TIMEZONE", StringComparison.OrdinalIgnoreCase)
+            || key.EndsWith("_TZ", StringComparison.OrdinalIgnoreCase)
+            || key.EndsWith("_TIMEZONE", StringComparison.OrdinalIgnoreCase))
+        {
+            return "timezone";
         }
 
         if (LooksLikeYesNoValue(value))

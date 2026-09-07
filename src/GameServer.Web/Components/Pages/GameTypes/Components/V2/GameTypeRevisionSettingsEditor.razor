@@ -1075,6 +1075,11 @@ else
             return "Password";
         }
 
+        if (string.Equals(value, "timezone", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "time zone", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Time Zone";
+        }
+
         return value ?? string.Empty;
     }
 

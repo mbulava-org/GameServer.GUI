@@ -411,6 +411,54 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         });
     }
 
+    [Fact]
+    public void DetectSettings_ShouldInferTimezoneDataType_WhenSettingKeyIsTZ()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/detection/scan-tag")
+            {
+                return CreateJsonResponse(new GameTypeSetupDetectionResult
+                {
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "latest",
+                    Settings =
+                    [
+                        new DetectedSetting
+                        {
+                            Key = "TZ",
+                            DefaultValue = "UTC"
+                        }
+                    ]
+                });
+            }
+
+            return CreateJsonResponse(new GameTypeDetail
+            {
+                Key = string.Empty,
+                DisplayName = string.Empty,
+                Type = "docker",
+                Revisions = []
+            });
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Detection", StringComparison.Ordinal)).Click();
+        var detectionEditor = cut.FindComponent<GameServer.Web.Components.Pages.GameTypes.Components.V2.GameTypeRevisionDetectionEditor>().Instance;
+        cut.InvokeAsync(() => detectionEditor.DetectionImageReferenceChanged.InvokeAsync("itzg/minecraft-server")).GetAwaiter().GetResult();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).Click();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Settings", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("TZ", cut.Markup);
+            Assert.Contains("Time Zone", cut.Markup);
+        });
+    }
+
     private void RegisterApi(GameTypeDetail detail)
     {
         Services.AddSingleton<NotificationService>();
