@@ -3,6 +3,8 @@ using GameServer.Web.Components.Pages.Servers;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
+using GameServer.Web.Tests.Helpers;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
@@ -20,6 +22,12 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
     public GameServerDetailsV2ComponentTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddTestAuthServices("admin", "Admin");
+
+        var extensionResolver = new Mock<IGameTypeExtensionResolver>();
+        extensionResolver.Setup(r => r.Resolve(It.IsAny<IEnumerable<GameTypeUiExtensionDescriptor>?>())).Returns(Array.Empty<GameTypeExtensionResolution>());
+        Services.AddSingleton(extensionResolver.Object);
+
         Services.AddSingleton<DialogService>();
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();

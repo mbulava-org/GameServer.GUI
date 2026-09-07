@@ -26,6 +26,10 @@ public sealed record GameServerListItemDto
 
     public bool IsDeleted { get; init; }
 
+    public int? CreatedByUserId { get; init; }
+
+    public string? CreatedByUsername { get; init; }
+
     public string? GameTypeKey { get; init; }
 
     public string? GameTypeDisplayName { get; init; }
@@ -79,6 +83,10 @@ public sealed record GameServerDetailDto
 
     public bool IsDeleted { get; init; }
 
+    public int? CreatedByUserId { get; init; }
+
+    public string? CreatedByUsername { get; init; }
+
     public string? GameTypeKey { get; init; }
 
     public string? GameTypeDisplayName { get; init; }
@@ -127,6 +135,12 @@ public sealed record GameServerSettingDto
     public string SettingKey { get; init; } = string.Empty;
 
     public string? Value { get; init; }
+
+    public string? AccessPolicy { get; init; } = "Group"; // Group, Individual
+
+    public List<int>? AllowedUserIds { get; init; } = [];
+
+    public bool IsMasked { get; init; } = false;
 }
 
 public sealed record GameServerResolvedPortDto

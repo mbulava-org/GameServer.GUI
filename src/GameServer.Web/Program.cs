@@ -78,7 +78,17 @@ namespace GameServer.Web
 
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
+                builder.Services.AddAuthorizationCore();
+                builder.Services.AddCascadingAuthenticationState();
+                builder.Services.AddScoped<Services.Auth.JwtAuthenticationStateProvider>();
+                builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider>(sp => sp.GetRequiredService<Services.Auth.JwtAuthenticationStateProvider>());
+                builder.Services.AddScoped<Services.Auth.AuthTokenHandler>();
+
                 builder.Services.AddHttpClient();
+                builder.Services.AddHttpClient("GameServerApi")
+                    .AddHttpMessageHandler<Services.Auth.AuthTokenHandler>();
+
+                builder.Services.AddScoped<Services.Auth.IAuthApiService, Services.Auth.AuthApiService>();
                 builder.Services.Configure<ThumbnailCacheOptions>(options =>
                 {
                     options.CacheDirectory = Path.Combine(Path.GetTempPath(), "GameServer.Web", "thumbnail-cache");

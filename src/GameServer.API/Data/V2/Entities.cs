@@ -315,6 +315,11 @@ public class GameServerEntity
 
     public bool IsDeleted { get; set; }
 
+    public int? CreatedByUserId { get; set; }
+
+    [ForeignKey(nameof(CreatedByUserId))]
+    public virtual UserEntity? CreatedByUser { get; set; }
+
     [ForeignKey(nameof(GameTypeRevisionId))]
     public virtual GameTypeRevisionEntity GameTypeRevision { get; set; } = null!;
 
@@ -323,6 +328,8 @@ public class GameServerEntity
     public virtual ICollection<GameServerVolumeEntity> Volumes { get; set; } = new List<GameServerVolumeEntity>();
 
     public virtual ICollection<GameServerPortEntity> Ports { get; set; } = new List<GameServerPortEntity>();
+
+    public virtual ICollection<GameServerGroupEntity> Groups { get; set; } = new List<GameServerGroupEntity>();
 }
 
 public class GameServerVolumeEntity
@@ -378,6 +385,11 @@ public class GameServerSettingEntity
     public string SettingKey { get; set; } = string.Empty;
 
     public string? Value { get; set; }
+
+    [MaxLength(50)]
+    public string AccessPolicy { get; set; } = "Group"; // Group, Individual
+
+    public string? AllowedUserIdsJson { get; set; }
 
     [ForeignKey(nameof(GameServerId))]
     public virtual GameServerEntity GameServer { get; set; } = null!;
@@ -467,4 +479,87 @@ public class GameServerResourceUtilizationEntity
     [MaxLength(100)]
     public string? ContainerId { get; set; }
 }
+
+public class UserEntity
+{
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Username { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    public string? Email { get; set; }
+
+    [Required]
+    public string PasswordHash { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(50)]
+    public string Role { get; set; } = "User"; // Admin, GameManager, User
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime? LastLoginAt { get; set; }
+
+    public virtual ICollection<UserGroupEntity> UserGroups { get; set; } = new List<UserGroupEntity>();
+}
+
+public class GroupEntity
+{
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public virtual ICollection<UserGroupEntity> UserGroups { get; set; } = new List<UserGroupEntity>();
+
+    public virtual ICollection<GameServerGroupEntity> ServerGroups { get; set; } = new List<GameServerGroupEntity>();
+}
+
+public class UserGroupEntity
+{
+    public int UserId { get; set; }
+
+    [ForeignKey(nameof(UserId))]
+    public virtual UserEntity User { get; set; } = null!;
+
+    public int GroupId { get; set; }
+
+    [ForeignKey(nameof(GroupId))]
+    public virtual GroupEntity Group { get; set; } = null!;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class GameServerGroupEntity
+{
+    public int GameServerId { get; set; }
+
+    [ForeignKey(nameof(GameServerId))]
+    public virtual GameServerEntity GameServer { get; set; } = null!;
+
+    public int GroupId { get; set; }
+
+    [ForeignKey(nameof(GroupId))]
+    public virtual GroupEntity Group { get; set; } = null!;
+
+    [Required]
+    [MaxLength(20)]
+    public string AccessLevel { get; set; } = "View"; // View, Edit
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 

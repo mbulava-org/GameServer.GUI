@@ -1,0 +1,184 @@
+@page "/admin/groups"
+@attribute [Authorize(Roles = "Admin")]
+@inject IAuthApiService AuthService
+@inject Services.V2.IGameServerV2ApiService ServerService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<PageTitle>Group Management - Game Server Manager</PageTitle>
+
+<RadzenStack Gap="1.5rem">
+    <RadzenRow AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenColumn Size="12" SizeMD="8">
+            <RadzenText TextStyle="TextStyle.H4" Style="font-weight: 700;" class="mb-0">Group Management</RadzenText>
+            <RadzenText TextStyle="TextStyle.Body2" class="rz-text-secondary">Manage user groups and configure server boundaries & permissions</RadzenText>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="4" class="rz-text-align-right">
+            <RadzenButton Icon="add" Text="Create Group" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateDialog" />
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadGroups" class="ml-2" />
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenCard class="rz-shadow-2">
+        <RadzenDataGrid @ref="_grid" Data="@_groups" TItem="GroupModel" IsLoading="@_isLoading" AllowPaging="true" PageSize="10" AllowSorting="true" AllowFiltering="true" FilterMode="FilterMode.Simple" Responsive="true">
+            <Columns>
+                <RadzenDataGridColumn Property="Id" Title="ID" Width="70px" />
+                <RadzenDataGridColumn Property="Name" Title="Group Name">
+                    <Template Context="group">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenIcon Icon="group" Style="color: var(--rz-primary);" />
+                            <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;" class="mb-0">@group.Name</RadzenText>
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="Description" Title="Description">
+                    <Template Context="group">
+                        @(string.IsNullOrWhiteSpace(group.Description) ? "-" : group.Description)
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="MemberCount" Title="Members" Width="110px">
+                    <Template Context="group">
+                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@($"{group.MemberCount} users")" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="ServerCount" Title="Assigned Servers" Width="150px">
+                    <Template Context="group">
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@($"{group.ServerCount} servers")" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="CreatedAt" Title="Created" Width="160px">
+                    <Template Context="group">
+                        @group.CreatedAt.ToLocalTime().ToString("g")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Actions" Width="220px" Filterable="false" Sortable="false">
+                    <Template Context="group">
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem">
+                            <RadzenButton Icon="people" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@(() => OpenMembersDialog(group))" Title="Manage Members" />
+                            <RadzenButton Icon="dns" ButtonStyle="ButtonStyle.Info" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@(() => OpenServersDialog(group))" Title="Manage Server Access" />
+                            <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => OpenEditDialog(group))" Title="Edit Group" />
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@(() => ConfirmDelete(group))" Title="Delete Group" />
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+</RadzenStack>
+
+@code {
+    private RadzenDataGrid<GroupModel>? _grid;
+    private IReadOnlyList<GroupModel> _groups = [];
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroups();
+    }
+
+    private async Task LoadGroups()
+    {
+        _isLoading = true;
+        try
+        {
+            _groups = await AuthService.GetGroupsAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var model = new CreateGroupRequest("", "");
+        var result = await DialogService.OpenAsync<CreateGroupDialog>("Create New Group",
+            new Dictionary<string, object?>
+            {
+                { "Model", model }
+            },
+            new DialogOptions { Width = "480px", CloseDialogOnOverlayClick = false });
+
+        if (result == true)
+        {
+            await LoadGroups();
+        }
+    }
+
+    private async Task OpenEditDialog(GroupModel group)
+    {
+        var model = new UpdateGroupRequest(group.Name, group.Description);
+        var result = await DialogService.OpenAsync<EditGroupDialog>("Edit Group",
+            new Dictionary<string, object?>
+            {
+                { "GroupId", group.Id },
+                { "Model", model }
+            },
+            new DialogOptions { Width = "480px", CloseDialogOnOverlayClick = false });
+
+        if (result == true)
+        {
+            await LoadGroups();
+        }
+    }
+
+    private async Task OpenMembersDialog(GroupModel group)
+    {
+        var fullGroup = await AuthService.GetGroupByIdAsync(group.Id);
+        var allUsers = await AuthService.GetUsersAsync();
+
+        var result = await DialogService.OpenAsync<GroupMembersDialog>($"Members - {group.Name}",
+            new Dictionary<string, object?>
+            {
+                { "Group", fullGroup ?? new GroupDetailModel(group.Id, group.Name, group.Description, [], [], group.CreatedAt, group.CreatedAt) },
+                { "AllUsers", allUsers }
+            },
+            new DialogOptions { Width = "560px", CloseDialogOnOverlayClick = false });
+
+        if (result == true)
+        {
+            await LoadGroups();
+        }
+    }
+
+    private async Task OpenServersDialog(GroupModel group)
+    {
+        var fullGroup = await AuthService.GetGroupByIdAsync(group.Id);
+        var allServers = await ServerService.GetListAsync();
+
+        var result = await DialogService.OpenAsync<GroupServersDialog>($"Server Access - {group.Name}",
+            new Dictionary<string, object?>
+            {
+                { "Group", fullGroup ?? new GroupDetailModel(group.Id, group.Name, group.Description, [], [], group.CreatedAt, group.CreatedAt) },
+                { "AllServers", allServers }
+            },
+            new DialogOptions { Width = "680px", CloseDialogOnOverlayClick = false });
+
+        if (result == true)
+        {
+            await LoadGroups();
+        }
+    }
+
+    private async Task ConfirmDelete(GroupModel group)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Are you sure you want to delete group '{group.Name}'?",
+            "Delete Group",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed == true)
+        {
+            var (success, error) = await AuthService.DeleteGroupAsync(group.Id);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"Group '{group.Name}' deleted.");
+                await LoadGroups();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not delete group.");
+            }
+        }
+    }
+}

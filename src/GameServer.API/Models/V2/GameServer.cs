@@ -26,6 +26,10 @@ public sealed record GameServer
 
     public bool IsDeleted { get; init; }
 
+    public int? CreatedByUserId { get; init; }
+
+    public string? CreatedByUsername { get; init; }
+
     public List<GameServerSetting> Settings { get; init; } = [];
 
     public List<GameServerVolume> Volumes { get; init; } = [];
@@ -40,6 +44,10 @@ public sealed record GameServerSetting
     public string SettingKey { get; init; } = string.Empty;
 
     public string? Value { get; init; }
+
+    public string? AccessPolicy { get; init; } = "Group"; // Group, Individual
+
+    public List<int>? AllowedUserIds { get; init; } = [];
 }
 
 public sealed record GameServerPort

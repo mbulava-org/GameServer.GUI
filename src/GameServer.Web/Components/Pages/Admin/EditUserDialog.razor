@@ -1,0 +1,90 @@
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm TItem="UsersManager.EditUserViewModel" Data="@Model" Submit="@HandleSubmit">
+    <RadzenStack Gap="1.25rem">
+        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: 600;">User: @Model.Username</RadzenText>
+
+        <RadzenFormField Text="Email" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextBox @bind-Value="@Model.Email" Name="Email" Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Role" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="@Model.Role" Data="@_roles" Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenFormField Text="New Password (leave blank to keep current)" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenPassword @bind-Value="@Model.NewPassword" Name="NewPassword" Style="width: 100%;" />
+            </ChildContent>
+            <Helper>
+                <RadzenLengthValidator Component="NewPassword" Min="6" Text="Password must be at least 6 characters" />
+            </Helper>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Assigned Groups" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="@Model.SelectedGroupIds" Data="@AvailableGroups" TextProperty="Name" ValueProperty="Id" Multiple="true" AllowClear="true" Placeholder="Select groups..." Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenCheckBox @bind-Value="@Model.IsActive" Name="IsActive" />
+            <RadzenLabel Text="Account is active" Component="IsActive" />
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-3">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Save Changes" ButtonStyle="ButtonStyle.Primary" IsBusy="@_isBusy" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter]
+    public UsersManager.EditUserViewModel Model { get; set; } = new();
+
+    [Parameter]
+    public IReadOnlyList<GroupModel> AvailableGroups { get; set; } = [];
+
+    private readonly List<string> _roles = ["User", "GameManager", "Admin"];
+    private bool _isBusy;
+
+    private async Task HandleSubmit()
+    {
+        _isBusy = true;
+        try
+        {
+            var req = new UpdateUserRequest(
+                Model.Email?.Trim(),
+                Model.Role,
+                Model.IsActive,
+                string.IsNullOrWhiteSpace(Model.NewPassword) ? null : Model.NewPassword,
+                Model.SelectedGroupIds?.ToList());
+
+            var (success, error, user) = await AuthService.UpdateUserAsync(Model.Id, req);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "User Updated", $"User '{Model.Username}' updated successfully.");
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not update user.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

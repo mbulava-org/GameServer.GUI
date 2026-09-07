@@ -1,5 +1,6 @@
 @page "/gameservers-v2/new"
 @page "/gameservers-v2/{ServerId}/edit"
+@attribute [Authorize]
 @rendermode InteractiveServer
 @implements IAsyncDisposable
 @using System.Text.Json
@@ -15,6 +16,7 @@
 @inject Services.V2.IGameServerV2ApiService GameServerApiV2
 @inject Services.V2.IGameTypeV2ApiService GameTypeApiV2
 @inject Services.V2.IMountTypeConfigApiService MountTypeConfigApi
+@inject Services.Auth.IAuthApiService AuthApi
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IOptions<GameServerDockerApi> ApiConfig
@@ -163,6 +165,48 @@
                     </div>
                 </RadzenCard>
 
+                @if (!isEditMode)
+                {
+                    <RadzenCard class="mb-3">
+                        <h5 class="mb-3">Group & Access Delegation</h5>
+                        <p class="small text-muted mb-3">
+                            Delegate edit or view permissions to a group you belong to, or retain access for yourself only.
+                        </p>
+                        <div class="mb-3">
+                            <RadzenFormField Text="Assign to Group" Variant="Variant.Outlined" class="w-100">
+                                <RadzenDropDown TValue="int?"
+                                                Value="@draft.InitialGroupId"
+                                                ValueChanged="@(val => draft.InitialGroupId = val)"
+                                                Data="@availableGroups"
+                                                TextProperty="Name"
+                                                ValueProperty="Id"
+                                                AllowClear="true"
+                                                Placeholder="None (Creator Only / Private)"
+                                                class="w-100" />
+                            </RadzenFormField>
+                        </div>
+                        @if (draft.InitialGroupId.HasValue && draft.InitialGroupId > 0)
+                        {
+                            <div class="mb-3">
+                                <RadzenFormField Text="Group Permission Level" Variant="Variant.Outlined" class="w-100">
+                                    <RadzenDropDown TValue="string"
+                                                    Value="@draft.InitialGroupAccessLevel"
+                                                    ValueChanged="@(val => draft.InitialGroupAccessLevel = val ?? "Edit")"
+                                                    Data="@groupAccessLevelOptions"
+                                                    TextProperty="Label"
+                                                    ValueProperty="Value"
+                                                    class="w-100" />
+                                </RadzenFormField>
+                                <small class="text-muted">
+                                    @(draft.InitialGroupAccessLevel == "Edit"
+                                        ? "Members of this group can edit and control this server."
+                                        : "Members of this group can view this server, while control and edit permissions remain with you.")
+                                </small>
+                            </div>
+                        }
+                    </RadzenCard>
+                }
+
                 <RadzenCard class="mb-3">
                     <h5 class="mb-3">Volume Mounts</h5>
                     <p class="small text-muted mb-2">Each volume defined on the GameType revision is listed below. Select a mount type for each volume.</p>
@@ -298,6 +342,13 @@
                                                                 </label>
                                                                 <GameServerSettingFieldV2 Definition="definition"
                                                                                           Value="@GetSettingValue(definition)"
+                                                                                          AccessPolicy="@GetSettingAccessPolicy(definition.SettingKey)"
+                                                                                          AccessPolicyChanged="@(policy => SetSettingAccessPolicy(definition.SettingKey, policy))"
+                                                                                          AllowedUserIds="@GetSettingAllowedUserIds(definition.SettingKey)"
+                                                                                          AllowedUserIdsChanged="@(users => SetSettingAllowedUserIds(definition.SettingKey, users))"
+                                                                                          IsMasked="@GetSettingIsMasked(definition.SettingKey)"
+                                                                                          AllowAccessPolicyConfig="@CanConfigureSettingAccessPolicy"
+                                                                                          AvailableUsers="@availableUsers"
                                                                                           ValidationMessage="@GetSettingValidationMessage(definition)"
                                                                                           ValueChanged="@(value => SetSettingValue(definition.SettingKey, value))" />
                                                                 @if (!string.IsNullOrWhiteSpace(definition.Description))
@@ -481,6 +532,9 @@
 
     private readonly List<GameTypeListItem> gameTypes = [];
     private readonly List<RevisionOption> availableRevisions = [];
+    private readonly List<GroupModel> availableGroups = [];
+    private readonly List<GameServerSettingFieldV2.UserOption> availableUsers = [];
+    private UserProfile? currentUser;
     private GameServerEditorDraft draft = new();
     private GameServerValidationResult? validationResult;
     private bool showValidationDetails;
@@ -493,6 +547,14 @@
     private string operationTitle = "Saving Server Changes...";
     private string operationSubtitle = "Provisioning volumes and deploying Docker Swarm service...";
     private int selectedTabIndex;
+
+    private static readonly IReadOnlyList<GroupAccessOption> groupAccessLevelOptions =
+    [
+        new("Edit", "Edit & Control (Allow group to edit and manage server)"),
+        new("View", "View Only (Allow group to view, keep edit control private)")
+    ];
+
+    private sealed record GroupAccessOption(string Value, string Label);
 
     // Volume mount type selections (keyed by GameTypeVolume.Id)
     private readonly List<MountTypeConfig> mountTypeOptions = [];
@@ -511,6 +573,7 @@
     private int portCheckToken;
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
+    private bool CanConfigureSettingAccessPolicy => string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase);
 
     private IReadOnlyList<GameTypeSettingDefinition> CurrentSettingDefinitions =>
         selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.SettingDefinitions
@@ -549,6 +612,26 @@
             validationResult = null;
             gameTypes.Clear();
             availableRevisions.Clear();
+            availableGroups.Clear();
+            availableUsers.Clear();
+
+            try
+            {
+                currentUser = await AuthApi.GetCurrentUserAsync();
+
+
+                if (CanConfigureSettingAccessPolicy)
+                {
+                    var allGroups = await AuthApi.GetGroupsAsync();
+                    availableGroups.AddRange(allGroups);
+                    var allUsers = await AuthApi.GetUsersAsync();
+                    availableUsers.AddRange(allUsers.Select(u => new GameServerSettingFieldV2.UserOption(u.Id, u.Username)));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Failed to load auth users or groups in server editor");
+            }
 
             if (isEditMode)
             {
@@ -582,6 +665,9 @@
                 foreach (var setting in server.Settings)
                 {
                     draft.SettingValues[setting.SettingKey] = setting.Value;
+                    draft.SettingAccessPolicies[setting.SettingKey] = setting.AccessPolicy ?? "Group";
+                    draft.SettingAllowedUserIds[setting.SettingKey] = setting.AllowedUserIds?.ToList() ?? [];
+                    draft.SettingIsMasked[setting.SettingKey] = setting.IsMasked;
                 }
 
                 selectedGameTypeKey = server.GameTypeKey;
@@ -702,14 +788,44 @@
             {
                 draft.SettingValues[definition.SettingKey] = definition.DefaultValue;
             }
+            if (!draft.SettingAccessPolicies.ContainsKey(definition.SettingKey))
+            {
+                draft.SettingAccessPolicies[definition.SettingKey] = "Group";
+            }
+            if (!draft.SettingAllowedUserIds.ContainsKey(definition.SettingKey))
+            {
+                draft.SettingAllowedUserIds[definition.SettingKey] = [];
+            }
         }
 
         var validKeys = CurrentSettingDefinitions.Select(definition => definition.SettingKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var key in draft.SettingValues.Keys.Where(key => !validKeys.Contains(key)).ToList())
         {
             draft.SettingValues.Remove(key);
+            draft.SettingAccessPolicies.Remove(key);
+            draft.SettingAllowedUserIds.Remove(key);
+            draft.SettingIsMasked.Remove(key);
         }
     }
+
+    private string GetSettingAccessPolicy(string settingKey) =>
+        draft.SettingAccessPolicies.TryGetValue(settingKey, out var policy) ? policy : "Group";
+
+    private void SetSettingAccessPolicy(string settingKey, string? policy)
+    {
+        draft.SettingAccessPolicies[settingKey] = string.IsNullOrWhiteSpace(policy) ? "Group" : policy;
+    }
+
+    private List<int> GetSettingAllowedUserIds(string settingKey) =>
+        draft.SettingAllowedUserIds.TryGetValue(settingKey, out var ids) ? ids : [];
+
+    private void SetSettingAllowedUserIds(string settingKey, List<int>? ids)
+    {
+        draft.SettingAllowedUserIds[settingKey] = ids ?? [];
+    }
+
+    private bool GetSettingIsMasked(string settingKey) =>
+        draft.SettingIsMasked.TryGetValue(settingKey, out var masked) && masked;
 
     private void EnsurePortsInitialized()
     {
@@ -1395,6 +1511,8 @@
             GameTypeRevisionId = draft.GameTypeRevisionId,
             ServiceName = string.IsNullOrWhiteSpace(ComputedServiceName) ? null : ComputedServiceName,
             Status = string.IsNullOrWhiteSpace(draft.Status) ? null : draft.Status,
+            InitialGroupId = draft.InitialGroupId,
+            InitialGroupAccessLevel = draft.InitialGroupAccessLevel,
             Ports = CurrentRevisionPorts
                 .Select(port => new GameServerPort
                 {
@@ -1407,7 +1525,10 @@
                 .Select(definition => new GameServerSetting
                 {
                     SettingKey = definition.SettingKey,
-                    Value = draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue
+                    Value = draft.SettingValues.TryGetValue(definition.SettingKey, out var value) ? value : definition.DefaultValue,
+                    AccessPolicy = draft.SettingAccessPolicies.TryGetValue(definition.SettingKey, out var policy) ? policy : "Group",
+                    AllowedUserIds = draft.SettingAllowedUserIds.TryGetValue(definition.SettingKey, out var userIds) ? userIds : [],
+                    IsMasked = draft.SettingIsMasked.TryGetValue(definition.SettingKey, out var isMasked) && isMasked
                 })
                 .ToList(),
             VolumeBindingLayout = "per-volume",
@@ -1615,7 +1736,17 @@
 
         public string? Status { get; set; }
 
+        public int? InitialGroupId { get; set; }
+
+        public string InitialGroupAccessLevel { get; set; } = "Edit";
+
         public Dictionary<string, string?> SettingValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<string, string> SettingAccessPolicies { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<string, List<int>> SettingAllowedUserIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<string, bool> SettingIsMasked { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     private sealed record RevisionOption(int Id, string Label);

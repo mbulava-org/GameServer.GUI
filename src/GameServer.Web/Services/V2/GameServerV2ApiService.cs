@@ -222,7 +222,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
             throw new InvalidOperationException("GameServerDockerApi:BaseUri must be configured.");
         }
 
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("GameServerApi");
         client.BaseAddress = new Uri(baseUri);
         return client;
     }

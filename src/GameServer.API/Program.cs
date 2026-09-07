@@ -176,6 +176,56 @@ namespace GameServer.API
                 // Add V2 repositories
                 // Register IMemoryCache for GameType caching
                 builder.Services.AddMemoryCache();
+
+                builder.Services.Configure<Configurations.JwtOptions>(builder.Configuration.GetSection(Configurations.JwtOptions.SectionName));
+                var jwtOptions = builder.Configuration.GetSection(Configurations.JwtOptions.SectionName).Get<Configurations.JwtOptions>() ?? new Configurations.JwtOptions();
+
+                if (string.IsNullOrWhiteSpace(jwtOptions.SecretKey) || System.Text.Encoding.UTF8.GetByteCount(jwtOptions.SecretKey) < 32)
+                {
+                    throw new InvalidOperationException("Jwt:SecretKey must be configured and be at least 256 bits (32 bytes) long.");
+                }
+
+                builder.Services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+                })
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions.Issuer,
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+                        ValidateLifetime = true,
+                        ClockSkew = TimeSpan.FromMinutes(1)
+                    };
+
+                    // Support token in query string for SignalR hub connections
+                    options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+                    {
+                        OnMessageReceived = context =>
+                        {
+                            var accessToken = context.Request.Query["access_token"];
+                            var path = context.HttpContext.Request.Path;
+                            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                            {
+                                context.Token = accessToken;
+                            }
+                            return Task.CompletedTask;
+                        }
+                    };
+                });
+
+                builder.Services.AddScoped<RepositoriesV2.IUserRepository, RepositoriesV2.UserRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGroupRepository, RepositoriesV2.GroupRepository>();
+                builder.Services.AddSingleton<ServicesV2.IPasswordHasher, ServicesV2.PasswordHasher>();
+                builder.Services.AddSingleton<ServicesV2.ITokenService, ServicesV2.TokenService>();
+                builder.Services.AddScoped<ServicesV2.IServerAuthorizationService, ServicesV2.ServerAuthorizationService>();
+
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerResourceUtilizationRepository, RepositoriesV2.GameServerResourceUtilizationRepository>();
@@ -348,6 +398,7 @@ namespace GameServer.API
                 // Enable CORS (must be before routing)
                 app.UseCors();
 
+                app.UseAuthentication();
                 app.UseAuthorization();
 
                 // Reject API requests with 503 while database initialization is still running in the

@@ -1,5 +1,6 @@
 using GameServer.API.Dtos.V2;
 using GameServer.API.Services.V2;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameServer.API.Controllers.V2;
@@ -11,7 +12,11 @@ public sealed record SaveFileContentRequestDto
 
 [ApiController]
 [Route("api/v2/gameservers/{serverId}/files")]
-public sealed class GameServersFilesController(IGameServerFilesService filesService, ILogger<GameServersFilesController> logger)
+[Authorize]
+public sealed class GameServersFilesController(
+    IGameServerFilesService filesService,
+    ILogger<GameServersFilesController> logger,
+    IServerAuthorizationService? serverAuthorizationService = null)
     : ControllerBase
 {
     [HttpGet]
@@ -24,6 +29,11 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         [FromQuery] string? subPath = null,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(volumePath))
         {
             return BadRequest("volumePath query parameter is required.");
@@ -67,6 +77,11 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         [FromQuery] string subPath,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(volumePath) || string.IsNullOrWhiteSpace(subPath))
         {
             return BadRequest("volumePath and subPath query parameters are required.");
@@ -106,6 +121,11 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         [FromQuery] string subPath,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(volumePath) || string.IsNullOrWhiteSpace(subPath))
         {
             return BadRequest("volumePath and subPath query parameters are required.");
@@ -146,6 +166,11 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         [FromBody] SaveFileContentRequestDto request,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(volumePath) || string.IsNullOrWhiteSpace(subPath))
         {
             return BadRequest("volumePath and subPath query parameters are required.");
@@ -182,6 +207,11 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         IFormFile? file = null,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(volumePath))
         {
             return BadRequest("volumePath query parameter is required.");
@@ -223,6 +253,11 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         [FromQuery] string subPath,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(volumePath) || string.IsNullOrWhiteSpace(subPath))
         {
             return BadRequest("volumePath and subPath query parameters are required.");
@@ -259,6 +294,10 @@ public sealed class GameServersFilesController(IGameServerFilesService filesServ
         [FromQuery] bool recursive = false,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
         if (string.IsNullOrWhiteSpace(volumePath) || string.IsNullOrWhiteSpace(subPath))
         {
             return BadRequest("volumePath and subPath query parameters are required.");

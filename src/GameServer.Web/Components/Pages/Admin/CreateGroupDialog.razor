@@ -1,0 +1,65 @@
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm TItem="CreateGroupViewModel" Data="@_model" Submit="@HandleSubmit">
+    <RadzenStack Gap="1.25rem">
+        <RadzenFormField Text="Group Name" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextBox @bind-Value="@_model.Name" Name="Name" Style="width: 100%;" />
+            </ChildContent>
+            <Helper>
+                <RadzenRequiredValidator Component="Name" Text="Group name is required" />
+            </Helper>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Description" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextArea @bind-Value="@_model.Description" Name="Description" Rows="3" Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-3">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Create Group" ButtonStyle="ButtonStyle.Primary" IsBusy="@_isBusy" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    public class CreateGroupViewModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+    }
+
+    private readonly CreateGroupViewModel _model = new();
+    private bool _isBusy;
+
+    private async Task HandleSubmit()
+    {
+        _isBusy = true;
+        try
+        {
+            var req = new CreateGroupRequest(_model.Name.Trim(), _model.Description?.Trim());
+            var (success, error, group) = await AuthService.CreateGroupAsync(req);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Group Created", $"Group '{_model.Name}' created successfully.");
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not create group.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

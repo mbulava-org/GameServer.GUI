@@ -1,4 +1,5 @@
 @page "/gameservers-v2"
+@attribute [Authorize]
 @rendermode InteractiveServer
 @using GameServer.Web.Models.V2
 @using Radzen
@@ -76,6 +77,10 @@
                                 <div class="gameserver-list-name">
                                     <strong>@server.Name</strong>
                                     <div class="small text-muted">@server.ServerId</div>
+                                    @if (!string.IsNullOrWhiteSpace(server.CreatedByUsername))
+                                    {
+                                        <div class="small text-muted"><RadzenIcon Icon="person" Style="font-size: 0.85rem; vertical-align: text-bottom;" /> @server.CreatedByUsername</div>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(server.Description))
                                     {
                                         <div class="small text-muted">@server.Description</div>

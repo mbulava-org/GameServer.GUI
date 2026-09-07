@@ -11,7 +11,7 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 ## ?? Table of Contents
 
-1. [Core Features](#core-features)
+1. [Authentication & Authorization](#authentication--authorization)
 2. [Server Management](#server-management)
 3. [GameType System](#gametype-system)
 4. [Port Management](#port-management)
@@ -25,7 +25,26 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 See the [V2 GameType System](#v2-gametype-system) section for the current server creation and management workflow. All server creation, editing, and deployment flows through the V2 pages under `/gametypes-v2` and `/gameservers-v2`.
 
-### ? Server Management
+### 🔐 Authentication & Authorization
+
+**Locations:** `/login`, `/profile`, `/admin/users`, `/admin/groups`
+
+- **JWT Bearer Authentication**: Secure API and WebSocket authentication with token expiration and validation.
+- **Role-Based Access Control (RBAC)**:
+  - **`Admin`**: Full access to all game servers, Mount Types, GameTypes/revisions, User management (`/admin/users`), and Group management (`/admin/groups`).
+  - **`GameManager`**: Permission to create, edit, publish, and delete GameTypes and revisions.
+  - **`User`**: End-user access bounded by Group assignments and user-created servers.
+- **Group-Based Access Boundaries**:
+  - Groups group users and define per-server access permissions (`View Only` vs `View & Edit`).
+- **Creator Auditing & Access Delegation**:
+  - Servers track creator (`CreatedByUserId`, `CreatedByUsername`) and allow delegating edit permissions to an assigned group.
+- **Password Access Scoping**:
+  - Settings of type `password` support Group vs Individual/Creator visibility scoping.
+- **Admin Management Screens**:
+  - **User Management (`/admin/users`)**: Search, create, edit role/group/active status, reset passwords, delete users.
+  - **Group Management (`/admin/groups`)**: Create, edit, manage member assignments, and configure server access matrix.
+
+### 🎮 Server Management
 
 **Location:** `/gameservers-v2` (dashboard), `/gameservers-v2/{serverId}` (details)
 

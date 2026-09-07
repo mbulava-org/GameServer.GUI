@@ -45,6 +45,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = server.Status,
+            CreatedByUserId = server.CreatedByUserId,
             CreatedAt = server.CreatedAt == default ? DateTime.UtcNow : server.CreatedAt,
             UpdatedAt = server.UpdatedAt == default ? DateTime.UtcNow : server.UpdatedAt,
             LastDeployedAt = server.LastDeployedAt,
@@ -53,7 +54,11 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             Settings = server.Settings.Select(x => new DataV2.GameServerSettingEntity
             {
                 SettingKey = x.SettingKey,
-                Value = x.Value
+                Value = x.Value,
+                AccessPolicy = string.IsNullOrWhiteSpace(x.AccessPolicy) ? "Group" : x.AccessPolicy,
+                AllowedUserIdsJson = x.AllowedUserIds is not null && x.AllowedUserIds.Count > 0
+                    ? System.Text.Json.JsonSerializer.Serialize(x.AllowedUserIds)
+                    : null
             }).ToList(),
             Volumes = server.Volumes.Select(MapVolumeToEntity).ToList(),
             Ports = server.Ports.Select(x => new DataV2.GameServerPortEntity
@@ -76,6 +81,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
         Validate(server);
 
         var entity = await context.GameServers
+            .Include(x => x.CreatedByUser)
             .Include(x => x.Settings)
             .Include(x => x.Ports)
             .Include(x => x.Volumes)
@@ -106,6 +112,16 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             if (existingSetting is not null)
             {
                 existingSetting.Value = setting.Value;
+                if (!string.IsNullOrWhiteSpace(setting.AccessPolicy))
+                {
+                    existingSetting.AccessPolicy = setting.AccessPolicy;
+                }
+                if (setting.AllowedUserIds is not null)
+                {
+                    existingSetting.AllowedUserIdsJson = setting.AllowedUserIds.Count > 0
+                        ? System.Text.Json.JsonSerializer.Serialize(setting.AllowedUserIds)
+                        : null;
+                }
             }
             else
             {
@@ -113,7 +129,11 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 {
                     GameServerId = entity.Id,
                     SettingKey = setting.SettingKey,
-                    Value = setting.Value
+                    Value = setting.Value,
+                    AccessPolicy = string.IsNullOrWhiteSpace(setting.AccessPolicy) ? "Group" : setting.AccessPolicy,
+                    AllowedUserIdsJson = setting.AllowedUserIds is not null && setting.AllowedUserIds.Count > 0
+                        ? System.Text.Json.JsonSerializer.Serialize(setting.AllowedUserIds)
+                        : null
                 });
             }
         }
@@ -224,6 +244,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
     private IQueryable<DataV2.GameServerEntity> QueryServers()
     {
         return context.GameServers
+            .Include(x => x.CreatedByUser)
             .Include(x => x.Settings)
             .Include(x => x.Volumes)
             .Include(x => x.Ports)
@@ -298,6 +319,8 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             GameTypeRevisionId = entity.GameTypeRevisionId,
             ServiceName = entity.ServiceName,
             Status = entity.Status,
+            CreatedByUserId = entity.CreatedByUserId,
+            CreatedByUsername = entity.CreatedByUser?.Username,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
             LastDeployedAt = entity.LastDeployedAt,
@@ -307,7 +330,9 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             {
                 Id = x.Id,
                 SettingKey = x.SettingKey,
-                Value = x.Value
+                Value = x.Value,
+                AccessPolicy = x.AccessPolicy ?? "Group",
+                AllowedUserIds = DeserializeUserIds(x.AllowedUserIdsJson)
             }).ToList(),
             Volumes = entity.Volumes.OrderBy(x => x.CreatedAt).Select(MapVolumeToModel).ToList(),
             Ports = entity.Ports.OrderBy(x => x.ContainerPort).Select(x => new GameServer.API.Models.V2.GameServerPort
@@ -318,5 +343,18 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 PublishedPort = x.PublishedPort
             }).ToList()
         };
+    }
+
+    private static List<int> DeserializeUserIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<int>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 }

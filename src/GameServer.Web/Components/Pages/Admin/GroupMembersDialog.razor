@@ -1,0 +1,80 @@
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenStack Gap="1.25rem">
+    <RadzenText TextStyle="TextStyle.Body2" class="rz-text-secondary">
+        Select which users belong to the group <strong>@Group.Name</strong>.
+    </RadzenText>
+
+    <RadzenFormField Text="Group Members" Variant="Variant.Outlined" Style="width: 100%;">
+        <ChildContent>
+            <RadzenDropDown @bind-Value="@_selectedUserIds" Data="@AllUsers" TextProperty="Username" ValueProperty="Id" Multiple="true" AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Select member users..." Style="width: 100%; min-height: 120px;" />
+        </ChildContent>
+    </RadzenFormField>
+
+    @if (_selectedUserIds != null && _selectedUserIds.Any())
+    {
+        <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-200); padding: 0.75rem;">
+            <RadzenText TextStyle="TextStyle.Caption" Style="font-weight: 600;" class="mb-1">Selected (@_selectedUserIds.Count()):</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.25rem">
+                @foreach (var uid in _selectedUserIds)
+                {
+                    var u = AllUsers.FirstOrDefault(x => x.Id == uid);
+                    if (u != null)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Primary" Text="@($"{u.Username} ({u.Role})")" />
+                    }
+                }
+            </RadzenStack>
+        </RadzenCard>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Save Members" ButtonStyle="ButtonStyle.Primary" Click="@HandleSave" IsBusy="@_isBusy" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter]
+    public GroupDetailModel Group { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<UserModel> AllUsers { get; set; } = [];
+
+    private IEnumerable<int> _selectedUserIds = [];
+    private bool _isBusy;
+
+    protected override void OnInitialized()
+    {
+        _selectedUserIds = Group.Members.Select(m => m.UserId).ToList();
+    }
+
+    private async Task HandleSave()
+    {
+        _isBusy = true;
+        try
+        {
+            var userIds = _selectedUserIds.ToList();
+            var (success, error, updated) = await AuthService.SetGroupMembersAsync(Group.Id, userIds);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Members Updated", $"Updated members for group '{Group.Name}'.");
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not update group members.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

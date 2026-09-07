@@ -23,17 +23,21 @@
         <div class="d-flex gap-2 align-items-center">
             <RadzenCheckBox @bind-Value="includeInactive" TValue="bool" Change="@(_ => LoadAsync())" />
             <span>Include inactive</span>
-            <label class="rz-button rz-button-md rz-button-light mb-0" for="gametype-import-input">
-                <span class="rz-button-box">
-                    <span class="rz-button-icon-left material-icons">upload</span>
-                    <span class="rz-button-text">Import Game Type</span>
-                </span>
-            </label>
-            <InputFile id="gametype-import-input" OnChange="ImportGameTypeAsync" accept=".json,application/json" style="display:none" />
-            <RadzenButton Text="Add Game Type"
-                          Icon="add"
-                          ButtonStyle="ButtonStyle.Primary"
-                          Click="@CreateNewGameType" />
+            <AuthorizeView Roles="Admin,GameManager">
+                <Authorized>
+                    <label class="rz-button rz-button-md rz-button-light mb-0" for="gametype-import-input">
+                        <span class="rz-button-box">
+                            <span class="rz-button-icon-left material-icons">upload</span>
+                            <span class="rz-button-text">Import Game Type</span>
+                        </span>
+                    </label>
+                    <InputFile id="gametype-import-input" OnChange="ImportGameTypeAsync" accept=".json,application/json" style="display:none" />
+                    <RadzenButton Text="Add Game Type"
+                                  Icon="add"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Click="@CreateNewGameType" />
+                </Authorized>
+            </AuthorizeView>
         </div>
     </div>
 
@@ -152,16 +156,27 @@
                     <RadzenDataGridColumn TItem="GameTypeListItem" Title="Actions" Width="140px" Sortable="false" Filterable="false">
                         <Template Context="gameType">
                             <div class="d-flex gap-2 justify-content-end">
-                                <RadzenButton Icon="edit"
-                                              Size="ButtonSize.Small"
-                                              ButtonStyle="ButtonStyle.Light"
-                                              Click="@(() => EditGameType(gameType))"
-                                              title="Edit" />
-                                <RadzenButton Icon="delete"
-                                              Size="ButtonSize.Small"
-                                              ButtonStyle="ButtonStyle.Danger"
-                                              Click="@(() => DeleteGameTypeAsync(gameType))"
-                                              title="Delete" />
+                                <AuthorizeView Roles="Admin,GameManager">
+                                    <Authorized>
+                                        <RadzenButton Icon="edit"
+                                                      Size="ButtonSize.Small"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Click="@(() => EditGameType(gameType))"
+                                                      title="Edit" />
+                                        <RadzenButton Icon="delete"
+                                                      Size="ButtonSize.Small"
+                                                      ButtonStyle="ButtonStyle.Danger"
+                                                      Click="@(() => DeleteGameTypeAsync(gameType))"
+                                                      title="Delete" />
+                                    </Authorized>
+                                    <NotAuthorized>
+                                        <RadzenButton Icon="visibility"
+                                                      Size="ButtonSize.Small"
+                                                      ButtonStyle="ButtonStyle.Light"
+                                                      Click="@(() => EditGameType(gameType))"
+                                                      title="View Details" />
+                                    </NotAuthorized>
+                                </AuthorizeView>
                             </div>
                         </Template>
                     </RadzenDataGridColumn>

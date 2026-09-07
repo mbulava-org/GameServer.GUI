@@ -6,8 +6,11 @@ using Bunit;
 using GameServer.Web.Components.Pages.GameTypes;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
+using GameServer.Web.Tests.Helpers;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
@@ -19,6 +22,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
     public GameTypeDetailsV2Tests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddTestAuthServices("admin", "Admin");
 
         // GameTypeDetailsV2 injects MountTypeConfigApiService, so it must always be resolvable.
         Services.AddSingleton(CreateMountTypeConfigApiService());
