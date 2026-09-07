@@ -177,9 +177,13 @@ namespace GameServer.API
                 // Register IMemoryCache for GameType caching
                 builder.Services.AddMemoryCache();
 
-                // Authentication & Authorization (JWT)
                 builder.Services.Configure<Configurations.JwtOptions>(builder.Configuration.GetSection(Configurations.JwtOptions.SectionName));
                 var jwtOptions = builder.Configuration.GetSection(Configurations.JwtOptions.SectionName).Get<Configurations.JwtOptions>() ?? new Configurations.JwtOptions();
+
+                if (string.IsNullOrWhiteSpace(jwtOptions.SecretKey) || System.Text.Encoding.UTF8.GetByteCount(jwtOptions.SecretKey) < 32)
+                {
+                    throw new InvalidOperationException("Jwt:SecretKey must be configured and be at least 256 bits (32 bytes) long.");
+                }
 
                 builder.Services.AddAuthentication(options =>
                 {

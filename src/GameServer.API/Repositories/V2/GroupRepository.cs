@@ -153,6 +153,41 @@ public class GroupRepository(GameServerV2DbContext context, ILogger<GroupReposit
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task AddOrUpdateServerAccessAsync(int groupId, string serverId, string accessLevel, CancellationToken cancellationToken = default)
+    {
+        var gameServer = await context.GameServers
+            .FirstOrDefaultAsync(gs => gs.ServerId == serverId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (gameServer is null)
+        {
+            return;
+        }
+
+        var normalizedLevel = string.Equals(accessLevel, "Edit", StringComparison.OrdinalIgnoreCase) ? "Edit" : "View";
+
+        var existing = await context.GameServerGroups
+            .FirstOrDefaultAsync(sg => sg.GroupId == groupId && sg.GameServerId == gameServer.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing != null)
+        {
+            existing.AccessLevel = normalizedLevel;
+        }
+        else
+        {
+            context.GameServerGroups.Add(new GameServerGroupEntity
+            {
+                GroupId = groupId,
+                GameServerId = gameServer.Id,
+                AccessLevel = normalizedLevel,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<int>> GetUserGroupIdsAsync(int userId, CancellationToken cancellationToken = default)
     {
         return await context.UserGroups

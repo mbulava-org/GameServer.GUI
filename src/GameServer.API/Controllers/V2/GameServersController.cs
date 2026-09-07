@@ -134,14 +134,15 @@ public sealed class GameServersController(
             var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             int? currentUserId = int.TryParse(currentUserIdClaim, out var parsedId) ? parsedId : null;
 
-            var created = await commandService.CreateAsync(request, currentUserId, cancellationToken);
+            var created = await commandService.CreateAsync(request, currentUserId, User, cancellationToken);
 
             if (request.InitialGroupId.HasValue && groupRepository is not null)
             {
                 var accessLevel = string.Equals(request.InitialGroupAccessLevel, "View", StringComparison.OrdinalIgnoreCase) ? "View" : "Edit";
-                await groupRepository.SetServerAccessAsync(
+                await groupRepository.AddOrUpdateServerAccessAsync(
                     request.InitialGroupId.Value,
-                    [new ServerGroupAssignmentDto(created.ServerId, accessLevel)],
+                    created.ServerId,
+                    accessLevel,
                     cancellationToken);
             }
 
@@ -170,7 +171,7 @@ public sealed class GameServersController(
 
         try
         {
-            var updated = await commandService.UpdateAsync(serverId, request, cancellationToken);
+            var updated = await commandService.UpdateAsync(serverId, request, User, cancellationToken);
             return Ok(updated);
         }
         catch (ArgumentException ex)
@@ -199,7 +200,7 @@ public sealed class GameServersController(
 
         try
         {
-            var server = await commandService.StartAsync(serverId, cancellationToken);
+            var server = await commandService.StartAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -224,7 +225,7 @@ public sealed class GameServersController(
 
         try
         {
-            var server = await commandService.StopAsync(serverId, cancellationToken);
+            var server = await commandService.StopAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -249,7 +250,7 @@ public sealed class GameServersController(
 
         try
         {
-            var server = await commandService.RestartAsync(serverId, cancellationToken);
+            var server = await commandService.RestartAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -274,7 +275,7 @@ public sealed class GameServersController(
 
         try
         {
-            var server = await commandService.RedeployAsync(serverId, cancellationToken);
+            var server = await commandService.RedeployAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)

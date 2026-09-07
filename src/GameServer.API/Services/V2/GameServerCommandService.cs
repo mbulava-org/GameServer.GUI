@@ -49,7 +49,7 @@ public sealed class GameServerCommandService(
     /// <summary>
     /// Creates a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> CreateAsync(SaveGameServerRequestDto request, int? createdByUserId = null, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> CreateAsync(SaveGameServerRequestDto request, int? createdByUserId = null, System.Security.Claims.ClaimsPrincipal? user = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -63,14 +63,14 @@ public sealed class GameServerCommandService(
 
         await deploymentService.DeployAsync(created.ServerId, normalizedRequest.VolumeBindingLayout, cancellationToken).ConfigureAwait(false);
 
-        return await queryService.GetByServerIdAsync(created.ServerId, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(created.ServerId, user: user, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Failed to reload created V2 GameServer.");
     }
 
     /// <summary>
     /// Updates a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> UpdateAsync(string serverId, SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> UpdateAsync(string serverId, SaveGameServerRequestDto request, System.Security.Claims.ClaimsPrincipal? user = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         ArgumentNullException.ThrowIfNull(request);
@@ -97,59 +97,59 @@ public sealed class GameServerCommandService(
             await deploymentService.UpdateDeploymentAsync(updated.ServerId, volumeBindingLayout: normalizedRequest.VolumeBindingLayout, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        return await queryService.GetByServerIdAsync(updated.ServerId, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(updated.ServerId, user: user, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Failed to reload updated V2 GameServer.");
     }
 
     /// <summary>
     /// Starts the Swarm service for a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> StartAsync(string serverId, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> StartAsync(string serverId, System.Security.Claims.ClaimsPrincipal? user = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.StartAsync(serverId, cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, user: user, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
     /// <summary>
     /// Stops the Swarm service for a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> StopAsync(string serverId, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> StopAsync(string serverId, System.Security.Claims.ClaimsPrincipal? user = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.StopAsync(serverId, cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, user: user, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
     /// <summary>
     /// Restarts the Swarm service for a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> RestartAsync(string serverId, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> RestartAsync(string serverId, System.Security.Claims.ClaimsPrincipal? user = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.RestartAsync(serverId, cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, user: user, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
     /// <summary>
     /// Redeploys and updates the Swarm service for a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> RedeployAsync(string serverId, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> RedeployAsync(string serverId, System.Security.Claims.ClaimsPrincipal? user = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.UpdateDeploymentAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, user: user, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 

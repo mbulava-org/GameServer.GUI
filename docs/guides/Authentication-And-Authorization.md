@@ -39,7 +39,7 @@ JWT settings are configured in `appsettings.json` or through environment variabl
     "SecretKey": "GameServer-Default-Super-Secret-Key-Change-In-Production-2026!",
     "Issuer": "GameServer.API",
     "Audience": "GameServer.Web",
-    "ExpirationHours": 24
+    "ExpiryMinutes": 1440
   }
 }
 ```
@@ -51,7 +51,7 @@ JWT settings are configured in `appsettings.json` or through environment variabl
 | `Jwt:SecretKey` | `Jwt__SecretKey` or `JWT_SECRET_KEY` | *(Built-in default)* | Symmetric key used to sign and verify JWTs. **Must be changed in production!** |
 | `Jwt:Issuer` | `Jwt__Issuer` | `GameServer.API` | Valid token issuer. |
 | `Jwt:Audience` | `Jwt__Audience` | `GameServer.Web` | Valid token audience. |
-| `Jwt:ExpirationHours` | `Jwt__ExpirationHours` | `24` | Token lifetime in hours before expiration. |
+| `Jwt:ExpiryMinutes` | `Jwt__ExpiryMinutes` | `1440` | Token lifetime in minutes before expiration (1440 = 24 hours). |
 
 > [!WARNING]
 > In production and multi-node Docker Swarm environments, always specify a strong `Jwt:SecretKey` (minimum 256 bits / 32 characters) via environment variables or Docker secrets.
