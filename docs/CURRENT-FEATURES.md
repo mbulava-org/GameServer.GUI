@@ -23,54 +23,7 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 ## Core Features
 
-### ? Server Creation Wizard (5 Steps)
-
-**Location:** `/servers/new`  
-**Component:** `CreateServerWizard.razor`
-
-1. **Step 1: Select Game Type**
-   - Choose from pre-defined game types
-   - Displays thumbnail, name, and description
-   - Filters available game types from database
-
-2. **Step 2: Basic Information**
-   - Server name (required)
-   - Server description (optional)
-   - Validates uniqueness
-
-3. **Step 3: Game Settings**
-   - **Tabbed interface by category**
-   - Auto-infers DataType for settings without metadata
-   - Shows all settings from DefaultSettings
-   - Required settings marked with red asterisk (*)
-   - **Port settings with automatic port relationship updates**:
-     - When port-type setting changes, related ports update automatically
-     - Supports Offset, Fixed, and Multiplier relationships
-     - UDP ports: All three values match (Setting = ContainerPort = PublishedPort)
-     - TCP ports: Setting = ContainerPort, PublishedPort can differ
-
-4. **Step 4: Technical Details**
-   - **Port Mappings**:
-     - Default port highlighted with green badge and star ?
-     - Non-default ports read-only when default port exists
-     - Shows "Auto-calculated" for relationship-driven ports
-     - Container port displayed as reference
-   - **Volumes** (future): Coming soon
-
-5. **Step 5: Review & Create**
-   - Summary of all configurations
-   - **Network Information**:
-     - Host IP (auto-detected)
-     - Published Port (default port with badge)
-     - Connection string using default port
-   - **Settings Summary**:
-     - Always shows required settings (even if empty with default value)
-     - Groups by configuration
-   - **Port Mappings**:
-     - Default port with green badge and star ?
-     - Shows protocol in badge
-   - **Volumes**:
-     - Empty sources show green "Create New" badge
+See the [V2 GameType System](#v2-gametype-system) section for the current server creation and management workflow. All server creation, editing, and deployment flows through the V2 pages under `/gametypes-v2` and `/gameservers-v2`.
 
 ### ? Server Management
 
@@ -153,16 +106,7 @@ Game Server Manager is a comprehensive Blazor Server application for deploying a
 
 ## GameType System
 
-### ? GameType Management
-
-**Location:** `/gametypes`
-
-#### Features
-- List all game types
-- Create new game types
-- Edit existing game types
-- Delete game types
-- Import/export definitions
+See the [V2 GameType System](#v2-gametype-system) section for the current GameType manager, editor, revisions, detection, and portable-package workflow.
 
 ### Database Persistence Status
 
@@ -228,64 +172,7 @@ The application uses a single V2 persistence layer for game type and server conf
 - Palworld dedicated server ships with a `PalworldApiTab` extension (info, players with kick/ban, broadcast, save, shutdown) that talks to the Palworld REST API server-side via `IPalworldApiClient` using Basic auth from `ADMIN_PASSWORD`. See `docs/guides/GameType-UI-Extensions.md` for the authoring guide.
 - A generic `RconTab` extension provides a Source-RCON (Valve protocol) console for any GameType with an RCON port; it self-disables when `RCON_ENABLED` is not truthy and supports one-click `presetCommands` via descriptor parameters. Seeded for Palworld alongside the API tab.
 
-### ? GameType Editor
-
-**Location:** `/gametypes/{key}` or `/gametypes/new`
-
-**Tabs:**
-
-1. **Basic Information**
-   - Key (immutable after creation)
-   - Display Name
-   - Description
-   - Docker Image
-   - Thumbnail URL
-   - Documentation URL
-
-2. **Ports**
-   - Define port mappings
-   - Set default port (? marked with IsDefaultPort flag)
-   - Specify protocol (tcp/udp)
-   - Port validation
-
-3. **Volumes**
-   - Define volume mounts
-   - Source and target paths
-   - Volume driver configuration
-
-4. **Default Settings**
-   - Key-value environment variables
-   - **Expandable cards** for each setting
-   - **Extended Metadata** (per setting):
-     - Description, Category, Display Order
-     - Data Type (string, number, boolean, enum, list, port)
-     - Required, Cannot Be Empty
-     - Placeholder, Validation Pattern/Message
-     - Allowed Values, Value Mappings
-     - **Port Mapping Configuration**:
-       - Maps to Container Port ?
-       - Linked Container Port (which port in Ports list)
-       - Port Protocol (tcp/udp)
-     - **Port Validation**:
-       - Min Port, Max Port
-       - Check Availability
-       - Reserved Ports
-       - Is User Editable
-     - **Port Relationships** (NEW!):
-       - **Auto-Detect button**: Scans existing ports and creates relationships automatically
-       - **Manual Add**: Define custom relationships
-       - **Relationship Types**:
-         - **Offset**: Target = Source + Offset (e.g., Query Port = Game Port + 1)
-         - **Fixed**: Target always has a fixed value (e.g., RCON always at 27020)
-         - **Multiplier**: Target = Source � Multiplier
-       - **Validation**: Checks if target port exists in port definitions
-       - **Visual warnings**: Red border and alert if target port not found
-       - Per relationship fields:
-         - Target Container Port
-         - Protocol (tcp/udp)
-         - Offset/Fixed Value (based on type)
-         - Description
-         - Required checkbox
+See the [V2 GameType Editor](#v2-gametype-editor) section for the current 10-tab editor (Basic, Revisions, Ports, Volumes, Settings, Web Hosts, Detection, Review, Save, Publish).
 
 ---
 
@@ -367,7 +254,7 @@ Example (Valheim `SERVER_PORT`):
   - Clean output (8-byte header removal)
   - Multiple users viewing the same server see identical output
 
-**Frontend Component:** `ServerLogsViewer.razor` *(legacy V1 component removed; shared logs are consumed by V2 pages)*
+**Frontend:** Shared logs are consumed by the V2 server details page (`/gameservers-v2/{serverId}`).
 - Connects to API base URI (not Navigation URL)
 - Configuration: `GameServerDockerApi:BaseUri`
 
@@ -696,13 +583,13 @@ Configured per game type in DefaultSettings. Examples:
 - [ ] Test container attach (/hubs/attach, shared across multiple clients)
 - [ ] Verify resource monitoring (shared across multiple clients)
 
-**GameType Editor:**
-- [ ] Create new game type with ports
-- [ ] Set default port
-- [ ] Add port relationships
-- [ ] Use Auto-Detect for relationships
-- [ ] Verify validation warnings
-- [ ] Save and reload
+**V2 GameType Editor:**
+- [ ] Create new V2 GameType with a draft revision
+- [ ] Define ports and mark the advertised port
+- [ ] Configure setting port mappings (Offset / Fixed / Multiplier)
+- [ ] Run Detection scan against the Docker image tag
+- [ ] Verify cross-tab validation summaries
+- [ ] Save, publish, and set-current
 
 ---
 

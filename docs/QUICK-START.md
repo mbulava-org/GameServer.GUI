@@ -1,10 +1,10 @@
-# Quick Start Guide - GameServer.Docker
+﻿# Quick Start Guide - GameServer.Docker
 
 Get up and running with GameServer.Docker in minutes! This guide covers both local development and Docker Swarm deployment.
 
 ---
 
-## 📋 Table of Contents
+## ðŸ“‹ Table of Contents
 
 1. [Local Development Setup](#-local-development-setup)
 2. [Docker Swarm Deployment](#-docker-swarm-deployment)
@@ -14,7 +14,7 @@ Get up and running with GameServer.Docker in minutes! This guide covers both loc
 
 ---
 
-## 🏠 Local Development Setup
+## ðŸ  Local Development Setup
 
 ### Prerequisites
 
@@ -95,7 +95,7 @@ You should see the dashboard with no servers yet. Time to create one!
 
 ---
 
-## 🐳 Docker Swarm Deployment
+## ðŸ³ Docker Swarm Deployment
 
 This section covers deploying GameServer.Docker to a Docker Swarm cluster for production use.
 
@@ -108,28 +108,28 @@ This section covers deploying GameServer.Docker to a Docker Swarm cluster for pr
 ### Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────┐
-│              Docker Swarm Cluster               │
-│                                                 │
-│  ┌──────────────────────────────────────────┐   │
-│  │  Manager Node                            │   │
-│  │  • GameServer.Docker (Primary Service)   │   │
-│  │  • GameServer.Web (Web UI)               │   │
-│  │  • GameServer.Docker.Agent               │   │
-│  └──────────────────────────────────────────┘   │
-│                                                 │
-│  ┌──────────────────────────────────────────┐   │
-│  │  Worker Node 1                           │   │
-│  │  • GameServer.Docker.Agent               │   │
-│  │  • Game Server Containers                │   │
-│  └──────────────────────────────────────────┘   │
-│                                                 │
-│  ┌─────────────────────────────────────────-─┐  │
-│  │  Worker Node 2                            │  │
-│  │  • GameServer.Docker.Agent                │  │
-│  │  • Game Server Containers                 │  │
-│  └─────────────────────────────────────────-─┘  │
-└─────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚              Docker Swarm Cluster               â”‚
+â”‚                                                 â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
+â”‚  â”‚  Manager Node                            â”‚   â”‚
+â”‚  â”‚  â€¢ GameServer.Docker (Primary Service)   â”‚   â”‚
+â”‚  â”‚  â€¢ GameServer.Web (Web UI)               â”‚   â”‚
+â”‚  â”‚  â€¢ GameServer.Docker.Agent               â”‚   â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
+â”‚                                                 â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
+â”‚  â”‚  Worker Node 1                           â”‚   â”‚
+â”‚  â”‚  â€¢ GameServer.Docker.Agent               â”‚   â”‚
+â”‚  â”‚  â€¢ Game Server Containers                â”‚   â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
+â”‚                                                 â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€-â”€â”  â”‚
+â”‚  â”‚  Worker Node 2                            â”‚  â”‚
+â”‚  â”‚  â€¢ GameServer.Docker.Agent                â”‚  â”‚
+â”‚  â”‚  â€¢ Game Server Containers                 â”‚  â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€-â”€â”˜  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### Step 1: Build Docker Images
@@ -325,7 +325,7 @@ Once deployed, access:
 | `V2Database__ConnectionStringName` | Connection string key to use | `GameServerV2Db` |
 | `NetworkOptions__LoadBalancerNetwork` | Docker overlay network for Traefik | `traefik-public` |
 | `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
-| `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | — |
+| `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | â€” |
 | `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
 
 **V2 SQLite example:**
@@ -394,22 +394,22 @@ Agents will automatically deploy to new nodes (global mode).
 
 ---
 
-## 🎮 V2 GameType & GameServer Workflow
+## ðŸŽ® V2 GameType & GameServer Workflow
 
 The V2 system adds revision-based GameType management and a more normalized server model. Use the V2 paths for all new work.
 
 ### Creating a V2 GameType
 
 1. **Navigate to**: http://localhost:5102/gametypes-v2/new
-2. **Basic tab** — Set a unique key (slug), display name, type, and optional thumbnail/docs URLs.
-3. **Revisions tab** — The new draft revision is auto-selected; fill in the Docker image reference and version tag.
-4. **Ports tab** — Add the container ports your image exposes.
-5. **Volumes tab** — Define volume mounts with a usage category (`config`, `saves`, `backups`, `gamefiles`, `logs`).
-6. **Settings tab** — Add environment variable definitions with data types and optional port mapping rules.
-7. **Web Hosts tab** _(optional)_ — Add web endpoint definitions (e.g. map a setting port to a web UI path).
-8. **Detection tab** _(optional)_ — Enter the image reference and scan Docker image metadata to auto-populate ports and volumes.
-9. **Review tab** — Review cross-tab validation and the diff against the saved state.
-10. Click **Save** — persists both the GameType and the draft revision in one step.
+2. **Basic tab** â€” Set a unique key (slug), display name, type, and optional thumbnail/docs URLs.
+3. **Revisions tab** â€” The new draft revision is auto-selected; fill in the Docker image reference and version tag.
+4. **Ports tab** â€” Add the container ports your image exposes.
+5. **Volumes tab** â€” Define volume mounts with a usage category (`config`, `saves`, `backups`, `gamefiles`, `logs`).
+6. **Settings tab** â€” Add environment variable definitions with data types and optional port mapping rules.
+7. **Web Hosts tab** _(optional)_ â€” Add web endpoint definitions (e.g. map a setting port to a web UI path).
+8. **Detection tab** _(optional)_ â€” Enter the image reference and scan Docker image metadata to auto-populate ports and volumes.
+9. **Review tab** â€” Review cross-tab validation and the diff against the saved state.
+10. Click **Save** â€” persists both the GameType and the draft revision in one step.
 11. Click **Publish** on the revision to make it available for server creation.
 
 ### Creating a V2 Game Server
@@ -417,7 +417,7 @@ The V2 system adds revision-based GameType management and a more normalized serv
 1. **Navigate to**: http://localhost:5102/gameservers-v2/new
 2. Select a V2 GameType and a published revision.
 3. Override any settings you need (ports and volumes come from the revision).
-4. Click **Create** — the server is validated then deployed.
+4. Click **Create** â€” the server is validated then deployed.
 
 ### Using the V2 API
 
@@ -486,7 +486,7 @@ curl -X POST http://localhost:5164/api/v2/gametypes/import \
 
 ---
 
-## 🎮 Creating Your First Game Server (V2)
+## ðŸŽ® Creating Your First Game Server (V2)
 
 ### Using the Web UI
 
@@ -536,7 +536,7 @@ docker service logs <service-id> --follow
 
 ---
 
-## ✅ Verification & Testing
+## âœ… Verification & Testing
 
 ### Health Checks
 
@@ -587,7 +587,7 @@ curl http://localhost:5164/api/containers/{containerId}/logs
 
 ---
 
-## 🔧 Troubleshooting
+## ðŸ”§ Troubleshooting
 
 ### Common Issues
 
@@ -682,7 +682,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 
 ---
 
-## 📚 Next Steps
+## ðŸ“š Next Steps
 
 ### Learn More
 
@@ -702,7 +702,7 @@ docker service logs gameserver_gameserver-docker --follow --tail 100
 
 ---
 
-## 🎯 Quick Reference
+## ðŸŽ¯ Quick Reference
 
 ### Start Services Locally
 
@@ -739,407 +739,6 @@ docker service logs gameserver_gameserver-docker --follow
 
 ---
 
-**Happy Gaming!** 🎮🚀
+**Happy Gaming!** ðŸŽ®ðŸš€
 
 For issues or questions, see [CONTRIBUTING.md](CONTRIBUTING.md) or open a GitHub issue.
-
----
-
-## Step 1: Verify Configuration
-
-Game types and extended metadata are now stored in the V2 database. Ensure your `appsettings.Development.json` (or `appsettings.json`) points to the desired V2 provider:
-
-```json
-{
-  "ConnectionStrings": {
-    "GameServerV2Db": "Data Source=./data/gameserver-v2.db"
-  },
-  "V2Database": {
-    "Provider": "Sqlite",
-    "ConnectionStringName": "GameServerV2Db"
-  }
-}
-```
-
----
-
-## Step 2: Start the Application
-
-Run your application:
-
-```bash
-dotnet run --project src/GameServer.Docker
-```
-
-On first startup the V2 database is initialized and any built-in seed data is applied through `DatabaseInitializationService`.
-
----
-
-## Step 3: Explore the API
-
-### Get Minecraft Extended Metadata
-
-```bash
-curl http://localhost:5000/api/gametypes/extended/minecraft | jq
-```
-
-**Response:**
-```json
-{
-  "gameTypeKey": "minecraft",
-  "enableTTY": true,
-  "attachStdin": false,
-  "settingsMetadata": {
-    "EULA": {
-      "key": "EULA",
-      "description": "You must accept the Minecraft EULA...",
-      "isRequired": true,
-      "cannotBeEmpty": true,
-      "dataType": "boolean",
-      "category": "Legal",
-      "displayOrder": 1
-    },
-    // ... more settings
-  }
-}
-```
-
-### Get All Extended Metadata
-
-```bash
-curl http://localhost:5000/api/gametypes/extended | jq
-```
-
----
-
-## Step 4: Create Extended Metadata for Your Game Type
-
-### Example: Terraria Server
-
-```bash
-curl -X POST http://localhost:5000/api/gametypes/extended \
-  -H "Content-Type: application/json" \
-  -d '{
-    "gameTypeKey": "terraria",
-    "enableTTY": true,
-    "attachStdin": false,
-    "settingsMetadata": {
-      "WORLD_NAME": {
-        "key": "WORLD_NAME",
-        "description": "Name of the world to create or load",
-        "isRequired": true,
-        "cannotBeEmpty": true,
-        "dataType": "string",
-        "category": "World",
-        "displayOrder": 1,
-        "placeholder": "MyWorld"
-      },
-      "MAX_PLAYERS": {
-        "key": "MAX_PLAYERS",
-        "description": "Maximum number of players (1-255)",
-        "dataType": "number",
-        "category": "Server",
-        "displayOrder": 2,
-        "validationPattern": "^([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$",
-        "validationMessage": "Must be between 1 and 255"
-      },
-      "SERVER_PORT": {
-        "key": "SERVER_PORT",
-        "description": "Server port number",
-        "dataType": "port",
-        "mapsToContainerPort": true,
-        "portProtocol": "tcp",
-        "category": "Network",
-        "displayOrder": 3,
-        "placeholder": "7777"
-      }
-    }
-  }'
-```
-
----
-
-## Step 5: Use Extended Metadata in Your Application
-
-### Validate Server Settings
-
-```csharp
-[ApiController]
-[Route("api/gameservers")]
-public class GameServerController : ControllerBase
-{
-    private readonly GameTypeMetadataApplier _metadataApplier;
-    
-    [HttpPost]
-    public async Task<IActionResult> CreateServer([FromBody] GameServer server)
-    {
-        // Validate using extended metadata
-        var errors = await _metadataApplier.ValidateSettings(server, server.GameType);
-        
-        if (errors.Any())
-        {
-            return BadRequest(new 
-            { 
-                message = "Validation failed", 
-                errors 
-            });
-        }
-        
-        // Continue with server creation...
-        return Ok(server);
-    }
-}
-```
-
-### Apply Metadata to Container
-
-```csharp
-// In your deployment service using V2 models
-private async Task<ServiceSpec> BuildServiceSpecAsync(
-    GameServerDetailDto server,
-    GameTypeRevisionDetailDto revision)
-{
-    var containerSpec = new ContainerSpec
-    {
-        Image = revision.ImageReference,
-        Env = BuildEnvironmentVariables(server, revision),
-        // ... other properties
-    };
-
-    var ports = revision.Ports
-        .Select(p => new PortConfig
-        {
-            TargetPort = p.ContainerPort,
-            PublishedPort = p.PublishedPort,
-            Protocol = p.Protocol
-        })
-        .ToList();
-
-    // Continue building...
-}
-```
-
----
-
-## Step 6: Test the System
-
-### Test 1: Validation with Missing Required Field
-
-```bash
-# This should fail because EULA is required
-curl -X POST http://localhost:5000/api/gameservers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test Server",
-    "gameType": "minecraft",
-    "settings": {
-      "VERSION": "LATEST"
-    }
-  }'
-```
-
-**Expected Response:**
-```json
-{
-  "message": "Validation failed",
-  "errors": [
-    "Setting 'EULA' is required but not provided. You must accept the Minecraft EULA..."
-  ]
-}
-```
-
-### Test 2: Valid Server Creation
-
-```bash
-curl -X POST http://localhost:5000/api/gameservers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test Server",
-    "gameType": "minecraft",
-    "settings": {
-      "EULA": "true",
-      "VERSION": "LATEST",
-      "MEMORY": "2G",
-      "MAX_PLAYERS": "10"
-    }
-  }'
-```
-
-**Expected:** Server created successfully with TTY enabled!
-
-### Test 3: Dynamic Port Mapping
-
-```bash
-# Create server with custom port
-curl -X POST http://localhost:5000/api/gameservers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Custom Port Server",
-    "gameType": "minecraft",
-    "settings": {
-      "EULA": "true",
-      "SERVER_PORT": "25566"
-    }
-  }'
-```
-
-**Expected:** Container exposes port 25566 in addition to default 25565!
-
----
-
-## Step 7: Update Individual Setting Metadata
-
-```bash
-# Make MEMORY setting required
-curl -X PUT http://localhost:5000/api/gametypes/extended/minecraft/settings/MEMORY \
-  -H "Content-Type: application/json" \
-  -d '{
-    "key": "MEMORY",
-    "description": "Server memory allocation (REQUIRED)",
-    "isRequired": true,
-    "cannotBeEmpty": true,
-    "dataType": "string",
-    "category": "Performance",
-    "validationPattern": "^\\d+[MG]$",
-    "validationMessage": "Must be a number followed by M or G (e.g., 1G, 2048M)"
-  }'
-```
-
----
-
-## Common Use Cases
-
-### 1. Make a Setting Required
-
-```bash
-curl -X PUT http://localhost:5000/api/gametypes/extended/{gameType}/settings/{settingKey} \
-  -H "Content-Type: application/json" \
-  -d '{ "key": "...", "isRequired": true, ... }'
-```
-
-### 2. Add Port Mapping
-
-```bash
-curl -X PUT http://localhost:5000/api/gametypes/extended/{gameType}/settings/{settingKey} \
-  -H "Content-Type: application/json" \
-  -d '{ 
-    "key": "SERVER_PORT", 
-    "dataType": "port", 
-    "mapsToContainerPort": true,
-    "portProtocol": "tcp"
-  }'
-```
-
-### 3. Add Validation Pattern
-
-```bash
-curl -X PUT http://localhost:5000/api/gametypes/extended/{gameType}/settings/{settingKey} \
-  -H "Content-Type: application/json" \
-  -d '{ 
-    "key": "EMAIL",
-    "validationPattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
-    "validationMessage": "Must be a valid email address"
-  }'
-```
-
-### 4. Enable TTY for Interactive Servers
-
-```bash
-curl -X POST http://localhost:5000/api/gametypes/extended \
-  -H "Content-Type: application/json" \
-  -d '{ 
-    "gameTypeKey": "your-game",
-    "enableTTY": true,
-    "attachStdin": true
-  }'
-```
-
----
-
-## Verification
-
-### Check File Persistence
-
-```bash
-# View the extended metadata file
-cat /data/game-types-extended.json | jq
-
-# Restart the service
-docker restart gameserver-docker
-
-# Verify data is still there
-curl http://localhost:5000/api/gametypes/extended/minecraft | jq
-```
-
-**Expected:** All your metadata is preserved after restart! ?
-
----
-
-## Troubleshooting
-
-### Issue: Metadata not persisting
-**Solution:** Check file permissions and path configuration
-
-```bash
-# Check file exists
-ls -la /data/game-types-extended.json
-
-# Check logs
-docker logs gameserver-docker | grep "GameTypeExtendedMetadata"
-```
-
-### Issue: Validation not working
-**Solution:** Ensure GameTypeMetadataApplier is injected and used in your controller
-
-```csharp
-// In ConfigureServices
-services.AddSingleton<GameTypeMetadataApplier>();
-
-// In Controller constructor
-public GameServerController(GameTypeMetadataApplier metadataApplier)
-{
-    _metadataApplier = metadataApplier;
-}
-```
-
-### Issue: TTY not being applied
-**Solution:** Ensure you're calling ApplyMetadata when building ContainerSpec
-
-```csharp
-containerSpec = await _metadataApplier.ApplyMetadata(containerSpec, server.GameType);
-```
-
----
-
-## Next Steps
-
-1. ? Explore the full documentation: `docs/GameType-Extended-Metadata.md`
-2. ? Check integration examples: `docs/GameType-Extended-Metadata-Integration.md`
-3. ? Add metadata for your game types
-4. ? Build UI forms using the categorization features
-5. ? Implement validation in your controllers
-
----
-
-## Quick Reference
-
-### File Locations
-- V2 Repository: `src/GameServer.Docker/Repositories/V2/GameTypeRepository.cs`
-- V2 Service: `src/GameServer.Docker/Services/V2/GameTypeCommandService.cs`
-- Docs: `docs/GameType-Extended-Metadata.md`
-
-### Key Services
-- `IGameTypeRepository` (V2) - CRUD operations for game types, revisions, and metadata
-- `GameTypeCommandService` - Create/update revisions and metadata
-
-### API Endpoints (V2)
-- `GET /api/v2/gametypes` - List all
-- `GET /api/v2/gametypes/{key}` - Get one
-- `POST /api/v2/gametypes` - Create
-- `PUT /api/v2/gametypes/{key}` - Update
-- `DELETE /api/v2/gametypes/{key}` - Delete
-- `POST /api/v2/gametypes/{key}/revisions` - Add revision
-
----
-
-**You're all set!** Start extending your game types with rich metadata! ??

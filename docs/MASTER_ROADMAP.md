@@ -60,9 +60,9 @@ See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](testin
 ### Server Management
 | Feature | Status | Key Files / Notes |
 |---|---|---|
-| Server creation wizard (5 steps) | ✅ Done | `CreateServerWizard.razor` · route `/servers/new` |
-| Server list / dashboard | ✅ Done | `/servers` |
-| Server detail page (tabbed) | ✅ Done | `/servers/{id}` |
+| V2 GameServer editor | ✅ Done | `GameServerEditorV2.razor` · routes `/gameservers-v2/new`, `/gameservers-v2/{serverId}/edit` |
+| Server list / dashboard | ✅ Done | `GameServerManagerV2.razor` · `/gameservers-v2` |
+| Server detail page (tabbed) | ✅ Done | `GameServerDetailsV2.razor` · `/gameservers-v2/{serverId}` |
 | Start / Stop / Delete servers | ✅ Done | Quick actions on dashboard |
 | Real-time status updates (SignalR) | ✅ Done | Live container stats |
 | Live log streaming | ✅ Done | SignalR |

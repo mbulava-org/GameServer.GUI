@@ -8,7 +8,7 @@ Blazor Server application for deploying and managing game servers on Docker Swar
 - **V2 GameServer Management** — Deploy game servers from published revisions; port/volume/web host config derived from the revision
 - **Multi-node Docker Swarm** — Node Agents handle container operations on each Swarm node
 - **Real-time monitoring** — Log streaming, interactive terminal, and resource metrics via SignalR
-- **Dual database support** — V2 path uses PostgreSQL (default); legacy V1 path uses SQLite
+- **V2 persistence** — SQLite (default), MySQL (supported), PostgreSQL (experimental)
 
 ## Quick Start
 
@@ -37,11 +37,8 @@ See **[docs/QUICK-START.md](docs/QUICK-START.md)** for local development and Doc
 | `/gameservers-v2` | V2 GameServer list |
 | `/gameservers-v2/new` | Create V2 game server |
 | `/gameservers-v2/{serverId}` | V2 GameServer detail |
-| `/gametypes` | V1 (legacy) GameType manager |
-| `/servers` | V1 (legacy) server dashboard |
 
 ## API Base URLs
 
 - **V2**: `/api/v2/gametypes`, `/api/v2/gameservers`
-- **V1 (legacy)**: `/api/gametypes`, `/api/gameserver`
 - **Swagger**: `http://localhost:5164/swagger`
