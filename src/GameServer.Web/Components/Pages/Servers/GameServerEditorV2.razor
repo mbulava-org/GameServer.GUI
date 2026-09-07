@@ -617,19 +617,15 @@
             try
             {
                 currentUser = await AuthApi.GetCurrentUserAsync();
-                var allGroups = await AuthApi.GetGroupsAsync();
-                if (currentUser?.Role == "Admin")
+
+                if (string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase))
                 {
+                    var allGroups = await AuthApi.GetGroupsAsync();
                     availableGroups.AddRange(allGroups);
-                }
-                else if (currentUser?.Groups != null)
-                {
-                    availableGroups.AddRange(allGroups.Where(g => currentUser.Groups.Contains(g.Name, StringComparer.OrdinalIgnoreCase)));
-                }
 
-                var allUsers = await AuthApi.GetUsersAsync();
-                availableUsers.AddRange(allUsers.Select(u => new GameServerSettingFieldV2.UserOption(u.Id, u.Username)));
-            }
+                    var allUsers = await AuthApi.GetUsersAsync();
+                    availableUsers.AddRange(allUsers.Select(u => new GameServerSettingFieldV2.UserOption(u.Id, u.Username)));
+                }
             catch (Exception ex)
             {
                 Logger?.LogWarning(ex, "Failed to load auth users or groups in server editor");
