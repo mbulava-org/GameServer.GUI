@@ -347,7 +347,7 @@
                                                                                           AllowedUserIds="@GetSettingAllowedUserIds(definition.SettingKey)"
                                                                                           AllowedUserIdsChanged="@(users => SetSettingAllowedUserIds(definition.SettingKey, users))"
                                                                                           IsMasked="@GetSettingIsMasked(definition.SettingKey)"
-                                                                                          AllowAccessPolicyConfig="@(string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase))"
+                                                                                          AllowAccessPolicyConfig="@CanConfigureSettingAccessPolicy"
                                                                                           AvailableUsers="@availableUsers"
                                                                                           ValidationMessage="@GetSettingValidationMessage(definition)"
                                                                                           ValueChanged="@(value => SetSettingValue(definition.SettingKey, value))" />
@@ -573,6 +573,7 @@
     private int portCheckToken;
 
     private bool isEditMode => !string.IsNullOrWhiteSpace(ServerId);
+    private bool CanConfigureSettingAccessPolicy => string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase);
 
     private IReadOnlyList<GameTypeSettingDefinition> CurrentSettingDefinitions =>
         selectedGameType?.Revisions.FirstOrDefault(revision => revision.Id == draft.GameTypeRevisionId)?.SettingDefinitions
@@ -619,19 +620,14 @@
                 currentUser = await AuthApi.GetCurrentUserAsync();
 
 
-                if (string.Equals(currentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase))
-
+                if (CanConfigureSettingAccessPolicy)
                 {
                     var allGroups = await AuthApi.GetGroupsAsync();
-
                     availableGroups.AddRange(allGroups);
-
                     var allUsers = await AuthApi.GetUsersAsync();
-
                     availableUsers.AddRange(allUsers.Select(u => new GameServerSettingFieldV2.UserOption(u.Id, u.Username)));
-
                 }
-
+            }
             catch (Exception ex)
             {
                 Logger?.LogWarning(ex, "Failed to load auth users or groups in server editor");
