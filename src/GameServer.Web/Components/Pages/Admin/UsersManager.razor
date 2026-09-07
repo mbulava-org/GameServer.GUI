@@ -3,6 +3,7 @@
 @inject IAuthApiService AuthService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject Services.IUserTimeZoneService TimeZoneService
 
 <PageTitle>User Management - Game Server Manager</PageTitle>
 
@@ -82,7 +83,7 @@
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Property="LastLoginAt" Title="Last Login" Width="160px">
                     <Template Context="user">
-                        @(user.LastLoginAt.HasValue ? user.LastLoginAt.Value.ToLocalTime().ToString("g") : "Never")
+                        @(user.LastLoginAt.HasValue ? TimeZoneService.FormatLocalDateTime(user.LastLoginAt.Value) : "Never")
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Actions" Width="140px" Filterable="false" Sortable="false">
@@ -108,6 +109,18 @@
     {
         await LoadGroups();
         await LoadUsers();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private async Task LoadGroups()

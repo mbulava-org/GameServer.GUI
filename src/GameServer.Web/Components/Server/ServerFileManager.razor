@@ -7,6 +7,7 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IJSRuntime JSRuntime
+@inject GameServer.Web.Services.IUserTimeZoneService TimeZoneService
 
 <div class="file-manager-container">
     @if (Volumes is null || !Volumes.Any())
@@ -141,7 +142,7 @@
 
                     <RadzenDataGridColumn TItem="FileItem" Property="LastModified" Title="Modified" Width="180px">
                         <Template Context="file">
-                            @file.LastModified.ToLocalTime().ToString("g")
+                            @TimeZoneService.FormatLocalDateTime(file.LastModified)
                         </Template>
                     </RadzenDataGridColumn>
 
@@ -218,6 +219,18 @@
             selectedVolumePath = Volumes.First().ContainerPath;
             currentSubPath = string.Empty;
             await LoadFilesAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 

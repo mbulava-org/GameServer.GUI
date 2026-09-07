@@ -9,6 +9,7 @@
 @inject IGameServerV2ApiService GameServerApiV2
 @inject NotificationService NotificationService
 @inject ILogger<ResourceHistoryTab> Logger
+@inject GameServer.Web.Services.IUserTimeZoneService TimeZoneService
 @implements IAsyncDisposable
 
 <div class="resource-history-container">
@@ -37,8 +38,8 @@
                                     Data="@TimeRangeOptions"
                                     TextProperty="Text"
                                     ValueProperty="Value"
-                                    Value="@selectedRangeKey"
-                                    ValueChanged="@OnRangeOptionChanged"
+                                    @bind-Value="@selectedRangeKey"
+                                    Change="@(args => OnRangeOptionChanged((string)args))"
                                     Style="min-width: 160px;" />
                 </div>
 
@@ -389,7 +390,7 @@
         new TimeRangeOption("custom", "Custom Range...", null)
     ];
 
-    private string selectedRangeKey = "25h";
+    private string selectedRangeKey = "1h";
     private DateTime? customFrom;
     private DateTime? customTo;
 
@@ -397,7 +398,7 @@
     {
         public DateTime Timestamp { get; init; }
         public string AxisLabel { get; set; } = string.Empty;
-        public string FullTimestamp => Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        public string FullTimestamp { get; set; } = string.Empty;
         public double CpuPercent { get; init; }
         public double MemoryPercent { get; init; }
         public double MemoryMB { get; init; }
@@ -428,6 +429,22 @@
         if (AutoConnect)
         {
             await ConnectAndSubscribeAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                foreach (var p in chartPoints)
+                {
+                    p.FullTimestamp = TimeZoneService.FormatLocalDateTime(p.Timestamp, "yyyy-MM-dd HH:mm:ss");
+                }
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -483,6 +500,7 @@
             chartPoints = result.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
             {
                 Timestamp = r.Timestamp,
+                FullTimestamp = TimeZoneService.FormatLocalDateTime(r.Timestamp, "yyyy-MM-dd HH:mm:ss"),
                 CpuPercent = Math.Round(r.CpuUsagePercent ?? 0, 1),
                 MemoryPercent = Math.Round(r.MemoryUsagePercent ?? 0, 1),
                 MemoryMB = Math.Round((r.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
@@ -640,16 +658,19 @@
     {
         InvokeAsync(() =>
         {
-            AppendLiveUsage(usage);
-            StateHasChanged();
+            if (AppendLiveUsage(usage))
+            {
+                StateHasChanged();
+            }
         });
     }
 
-    private void AppendLiveUsage(ServerResourceUsage usage)
+    private bool AppendLiveUsage(ServerResourceUsage usage)
     {
         var point = new ResourceHistoryChartPoint
         {
             Timestamp = usage.Timestamp,
+            FullTimestamp = TimeZoneService.FormatLocalDateTime(usage.Timestamp, "yyyy-MM-dd HH:mm:ss"),
             CpuPercent = Math.Round(usage.CpuUsagePercent ?? 0, 1),
             MemoryPercent = Math.Round(usage.MemoryUsagePercent ?? 0, 1),
             MemoryMB = Math.Round((usage.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
@@ -660,21 +681,24 @@
         };
 
         // If not already in the collection (within 1 second)
-        if (!chartPoints.Any(p => Math.Abs((p.Timestamp - point.Timestamp).TotalSeconds) < 1.0))
+        if (chartPoints.Any(p => Math.Abs((p.Timestamp - point.Timestamp).TotalSeconds) < 1.0))
         {
-            chartPoints.Add(point);
-
-            // Prune records older than active preset duration
-            var preset = TimeRangeOptions.FirstOrDefault(o => o.Value == selectedRangeKey);
-            if (preset?.Duration != null)
-            {
-                var cutoff = DateTime.UtcNow.Subtract(preset.Duration.Value);
-                chartPoints.RemoveAll(p => p.Timestamp < cutoff);
-            }
-
-            ComputeThroughput(chartPoints);
-            ComputeAxisLabels(chartPoints);
+            return false;
         }
+
+        chartPoints.Add(point);
+
+        // Prune records older than active preset duration
+        var preset = TimeRangeOptions.FirstOrDefault(o => o.Value == selectedRangeKey);
+        if (preset?.Duration != null)
+        {
+            var cutoff = DateTime.UtcNow.Subtract(preset.Duration.Value);
+            chartPoints.RemoveAll(p => p.Timestamp < cutoff);
+        }
+
+        ComputeThroughput(chartPoints);
+        ComputeAxisLabels(chartPoints);
+        return true;
     }
 
     private static void ComputeThroughput(List<ResourceHistoryChartPoint> points)
