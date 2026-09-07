@@ -1,0 +1,222 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin")]
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<PageTitle>User Management - Game Server Manager</PageTitle>
+
+<RadzenStack Gap="1.5rem">
+    <RadzenRow AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenColumn Size="12" SizeMD="8">
+            <RadzenText TextStyle="TextStyle.H4" Style="font-weight: 700;" class="mb-0">User Management</RadzenText>
+            <RadzenText TextStyle="TextStyle.Body2" class="rz-text-secondary">Manage system users, roles, and group memberships</RadzenText>
+        </RadzenColumn>
+        <RadzenColumn Size="12" SizeMD="4" class="rz-text-align-right">
+            <RadzenButton Icon="add" Text="Create User" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateDialog" />
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadUsers" class="ml-2" />
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenCard class="rz-shadow-2">
+        <RadzenDataGrid @ref="_grid" Data="@_users" TItem="UserModel" IsLoading="@_isLoading" AllowPaging="true" PageSize="10" AllowSorting="true" AllowFiltering="true" FilterMode="FilterMode.Simple" Responsive="true">
+            <Columns>
+                <RadzenDataGridColumn Property="Id" Title="ID" Width="70px" />
+                <RadzenDataGridColumn Property="Username" Title="Username">
+                    <Template Context="user">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenIcon Icon="account_circle" Style="color: var(--rz-primary);" />
+                            <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;" class="mb-0">@user.Username</RadzenText>
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="Email" Title="Email">
+                    <Template Context="user">
+                        @(string.IsNullOrWhiteSpace(user.Email) ? "-" : user.Email)
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="Role" Title="Role" Width="140px">
+                    <Template Context="user">
+                        @if (user.Role == "Admin")
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Admin" Variant="Variant.Filled" />
+                        }
+                        else if (user.Role == "GameManager")
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="GameManager" Variant="Variant.Filled" />
+                        }
+                        else
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="User" Variant="Variant.Filled" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="Groups" Title="Groups">
+                    <Template Context="user">
+                        @if (user.Groups.Any())
+                        {
+                            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.25rem">
+                                @foreach (var g in user.Groups)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@g" />
+                                }
+                            </RadzenStack>
+                        }
+                        else
+                        {
+                            <span class="rz-text-secondary">None</span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="IsActive" Title="Status" Width="100px">
+                    <Template Context="user">
+                        @if (user.IsActive)
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Active" IsPill="true" />
+                        }
+                        else
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Disabled" IsPill="true" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="LastLoginAt" Title="Last Login" Width="160px">
+                    <Template Context="user">
+                        @(user.LastLoginAt.HasValue ? user.LastLoginAt.Value.ToLocalTime().ToString("g") : "Never")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Actions" Width="140px" Filterable="false" Sortable="false">
+                    <Template Context="user">
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem">
+                            <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => OpenEditDialog(user))" Title="Edit User" />
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@(() => ConfirmDelete(user))" Title="Delete User" />
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+</RadzenStack>
+
+@code {
+    private RadzenDataGrid<UserModel>? _grid;
+    private IReadOnlyList<UserModel> _users = [];
+    private IReadOnlyList<GroupModel> _allGroups = [];
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroups();
+        await LoadUsers();
+    }
+
+    private async Task LoadGroups()
+    {
+        _allGroups = await AuthService.GetGroupsAsync();
+    }
+
+    private async Task LoadUsers()
+    {
+        _isLoading = true;
+        try
+        {
+            _users = await AuthService.GetUsersAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var model = new CreateUserViewModel();
+        var result = await DialogService.OpenAsync<CreateUserDialog>("Create New User",
+            new Dictionary<string, object?>
+            {
+                { "Model", model },
+                { "AvailableGroups", _allGroups }
+            },
+            new DialogOptions { Width = "520px", CloseDialogOnOverlayClick = false });
+
+        if (result == true)
+        {
+            await LoadUsers();
+        }
+    }
+
+    private async Task OpenEditDialog(UserModel user)
+    {
+        var fullUser = await AuthService.GetUserByIdAsync(user.Id);
+        if (fullUser is null)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Could not load user details.");
+            return;
+        }
+
+        var model = new EditUserViewModel
+        {
+            Id = fullUser.Id,
+            Username = fullUser.Username,
+            Email = fullUser.Email,
+            Role = fullUser.Role,
+            IsActive = fullUser.IsActive,
+            SelectedGroupIds = fullUser.Groups.Select(g => g.GroupId).ToList()
+        };
+
+        var result = await DialogService.OpenAsync<EditUserDialog>("Edit User",
+            new Dictionary<string, object?>
+            {
+                { "Model", model },
+                { "AvailableGroups", _allGroups }
+            },
+            new DialogOptions { Width = "520px", CloseDialogOnOverlayClick = false });
+
+        if (result == true)
+        {
+            await LoadUsers();
+        }
+    }
+
+    private async Task ConfirmDelete(UserModel user)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Are you sure you want to delete user '{user.Username}'?",
+            "Delete User",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed == true)
+        {
+            var (success, error) = await AuthService.DeleteUserAsync(user.Id);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"User '{user.Username}' deleted.");
+                await LoadUsers();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not delete user.");
+            }
+        }
+    }
+
+    public class CreateUserViewModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string Password { get; set; } = string.Empty;
+        public string Role { get; set; } = "User";
+        public IEnumerable<int> SelectedGroupIds { get; set; } = new List<int>();
+    }
+
+    public class EditUserViewModel
+    {
+        public int Id { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? NewPassword { get; set; }
+        public string Role { get; set; } = "User";
+        public bool IsActive { get; set; } = true;
+        public IEnumerable<int> SelectedGroupIds { get; set; } = new List<int>();
+    }
+}

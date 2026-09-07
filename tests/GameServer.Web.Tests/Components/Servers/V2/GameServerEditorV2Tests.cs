@@ -23,10 +23,23 @@ public sealed class GameServerEditorV2Tests : BunitContext
     private readonly Mock<IGameServerV2ApiService> gameServerApi = new(MockBehavior.Strict);
     private readonly Mock<IGameTypeV2ApiService> gameTypeApi = new(MockBehavior.Strict);
     private readonly Mock<IMountTypeConfigApiService> mountTypeApi = new(MockBehavior.Strict);
+    private readonly Mock<GameServer.Web.Services.Auth.IAuthApiService> authApi = new(MockBehavior.Strict);
 
     public GameServerEditorV2Tests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+
+        authApi
+            .Setup(api => api.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServer.Web.Models.UserProfile(1, "testuser", "test@example.com", "Admin", [], DateTime.UtcNow, null));
+
+        authApi
+            .Setup(api => api.GetGroupsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        authApi
+            .Setup(api => api.GetUsersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         gameTypeApi
             .Setup(api => api.GetListAsync(true, It.IsAny<CancellationToken>()))
@@ -59,6 +72,7 @@ public sealed class GameServerEditorV2Tests : BunitContext
         Services.AddSingleton<IGameServerV2ApiService>(gameServerApi.Object);
         Services.AddSingleton<IGameTypeV2ApiService>(gameTypeApi.Object);
         Services.AddSingleton<IMountTypeConfigApiService>(mountTypeApi.Object);
+        Services.AddSingleton<GameServer.Web.Services.Auth.IAuthApiService>(authApi.Object);
     }
 
     [Fact]

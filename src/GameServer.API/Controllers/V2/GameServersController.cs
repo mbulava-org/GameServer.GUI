@@ -1,18 +1,22 @@
 using GameServer.API.Dtos.V2;
 using GameServer.API.Services.V2;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameServer.API.Controllers.V2;
 
 [ApiController]
 [Route("api/v2/gameservers")]
+[Authorize]
 public sealed class GameServersController(
     GameServerQueryService queryService,
     GameServerCommandService commandService,
     ILogger<GameServersController> logger,
+    IServerAuthorizationService? serverAuthorizationService = null,
     Repositories.V2.IGameServerResourceUtilizationRepository? resourceUtilizationRepository = null,
     IGameServerResourceCollector? resourceCollector = null,
-    Interfaces.IServerResourceMonitor? resourceMonitor = null) : ControllerBase
+    Interfaces.IServerResourceMonitor? resourceMonitor = null,
+    Repositories.V2.IGroupRepository? groupRepository = null) : ControllerBase
 {
     /// <summary>
     /// Gets the V2 GameServer list.
@@ -23,6 +27,16 @@ public sealed class GameServersController(
     {
         logger.LogDebug("Getting V2 game servers (IncludeDeleted={IncludeDeleted})", includeDeleted);
         var servers = await queryService.GetListAsync(includeDeleted, cancellationToken);
+        if (serverAuthorizationService is not null)
+        {
+            var accessibleServerIds = await serverAuthorizationService.GetAccessibleServerIdsAsync(User, cancellationToken);
+            if (accessibleServerIds is not null)
+            {
+                var accessibleSet = accessibleServerIds.ToHashSet();
+                servers = servers.Where(s => accessibleSet.Contains(s.ServerId)).ToList();
+            }
+        }
+
         return Ok(servers);
     }
 
@@ -31,10 +45,16 @@ public sealed class GameServersController(
     /// </summary>
     [HttpGet("{serverId}")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> GetByServerId(string serverId, CancellationToken cancellationToken = default)
     {
-        var server = await queryService.GetByServerIdAsync(serverId, cancellationToken);
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
         if (server is null)
         {
             logger.LogDebug("V2 game server '{ServerId}' was not found", serverId);
@@ -111,7 +131,20 @@ public sealed class GameServersController(
     {
         try
         {
-            var created = await commandService.CreateAsync(request, cancellationToken);
+            var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            int? currentUserId = int.TryParse(currentUserIdClaim, out var parsedId) ? parsedId : null;
+
+            var created = await commandService.CreateAsync(request, currentUserId, cancellationToken);
+
+            if (request.InitialGroupId.HasValue && groupRepository is not null)
+            {
+                var accessLevel = string.Equals(request.InitialGroupAccessLevel, "View", StringComparison.OrdinalIgnoreCase) ? "View" : "Edit";
+                await groupRepository.SetServerAccessAsync(
+                    request.InitialGroupId.Value,
+                    [new ServerGroupAssignmentDto(created.ServerId, accessLevel)],
+                    cancellationToken);
+            }
+
             return CreatedAtAction(nameof(GetByServerId), new { serverId = created.ServerId }, created);
         }
         catch (ArgumentException ex)
@@ -126,9 +159,15 @@ public sealed class GameServersController(
     [HttpPut("{serverId}")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
     [ProducesResponseType(400)]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Update(string serverId, [FromBody] SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             var updated = await commandService.UpdateAsync(serverId, request, cancellationToken);
@@ -149,9 +188,15 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/start")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Start(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             var server = await commandService.StartAsync(serverId, cancellationToken);
@@ -168,9 +213,15 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/stop")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Stop(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             var server = await commandService.StopAsync(serverId, cancellationToken);
@@ -187,9 +238,15 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/restart")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Restart(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             var server = await commandService.RestartAsync(serverId, cancellationToken);
@@ -206,9 +263,15 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/redeploy")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Redeploy(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             var server = await commandService.RedeployAsync(serverId, cancellationToken);
@@ -225,9 +288,15 @@ public sealed class GameServersController(
     /// </summary>
     [HttpDelete("{serverId}")]
     [ProducesResponseType(204)]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Delete(string serverId, [FromQuery] bool softDelete = true, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             await commandService.DeleteAsync(serverId, softDelete, cancellationToken);
@@ -244,6 +313,7 @@ public sealed class GameServersController(
     /// </summary>
     [HttpGet("{serverId}/resources/history")]
     [ProducesResponseType(200, Type = typeof(IEnumerable<GameServerResourceHistoryDto>))]
+    [ProducesResponseType(403)]
     public async Task<ActionResult<IReadOnlyList<GameServerResourceHistoryDto>>> GetResourceHistory(
         string serverId,
         [FromQuery] DateTime? from = null,
@@ -251,6 +321,11 @@ public sealed class GameServersController(
         [FromQuery] int limit = 5000,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (resourceUtilizationRepository is null)
         {
             return Ok(Array.Empty<GameServerResourceHistoryDto>());
@@ -283,11 +358,17 @@ public sealed class GameServersController(
     /// </summary>
     [HttpGet("{serverId}/resources/latest")]
     [ProducesResponseType(200, Type = typeof(Models.ServerResourceUsage))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<Models.ServerResourceUsage>> GetLatestResource(
         string serverId,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         // Try in-memory cached snapshot first
         var cached = resourceCollector?.GetCachedUsage(serverId);
         if (cached != null)

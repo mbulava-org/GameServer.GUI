@@ -1,12 +1,14 @@
 using GameServer.API.Dtos.V2;
 using GameServer.API.Services.V2;
 using GameServer.API.Services.V2.Detection;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameServer.API.Controllers.V2;
 
 [ApiController]
 [Route("api/v2/gametypes")]
+[Authorize]
 public sealed class GameTypesController(
     GameTypeQueryService queryService,
     GameTypeCommandService commandService,
@@ -65,6 +67,7 @@ public sealed class GameTypesController(
     /// Creates a V2 GameType.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(201, Type = typeof(GameTypeDetailDto))]
     [ProducesResponseType(400)]
     public async Task<ActionResult<GameTypeDetailDto>> Create([FromBody] SaveGameTypeRequestDto request, CancellationToken cancellationToken = default)
@@ -85,6 +88,7 @@ public sealed class GameTypesController(
     /// Imports a portable V2 GameType package.
     /// </summary>
     [HttpPost("import")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(201, Type = typeof(GameTypeDetailDto))]
     [ProducesResponseType(400)]
     public async Task<ActionResult<GameTypeDetailDto>> Import([FromBody] PortableGameTypePackageDto package, CancellationToken cancellationToken = default)
@@ -110,6 +114,7 @@ public sealed class GameTypesController(
     /// Updates a V2 GameType.
     /// </summary>
     [HttpPut("{key}")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(200, Type = typeof(GameTypeDetailDto))]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]
@@ -135,6 +140,7 @@ public sealed class GameTypesController(
     /// Deletes a V2 GameType.
     /// </summary>
     [HttpDelete("{key}")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(204)]
     public async Task<IActionResult> Delete(string key, CancellationToken cancellationToken = default)
     {
@@ -146,6 +152,7 @@ public sealed class GameTypesController(
     /// Adds a revision to a V2 GameType.
     /// </summary>
     [HttpPost("{key}/revisions")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(201, Type = typeof(GameTypeRevisionDto))]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]
@@ -170,6 +177,7 @@ public sealed class GameTypesController(
     /// Updates a V2 GameType revision.
     /// </summary>
     [HttpPut("{key}/revisions/{revisionId:int}")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(200, Type = typeof(GameTypeRevisionDto))]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]
@@ -194,6 +202,7 @@ public sealed class GameTypesController(
     /// Publishes a V2 GameType revision.
     /// </summary>
     [HttpPost("{key}/revisions/{revisionId:int}/publish")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(200, Type = typeof(GameTypeRevisionDto))]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameTypeRevisionDto>> PublishRevision(string key, int revisionId, [FromBody] PublishRevisionRequestDto? request, CancellationToken cancellationToken = default)
@@ -213,6 +222,7 @@ public sealed class GameTypesController(
     /// Sets the current revision for a V2 GameType.
     /// </summary>
     [HttpPost("{key}/revisions/{revisionId:int}/set-current")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> SetCurrentRevision(string key, int revisionId, CancellationToken cancellationToken = default)

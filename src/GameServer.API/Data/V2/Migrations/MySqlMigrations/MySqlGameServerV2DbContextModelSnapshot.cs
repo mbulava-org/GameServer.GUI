@@ -28,6 +28,9 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
@@ -68,6 +71,8 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedByUserId");
+
                     b.HasIndex("GameTypeRevisionId");
 
                     b.HasIndex("IsDeleted");
@@ -76,6 +81,29 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                         .IsUnique();
 
                     b.ToTable("GameServers", (string)null);
+                });
+
+            modelBuilder.Entity("GameServer.API.Data.V2.GameServerGroupEntity", b =>
+                {
+                    b.Property<int>("GameServerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GroupId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AccessLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("GameServerId", "GroupId");
+
+                    b.HasIndex("GroupId");
+
+                    b.ToTable("GameServerGroups", (string)null);
                 });
 
             modelBuilder.Entity("GameServer.API.Data.V2.GameServerPortEntity", b =>
@@ -170,6 +198,16 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    b.Property<string>("AccessPolicy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)")
+                        .HasDefaultValue("Group");
+
+                    b.Property<string>("AllowedUserIdsJson")
+                        .HasColumnType("longtext");
 
                     b.Property<int>("GameServerId")
                         .HasColumnType("int");
@@ -623,6 +661,53 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                     b.ToTable("GameTypeWebHosts", (string)null);
                 });
 
+            modelBuilder.Entity("GameServer.API.Data.V2.GroupEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Groups", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "System Administrators group",
+                            Name = "Administrators",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Default user and server group",
+                            Name = "Default",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
             modelBuilder.Entity("GameServer.API.Data.V2.MountTypeConfigEntity", b =>
                 {
                     b.Property<string>("Key")
@@ -680,15 +765,124 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                         });
                 });
 
+            modelBuilder.Entity("GameServer.API.Data.V2.UserEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Users", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "admin@gameserver.local",
+                            IsActive = true,
+                            PasswordHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.4xti9xpXRpEAp4FOPgwvpC3vDN0DTAOpbsXWezzugGM=",
+                            Role = "Admin",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Username = "admin"
+                        });
+                });
+
+            modelBuilder.Entity("GameServer.API.Data.V2.UserGroupEntity", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GroupId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("UserId", "GroupId");
+
+                    b.HasIndex("GroupId");
+
+                    b.ToTable("UserGroups", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            UserId = 1,
+                            GroupId = 1,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
             modelBuilder.Entity("GameServer.API.Data.V2.GameServerEntity", b =>
                 {
+                    b.HasOne("GameServer.API.Data.V2.UserEntity", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("GameServer.API.Data.V2.GameTypeRevisionEntity", "GameTypeRevision")
                         .WithMany("Servers")
                         .HasForeignKey("GameTypeRevisionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("CreatedByUser");
+
                     b.Navigation("GameTypeRevision");
+                });
+
+            modelBuilder.Entity("GameServer.API.Data.V2.GameServerGroupEntity", b =>
+                {
+                    b.HasOne("GameServer.API.Data.V2.GameServerEntity", "GameServer")
+                        .WithMany("Groups")
+                        .HasForeignKey("GameServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GameServer.API.Data.V2.GroupEntity", "Group")
+                        .WithMany("ServerGroups")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GameServer");
+
+                    b.Navigation("Group");
                 });
 
             modelBuilder.Entity("GameServer.API.Data.V2.GameServerPortEntity", b =>
@@ -807,8 +1001,29 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                     b.Navigation("GameTypeRevision");
                 });
 
+            modelBuilder.Entity("GameServer.API.Data.V2.UserGroupEntity", b =>
+                {
+                    b.HasOne("GameServer.API.Data.V2.GroupEntity", "Group")
+                        .WithMany("UserGroups")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GameServer.API.Data.V2.UserEntity", "User")
+                        .WithMany("UserGroups")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("GameServer.API.Data.V2.GameServerEntity", b =>
                 {
+                    b.Navigation("Groups");
+
                     b.Navigation("Ports");
 
                     b.Navigation("Settings");
@@ -842,6 +1057,18 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
             modelBuilder.Entity("GameServer.API.Data.V2.GameTypeSettingMetadataEntity", b =>
                 {
                     b.Navigation("PortMappings");
+                });
+
+            modelBuilder.Entity("GameServer.API.Data.V2.GroupEntity", b =>
+                {
+                    b.Navigation("ServerGroups");
+
+                    b.Navigation("UserGroups");
+                });
+
+            modelBuilder.Entity("GameServer.API.Data.V2.UserEntity", b =>
+                {
+                    b.Navigation("UserGroups");
                 });
 #pragma warning restore 612, 618
         }

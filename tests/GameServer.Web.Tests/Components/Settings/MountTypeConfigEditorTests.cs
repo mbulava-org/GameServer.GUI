@@ -2,6 +2,8 @@ using Bunit;
 using GameServer.Web.Components.Pages.Settings;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services.V2;
+using GameServer.Web.Tests.Helpers;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
@@ -15,6 +17,7 @@ public sealed class MountTypeConfigEditorTests : BunitContext
     public MountTypeConfigEditorTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddTestAuthServices("admin", "Admin");
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton(api.Object);
     }

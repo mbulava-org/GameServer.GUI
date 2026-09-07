@@ -58,7 +58,7 @@ public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFacto
 
     private HttpClient CreateClient()
     {
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("GameServerApi");
         client.BaseAddress = new Uri(apiOptions.BaseUri);
         return client;
     }

@@ -1,6 +1,8 @@
 using Bunit;
 using GameServer.Web.Components.Layout;
 using GameServer.Web.Components.Pages;
+using GameServer.Web.Tests.Helpers;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Radzen;
 
@@ -11,6 +13,7 @@ public sealed class LayoutAndNavigationTests : BunitContext
     public LayoutAndNavigationTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddTestAuthServices("admin", "Admin");
         Services.AddSingleton<DialogService>();
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();

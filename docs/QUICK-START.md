@@ -1,4 +1,4 @@
-﻿# Quick Start Guide - GameServer.Docker
+# Quick Start Guide - GameServer.Docker
 
 Get up and running with GameServer.Docker in minutes! This guide covers both local development and Docker Swarm deployment.
 
@@ -85,13 +85,20 @@ The Web UI will start at:
 - **HTTP**: http://localhost:5102
 - **HTTPS**: https://localhost:7198
 
-### Step 7: Verify Local Setup
+### Step 7: Verify Local Setup & Log In
 
 Open your browser:
 - **Web UI**: http://localhost:5102
-- **API Docs**: http://localhost:5164/swagger
+- **API Docs / Swagger**: http://localhost:5164/swagger
 
-You should see the dashboard with no servers yet. Time to create one!
+#### Default Admin Credentials
+- **Username:** `admin`
+- **Password:** `Admin123!`
+
+Navigate to `/login` if not automatically redirected. Once logged in as `Admin`, you can access all server management functions, mount types, user management (`/admin/users`), and group management (`/admin/groups`).
+
+> [!TIP]
+> For details on JWT configuration, roles (`Admin`, `GameManager`, `User`), and group access boundaries, see [guides/Authentication-And-Authorization.md](guides/Authentication-And-Authorization.md).
 
 ---
 

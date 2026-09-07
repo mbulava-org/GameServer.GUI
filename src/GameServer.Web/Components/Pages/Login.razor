@@ -1,0 +1,132 @@
+@page "/login"
+@layout Layout.MainLayout
+@inject IAuthApiService AuthService
+@inject NavigationManager Navigation
+@inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Login - Game Server Manager</PageTitle>
+
+<div class="login-container">
+    <RadzenCard class="login-card rz-shadow-6">
+        <RadzenStack Gap="1.5rem" AlignItems="AlignItems.Center">
+            <div class="login-header">
+                <RadzenIcon Icon="dns" Style="font-size: 3.5rem; color: var(--rz-primary);" />
+                <RadzenText TextStyle="TextStyle.H4" Style="font-weight: 700; margin-top: 0.5rem;" class="rz-text-align-center">Game Server Manager</RadzenText>
+                <RadzenText TextStyle="TextStyle.Body2" class="rz-text-secondary rz-text-align-center">Sign in to your account to manage servers</RadzenText>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Filled" Shade="Shade.Light" AllowClose="false" Size="AlertSize.Small" Style="width: 100%;">
+                    @_errorMessage
+                </RadzenAlert>
+            }
+
+            <RadzenTemplateForm TItem="LoginModel" Data="@_loginModel" Submit="@HandleLogin" Style="width: 100%;">
+                <RadzenStack Gap="1.25rem">
+                    <RadzenFormField Text="Username" Variant="Variant.Outlined" Style="width: 100%;">
+                        <ChildContent>
+                            <RadzenTextBox @bind-Value="@_loginModel.Username" Name="Username" AutoComplete="true" Style="width: 100%;" />
+                        </ChildContent>
+                        <Helper>
+                            <RadzenRequiredValidator Component="Username" Text="Username is required" />
+                        </Helper>
+                    </RadzenFormField>
+
+                    <RadzenFormField Text="Password" Variant="Variant.Outlined" Style="width: 100%;">
+                        <ChildContent>
+                            <RadzenPassword @bind-Value="@_loginModel.Password" Name="Password" Style="width: 100%;" />
+                        </ChildContent>
+                        <Helper>
+                            <RadzenRequiredValidator Component="Password" Text="Password is required" />
+                        </Helper>
+                    </RadzenFormField>
+
+                    <RadzenButton ButtonType="ButtonType.Submit" Text="Sign In" Icon="login" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Large" IsBusy="@_isBusy" BusyText="Signing in..." Style="width: 100%; margin-top: 0.5rem; font-weight: 600;" />
+                </RadzenStack>
+            </RadzenTemplateForm>
+
+            <RadzenText TextStyle="TextStyle.Caption" class="rz-text-secondary rz-text-align-center" Style="margin-top: 1rem;">
+                Default admin credentials: <code>admin</code> / <code>AdminPassword123!</code>
+            </RadzenText>
+        </RadzenStack>
+    </RadzenCard>
+</div>
+
+<style>
+    .login-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 120px);
+        padding: 2rem;
+    }
+
+    .login-card {
+        width: 100%;
+        max-width: 440px;
+        padding: 2.5rem;
+        border-radius: 16px;
+        background: var(--rz-base-background-color, #ffffff);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+    }
+
+    .login-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+</style>
+
+@code {
+    private class LoginModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private readonly LoginModel _loginModel = new();
+    private bool _isBusy;
+    private string? _errorMessage;
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl);
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        _isBusy = true;
+        _errorMessage = null;
+
+        try
+        {
+            var (success, error, response) = await AuthService.LoginAsync(_loginModel.Username, _loginModel.Password);
+            if (success && response is not null)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Welcome back!", $"Logged in as {response.Username} ({response.Role})");
+                Navigation.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl, forceLoad: true);
+            }
+            else
+            {
+                _errorMessage = error ?? "Invalid username or password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

@@ -1,4 +1,7 @@
 @inherits LayoutComponentBase
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject DialogService DialogService
 
 <div class="page">
     <RadzenComponents @rendermode="InteractiveServer" />
@@ -11,8 +14,21 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
-            @* <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a> *@
+        <div class="top-row px-4 d-flex align-items-center justify-content-end">
+            <AuthorizeView>
+                <Authorized>
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+                        <RadzenIcon Icon="account_circle" Style="font-size: 1.5rem; color: var(--rz-primary);" />
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;" class="mb-0">@context.User.Identity?.Name</RadzenText>
+                        <RadzenBadge BadgeStyle="@GetRoleBadgeStyle(context.User)" Text="@GetRoleText(context.User)" Variant="Variant.Filled" />
+                        <RadzenButton Icon="manage_accounts" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OpenProfileDialog" Title="User Profile" />
+                        <RadzenButton Icon="logout" ButtonStyle="ButtonStyle.Light" Variant="Variant.Outlined" Size="ButtonSize.Small" Click="@HandleLogout" Title="Sign Out" />
+                    </RadzenStack>
+                </Authorized>
+                <NotAuthorized>
+                    <RadzenButton Icon="login" Text="Sign In" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@(() => Navigation.NavigateTo("login"))" />
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
 
         <article class="content px-4">
@@ -24,5 +40,37 @@
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">??</span>
+    <span class="dismiss">&#x2715;</span>
 </div>
+
+@code {
+    private async Task OpenProfileDialog()
+    {
+        await DialogService.OpenAsync<UserProfileDialog>("User Profile",
+            null,
+            new DialogOptions { Width = "500px", CloseDialogOnOverlayClick = true });
+    }
+
+    private async Task HandleLogout()
+    {
+        if (AuthStateProvider is JwtAuthenticationStateProvider jwtProvider)
+        {
+            await jwtProvider.MarkUserAsLoggedOutAsync();
+        }
+        Navigation.NavigateTo("login", forceLoad: true);
+    }
+
+    private static string GetRoleText(System.Security.Claims.ClaimsPrincipal user)
+    {
+        if (user.IsInRole("Admin")) return "Admin";
+        if (user.IsInRole("GameManager")) return "GameManager";
+        return "User";
+    }
+
+    private static BadgeStyle GetRoleBadgeStyle(System.Security.Claims.ClaimsPrincipal user)
+    {
+        if (user.IsInRole("Admin")) return BadgeStyle.Danger;
+        if (user.IsInRole("GameManager")) return BadgeStyle.Warning;
+        return BadgeStyle.Info;
+    }
+}

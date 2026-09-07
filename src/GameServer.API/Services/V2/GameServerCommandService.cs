@@ -49,7 +49,7 @@ public sealed class GameServerCommandService(
     /// <summary>
     /// Creates a V2 GameServer.
     /// </summary>
-    public async Task<GameServerDetailDto> CreateAsync(SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto> CreateAsync(SaveGameServerRequestDto request, int? createdByUserId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -58,12 +58,12 @@ public sealed class GameServerCommandService(
         var validation = await validationService.ValidateAsync(normalizedRequest, cancellationToken).ConfigureAwait(false);
         EnsureValid(validation, nameof(request));
 
-        var created = await repository.CreateAsync(MapToModel(normalizedRequest)).ConfigureAwait(false);
+        var created = await repository.CreateAsync(MapToModel(normalizedRequest, createdByUserId: createdByUserId)).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.DeployAsync(created.ServerId, normalizedRequest.VolumeBindingLayout, cancellationToken).ConfigureAwait(false);
 
-        return await queryService.GetByServerIdAsync(created.ServerId, cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(created.ServerId, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Failed to reload created V2 GameServer.");
     }
 
@@ -89,7 +89,7 @@ public sealed class GameServerCommandService(
         var validation = await validationService.ValidateAsync(normalizedRequest, cancellationToken).ConfigureAwait(false);
         EnsureValid(validation, nameof(request));
 
-        var updated = await repository.UpdateAsync(MapToModel(normalizedRequest, existing.Id)).ConfigureAwait(false);
+        var updated = await repository.UpdateAsync(MapToModel(normalizedRequest, existing.Id, existing.CreatedByUserId)).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (existing.LastDeployedAt.HasValue || string.Equals(existing.Status, "Running", StringComparison.OrdinalIgnoreCase))
@@ -97,7 +97,7 @@ public sealed class GameServerCommandService(
             await deploymentService.UpdateDeploymentAsync(updated.ServerId, volumeBindingLayout: normalizedRequest.VolumeBindingLayout, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        return await queryService.GetByServerIdAsync(updated.ServerId, cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(updated.ServerId, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Failed to reload updated V2 GameServer.");
     }
 
@@ -110,7 +110,7 @@ public sealed class GameServerCommandService(
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.StartAsync(serverId, cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
@@ -123,7 +123,7 @@ public sealed class GameServerCommandService(
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.StopAsync(serverId, cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
@@ -136,7 +136,7 @@ public sealed class GameServerCommandService(
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.RestartAsync(serverId, cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
@@ -149,7 +149,7 @@ public sealed class GameServerCommandService(
         cancellationToken.ThrowIfCancellationRequested();
 
         await deploymentService.UpdateDeploymentAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return await queryService.GetByServerIdAsync(serverId, cancellationToken).ConfigureAwait(false)
+        return await queryService.GetByServerIdAsync(serverId, cancellationToken: cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found.");
     }
 
@@ -188,15 +188,31 @@ public sealed class GameServerCommandService(
         ArgumentNullException.ThrowIfNull(existing);
         ArgumentNullException.ThrowIfNull(request);
 
+        var reconciledSettings = request.Settings.Select(s =>
+        {
+            var existingSetting = existing.Settings.FirstOrDefault(es => string.Equals(es.SettingKey, s.SettingKey, StringComparison.OrdinalIgnoreCase));
+            if ((s.IsMasked || string.Equals(s.Value, "********", StringComparison.Ordinal)) && existingSetting is not null)
+            {
+                return s with
+                {
+                    Value = existingSetting.Value,
+                    AccessPolicy = string.IsNullOrWhiteSpace(s.AccessPolicy) ? existingSetting.AccessPolicy : s.AccessPolicy,
+                    AllowedUserIds = (s.AllowedUserIds is null || s.AllowedUserIds.Count == 0) ? existingSetting.AllowedUserIds : s.AllowedUserIds
+                };
+            }
+            return s;
+        }).ToList();
+
         return request with
         {
             ServerId = existing.ServerId,
             ServiceName = string.IsNullOrWhiteSpace(request.ServiceName) ? existing.ServiceName : request.ServiceName.Trim(),
-            Status = string.IsNullOrWhiteSpace(request.Status) ? existing.Status : request.Status.Trim()
+            Status = string.IsNullOrWhiteSpace(request.Status) ? existing.Status : request.Status.Trim(),
+            Settings = reconciledSettings
         };
     }
 
-    private static GameServerModel MapToModel(SaveGameServerRequestDto request, int id = 0)
+    private static GameServerModel MapToModel(SaveGameServerRequestDto request, int id = 0, int? createdByUserId = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -209,13 +225,16 @@ public sealed class GameServerCommandService(
             GameTypeRevisionId = request.GameTypeRevisionId,
             ServiceName = request.ServiceName ?? string.Empty,
             Status = request.Status ?? string.Empty,
+            CreatedByUserId = createdByUserId,
             Settings = request.Settings
                 .Where(setting => !string.IsNullOrWhiteSpace(setting.SettingKey))
                 .Select(setting => new GameServerSettingModel
                 {
                     Id = setting.Id,
                     SettingKey = setting.SettingKey,
-                    Value = setting.Value
+                    Value = setting.Value,
+                    AccessPolicy = string.IsNullOrWhiteSpace(setting.AccessPolicy) ? "Group" : setting.AccessPolicy,
+                    AllowedUserIds = setting.AllowedUserIds ?? []
                 })
                 .ToList(),
             Ports = request.Ports

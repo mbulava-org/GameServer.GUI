@@ -1,0 +1,72 @@
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm TItem="UpdateGroupRequest" Data="@Model" Submit="@HandleSubmit">
+    <RadzenStack Gap="1.25rem">
+        <RadzenFormField Text="Group Name" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextBox @bind-Value="@_name" Name="Name" Style="width: 100%;" />
+            </ChildContent>
+            <Helper>
+                <RadzenRequiredValidator Component="Name" Text="Group name is required" />
+            </Helper>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Description" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextArea @bind-Value="@_description" Name="Description" Rows="3" Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-3">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Save Changes" ButtonStyle="ButtonStyle.Primary" IsBusy="@_isBusy" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter]
+    public int GroupId { get; set; }
+
+    [Parameter]
+    public UpdateGroupRequest Model { get; set; } = new("", "");
+
+    private string _name = string.Empty;
+    private string? _description;
+    private bool _isBusy;
+
+    protected override void OnParametersSet()
+    {
+        _name = Model.Name;
+        _description = Model.Description;
+    }
+
+    private async Task HandleSubmit()
+    {
+        _isBusy = true;
+        try
+        {
+            var req = new UpdateGroupRequest(_name.Trim(), _description?.Trim());
+            var (success, error, group) = await AuthService.UpdateGroupAsync(GroupId, req);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Group Updated", $"Group '{_name}' updated successfully.");
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not update group.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

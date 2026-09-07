@@ -11,7 +11,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
 {
     private HttpClient CreateClient()
     {
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("GameServerApi");
         var baseUri = apiOptions.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
         client.BaseAddress = new Uri(baseUri + "/");
         return client;

@@ -1,4 +1,5 @@
 @page "/gameservers-v2/{ServerId}"
+@attribute [Authorize]
 @rendermode InteractiveServer
 @using GameServer.Web.Models.V2
 @using GameServer.Web.Components.Server
@@ -135,6 +136,7 @@
                     {
                         <div><strong>Key:</strong> <code>@server.GameTypeKey</code></div>
                     }
+                    <div><strong>Created By:</strong> @(string.IsNullOrWhiteSpace(server.CreatedByUsername) ? "System / Unknown" : server.CreatedByUsername)</div>
                     <div><strong>Service:</strong> @(string.IsNullOrWhiteSpace(server.ServiceName) ? "Not assigned" : server.ServiceName)</div>
                     <div><strong>Last Deployed:</strong> @(server.LastDeployedAt.HasValue ? FormatLocalDateTime(server.LastDeployedAt.Value) : "Never")</div>
                     <div><strong>Last Seen:</strong> @(server.LastSeenAt.HasValue ? FormatLocalDateTime(server.LastSeenAt.Value) : "Never")</div>
@@ -310,7 +312,14 @@
                                         <RadzenDataGridColumn TItem="GameServerSetting" Property="SettingKey" Title="Key" Width="220px" />
                                         <RadzenDataGridColumn TItem="GameServerSetting" Title="Value">
                                             <Template Context="setting">
-                                                @if (string.IsNullOrWhiteSpace(setting.Value))
+                                                @if (setting.IsMasked)
+                                                {
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="gameserver-detail-code">••••••••••••</code>
+                                                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Restricted" Size="BadgeSize.Small" />
+                                                    </div>
+                                                }
+                                                else if (string.IsNullOrWhiteSpace(setting.Value))
                                                 {
                                                     <span class="text-muted">(empty)</span>
                                                 }

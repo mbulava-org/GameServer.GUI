@@ -71,6 +71,7 @@ GameServer.Docker is a **comprehensive web-based management platform** for deplo
 - **[Performance Optimizations](architecture/PERFORMANCE-OPTIMIZATIONS.md)** - Performance patterns
 
 ### 📖 Feature Guides
+- **[Authentication & Authorization](guides/Authentication-And-Authorization.md)** - JWT config, roles, group boundaries, password access controls, admin screens
 - **[V2 GameType Assembly](guides/V2-GameType-Assembly-Instructions.md)** - Build a GameType end to end
 - **[V2 GameType Settings & Metadata](guides/V2-GameType-Settings-And-Metadata.md)** - Data types, enums, server variables
 - **[V2 GameType Editor Components](guides/V2-GameType-Editor-Components.md)** - Editor component breakdown
@@ -376,12 +377,12 @@ The detailed project roadmap, implemented features, and planned work are maintai
 
 High-level next items:
 
+- ✅ User authentication & RBAC (JWT, roles, groups, password scoping, admin screens)
 - [ ] Kubernetes support
 - [ ] Multi-cluster management
 - [ ] Advanced scheduling
 - [ ] Backup/restore functionality
 - [ ] Metrics & alerting
-- [ ] User authentication & RBAC
 
 ---
 
