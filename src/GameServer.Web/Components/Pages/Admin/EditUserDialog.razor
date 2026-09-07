@@ -6,50 +6,10 @@
     <RadzenStack Gap="1.25rem">
         <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: 600;">User: @Model.Username</RadzenText>
 
-        <RadzenFormField Text="Email" Variant="Variant.Outlined">
-            <ChildContent>
-                <RadzenTextBox @bind-Value="@Model.Email" Name="Email" Style="width: 100%;" />
-            </ChildContent>
-        </RadzenFormField>
-
         <RadzenFormField Text="Role" Variant="Variant.Outlined">
             <ChildContent>
                 <RadzenDropDown @bind-Value="@Model.Role" Data="@_roles" Style="width: 100%;" />
             </ChildContent>
-        </RadzenFormField>
-
-        <RadzenFormField Text="New Password (leave blank to keep current)" Variant="Variant.Outlined">
-            <ChildContent>
-                <div class="d-flex align-items-center" style="position: relative; width: 100%;">
-                    @if (_showPassword)
-                    {
-                        <RadzenTextBox @bind-Value="@Model.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
-                    }
-                    else
-                    {
-                        <RadzenPassword @bind-Value="@Model.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
-                    }
-                    <RadzenButton Icon="@(_showPassword ? "visibility_off" : "visibility")"
-                                  ButtonStyle="ButtonStyle.Light"
-                                  Variant="Variant.Text"
-                                  Size="ButtonSize.Small"
-                                  @onpointerdown="@(() => _showPassword = true)"
-                                  @onpointerup="@(() => _showPassword = false)"
-                                  @onpointerleave="@(() => _showPassword = false)"
-                                  @onpointercancel="@(() => _showPassword = false)"
-                                  @onmousedown="@(() => _showPassword = true)"
-                                  @onmouseup="@(() => _showPassword = false)"
-                                  @onmouseleave="@(() => _showPassword = false)"
-                                  @ontouchstart="@(() => _showPassword = true)"
-                                  @ontouchend="@(() => _showPassword = false)"
-                                  @ontouchcancel="@(() => _showPassword = false)"
-                                  Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
-                                  Title="Press and hold to view password" />
-                </div>
-            </ChildContent>
-            <Helper>
-                <RadzenLengthValidator Component="NewPassword" Min="6" Text="Password must be at least 6 characters" />
-            </Helper>
         </RadzenFormField>
 
         <RadzenFormField Text="Assigned Groups" Variant="Variant.Outlined">
@@ -78,7 +38,6 @@
     public IReadOnlyList<GroupModel> AvailableGroups { get; set; } = [];
 
     private readonly List<string> _roles = ["User", "GameManager", "Admin"];
-    private bool _showPassword;
     private bool _isBusy;
 
     private async Task HandleSubmit()
@@ -86,12 +45,14 @@
         _isBusy = true;
         try
         {
+            // Admin edits of another user are limited to: active flag, role, and group membership.
+            // Email and password changes are intentionally omitted here and remain the user's own responsibility.
             var req = new UpdateUserRequest(
-                Model.Email?.Trim(),
-                Model.Role,
-                Model.IsActive,
-                string.IsNullOrWhiteSpace(Model.NewPassword) ? null : Model.NewPassword,
-                Model.SelectedGroupIds?.ToList());
+                Email: null,
+                Role: Model.Role,
+                IsActive: Model.IsActive,
+                NewPassword: null,
+                GroupIds: Model.SelectedGroupIds?.ToList());
 
             var (success, error, user) = await AuthService.UpdateUserAsync(Model.Id, req);
             if (success)

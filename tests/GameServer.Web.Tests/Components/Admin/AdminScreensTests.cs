@@ -149,11 +149,13 @@ public sealed class AdminScreensTests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("User: johndoe", cut.Markup);
-            Assert.Contains("Email", cut.Markup);
             Assert.Contains("Role", cut.Markup);
-            Assert.Contains("New Password", cut.Markup);
+            Assert.Contains("Assigned Groups", cut.Markup);
             Assert.Contains("Account is active", cut.Markup);
             Assert.Contains("Save Changes", cut.Markup);
+            // Admin-edit of another user must not expose email or password fields
+            Assert.DoesNotContain("New Password", cut.Markup);
+            Assert.DoesNotContain("john@example.com", cut.Markup);
         });
     }
 

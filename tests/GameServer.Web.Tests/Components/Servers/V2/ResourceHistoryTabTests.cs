@@ -73,11 +73,12 @@ public class ResourceHistoryTabTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("CPU Usage (%)", cut.Markup);
-            Assert.Contains("Memory Usage (%)", cut.Markup);
-            Assert.Contains("Network I/O (KB/s)", cut.Markup);
-            Assert.Contains("Disk I/O (KB/s)", cut.Markup);
-            Assert.Contains("25.5%", cut.Markup);
+            Assert.Contains("CPU Usage", cut.Markup);
+            Assert.Contains("Memory Usage", cut.Markup);
+            Assert.Contains("Network Throughput", cut.Markup);
+            Assert.Contains("Disk Throughput", cut.Markup);
+            Assert.Contains("Network Aggregate", cut.Markup);
+            Assert.Contains("Disk Aggregate", cut.Markup);
             Assert.Contains("512 MB", cut.Markup);
             Assert.Contains("1 records", cut.Markup);
         });
