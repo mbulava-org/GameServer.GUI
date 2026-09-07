@@ -288,13 +288,39 @@ public sealed class GameTypeV2ApiServiceTests
         Assert.Single(result.AddedPorts);
     }
 
-    private static GameTypeV2ApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> responder)
+
+    [Fact]
+    public async Task GetListAsync_WhenAuthenticated_ShouldSendBearerToken()
     {
-        var handler = new StubHttpMessageHandler(responder);
+        // Arrange
+        string? capturedAuthHeader = null;
+        var jsRuntimeMock = new Mock<Microsoft.JSInterop.IJSRuntime>();
+        jsRuntimeMock.Setup(j => j.InvokeAsync<string?>("localStorage.getItem", It.Is<object[]>(a => (string)a[0] == "gs_auth_token")))
+            .ReturnsAsync("test-jwt-token");
+
+        var authStateProvider = new GameServer.Web.Services.Auth.JwtAuthenticationStateProvider(jsRuntimeMock.Object);
+
+        var service = CreateService(request =>
+        {
+            capturedAuthHeader = request.Headers.Authorization?.ToString();
+            return CreateJsonResponse(new List<GameTypeListItem>());
+        }, authStateProvider);
+
+        // Act
+        await service.GetListAsync(includeInactive: false);
+
+        // Assert
+        Assert.Equal("Bearer test-jwt-token", capturedAuthHeader);
+    }
+
+    private static GameTypeV2ApiService CreateService(
+        Func<HttpRequestMessage, HttpResponseMessage> responder,
+        GameServer.Web.Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null)
+    {
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory
             .Setup(factory => factory.CreateClient(It.IsAny<string>()))
-            .Returns(() => new HttpClient(handler)
+            .Returns(new HttpClient(new StubHttpMessageHandler(responder))
             {
                 BaseAddress = new Uri("http://localhost/")
             });
@@ -304,7 +330,7 @@ public sealed class GameTypeV2ApiServiceTests
             BaseUri = "http://localhost/"
         };
 
-        return new GameTypeV2ApiService(httpClientFactory.Object, options);
+        return new GameTypeV2ApiService(httpClientFactory.Object, options, authStateProvider);
     }
 
     private static HttpResponseMessage CreateJsonResponse<T>(T payload, HttpStatusCode statusCode = HttpStatusCode.OK)

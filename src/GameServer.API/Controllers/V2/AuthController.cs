@@ -27,7 +27,7 @@ public sealed class AuthController(
         }
 
         var user = await userRepository.GetByUsernameAsync(request.Username.Trim(), cancellationToken).ConfigureAwait(false);
-        if (user is null || !user.IsActive)
+        if (user is null)
         {
             logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
             return Unauthorized(new { error = "Invalid username or password." });
@@ -37,6 +37,12 @@ public sealed class AuthController(
         {
             logger.LogWarning("Invalid password attempt for username: {Username}", request.Username);
             return Unauthorized(new { error = "Invalid username or password." });
+        }
+
+        if (!user.IsActive)
+        {
+            logger.LogWarning("Login attempt for unactivated user: {Username}", request.Username);
+            return Unauthorized(new { error = "Your account is pending activation by an administrator." });
         }
 
         var groupNames = user.UserGroups.Select(ug => ug.Group.Name).ToList();
@@ -53,6 +59,43 @@ public sealed class AuthController(
             Role: user.Role,
             Groups: groupNames,
             ExpiresAtUtc: expiresAt));
+    }
+
+    [HttpPost("register")]
+    [AllowAnonymous]
+    [ProducesResponseType(201)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> Register([FromBody] RegisterRequestDto request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Username))
+        {
+            return BadRequest(new { error = "Username is required." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+        {
+            return BadRequest(new { error = "Password must be at least 6 characters long." });
+        }
+
+        var existing = await userRepository.GetByUsernameAsync(request.Username.Trim(), cancellationToken).ConfigureAwait(false);
+        if (existing is not null)
+        {
+            return BadRequest(new { error = $"Username '{request.Username}' is already taken." });
+        }
+
+        var newUser = new GameServer.API.Data.V2.UserEntity
+        {
+            Username = request.Username.Trim(),
+            Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
+            PasswordHash = passwordHasher.HashPassword(request.Password),
+            Role = "User",
+            IsActive = false // Newly registered users are inactive until an administrator activates them and assigns groups
+        };
+
+        var created = await userRepository.CreateAsync(newUser, null, cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("New user registered: '{Username}' (ID: {Id}, IsActive: false).", created.Username, created.Id);
+
+        return StatusCode(201, new { message = "Account created successfully. Your account is pending activation by an administrator before you can log in." });
     }
 
     [HttpGet("me")]

@@ -5,6 +5,7 @@ namespace GameServer.Web.Services.Auth;
 public interface IAuthApiService
 {
     Task<(bool Success, string? Error, LoginResponse? Response)> LoginAsync(string username, string password, CancellationToken cancellationToken = default);
+    Task<(bool Success, string? Error, string? Message)> RegisterAsync(string username, string? email, string password, CancellationToken cancellationToken = default);
     Task<UserProfile?> GetCurrentUserAsync(CancellationToken cancellationToken = default);
     Task<(bool Success, string? Error)> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default);
 

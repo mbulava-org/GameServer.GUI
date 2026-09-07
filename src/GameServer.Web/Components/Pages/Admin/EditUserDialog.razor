@@ -20,7 +20,32 @@
 
         <RadzenFormField Text="New Password (leave blank to keep current)" Variant="Variant.Outlined">
             <ChildContent>
-                <RadzenPassword @bind-Value="@Model.NewPassword" Name="NewPassword" Style="width: 100%;" />
+                <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                    @if (_showPassword)
+                    {
+                        <RadzenTextBox @bind-Value="@Model.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                    }
+                    else
+                    {
+                        <RadzenPassword @bind-Value="@Model.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                    }
+                    <RadzenButton Icon="@(_showPassword ? "visibility_off" : "visibility")"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Variant="Variant.Text"
+                                  Size="ButtonSize.Small"
+                                  @onpointerdown="@(() => _showPassword = true)"
+                                  @onpointerup="@(() => _showPassword = false)"
+                                  @onpointerleave="@(() => _showPassword = false)"
+                                  @onpointercancel="@(() => _showPassword = false)"
+                                  @onmousedown="@(() => _showPassword = true)"
+                                  @onmouseup="@(() => _showPassword = false)"
+                                  @onmouseleave="@(() => _showPassword = false)"
+                                  @ontouchstart="@(() => _showPassword = true)"
+                                  @ontouchend="@(() => _showPassword = false)"
+                                  @ontouchcancel="@(() => _showPassword = false)"
+                                  Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                  Title="Press and hold to view password" />
+                </div>
             </ChildContent>
             <Helper>
                 <RadzenLengthValidator Component="NewPassword" Min="6" Text="Password must be at least 6 characters" />
@@ -53,6 +78,7 @@
     public IReadOnlyList<GroupModel> AvailableGroups { get; set; } = [];
 
     private readonly List<string> _roles = ["User", "GameManager", "Admin"];
+    private bool _showPassword;
     private bool _isBusy;
 
     private async Task HandleSubmit()

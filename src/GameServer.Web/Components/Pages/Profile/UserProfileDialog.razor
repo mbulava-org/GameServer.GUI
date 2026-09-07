@@ -52,7 +52,32 @@
             <RadzenStack Gap="1rem">
                 <RadzenFormField Text="Current Password" Variant="Variant.Outlined">
                     <ChildContent>
-                        <RadzenPassword @bind-Value="@_changeModel.CurrentPassword" Name="CurrentPassword" Style="width: 100%;" />
+                        <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                            @if (_showCurrentPassword)
+                            {
+                                <RadzenTextBox @bind-Value="@_changeModel.CurrentPassword" Name="CurrentPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            else
+                            {
+                                <RadzenPassword @bind-Value="@_changeModel.CurrentPassword" Name="CurrentPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            <RadzenButton Icon="@(_showCurrentPassword ? "visibility_off" : "visibility")"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          @onpointerdown="@(() => _showCurrentPassword = true)"
+                                          @onpointerup="@(() => _showCurrentPassword = false)"
+                                          @onpointerleave="@(() => _showCurrentPassword = false)"
+                                          @onpointercancel="@(() => _showCurrentPassword = false)"
+                                          @onmousedown="@(() => _showCurrentPassword = true)"
+                                          @onmouseup="@(() => _showCurrentPassword = false)"
+                                          @onmouseleave="@(() => _showCurrentPassword = false)"
+                                          @ontouchstart="@(() => _showCurrentPassword = true)"
+                                          @ontouchend="@(() => _showCurrentPassword = false)"
+                                          @ontouchcancel="@(() => _showCurrentPassword = false)"
+                                          Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                          Title="Press and hold to view password" />
+                        </div>
                     </ChildContent>
                     <Helper>
                         <RadzenRequiredValidator Component="CurrentPassword" Text="Current password is required" />
@@ -61,7 +86,32 @@
 
                 <RadzenFormField Text="New Password" Variant="Variant.Outlined">
                     <ChildContent>
-                        <RadzenPassword @bind-Value="@_changeModel.NewPassword" Name="NewPassword" Style="width: 100%;" />
+                        <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                            @if (_showNewPassword)
+                            {
+                                <RadzenTextBox @bind-Value="@_changeModel.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            else
+                            {
+                                <RadzenPassword @bind-Value="@_changeModel.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            <RadzenButton Icon="@(_showNewPassword ? "visibility_off" : "visibility")"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          @onpointerdown="@(() => _showNewPassword = true)"
+                                          @onpointerup="@(() => _showNewPassword = false)"
+                                          @onpointerleave="@(() => _showNewPassword = false)"
+                                          @onpointercancel="@(() => _showNewPassword = false)"
+                                          @onmousedown="@(() => _showNewPassword = true)"
+                                          @onmouseup="@(() => _showNewPassword = false)"
+                                          @onmouseleave="@(() => _showNewPassword = false)"
+                                          @ontouchstart="@(() => _showNewPassword = true)"
+                                          @ontouchend="@(() => _showNewPassword = false)"
+                                          @ontouchcancel="@(() => _showNewPassword = false)"
+                                          Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                          Title="Press and hold to view password" />
+                        </div>
                     </ChildContent>
                     <Helper>
                         <RadzenRequiredValidator Component="NewPassword" Text="New password is required" />
@@ -71,7 +121,32 @@
 
                 <RadzenFormField Text="Confirm New Password" Variant="Variant.Outlined">
                     <ChildContent>
-                        <RadzenPassword @bind-Value="@_changeModel.ConfirmPassword" Name="ConfirmPassword" Style="width: 100%;" />
+                        <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                            @if (_showConfirmPassword)
+                            {
+                                <RadzenTextBox @bind-Value="@_changeModel.ConfirmPassword" Name="ConfirmPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            else
+                            {
+                                <RadzenPassword @bind-Value="@_changeModel.ConfirmPassword" Name="ConfirmPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            <RadzenButton Icon="@(_showConfirmPassword ? "visibility_off" : "visibility")"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          @onpointerdown="@(() => _showConfirmPassword = true)"
+                                          @onpointerup="@(() => _showConfirmPassword = false)"
+                                          @onpointerleave="@(() => _showConfirmPassword = false)"
+                                          @onpointercancel="@(() => _showConfirmPassword = false)"
+                                          @onmousedown="@(() => _showConfirmPassword = true)"
+                                          @onmouseup="@(() => _showConfirmPassword = false)"
+                                          @onmouseleave="@(() => _showConfirmPassword = false)"
+                                          @ontouchstart="@(() => _showConfirmPassword = true)"
+                                          @ontouchend="@(() => _showConfirmPassword = false)"
+                                          @ontouchcancel="@(() => _showConfirmPassword = false)"
+                                          Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                          Title="Press and hold to view password" />
+                        </div>
                     </ChildContent>
                     <Helper>
                         <RadzenRequiredValidator Component="ConfirmPassword" Text="Please confirm password" />
@@ -91,6 +166,9 @@
 @code {
     private UserProfile? _profile;
     private bool _isBusy;
+    private bool _showCurrentPassword;
+    private bool _showNewPassword;
+    private bool _showConfirmPassword;
 
     public class ChangePasswordViewModel
     {

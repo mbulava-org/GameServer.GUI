@@ -2,6 +2,8 @@ namespace GameServer.API.Dtos.V2;
 
 public record LoginRequestDto(string Username, string Password);
 
+public record RegisterRequestDto(string Username, string? Email, string Password);
+
 public record LoginResponseDto(
     string Token,
     int UserId,

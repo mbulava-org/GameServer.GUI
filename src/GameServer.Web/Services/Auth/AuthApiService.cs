@@ -60,6 +60,32 @@ public class AuthApiService(
         }
     }
 
+    public async Task<(bool Success, string? Error, string? Message)> RegisterAsync(string username, string? email, string password, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var client = await CreateClientAsync();
+            var response = await client.PostAsJsonAsync("api/v2/auth/register", new { Username = username, Email = email, Password = password }, JsonOptions, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var successObj = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, cancellationToken).ConfigureAwait(false);
+                var message = successObj.TryGetProperty("message", out var msg)
+                    ? msg.GetString()
+                    : "Account created successfully. Your account is pending activation by an administrator before you can log in.";
+                return (true, null, message);
+            }
+
+            var errorObj = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, cancellationToken).ConfigureAwait(false);
+            var errorMsg = errorObj.TryGetProperty("error", out var err) ? err.GetString() : "Could not complete registration.";
+            return (false, errorMsg, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error during registration for user {Username}", username);
+            return (false, "Could not connect to authentication service.", null);
+        }
+    }
+
     public async Task<UserProfile?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
     {
         try

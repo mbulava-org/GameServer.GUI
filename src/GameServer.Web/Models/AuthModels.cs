@@ -52,7 +52,8 @@ public record CreateUserRequest(
     string? Email,
     string Password,
     string Role,
-    IReadOnlyList<int>? GroupIds);
+    IReadOnlyList<int>? GroupIds,
+    bool IsActive = true);
 
 public record UpdateUserRequest(
     string? Email,

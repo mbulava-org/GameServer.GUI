@@ -78,7 +78,7 @@ public sealed class UsersController(
             Email = request.Email?.Trim(),
             PasswordHash = passwordHash,
             Role = role,
-            IsActive = true
+            IsActive = request.IsActive ?? true
         };
 
         var created = await userRepository.CreateAsync(newUser, request.GroupIds, cancellationToken).ConfigureAwait(false);

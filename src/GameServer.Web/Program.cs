@@ -78,7 +78,12 @@ namespace GameServer.Web
 
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
-                builder.Services.AddAuthentication();
+                builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
+                    .AddCookie(options =>
+                    {
+                        options.LoginPath = "/login";
+                        options.AccessDeniedPath = "/login";
+                    });
                 builder.Services.AddAuthorizationCore();
                 builder.Services.AddCascadingAuthenticationState();
                 builder.Services.AddScoped<Services.Auth.JwtAuthenticationStateProvider>();

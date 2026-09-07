@@ -206,6 +206,7 @@
         public string? Email { get; set; }
         public string Password { get; set; } = string.Empty;
         public string Role { get; set; } = "User";
+        public bool IsActive { get; set; } = true;
         public IEnumerable<int> SelectedGroupIds { get; set; } = new List<int>();
     }
 

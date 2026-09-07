@@ -31,12 +31,18 @@
                                       Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
                     </Authorized>
                     <NotAuthorized>
-                        <RadzenButton Text="Sign In" 
-                                      Icon="login" 
-                                      ButtonStyle="ButtonStyle.Primary" 
-                                      Size="ButtonSize.Large"
-                                      Path="/login"
-                                      Click='@(() => Navigation.NavigateTo("/login"))' />
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" Style="display: inline-flex;">
+                            <RadzenButton Text="Sign In" 
+                                          Icon="login" 
+                                          ButtonStyle="ButtonStyle.Primary" 
+                                          Size="ButtonSize.Large" 
+                                          Click='@(() => Navigation.NavigateTo("/login"))' />
+                            <RadzenButton Text="Create Account" 
+                                          Icon="person_add" 
+                                          ButtonStyle="ButtonStyle.Success" 
+                                          Size="ButtonSize.Large" 
+                                          Click='@(() => Navigation.NavigateTo("/login?tab=register"))' />
+                        </RadzenStack>
                     </NotAuthorized>
                 </AuthorizeView>
             </div>
@@ -228,12 +234,18 @@
                                               Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
                             </Authorized>
                             <NotAuthorized>
-                                <RadzenButton Text="Sign In to Get Started" 
-                                              Icon="login" 
-                                              ButtonStyle="ButtonStyle.Success" 
-                                              Size="ButtonSize.Large"
-                                              Path="/login"
-                                              Click='@(() => Navigation.NavigateTo("/login"))' />
+                                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                    <RadzenButton Text="Sign In" 
+                                                  Icon="login" 
+                                                  ButtonStyle="ButtonStyle.Primary" 
+                                                  Size="ButtonSize.Large" 
+                                                  Click='@(() => Navigation.NavigateTo("/login"))' />
+                                    <RadzenButton Text="Create Account" 
+                                                  Icon="person_add" 
+                                                  ButtonStyle="ButtonStyle.Success" 
+                                                  Size="ButtonSize.Large" 
+                                                  Click='@(() => Navigation.NavigateTo("/login?tab=register"))' />
+                                </RadzenStack>
                             </NotAuthorized>
                         </AuthorizeView>
                     </div>
