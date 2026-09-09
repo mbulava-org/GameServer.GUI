@@ -187,4 +187,75 @@ public class ContainerServiceTests
         Assert.Equal(0.0, result.Cpu.UsagePercent);
         Assert.Equal((ulong)0, result.Memory.UsageBytes);
     }
+
+    [Fact]
+    public async Task SaveFileContentTextAsync_ExtractsArchiveToParentDirectory()
+    {
+        var containerId = "cnt-save-1";
+        var filePath = "/home/steam/server/config.json";
+        CopyToContainerParameters? capturedParams = null;
+
+        _mockContainerOperations
+            .Setup(x => x.ExtractArchiveToContainerAsync(
+                containerId,
+                It.IsAny<CopyToContainerParameters>(),
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, CopyToContainerParameters, Stream, CancellationToken>(
+                (id, p, s, t) => capturedParams = p)
+            .Returns(Task.CompletedTask);
+
+        await _service.SaveFileContentTextAsync(containerId, filePath, "{\"key\":\"value\"}", CancellationToken.None);
+
+        Assert.NotNull(capturedParams);
+        Assert.Equal("/home/steam/server", capturedParams.Path);
+    }
+
+    [Fact]
+    public async Task UploadFileAsync_ExtractsArchiveToTargetDirectory()
+    {
+        var containerId = "cnt-upload-1";
+        var dirPath = "/home/steam/server/mods";
+        var fileName = "mod.dll";
+        using var stream = new MemoryStream([1, 2, 3]);
+        CopyToContainerParameters? capturedParams = null;
+
+        _mockContainerOperations
+            .Setup(x => x.ExtractArchiveToContainerAsync(
+                containerId,
+                It.IsAny<CopyToContainerParameters>(),
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, CopyToContainerParameters, Stream, CancellationToken>(
+                (id, p, s, t) => capturedParams = p)
+            .Returns(Task.CompletedTask);
+
+        await _service.UploadFileAsync(containerId, dirPath, fileName, stream, CancellationToken.None);
+
+        Assert.NotNull(capturedParams);
+        Assert.Equal("/home/steam/server/mods", capturedParams.Path);
+    }
+
+    [Fact]
+    public async Task CreateDirectoryAsync_ExtractsArchiveToParentDirectory()
+    {
+        var containerId = "cnt-mkdir-1";
+        var dirPath = "/home/steam/server/BepInEx/plugins";
+        CopyToContainerParameters? capturedParams = null;
+
+        _mockContainerOperations
+            .Setup(x => x.ExtractArchiveToContainerAsync(
+                containerId,
+                It.IsAny<CopyToContainerParameters>(),
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, CopyToContainerParameters, Stream, CancellationToken>(
+                (id, p, s, t) => capturedParams = p)
+            .Returns(Task.CompletedTask);
+
+        await _service.CreateDirectoryAsync(containerId, dirPath, CancellationToken.None);
+
+        Assert.NotNull(capturedParams);
+        Assert.Equal("/home/steam/server/BepInEx", capturedParams.Path);
+    }
 }

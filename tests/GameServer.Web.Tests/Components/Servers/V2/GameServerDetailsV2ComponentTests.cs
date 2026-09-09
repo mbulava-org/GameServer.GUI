@@ -31,6 +31,7 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         Services.AddSingleton<DialogService>();
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton(serverApi.Object);
         Services.AddSingleton(gameTypeApi.Object);
         Services.AddSingleton(thumbnailCache.Object);

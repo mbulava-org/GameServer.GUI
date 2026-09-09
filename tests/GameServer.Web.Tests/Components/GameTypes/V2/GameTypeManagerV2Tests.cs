@@ -105,6 +105,7 @@ public sealed class GameTypeManagerV2Tests : BunitContext
         Services.AddTestAuthServices("admin", "Admin");
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton(CreateApiService(request => responder(request, deletedKeys)));
     }
 

@@ -68,8 +68,8 @@
                         <h2 class="mb-0 fw-bold">@((latestUsage?.CpuUsagePercent ?? 0).ToString("F1"))</h2>
                         <span class="text-muted fs-5">%</span>
                     </div>
-                    <RadzenProgressBar Value="@(Math.Clamp(latestUsage?.CpuUsagePercent ?? 0, 0, 100))"
-                                       Max="100"
+                    <RadzenProgressBar Value="@(Math.Clamp(latestUsage?.CpuUsagePercent ?? 0, 0, GetLiveCpuMax()))"
+                                       Max="@GetLiveCpuMax()"
                                        ShowValue="false"
                                        ProgressBarStyle="@GetCpuProgressStyle(latestUsage?.CpuUsagePercent ?? 0)"
                                        Style="height: 8px;" />
@@ -271,13 +271,24 @@
         });
     }
 
-    private static ProgressBarStyle GetCpuProgressStyle(double percent) =>
-        percent switch
+    private double GetLiveCpuMax()
+    {
+        var cpu = latestUsage?.CpuUsagePercent ?? 0;
+        if (cpu <= 100.0) return 100.0;
+        return Math.Ceiling(cpu / 100.0) * 100.0;
+    }
+
+    private ProgressBarStyle GetCpuProgressStyle(double percent)
+    {
+        var max = GetLiveCpuMax();
+        var relative = max > 0 ? (percent / max) * 100.0 : percent;
+        return relative switch
         {
             > 85 => ProgressBarStyle.Danger,
             > 65 => ProgressBarStyle.Warning,
             _ => ProgressBarStyle.Primary
         };
+    }
 
     private static ProgressBarStyle GetMemoryProgressStyle(double percent) =>
         percent switch

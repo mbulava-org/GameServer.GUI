@@ -2,6 +2,7 @@ using Bunit;
 using GameServer.Web.Components.Pages.Admin;
 using GameServer.Web.Models;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.Auth;
 using GameServer.Web.Services.V2;
 using GameServer.Web.Tests.Helpers;
@@ -24,6 +25,7 @@ public sealed class AdminScreensTests : BunitContext
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();
         Services.AddSingleton<ContextMenuService>();
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton(_mockAuthApi.Object);
         Services.AddSingleton(_mockServerApi.Object);
     }

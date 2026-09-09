@@ -272,6 +272,8 @@ public sealed class GameServerPagesV2Tests : BunitContext
         Services.AddSingleton(extensionResolver.Object);
 
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<DialogService>();
+        Services.AddSingleton<TooltipService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IPublicIpService>(new StubPublicIpService());
         Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();

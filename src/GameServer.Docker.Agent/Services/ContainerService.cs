@@ -781,7 +781,7 @@ namespace GameServer.Docker.Agent.Services
             tarMs.Position = 0;
             await _dockerClient.Containers.ExtractArchiveToContainerAsync(
                 containerId,
-                new CopyToContainerParameters { AllowOverwriteDirWithFile = true },
+                new CopyToContainerParameters { AllowOverwriteDirWithFile = true, Path = parentDir },
                 tarMs,
                 cancellationToken);
 
@@ -819,7 +819,7 @@ namespace GameServer.Docker.Agent.Services
             tarMs.Position = 0;
             await _dockerClient.Containers.ExtractArchiveToContainerAsync(
                 containerId,
-                new CopyToContainerParameters { AllowOverwriteDirWithFile = true },
+                new CopyToContainerParameters { AllowOverwriteDirWithFile = true, Path = normalizedDir },
                 tarMs,
                 cancellationToken);
 
@@ -850,7 +850,7 @@ namespace GameServer.Docker.Agent.Services
             tarMs.Position = 0;
             await _dockerClient.Containers.ExtractArchiveToContainerAsync(
                 containerId,
-                new CopyToContainerParameters { AllowOverwriteDirWithFile = true },
+                new CopyToContainerParameters { AllowOverwriteDirWithFile = true, Path = parentDir },
                 tarMs,
                 cancellationToken);
 

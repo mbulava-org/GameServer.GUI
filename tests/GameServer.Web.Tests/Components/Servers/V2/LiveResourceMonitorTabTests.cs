@@ -3,6 +3,7 @@ using GameServer.API.Client.Interfaces;
 using GameServer.Web.Components.Server;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,6 +21,7 @@ public class LiveResourceMonitorTabTests : BunitContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton<ILogger<LiveResourceMonitorTab>>(NullLogger<LiveResourceMonitorTab>.Instance);
         Services.AddSingleton(Options.Create(new GameServerDockerApi { BaseUri = "http://localhost:5164" }));
     }
@@ -45,7 +47,23 @@ public class LiveResourceMonitorTabTests : BunitContext
             .Add(p => p.AutoConnect, true)
             .Add(p => p.Client, mockClient.Object));
 
-        var update = new ServerResourceUsage
+        var update1 = new ServerResourceUsage
+        {
+            ServerId = "srv-1",
+            Timestamp = DateTime.UtcNow.AddSeconds(-1),
+            CpuUsagePercent = 20.0,
+            MemoryUsageBytes = 1024 * 1024 * 512,
+            MemoryLimitBytes = 1024 * 1024 * 1024,
+            MemoryUsagePercent = 50.0,
+            NetworkRxBytes = 0,
+            NetworkTxBytes = 0,
+            BlockReadBytes = 0,
+            BlockWriteBytes = 0,
+            Replicas = 1,
+            HealthyReplicas = 1
+        };
+
+        var update2 = new ServerResourceUsage
         {
             ServerId = "srv-1",
             Timestamp = DateTime.UtcNow,
@@ -61,7 +79,8 @@ public class LiveResourceMonitorTabTests : BunitContext
             HealthyReplicas = 1
         };
 
-        mockClient.Raise(m => m.ResourceUpdateReceived += null, mockClient.Object, update);
+        mockClient.Raise(m => m.ResourceUpdateReceived += null, mockClient.Object, update1);
+        mockClient.Raise(m => m.ResourceUpdateReceived += null, mockClient.Object, update2);
 
         cut.WaitForAssertion(() =>
         {
@@ -70,6 +89,39 @@ public class LiveResourceMonitorTabTests : BunitContext
             Assert.Contains("1 GB", cut.Markup);
             Assert.Contains("100 KB", cut.Markup);
             Assert.Contains("50 KB", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void LiveResourceMonitorTab_WhenCpuExceeds100Percent_RendersCorrectly()
+    {
+        var mockClient = new Mock<IResourceMonitoringClient>();
+        var cut = Render<LiveResourceMonitorTab>(parameters => parameters
+            .Add(p => p.ServerId, "srv-1")
+            .Add(p => p.AutoConnect, true)
+            .Add(p => p.Client, mockClient.Object));
+
+        var update = new ServerResourceUsage
+        {
+            ServerId = "srv-1",
+            Timestamp = DateTime.UtcNow,
+            CpuUsagePercent = 350.0,
+            MemoryUsageBytes = 1024 * 1024 * 512,
+            MemoryLimitBytes = 1024 * 1024 * 1024,
+            MemoryUsagePercent = 50.0,
+            NetworkRxBytes = 0,
+            NetworkTxBytes = 0,
+            BlockReadBytes = 0,
+            BlockWriteBytes = 0,
+            Replicas = 1,
+            HealthyReplicas = 1
+        };
+
+        mockClient.Raise(m => m.ResourceUpdateReceived += null, mockClient.Object, update);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("350.0", cut.Markup);
         });
     }
 }

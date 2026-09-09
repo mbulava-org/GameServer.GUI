@@ -26,6 +26,7 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
 
         // GameTypeDetailsV2 injects MountTypeConfigApiService, so it must always be resolvable.
         Services.AddSingleton(CreateMountTypeConfigApiService());
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
     }
 
     [Fact]

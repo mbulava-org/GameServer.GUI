@@ -42,7 +42,30 @@ public sealed class GameServerFilesService(
         }
 
         var files = await response.Content.ReadFromJsonAsync<List<FileItemDto>>(cancellationToken: cancellationToken).ConfigureAwait(false);
-        return files ?? [];
+        if (files is null or { Count: 0 })
+        {
+            return [];
+        }
+
+        var normalizedVolume = (volumeContainerPath ?? "/").Replace('\\', '/').TrimEnd('/');
+        return files.Select(f =>
+        {
+            var p = (f.Path ?? string.Empty).Replace('\\', '/');
+            if (!string.IsNullOrEmpty(normalizedVolume) && p.StartsWith(normalizedVolume + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                p = p[(normalizedVolume.Length + 1)..];
+            }
+            else if (!string.IsNullOrEmpty(normalizedVolume) && p.StartsWith(normalizedVolume, StringComparison.OrdinalIgnoreCase))
+            {
+                p = p[normalizedVolume.Length..].TrimStart('/');
+            }
+            else
+            {
+                p = p.TrimStart('/');
+            }
+
+            return f with { Path = p };
+        }).ToList();
     }
 
     public async Task<(Stream Stream, string ContentType, string FileName)> GetFileStreamAsync(
@@ -264,7 +287,7 @@ public sealed class GameServerFilesService(
         return (fallbackAgent, null);
     }
 
-    private static string CombineContainerPath(string volumeContainerPath, string? subPath)
+    public static string CombineContainerPath(string volumeContainerPath, string? subPath)
     {
         var normalizedVolume = (volumeContainerPath ?? "/").Replace('\\', '/').TrimEnd('/');
         if (!normalizedVolume.StartsWith('/'))
@@ -278,6 +301,17 @@ public sealed class GameServerFilesService(
         }
 
         var normalizedSub = subPath.Replace('\\', '/').Trim('/');
+        var volumeWithoutSlash = normalizedVolume.TrimStart('/');
+
+        if (normalizedSub.Equals(volumeWithoutSlash, StringComparison.OrdinalIgnoreCase))
+        {
+            return normalizedVolume;
+        }
+        if (normalizedSub.StartsWith(volumeWithoutSlash + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            return "/" + normalizedSub;
+        }
+
         return $"{normalizedVolume}/{normalizedSub}";
     }
 }

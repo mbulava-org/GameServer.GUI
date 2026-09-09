@@ -94,8 +94,62 @@ public class GameServerFilesServiceTests
 
         Assert.NotNull(items);
         Assert.Equal(2, items.Count);
-        Assert.Contains(items, i => i.Name == "server.properties");
-        Assert.Contains(items, i => i.Name == "worlds" && i.IsDirectory);
+        var propItem = Assert.Single(items, i => i.Name == "server.properties");
+        Assert.Equal("server.properties", propItem.Path);
+        var worldItem = Assert.Single(items, i => i.Name == "worlds" && i.IsDirectory);
+        Assert.Equal("worlds", worldItem.Path);
+    }
+
+    [Fact]
+    public async Task ListFilesAsync_WhenInSubfolder_RelativizesPathsAgainstVolumeRoot()
+    {
+        const string serverId = "srv-123";
+        const string containerId = "cnt-123";
+        const string agentUrl = "http://node1:5000";
+        SetupActiveServer(serverId, containerId, agentUrl);
+
+        var expectedFiles = new List<FileItemDto>
+        {
+            new() { Name = "world1.db", Path = "/home/steam/server/worlds/world1.db", IsDirectory = false, Size = 2048 },
+            new() { Name = "backup", Path = "/home/steam/server/worlds/backup", IsDirectory = true }
+        };
+
+        _httpHandlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Get && req.RequestUri!.ToString().Contains("/containers/cnt-123/files")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(JsonSerializer.Serialize(expectedFiles))
+            });
+
+        var items = await _service.ListFilesAsync(serverId, "/home/steam/server", "worlds");
+
+        Assert.NotNull(items);
+        Assert.Equal(2, items.Count);
+        var dbItem = Assert.Single(items, i => i.Name == "world1.db");
+        Assert.Equal("worlds/world1.db", dbItem.Path);
+        var backupItem = Assert.Single(items, i => i.Name == "backup");
+        Assert.Equal("worlds/backup", backupItem.Path);
+    }
+
+    [Theory]
+    [InlineData("/data", null, "/data")]
+    [InlineData("/data", "", "/data")]
+    [InlineData("/data", "server.properties", "/data/server.properties")]
+    [InlineData("/data", "worlds/world1", "/data/worlds/world1")]
+    [InlineData("/data", "/data/worlds/world1", "/data/worlds/world1")]
+    [InlineData("/data", "data/worlds/world1", "/data/worlds/world1")]
+    [InlineData("/data", "/data", "/data")]
+    [InlineData("/home/steam/aska_server", "BepInEx", "/home/steam/aska_server/BepInEx")]
+    [InlineData("/home/steam/aska_server", "home/steam/aska_server/BepInEx", "/home/steam/aska_server/BepInEx")]
+    [InlineData("/home/steam/aska_server", "/home/steam/aska_server/BepInEx/core", "/home/steam/aska_server/BepInEx/core")]
+    public void CombineContainerPath_HandlesVariousSubpathsCorrectly(string volumePath, string? subPath, string expected)
+    {
+        var result = GameServerFilesService.CombineContainerPath(volumePath, subPath);
+        Assert.Equal(expected, result);
     }
 
     [Fact]

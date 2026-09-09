@@ -98,7 +98,7 @@
                                           HeaderColor="var(--rz-primary)"
                                           RightBadge="@(GetLatestCpu() + "%")"
                                           RightBadgeCss="bg-primary-subtle text-primary"
-                                          MaxAxisLabel="100%"
+                                          MaxAxisLabel="@GetCpuMaxAxisLabel()"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
                                 <RadzenAreaSeries Data="@chartPoints"
@@ -118,7 +118,7 @@
                                 <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
                                     <RadzenGridLines Visible="true" />
                                 </RadzenCategoryAxis>
-                                            <RadzenValueAxis Min="0" Max="100" Step="25" Formatter="@FormatBlank">
+                                            <RadzenValueAxis Min="0" Max="@GetCpuAxisMax()" Step="@GetCpuAxisStep()" Formatter="@FormatBlank">
                                                 <RadzenGridLines Visible="true" />
                                             </RadzenValueAxis>
                                             <RadzenLegend Visible="false" />
@@ -588,6 +588,18 @@
         if (!chartPoints.Any()) return "0";
         return chartPoints.Last().CpuPercent.ToString("F1");
     }
+
+    private double GetCpuAxisMax()
+    {
+        if (!chartPoints.Any()) return 100.0;
+        var maxCpu = chartPoints.Max(c => c.CpuPercent);
+        if (maxCpu <= 100.0) return 100.0;
+        return Math.Ceiling(maxCpu / 100.0) * 100.0;
+    }
+
+    private double GetCpuAxisStep() => GetCpuAxisMax() / 4.0;
+
+    private string GetCpuMaxAxisLabel() => $"{GetCpuAxisMax():0}%";
 
     private string GetLatestNetRxKBps() => chartPoints.LastOrDefault()?.NetworkRxKBps.ToString("F1") ?? "0";
     private string GetLatestNetTxKBps() => chartPoints.LastOrDefault()?.NetworkTxKBps.ToString("F1") ?? "0";
