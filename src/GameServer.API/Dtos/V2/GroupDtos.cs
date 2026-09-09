@@ -46,3 +46,20 @@ public record SetGroupServersRequestDto(
 public record ServerGroupAssignmentDto(
     string ServerId,
     string AccessLevel);
+
+/// <summary>
+/// A single row in the "Manage group access" dialog shown on the game server details page.
+/// One row per group the current user belongs to.
+/// </summary>
+public record ServerGroupAccessRowDto(
+    int GroupId,
+    string GroupName,
+    string? Description,
+    string AccessLevel); // None, View, Edit
+
+public record ServerGroupAccessAssignmentDto(
+    int GroupId,
+    string AccessLevel); // None, View, Edit
+
+public record SetServerGroupAccessRequestDto(
+    IReadOnlyList<ServerGroupAccessAssignmentDto> Groups);

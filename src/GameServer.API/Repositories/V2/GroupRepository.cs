@@ -188,6 +188,30 @@ public class GroupRepository(GameServerV2DbContext context, ILogger<GroupReposit
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task RemoveServerAccessAsync(int groupId, string serverId, CancellationToken cancellationToken = default)
+    {
+        var gameServer = await context.GameServers
+            .FirstOrDefaultAsync(gs => gs.ServerId == serverId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (gameServer is null)
+        {
+            return;
+        }
+
+        var existing = await context.GameServerGroups
+            .FirstOrDefaultAsync(sg => sg.GroupId == groupId && sg.GameServerId == gameServer.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
+        {
+            return;
+        }
+
+        context.GameServerGroups.Remove(existing);
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<int>> GetUserGroupIdsAsync(int userId, CancellationToken cancellationToken = default)
     {
         return await context.UserGroups

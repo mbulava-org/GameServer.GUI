@@ -257,3 +257,18 @@ public sealed record GameServerResourceHistoryItem
     public string? ContainerId { get; init; }
 }
 
+public sealed record ServerGroupAccessRow
+{
+    public int GroupId { get; init; }
+    public string GroupName { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public string AccessLevel { get; set; } = "None"; // None, View, Edit
+}
+
+public sealed record ServerGroupAccessAssignment(
+    int GroupId,
+    string AccessLevel);
+
+public sealed record SetServerGroupAccessRequest(
+    IReadOnlyList<ServerGroupAccessAssignment> Groups);
+

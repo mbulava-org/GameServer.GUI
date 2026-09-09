@@ -18,6 +18,8 @@
 @inject IJSRuntime JSRuntime
 @inject Services.V2.IGameTypeExtensionResolver GameTypeExtensionResolver
 @inject Services.IUserTimeZoneService TimeZoneService
+@inject Services.Auth.IAuthApiService AuthApi
+@inject DialogService DialogService
 
 <PageTitle>@(server?.Name ?? "Game Server")</PageTitle>
 
@@ -99,6 +101,14 @@
                               Icon="edit"
                               ButtonStyle="ButtonStyle.Primary"
                               Click='@(() => Navigation.NavigateTo($"/gameservers-v2/{Uri.EscapeDataString(ServerId)}/edit"))' />
+                @if (canManageGroupAccess)
+                {
+                    <RadzenButton Text="Group Access"
+                                  Icon="groups"
+                                  ButtonStyle="ButtonStyle.Secondary"
+                                  Click="@OpenGroupAccessDialogAsync"
+                                  title="Manage which of your groups can access this server" />
+                }
                 <RadzenButton Text="Delete"
                               Icon="delete"
                               ButtonStyle="ButtonStyle.Danger"
@@ -548,6 +558,50 @@
 
     private string? detectedPublicIp;
 
+    private bool canManageGroupAccess;
+
+    private async Task RefreshCanManageGroupAccessAsync()
+    {
+        try
+        {
+            if (server is null)
+            {
+                canManageGroupAccess = false;
+                return;
+            }
+
+            var currentUser = await AuthApi.GetCurrentUserAsync();
+            if (currentUser is null)
+            {
+                canManageGroupAccess = false;
+                return;
+            }
+
+            var isAdmin = string.Equals(currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase);
+            var isCreator = server.CreatedByUserId.HasValue && server.CreatedByUserId.Value == currentUser.Id;
+            canManageGroupAccess = isAdmin || isCreator;
+        }
+        catch
+        {
+            canManageGroupAccess = false;
+        }
+    }
+
+    private async Task OpenGroupAccessDialogAsync()
+    {
+        if (server is null)
+        {
+            return;
+        }
+
+        await DialogService.OpenAsync<ServerGroupAccessDialog>($"Group Access - {server.Name}",
+            new Dictionary<string, object?>
+            {
+                { "ServerId", ServerId },
+                { "ServerName", server.Name }
+            },
+            new DialogOptions { Width = "640px", CloseDialogOnOverlayClick = false });
+    }
     private string ResolvedPublicIp
     {
         get
@@ -738,6 +792,8 @@
         {
             isLoading = false;
         }
+
+        await RefreshCanManageGroupAccessAsync();
     }
 
     private async Task RunValidationInBackgroundAsync()

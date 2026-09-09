@@ -403,4 +403,159 @@ public sealed class GameServersController(
 
         return NotFound();
     }
+
+    /// <summary>
+    /// Gets the per-group access for a specific server, limited to the groups the current user belongs to.
+    /// Only the server's creator (or an admin) may call this endpoint.
+    /// </summary>
+    [HttpGet("{serverId}/group-access")]
+    [ProducesResponseType(200, Type = typeof(IReadOnlyList<ServerGroupAccessRowDto>))]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<IReadOnlyList<ServerGroupAccessRowDto>>> GetGroupAccess(
+        string serverId,
+        CancellationToken cancellationToken = default)
+    {
+        if (groupRepository is null)
+        {
+            return StatusCode(StatusCodes.Status501NotImplemented);
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
+        if (server is null)
+        {
+            return NotFound();
+        }
+
+        var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(currentUserIdClaim, out var currentUserId))
+        {
+            return Forbid();
+        }
+
+        var isAdmin = User.IsInRole("Admin");
+        var isCreator = server.CreatedByUserId.HasValue && server.CreatedByUserId.Value == currentUserId;
+        if (!isAdmin && !isCreator)
+        {
+            return Forbid();
+        }
+
+        var userGroupIds = await groupRepository.GetUserGroupIdsAsync(currentUserId, cancellationToken).ConfigureAwait(false);
+        if (userGroupIds.Count == 0)
+        {
+            return Ok(Array.Empty<ServerGroupAccessRowDto>());
+        }
+
+        var rows = new List<ServerGroupAccessRowDto>(userGroupIds.Count);
+        foreach (var groupId in userGroupIds)
+        {
+            var group = await groupRepository.GetByIdAsync(groupId, cancellationToken).ConfigureAwait(false);
+            if (group is null)
+            {
+                continue;
+            }
+
+            var existing = group.ServerGroups.FirstOrDefault(sg => sg.GameServer.ServerId == serverId);
+            rows.Add(new ServerGroupAccessRowDto(
+                GroupId: group.Id,
+                GroupName: group.Name,
+                Description: group.Description,
+                AccessLevel: existing?.AccessLevel ?? "None"));
+        }
+
+        return Ok(rows);
+    }
+
+    /// <summary>
+    /// Sets the per-group access for a specific server for a subset of the current user's groups.
+    /// Only the server's creator (or an admin) may call this endpoint.
+    /// </summary>
+    [HttpPut("{serverId}/group-access")]
+    [ProducesResponseType(200, Type = typeof(IReadOnlyList<ServerGroupAccessRowDto>))]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<IReadOnlyList<ServerGroupAccessRowDto>>> SetGroupAccess(
+        string serverId,
+        [FromBody] SetServerGroupAccessRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (groupRepository is null)
+        {
+            return StatusCode(StatusCodes.Status501NotImplemented);
+        }
+
+        if (request is null || request.Groups is null)
+        {
+            return BadRequest(new { error = "Group assignments are required." });
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
+        if (server is null)
+        {
+            return NotFound();
+        }
+
+        var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(currentUserIdClaim, out var currentUserId))
+        {
+            return Forbid();
+        }
+
+        var isAdmin = User.IsInRole("Admin");
+        var isCreator = server.CreatedByUserId.HasValue && server.CreatedByUserId.Value == currentUserId;
+        if (!isAdmin && !isCreator)
+        {
+            return Forbid();
+        }
+
+        // Defense-in-depth: only allow modifying groups the caller is a member of.
+        var userGroupIds = (await groupRepository.GetUserGroupIdsAsync(currentUserId, cancellationToken).ConfigureAwait(false)).ToHashSet();
+
+        foreach (var assignment in request.Groups)
+        {
+            if (!userGroupIds.Contains(assignment.GroupId))
+            {
+                return Forbid();
+            }
+
+            var level = assignment.AccessLevel?.Trim() ?? "None";
+            if (string.Equals(level, "None", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(level))
+            {
+                await groupRepository.RemoveServerAccessAsync(assignment.GroupId, serverId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (string.Equals(level, "View", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(level, "Edit", StringComparison.OrdinalIgnoreCase))
+            {
+                await groupRepository.AddOrUpdateServerAccessAsync(assignment.GroupId, serverId, level, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                return BadRequest(new { error = $"Invalid access level '{assignment.AccessLevel}'." });
+            }
+        }
+
+        logger.LogInformation("User {UserId} updated group access for server {ServerId} ({Count} group(s)).",
+            currentUserId, serverId, request.Groups.Count);
+
+        // Return refreshed rows so the caller can update its UI.
+        var refreshed = new List<ServerGroupAccessRowDto>();
+        foreach (var groupId in userGroupIds)
+        {
+            var group = await groupRepository.GetByIdAsync(groupId, cancellationToken).ConfigureAwait(false);
+            if (group is null)
+            {
+                continue;
+            }
+
+            var existing = group.ServerGroups.FirstOrDefault(sg => sg.GameServer.ServerId == serverId);
+            refreshed.Add(new ServerGroupAccessRowDto(
+                GroupId: group.Id,
+                GroupName: group.Name,
+                Description: group.Description,
+                AccessLevel: existing?.AccessLevel ?? "None"));
+        }
+
+        return Ok(refreshed);
+    }
 }

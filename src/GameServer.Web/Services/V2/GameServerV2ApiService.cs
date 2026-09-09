@@ -217,6 +217,35 @@ public sealed class GameServerV2ApiService(
             ?? [];
     }
 
+    /// <summary>
+    /// Gets per-group access rows for a server, scoped to the current user's groups.
+    /// </summary>
+    public async Task<IReadOnlyList<ServerGroupAccessRow>> GetServerGroupAccessAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.GetAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/group-access", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<ServerGroupAccessRow>>(cancellationToken) ?? [];
+    }
+
+    /// <summary>
+    /// Sets per-group access for a server, scoped to the current user's groups.
+    /// </summary>
+    public async Task<IReadOnlyList<ServerGroupAccessRow>> SetServerGroupAccessAsync(string serverId, SetServerGroupAccessRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.PutAsJsonAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/group-access", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<ServerGroupAccessRow>>(cancellationToken) ?? [];
+    }
+
     private async Task<HttpClient> CreateClientAsync()
     {
         var baseUri = apiOptions.BaseUri;
