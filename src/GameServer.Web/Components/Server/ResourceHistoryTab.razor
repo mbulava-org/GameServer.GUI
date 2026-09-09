@@ -92,7 +92,7 @@
         else
         {
             <div class="row g-3 mb-2">
-                @* CPU Usage - Task-Manager-style area chart, 0..100% *@
+                @* CPU Usage - Task-Manager-style line chart *@
                 <div class="col-lg-6">
                     <TaskManagerChartCard Title="CPU Usage"
                                           HeaderColor="var(--rz-primary)"
@@ -101,33 +101,33 @@
                                           MaxAxisLabel="@GetCpuMaxAxisLabel()"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="CpuPercent"
-                                                  Title="CPU %"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-primary)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="fw-bold text-primary">@data.CpuPercent.ToString("F1")% CPU</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
-                                    <RadzenGridLines Visible="true" />
-                                </RadzenCategoryAxis>
-                                            <RadzenValueAxis Min="0" Max="@GetCpuAxisMax()" Step="@GetCpuAxisStep()" Formatter="@FormatBlank">
-                                                <RadzenGridLines Visible="true" />
-                                            </RadzenValueAxis>
-                                            <RadzenLegend Visible="false" />
-                                        </RadzenChart>
-                                    </TaskManagerChartCard>
-                                </div>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="CpuPercent"
+                                              Title="CPU %"
+                                              Smooth="true"
+                                              Stroke="var(--rz-primary)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="fw-bold text-primary">@data.CpuPercent.ToString("F1")% CPU</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0" Max="@GetCpuAxisMax()" Step="@GetCpuAxisStep()" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Visible="false" />
+                        </RadzenChart>
+                    </TaskManagerChartCard>
+                </div>
 
-                                @* Memory Usage *@
-                                <div class="col-lg-6">
+                @* Memory Usage *@
+                <div class="col-lg-6">
                     <TaskManagerChartCard Title="Memory Usage"
                                           HeaderColor="var(--rz-info)"
                                           RightBadge="@(GetLatestMemoryMB() + " MB")"
@@ -135,33 +135,33 @@
                                           MaxAxisLabel="100%"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="MemoryPercent"
-                                                  Title="Memory %"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-info)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="fw-bold text-info">@data.MemoryPercent.ToString("F1")% (@data.MemoryMB.ToString("F1") MB)</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
-                                    <RadzenGridLines Visible="true" />
-                                </RadzenCategoryAxis>
-                                            <RadzenValueAxis Min="0" Max="100" Step="25" Formatter="@FormatBlank">
-                                                <RadzenGridLines Visible="true" />
-                                            </RadzenValueAxis>
-                                            <RadzenLegend Visible="false" />
-                                        </RadzenChart>
-                                    </TaskManagerChartCard>
-                                </div>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="MemoryPercent"
+                                              Title="Memory %"
+                                              Smooth="true"
+                                              Stroke="var(--rz-info)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="fw-bold text-info">@data.MemoryPercent.ToString("F1")% (@data.MemoryMB.ToString("F1") MB)</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0" Max="100" Step="25" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Visible="false" />
+                        </RadzenChart>
+                    </TaskManagerChartCard>
+                </div>
 
-                                @* Network Throughput *@
-                                <div class="col-lg-6">
+                @* Network Throughput *@
+                <div class="col-lg-6">
                     <TaskManagerChartCard Title="Network Throughput"
                                           HeaderColor="var(--rz-success)"
                                           RightBadge="@GetNetThroughputBadge()"
@@ -169,47 +169,47 @@
                                           MaxAxisLabel="KB/s"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="NetworkRxKBps"
-                                                  Title="Rx In (KB/s)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-success)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-success small">Rx In: @data.NetworkRxKBps.ToString("F2") KB/s</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="NetworkTxKBps"
-                                                  Title="Tx Out (KB/s)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-info)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-info small">Tx Out: @data.NetworkTxKBps.ToString("F2") KB/s</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
-                                    <RadzenGridLines Visible="true" />
-                                </RadzenCategoryAxis>
-                                            <RadzenValueAxis Min="0">
-                                                <RadzenGridLines Visible="true" />
-                                            </RadzenValueAxis>
-                                            <RadzenLegend Position="LegendPosition.Top" />
-                                        </RadzenChart>
-                                    </TaskManagerChartCard>
-                                </div>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="NetworkRxKBps"
+                                              Title="Rx In (KB/s)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-success)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-success small">Rx In: @data.NetworkRxKBps.ToString("F2") KB/s</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="NetworkTxKBps"
+                                              Title="Tx Out (KB/s)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-info)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-info small">Tx Out: @data.NetworkTxKBps.ToString("F2") KB/s</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Position="LegendPosition.Top" />
+                        </RadzenChart>
+                    </TaskManagerChartCard>
+                </div>
 
-                                @* Disk Throughput *@
-                                <div class="col-lg-6">
+                @* Disk Throughput *@
+                <div class="col-lg-6">
                     <TaskManagerChartCard Title="Disk Throughput"
                                           HeaderColor="var(--rz-warning)"
                                           RightBadge="@GetDiskThroughputBadge()"
@@ -217,47 +217,47 @@
                                           MaxAxisLabel="KB/s"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="BlockReadKBps"
-                                                  Title="Read (KB/s)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-warning)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-warning small">Read: @data.BlockReadKBps.ToString("F2") KB/s</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="BlockWriteKBps"
-                                                  Title="Write (KB/s)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-danger)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-danger small">Write: @data.BlockWriteKBps.ToString("F2") KB/s</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
-                                    <RadzenGridLines Visible="true" />
-                                </RadzenCategoryAxis>
-                                            <RadzenValueAxis Min="0">
-                                                <RadzenGridLines Visible="true" />
-                                            </RadzenValueAxis>
-                                            <RadzenLegend Position="LegendPosition.Top" />
-                                        </RadzenChart>
-                                    </TaskManagerChartCard>
-                                </div>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="BlockReadKBps"
+                                              Title="Read (KB/s)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-warning)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-warning small">Read: @data.BlockReadKBps.ToString("F2") KB/s</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="BlockWriteKBps"
+                                              Title="Write (KB/s)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-danger)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-danger small">Write: @data.BlockWriteKBps.ToString("F2") KB/s</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Position="LegendPosition.Top" />
+                        </RadzenChart>
+                    </TaskManagerChartCard>
+                </div>
 
-                                @* Network Aggregate *@
-                                <div class="col-lg-6">
+                @* Network Aggregate *@
+                <div class="col-lg-6">
                     <TaskManagerChartCard Title="Network Aggregate"
                                           HeaderColor="var(--rz-success)"
                                           RightBadge="@GetNetAggregateBadge()"
@@ -265,47 +265,47 @@
                                           MaxAxisLabel="MB"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="NetworkRxMB"
-                                                  Title="Rx In (MB)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-success)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-success small">Rx In total: @data.NetworkRxMB.ToString("F2") MB</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="NetworkTxMB"
-                                                  Title="Tx Out (MB)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-info)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-info small">Tx Out total: @data.NetworkTxMB.ToString("F2") MB</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
-                                    <RadzenGridLines Visible="true" />
-                                </RadzenCategoryAxis>
-                                            <RadzenValueAxis Min="0">
-                                                <RadzenGridLines Visible="true" />
-                                            </RadzenValueAxis>
-                                            <RadzenLegend Position="LegendPosition.Top" />
-                                        </RadzenChart>
-                                    </TaskManagerChartCard>
-                                </div>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="NetworkRxMB"
+                                              Title="Rx In (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-success)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-success small">Rx In total: @data.NetworkRxMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="NetworkTxMB"
+                                              Title="Tx Out (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-info)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-info small">Tx Out total: @data.NetworkTxMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Position="LegendPosition.Top" />
+                        </RadzenChart>
+                    </TaskManagerChartCard>
+                </div>
 
-                                @* Disk Aggregate *@
-                                <div class="col-lg-6">
+                @* Disk Aggregate *@
+                <div class="col-lg-6">
                     <TaskManagerChartCard Title="Disk Aggregate"
                                           HeaderColor="var(--rz-warning)"
                                           RightBadge="@GetDiskAggregateBadge()"
@@ -313,45 +313,45 @@
                                           MaxAxisLabel="MB"
                                           RangeLabel="@GetRangeLabel()">
                         <RadzenChart Style="height: 220px;">
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="BlockReadMB"
-                                                  Title="Read (MB)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-warning)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-warning small">Read total: @data.BlockReadMB.ToString("F2") MB</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenAreaSeries Data="@chartPoints"
-                                                  CategoryProperty="AxisLabel"
-                                                  ValueProperty="BlockWriteMB"
-                                                  Title="Write (MB)"
-                                                  Smooth="true"
-                                                  Stroke="var(--rz-danger)"
-                                                  LineType="LineType.Solid">
-                                    <TooltipTemplate Context="data">
-                                        <div class="p-1">
-                                            <div class="text-muted small">@data.FullTimestamp</div>
-                                            <div class="text-danger small">Write total: @data.BlockWriteMB.ToString("F2") MB</div>
-                                        </div>
-                                    </TooltipTemplate>
-                                </RadzenAreaSeries>
-                                <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
-                                    <RadzenGridLines Visible="true" />
-                                </RadzenCategoryAxis>
-                                                <RadzenValueAxis Min="0">
-                                                    <RadzenGridLines Visible="true" />
-                                                </RadzenValueAxis>
-                                                <RadzenLegend Position="LegendPosition.Top" />
-                                            </RadzenChart>
-                                        </TaskManagerChartCard>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="BlockReadMB"
+                                              Title="Read (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-warning)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-warning small">Read total: @data.BlockReadMB.ToString("F2") MB</div>
                                     </div>
-                                </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenLineSeries Data="@chartPoints"
+                                              CategoryProperty="AxisLabel"
+                                              ValueProperty="BlockWriteMB"
+                                              Title="Write (MB)"
+                                              Smooth="true"
+                                              Stroke="var(--rz-danger)"
+                                              LineType="LineType.Solid">
+                                <TooltipTemplate Context="data">
+                                    <div class="p-1">
+                                        <div class="text-muted small">@data.FullTimestamp</div>
+                                        <div class="text-danger small">Write total: @data.BlockWriteMB.ToString("F2") MB</div>
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                            <RadzenCategoryAxis Padding="0" Formatter="@FormatBlank">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenCategoryAxis>
+                            <RadzenValueAxis Min="0">
+                                <RadzenGridLines Visible="true" />
+                            </RadzenValueAxis>
+                            <RadzenLegend Position="LegendPosition.Top" />
+                        </RadzenChart>
+                    </TaskManagerChartCard>
+                </div>
+            </div>
         }
     </RadzenCard>
 </div>

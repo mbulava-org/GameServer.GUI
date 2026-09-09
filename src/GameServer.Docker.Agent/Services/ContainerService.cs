@@ -612,8 +612,12 @@ namespace GameServer.Docker.Agent.Services
                     false,
                     cancellationToken);
 
+                using var memoryStream = new MemoryStream();
+                await archive.Stream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
                 var items = new List<Models.ContainerFileItemResponse>();
-                using var tarReader = new System.Formats.Tar.TarReader(archive.Stream);
+                using var tarReader = new System.Formats.Tar.TarReader(memoryStream);
 
                 string? rootEntryPrefix = null;
 
@@ -703,23 +707,96 @@ namespace GameServer.Docker.Agent.Services
             ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
             var normalizedPath = NormalizeContainerPath(path);
 
-            var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
-                containerId,
-                new ContainerPathStatParameters { Path = normalizedPath },
-                false,
-                cancellationToken);
-
-            using var tarReader = new System.Formats.Tar.TarReader(archive.Stream);
-            while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+            // Fast path: use exec to read file content directly
+            try
             {
-                if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
+                var content = await GetFileContentViaExecAsync(containerId, normalizedPath, cancellationToken);
+                if (content != null)
                 {
-                    using var reader = new StreamReader(entry.DataStream, Encoding.UTF8);
-                    return await reader.ReadToEndAsync(cancellationToken);
+                    return content;
                 }
             }
+            catch (FileNotFoundException)
+            {
+                throw;
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Exec-based file read not available for container {ContainerId} at path {Path}, falling back to archive", containerId, normalizedPath);
+            }
 
-            throw new FileNotFoundException($"File '{normalizedPath}' was not found in container archive.");
+            return await GetFileContentViaArchiveAsync(containerId, normalizedPath, cancellationToken);
+        }
+
+        private async Task<string?> GetFileContentViaExecAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            var script = "file=\"$1\"\nif [ ! -e \"$file\" ] && [ ! -L \"$file\" ]; then\n  echo \"__GS_NOT_FOUND__\" >&2\n  exit 1\nfi\ncat -- \"$file\"";
+
+            var execCreateParams = new ContainerExecCreateParameters
+            {
+                Cmd = ["/bin/sh", "-c", script, "--", normalizedPath],
+                AttachStdout = true,
+                AttachStderr = true,
+                AttachStdin = false,
+                TTY = false
+            };
+
+            var exec = await _dockerClient.Exec.CreateContainerExecAsync(containerId, execCreateParams, cancellationToken);
+            using var stream = await _dockerClient.Exec.StartContainerExecAsync(exec.ID, new ContainerExecStartParameters { Detach = false, TTY = false }, cancellationToken);
+
+            using var stdoutMs = new MemoryStream();
+            using var stderrMs = new MemoryStream();
+            await stream.CopyOutputToAsync(null, stdoutMs, stderrMs, cancellationToken);
+
+            var stderr = Encoding.UTF8.GetString(stderrMs.ToArray());
+            if (stderr.Contains("__GS_NOT_FOUND__"))
+            {
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container {containerId}.");
+            }
+
+            return Encoding.UTF8.GetString(stdoutMs.ToArray());
+        }
+
+        private async Task<string> GetFileContentViaArchiveAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
+                    containerId,
+                    new ContainerPathStatParameters { Path = normalizedPath },
+                    false,
+                    cancellationToken);
+
+                using var memoryStream = new MemoryStream();
+                await archive.Stream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                using var tarReader = new System.Formats.Tar.TarReader(memoryStream);
+                while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+                {
+                    if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
+                    {
+                        using var reader = new StreamReader(entry.DataStream, Encoding.UTF8);
+                        return await reader.ReadToEndAsync(cancellationToken);
+                    }
+                }
+
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container archive.");
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container {containerId}.", ex);
+            }
         }
 
         public async Task<(Stream Stream, string ContentType, string FileName)> GetFileStreamAsync(
@@ -731,25 +808,36 @@ namespace GameServer.Docker.Agent.Services
             var normalizedPath = NormalizeContainerPath(path);
             var fileName = Path.GetFileName(normalizedPath);
 
-            var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
-                containerId,
-                new ContainerPathStatParameters { Path = normalizedPath },
-                false,
-                cancellationToken);
-
-            using var tarReader = new System.Formats.Tar.TarReader(archive.Stream);
-            while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+            try
             {
-                if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
-                {
-                    var ms = new MemoryStream();
-                    await entry.DataStream.CopyToAsync(ms, cancellationToken);
-                    ms.Position = 0;
-                    return (ms, "application/octet-stream", fileName);
-                }
-            }
+                var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
+                    containerId,
+                    new ContainerPathStatParameters { Path = normalizedPath },
+                    false,
+                    cancellationToken);
 
-            throw new FileNotFoundException($"File '{normalizedPath}' was not found in container archive.");
+                using var memoryStream = new MemoryStream();
+                await archive.Stream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                using var tarReader = new System.Formats.Tar.TarReader(memoryStream);
+                while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+                {
+                    if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
+                    {
+                        var ms = new MemoryStream();
+                        await entry.DataStream.CopyToAsync(ms, cancellationToken);
+                        ms.Position = 0;
+                        return (ms, "application/octet-stream", fileName);
+                    }
+                }
+
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container archive.");
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container {containerId}.", ex);
+            }
         }
 
         public async Task SaveFileContentTextAsync(

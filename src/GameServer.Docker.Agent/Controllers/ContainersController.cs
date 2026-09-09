@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using GameServer.Docker.Agent.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using Docker.DotNet.Models;
@@ -433,9 +434,22 @@ namespace GameServer.Docker.Agent.Controllers
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
             }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
             catch (FileNotFoundException ex)
             {
                 return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error listing files for container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
             }
             catch (Exception ex)
             {
@@ -465,9 +479,22 @@ namespace GameServer.Docker.Agent.Controllers
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
             }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
             catch (FileNotFoundException ex)
             {
                 return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error getting file content for container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
             }
             catch (Exception ex)
             {
@@ -497,9 +524,22 @@ namespace GameServer.Docker.Agent.Controllers
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
             }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
             catch (FileNotFoundException ex)
             {
                 return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error downloading file from container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
             }
             catch (Exception ex)
             {
@@ -529,6 +569,23 @@ namespace GameServer.Docker.Agent.Controllers
             catch (DockerContainerNotFoundException)
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error saving file content to container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
             }
             catch (Exception ex)
             {
@@ -567,6 +624,23 @@ namespace GameServer.Docker.Agent.Controllers
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
             }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error uploading file to container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error uploading file to container {ContainerId} at path {Path}", id, path);
@@ -594,6 +668,23 @@ namespace GameServer.Docker.Agent.Controllers
             catch (DockerContainerNotFoundException)
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error creating directory in container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
             }
             catch (Exception ex)
             {
@@ -623,6 +714,23 @@ namespace GameServer.Docker.Agent.Controllers
             catch (DockerContainerNotFoundException)
             {
                 return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error deleting file or directory in container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
             }
             catch (Exception ex)
             {
