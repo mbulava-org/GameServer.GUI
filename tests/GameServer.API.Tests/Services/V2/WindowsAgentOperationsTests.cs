@@ -57,6 +57,50 @@ public class WindowsAgentOperationsTests
     }
 
     [Fact]
+    public async Task InstallOrUpdateSteamAppAsync_WhenAgentReturns200_ReturnsJobResult()
+    {
+        var mockHandler = new Mock<HttpMessageHandler>();
+        var responseInfo = new WindowsSteamCmdJobResult
+        {
+            JobId = "job-1",
+            AppId = 3246670,
+            Success = true,
+            ExitCode = 0,
+            Message = "ok"
+        };
+
+        mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req =>
+                    req.Method == HttpMethod.Post &&
+                    req.RequestUri!.ToString().Contains("api/steamcmd/install")),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(JsonSerializer.Serialize(responseInfo), System.Text.Encoding.UTF8, "application/json")
+            });
+
+        var httpClient = new HttpClient(mockHandler.Object);
+        var mockFactory = new Mock<IHttpClientFactory>();
+        mockFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+        var operations = new WindowsAgentOperations(mockFactory.Object, NullLogger<WindowsAgentOperations>.Instance);
+
+        var result = await operations.InstallOrUpdateSteamAppAsync("http://windows-node:5000", new WindowsSteamAppInstallRequest
+        {
+            AppId = 3246670,
+            Validate = true,
+            AnonymousLogin = true
+        });
+
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.Equal(3246670u, result.AppId);
+    }
+
+    [Fact]
     public async Task StopServerAsync_WhenAgentReturns200_ReturnsProcessInfo()
     {
         // Arrange

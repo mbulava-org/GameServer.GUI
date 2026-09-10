@@ -11,11 +11,12 @@ public class SamplePortableGameTypePackageTests
     };
 
     [Theory]
-    [InlineData("palworld-dedicated.portable.json", "palworld-dedicated", "thijsvanloef/palworld-server-docker")]
-    [InlineData("minecraft-bedrock.portable.json", "minecraft-bedrock", "itzg/minecraft-bedrock-server")]
-    [InlineData("minecraft-java.portable.json", "minecraft-java", "itzg/minecraft-server")]
-    [InlineData("conan-exiles-dedicated.portable.json", "conan-exiles-dedicated", "othrayte/docker-conanexiles")]
-    public void SamplePackage_DeserializesCorrectly(string fileName, string expectedKey, string expectedImage)
+    [InlineData("palworld-dedicated.portable.json", "palworld-dedicated", "thijsvanloef/palworld-server-docker", true)]
+    [InlineData("minecraft-bedrock.portable.json", "minecraft-bedrock", "itzg/minecraft-bedrock-server", true)]
+    [InlineData("minecraft-java.portable.json", "minecraft-java", "itzg/minecraft-server", true)]
+    [InlineData("conan-exiles-dedicated.portable.json", "conan-exiles-dedicated", "othrayte/docker-conanexiles", true)]
+    [InlineData("aska-dedicated.portable.json", "aska-dedicated", "AskaServer.exe", false)]
+    public void SamplePackage_DeserializesCorrectly(string fileName, string expectedKey, string expectedImage, bool expectVolumes)
     {
         // Arrange
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -50,7 +51,10 @@ public class SamplePortableGameTypePackageTests
         var revision = package.GameType.Revisions[0];
         Assert.Equal(expectedImage, revision.ImageReference);
         Assert.NotEmpty(revision.Ports);
-        Assert.NotEmpty(revision.Volumes);
+        if (expectVolumes)
+        {
+            Assert.NotEmpty(revision.Volumes);
+        }
         Assert.NotEmpty(revision.SettingDefinitions);
     }
 }

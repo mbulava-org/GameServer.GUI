@@ -18,6 +18,10 @@ These files are starter `PortableGameTypePackage` JSON documents for import from
 - `minecraft-java.portable.json`
   - Based on `itzg/minecraft-server`
   - Includes the standard Java TCP port, `/data` volume, and common Java server settings
+- `aska-dedicated.portable.json`
+  - Windows-agent preset for `AskaServer.exe` with SteamCMD App ID `3246670`
+  - Writes `server properties.txt` before launch and requires `ASKA_AUTHENTICATION_TOKEN`
+  - Prepares standard `BepInEx/`, `BepInEx/plugins`, and `BepInEx/config` directories in the install root for manual BepInEx extraction and plugin drops
 
 ## Conan Exiles Hosting Guidance
 
@@ -47,4 +51,3 @@ When hosting a Conan Exiles dedicated server:
 - No persisted integer ids are included.
 - Review passwords, allowlists, operators, memory sizing, and public exposure settings before publishing a revision.
 - Upstream container projects evolve independently, so settings may need refresh over time.
-

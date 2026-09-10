@@ -10,6 +10,24 @@ public sealed class WindowsAgentOperations(
     IHttpClientFactory httpClientFactory,
     ILogger<WindowsAgentOperations> logger) : IWindowsAgentOperations
 {
+    public async Task<WindowsSteamCmdJobResult?> InstallOrUpdateSteamAppAsync(string agentUrl, WindowsSteamAppInstallRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentUrl);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var client = CreateClient(agentUrl);
+        var response = await client.PostAsJsonAsync("api/steamcmd/install", request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            logger.LogWarning("Failed to install/update Steam app {AppId} on Windows agent {Url}. Status={StatusCode}, Error={Error}",
+                request.AppId, agentUrl, response.StatusCode, error);
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<WindowsSteamCmdJobResult>(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<WindowsProcessInfo?> StartServerAsync(string agentUrl, WindowsStartServerRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(agentUrl);

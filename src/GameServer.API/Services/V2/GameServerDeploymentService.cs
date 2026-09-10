@@ -29,6 +29,22 @@ public sealed class GameServerDeploymentService(
     IWindowsAgentOperations? windowsAgentOperations = null,
     INodeAgentDiscovery? nodeAgentDiscovery = null)
 {
+    private const string WindowsExecutablePathSettingKey = "WINDOWS_EXECUTABLE_PATH";
+    private const string WindowsStartArgumentsSettingKey = "WINDOWS_START_ARGUMENTS";
+    private const string WindowsWorkingDirectorySettingKey = "WINDOWS_WORKING_DIRECTORY";
+    private const string WindowsInstallDirectorySettingKey = "WINDOWS_INSTALL_DIRECTORY";
+    private const string SteamCmdAppIdSettingKey = "STEAMCMD_APP_ID";
+    private const string SteamCmdAnonymousLoginSettingKey = "STEAMCMD_ANONYMOUS_LOGIN";
+    private const string SteamCmdUsernameSettingKey = "STEAMCMD_USERNAME";
+    private const string SteamCmdPasswordSettingKey = "STEAMCMD_PASSWORD";
+    private const string SteamCmdAuthTokenSettingKey = "STEAMCMD_AUTH_TOKEN";
+    private const string SteamCmdBranchSettingKey = "STEAMCMD_BRANCH";
+    private const string SteamCmdBetaPasswordSettingKey = "STEAMCMD_BETA_PASSWORD";
+    private const string SteamCmdValidateSettingKey = "STEAMCMD_VALIDATE";
+    private const string DefaultWindowsInstallRoot = @"C:\GameServers\instances";
+    private static readonly string[] WindowsControlSettingPrefixes = ["STEAMCMD_", "WINDOWS_", "ASKA_"];
+    private static readonly string[] AskaBepInExDirectories = ["BepInEx", "BepInEx/plugins", "BepInEx/config"];
+
     /// <summary>
     /// Creates the Swarm service for a V2 GameServer and marks the server as deployed.
     /// </summary>
@@ -52,15 +68,8 @@ public sealed class GameServerDeploymentService(
             if (winAgent != null && windowsAgentOperations != null)
             {
                 var effectiveSettings = BuildSettingValues(server, gameType, revision);
-                var startReq = new WindowsStartServerRequest
-                {
-                    ServerId = server.ServerId,
-                    Name = server.Name,
-                    GameTypeKey = gameType.Key,
-                    ExecutablePath = string.IsNullOrWhiteSpace(revision.ImageReference) ? "server.exe" : revision.ImageReference,
-                    EnvironmentVariables = effectiveSettings.Where(kv => kv.Value != null).ToDictionary(kv => kv.Key, kv => kv.Value!),
-                    AutoRestart = true
-                };
+                await InstallOrUpdateWindowsServerFilesAsync(winAgent.InternalUrl, server, gameType, effectiveSettings, cancellationToken).ConfigureAwait(false);
+                var startReq = BuildWindowsStartServerRequest(server, gameType, revision, effectiveSettings);
                 await windowsAgentOperations.StartServerAsync(winAgent.InternalUrl, startReq, cancellationToken).ConfigureAwait(false);
             }
             else
@@ -154,15 +163,8 @@ public sealed class GameServerDeploymentService(
             if (winAgent != null && windowsAgentOperations != null)
             {
                 var effectiveSettings = BuildSettingValues(server, gameType, revision);
-                var startReq = new WindowsStartServerRequest
-                {
-                    ServerId = server.ServerId,
-                    Name = server.Name,
-                    GameTypeKey = gameType.Key,
-                    ExecutablePath = string.IsNullOrWhiteSpace(revision.ImageReference) ? "server.exe" : revision.ImageReference,
-                    EnvironmentVariables = effectiveSettings.Where(kv => kv.Value != null).ToDictionary(kv => kv.Key, kv => kv.Value!),
-                    AutoRestart = true
-                };
+                await InstallOrUpdateWindowsServerFilesAsync(winAgent.InternalUrl, server, gameType, effectiveSettings, cancellationToken).ConfigureAwait(false);
+                var startReq = BuildWindowsStartServerRequest(server, gameType, revision, effectiveSettings);
                 await windowsAgentOperations.StartServerAsync(winAgent.InternalUrl, startReq, cancellationToken).ConfigureAwait(false);
             }
 
@@ -269,7 +271,16 @@ public sealed class GameServerDeploymentService(
             var winAgent = await ResolveWindowsAgentAsync(serverId, cancellationToken).ConfigureAwait(false);
             if (winAgent != null && windowsAgentOperations != null)
             {
-                await windowsAgentOperations.RestartServerAsync(winAgent.InternalUrl, serverId, cancellationToken).ConfigureAwait(false);
+                if (gameType is null || revision is null)
+                {
+                    throw new InvalidOperationException($"GameTypeRevision '{server.GameTypeRevisionId}' was not found");
+                }
+
+                var effectiveSettings = BuildSettingValues(server, gameType, revision);
+                await windowsAgentOperations.StopServerAsync(winAgent.InternalUrl, serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await InstallOrUpdateWindowsServerFilesAsync(winAgent.InternalUrl, server, gameType, effectiveSettings, cancellationToken).ConfigureAwait(false);
+                var startReq = BuildWindowsStartServerRequest(server, gameType, revision, effectiveSettings);
+                await windowsAgentOperations.StartServerAsync(winAgent.InternalUrl, startReq, cancellationToken).ConfigureAwait(false);
             }
 
             server = server with { Status = "Starting" };
@@ -376,9 +387,28 @@ public sealed class GameServerDeploymentService(
 
         if (IsWindowsGameType(gameType))
         {
+            var restartAfterUpdate = IsWindowsServerActive(server.Status);
+            var winAgent = await ResolveWindowsAgentAsync(serverId, cancellationToken).ConfigureAwait(false);
+            if (gameType is not null && revision is not null && winAgent != null && windowsAgentOperations != null)
+            {
+                var effectiveSettings = BuildSettingValues(server, gameType, revision);
+                if (restartAfterUpdate)
+                {
+                    await windowsAgentOperations.StopServerAsync(winAgent.InternalUrl, serverId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+
+                await InstallOrUpdateWindowsServerFilesAsync(winAgent.InternalUrl, server, gameType, effectiveSettings, cancellationToken).ConfigureAwait(false);
+
+                if (restartAfterUpdate)
+                {
+                    var startReq = BuildWindowsStartServerRequest(server, gameType, revision, effectiveSettings);
+                    await windowsAgentOperations.StartServerAsync(winAgent.InternalUrl, startReq, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
             server = server with
             {
-                Status = "Preparing",
+                Status = restartAfterUpdate ? "Starting" : server.Status,
                 LastDeployedAt = DateTime.UtcNow
             };
             await gameServerRepository.UpdateAsync(server).ConfigureAwait(false);
@@ -729,6 +759,251 @@ public sealed class GameServerDeploymentService(
     private static bool IsWindowsGameType(GameType? gameType) =>
         gameType != null && string.Equals(gameType.Type, "windows", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsWindowsServerActive(string? status) =>
+        string.Equals(status, "Running", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Available", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Preparing", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Starting", StringComparison.OrdinalIgnoreCase);
+
+    private async Task InstallOrUpdateWindowsServerFilesAsync(
+        string agentUrl,
+        GameServerModel server,
+        GameType gameType,
+        Dictionary<string, string?> effectiveSettings,
+        CancellationToken cancellationToken)
+    {
+        var installRequest = BuildWindowsSteamAppInstallRequest(server, effectiveSettings);
+        if (installRequest is null || windowsAgentOperations is null)
+        {
+            return;
+        }
+
+        EnsureGameSpecificWindowsRequirements(gameType, effectiveSettings);
+
+        var result = await windowsAgentOperations.InstallOrUpdateSteamAppAsync(agentUrl, installRequest, cancellationToken).ConfigureAwait(false);
+        if (result is null)
+        {
+            throw new InvalidOperationException($"Windows agent did not return a SteamCMD result for server '{server.ServerId}'.");
+        }
+
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.Message)
+                ? $"SteamCMD failed to install/update files for server '{server.ServerId}'."
+                : result.Message);
+        }
+    }
+
+    private WindowsStartServerRequest BuildWindowsStartServerRequest(
+        GameServerModel server,
+        GameType gameType,
+        GameTypeRevision revision,
+        Dictionary<string, string?> effectiveSettings)
+    {
+        var request = new WindowsStartServerRequest
+        {
+            ServerId = server.ServerId,
+            Name = server.Name,
+            GameTypeKey = gameType.Key,
+            SteamAppId = TryGetUIntSetting(effectiveSettings, SteamCmdAppIdSettingKey),
+            InstallDirectory = ResolveWindowsInstallDirectory(server.ServerId, effectiveSettings),
+            ExecutablePath = GetOptionalSetting(effectiveSettings, WindowsExecutablePathSettingKey)
+                ?? (string.IsNullOrWhiteSpace(revision.ImageReference) ? "server.exe" : revision.ImageReference),
+            Arguments = GetOptionalSetting(effectiveSettings, WindowsStartArgumentsSettingKey),
+            WorkingDirectory = GetOptionalSetting(effectiveSettings, WindowsWorkingDirectorySettingKey),
+            EnvironmentVariables = BuildWindowsEnvironmentVariables(gameType, effectiveSettings),
+            AutoRestart = true,
+            RconPort = TryGetIntSetting(effectiveSettings, "RCON_PORT"),
+            RconPassword = GetOptionalSetting(effectiveSettings, "RCON_PASSWORD")
+        };
+
+        if (IsAskaGameType(gameType))
+        {
+            EnsureGameSpecificWindowsRequirements(gameType, effectiveSettings);
+            request = request with
+            {
+                Arguments = string.IsNullOrWhiteSpace(request.Arguments)
+                    ? "-propertiesPath \"server properties.txt\""
+                    : request.Arguments,
+                DirectoriesToEnsure = AskaBepInExDirectories.ToList(),
+                TextFilesToWrite =
+                [
+                    new WindowsTextFileWrite
+                    {
+                        RelativePath = "server properties.txt",
+                        Content = BuildAskaServerProperties(effectiveSettings, server.Name)
+                    }
+                ]
+            };
+        }
+
+        return request;
+    }
+
+    private static WindowsSteamAppInstallRequest? BuildWindowsSteamAppInstallRequest(
+        GameServerModel server,
+        Dictionary<string, string?> effectiveSettings)
+    {
+        var appId = TryGetUIntSetting(effectiveSettings, SteamCmdAppIdSettingKey);
+        if (!appId.HasValue || appId.Value == 0)
+        {
+            return null;
+        }
+
+        var username = GetOptionalSetting(effectiveSettings, SteamCmdUsernameSettingKey);
+        var password = GetOptionalSetting(effectiveSettings, SteamCmdPasswordSettingKey);
+        var authToken = GetOptionalSetting(effectiveSettings, SteamCmdAuthTokenSettingKey);
+        var hasCredentials = !string.IsNullOrWhiteSpace(username)
+            || !string.IsNullOrWhiteSpace(password)
+            || !string.IsNullOrWhiteSpace(authToken);
+        var anonymousLogin = TryGetBoolSetting(effectiveSettings, SteamCmdAnonymousLoginSettingKey) ?? !hasCredentials;
+        if (!anonymousLogin && (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)))
+        {
+            throw new InvalidOperationException($"Server '{server.ServerId}' must provide both {SteamCmdUsernameSettingKey} and {SteamCmdPasswordSettingKey} when {SteamCmdAnonymousLoginSettingKey}=false.");
+        }
+
+        return new WindowsSteamAppInstallRequest
+        {
+            AppId = appId.Value,
+            InstallDirectory = ResolveWindowsInstallDirectory(server.ServerId, effectiveSettings),
+            Validate = TryGetBoolSetting(effectiveSettings, SteamCmdValidateSettingKey) ?? true,
+            Branch = GetOptionalSetting(effectiveSettings, SteamCmdBranchSettingKey),
+            BetaPassword = GetOptionalSetting(effectiveSettings, SteamCmdBetaPasswordSettingKey),
+            AnonymousLogin = anonymousLogin,
+            Username = username,
+            Password = password,
+            SteamAuthToken = authToken
+        };
+    }
+
+    private static Dictionary<string, string> BuildWindowsEnvironmentVariables(GameType gameType, Dictionary<string, string?> effectiveSettings)
+    {
+        return effectiveSettings
+            .Where(kv => kv.Value != null && ShouldExposeWindowsSettingAsEnvironmentVariable(gameType, kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldExposeWindowsSettingAsEnvironmentVariable(GameType gameType, string settingKey)
+    {
+        if (WindowsControlSettingPrefixes.Any(prefix => settingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return !IsAskaSettingKey(gameType, settingKey);
+    }
+
+    private static void EnsureGameSpecificWindowsRequirements(GameType gameType, Dictionary<string, string?> effectiveSettings)
+    {
+        if (IsAskaGameType(gameType))
+        {
+            var authToken = GetOptionalSetting(effectiveSettings, "ASKA_AUTHENTICATION_TOKEN");
+            if (string.IsNullOrWhiteSpace(authToken))
+            {
+                throw new InvalidOperationException("ASKA_AUTHENTICATION_TOKEN is required to install/update and start an ASKA dedicated server.");
+            }
+        }
+    }
+
+    private static bool IsAskaGameType(GameType? gameType) =>
+        gameType != null && string.Equals(gameType.Key, "aska-dedicated", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAskaSettingKey(GameType gameType, string settingKey) =>
+        IsAskaGameType(gameType) && settingKey.StartsWith("ASKA_", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildAskaServerProperties(Dictionary<string, string?> effectiveSettings, string serverName)
+    {
+        static string GetValue(Dictionary<string, string?> settings, string key, string fallback = "") =>
+            string.IsNullOrWhiteSpace(GetOptionalSetting(settings, key)) ? fallback : GetOptionalSetting(settings, key)!;
+
+        var lines = new List<string>
+        {
+            $"display name = {GetValue(effectiveSettings, "ASKA_DISPLAY_NAME", serverName)}",
+            $"server name = {GetValue(effectiveSettings, "ASKA_SERVER_NAME", serverName)}",
+            $"password = {GetValue(effectiveSettings, "ASKA_PASSWORD")}",
+            $"save id = {GetValue(effectiveSettings, "ASKA_SAVE_ID")}",
+            $"seed = {GetValue(effectiveSettings, "ASKA_SEED")}",
+            $"mode = {GetValue(effectiveSettings, "ASKA_MODE", "normal")}",
+            $"region = {GetValue(effectiveSettings, "ASKA_REGION", "default")}",
+            $"keep server world alive = {GetValue(effectiveSettings, "ASKA_KEEP_SERVER_WORLD_ALIVE", "true")}",
+            $"autosave style = {GetValue(effectiveSettings, "ASKA_AUTOSAVE_STYLE", "every 10 minutes")}",
+            $"steam game port = {GetValue(effectiveSettings, "ASKA_STEAM_GAME_PORT", "7777")}",
+            $"steam query port = {GetValue(effectiveSettings, "ASKA_STEAM_QUERY_PORT", "27015")}",
+            $"authentication token = {GetValue(effectiveSettings, "ASKA_AUTHENTICATION_TOKEN")}"
+        };
+
+        AppendIfPresent(lines, effectiveSettings, "ASKA_INVASION_DIFFICULTY", "invasion difficulty");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_MONSTER_DENSITY", "monster density");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_MONSTER_POPULATION", "monster population");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_BEAR_POPULATION", "bear population");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_HERBIVORE_POPULATION", "herbivore population");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_WULFAR_POPULATION", "wulfar population");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_DAY_LENGTH", "day length");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_YEAR_LENGTH", "year length");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_STARTING_SEASON", "starting season");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_STRUCTURE_DECAY", "structure decay");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_PRECIPITATION", "precipitation");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_TERRAIN_ASPECT", "terrain aspect");
+        AppendIfPresent(lines, effectiveSettings, "ASKA_TERRAIN_HEIGHT", "terrain height");
+
+        return string.Join(Environment.NewLine, lines) + Environment.NewLine;
+    }
+
+    private static void AppendIfPresent(List<string> lines, Dictionary<string, string?> effectiveSettings, string settingKey, string propertyName)
+    {
+        var value = GetOptionalSetting(effectiveSettings, settingKey);
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            lines.Add($"{propertyName} = {value}");
+        }
+    }
+
+    private static string? GetOptionalSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    {
+        return effectiveSettings.TryGetValue(settingKey, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value.Trim()
+            : null;
+    }
+
+    private static string ResolveWindowsInstallDirectory(string serverId, Dictionary<string, string?> effectiveSettings)
+    {
+        return GetOptionalSetting(effectiveSettings, WindowsInstallDirectorySettingKey)
+            ?? $@"{DefaultWindowsInstallRoot}\{serverId}";
+    }
+
+    private static bool? TryGetBoolSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    {
+        var value = GetOptionalSetting(effectiveSettings, settingKey);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (bool.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        return value switch
+        {
+            "1" or "yes" or "y" or "on" => true,
+            "0" or "no" or "n" or "off" => false,
+            _ => null
+        };
+    }
+
+    private static uint? TryGetUIntSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    {
+        var value = GetOptionalSetting(effectiveSettings, settingKey);
+        return uint.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static int? TryGetIntSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    {
+        var value = GetOptionalSetting(effectiveSettings, settingKey);
+        return int.TryParse(value, out var parsed) ? parsed : null;
+    }
+
     private async Task<Models.NodeAgentEndpoint?> ResolveWindowsAgentAsync(string serverId, CancellationToken cancellationToken)
     {
         if (nodeAgentDiscovery == null)
@@ -747,4 +1022,3 @@ public sealed class GameServerDeploymentService(
             ?? allAgents.FirstOrDefault(a => string.Equals(a.HostType, "windows", StringComparison.OrdinalIgnoreCase));
     }
 }
-

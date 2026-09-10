@@ -47,7 +47,11 @@ public sealed class GameProcessManager : IGameProcessManager, IDisposable
                 ExecutablePath = request.ExecutablePath,
                 Arguments = request.Arguments ?? string.Empty,
                 WorkingDirectory = request.WorkingDirectory,
-                EnvironmentVariables = request.EnvironmentVariables ?? new(),
+                EnvironmentVariables = request.EnvironmentVariables is null
+                    ? new()
+                    : new Dictionary<string, string>(request.EnvironmentVariables, StringComparer.OrdinalIgnoreCase),
+                DirectoriesToEnsure = request.DirectoriesToEnsure?.ToList() ?? [],
+                TextFilesToWrite = request.TextFilesToWrite?.Select(CloneTextFileWrite).ToList() ?? [],
                 AutoRestart = request.AutoRestart,
                 RconPort = request.RconPort,
                 RconPassword = request.RconPassword
@@ -69,8 +73,10 @@ public sealed class GameProcessManager : IGameProcessManager, IDisposable
         }
         if (request.EnvironmentVariables != null)
         {
-            context.Instance.EnvironmentVariables = request.EnvironmentVariables;
+            context.Instance.EnvironmentVariables = new Dictionary<string, string>(request.EnvironmentVariables, StringComparer.OrdinalIgnoreCase);
         }
+        context.Instance.DirectoriesToEnsure = request.DirectoriesToEnsure?.ToList() ?? [];
+        context.Instance.TextFilesToWrite = request.TextFilesToWrite?.Select(CloneTextFileWrite).ToList() ?? [];
         context.Instance.AutoRestart = request.AutoRestart;
         context.Instance.RconPort = request.RconPort;
         context.Instance.RconPassword = request.RconPassword;
@@ -91,6 +97,8 @@ public sealed class GameProcessManager : IGameProcessManager, IDisposable
             var workingDir = !string.IsNullOrWhiteSpace(context.Instance.WorkingDirectory)
                 ? context.Instance.WorkingDirectory
                 : context.Instance.InstallDirectory;
+
+            await PrepareInstallDirectoryAsync(context.Instance, cancellationToken).ConfigureAwait(false);
 
             var exePath = Path.IsPathRooted(context.Instance.ExecutablePath)
                 ? context.Instance.ExecutablePath
@@ -289,6 +297,8 @@ public sealed class GameProcessManager : IGameProcessManager, IDisposable
             Arguments = context.Instance.Arguments,
             WorkingDirectory = context.Instance.WorkingDirectory,
             EnvironmentVariables = context.Instance.EnvironmentVariables,
+            DirectoriesToEnsure = context.Instance.DirectoriesToEnsure.ToList(),
+            TextFilesToWrite = context.Instance.TextFilesToWrite.Select(CloneTextFileWrite).ToList(),
             AutoRestart = context.Instance.AutoRestart,
             RconPort = context.Instance.RconPort,
             RconPassword = context.Instance.RconPassword
@@ -452,6 +462,8 @@ public sealed class GameProcessManager : IGameProcessManager, IDisposable
                                 Arguments = context.Instance.Arguments,
                                 WorkingDirectory = context.Instance.WorkingDirectory,
                                 EnvironmentVariables = context.Instance.EnvironmentVariables,
+                                DirectoriesToEnsure = context.Instance.DirectoriesToEnsure.ToList(),
+                                TextFilesToWrite = context.Instance.TextFilesToWrite.Select(CloneTextFileWrite).ToList(),
                                 AutoRestart = context.Instance.AutoRestart,
                                 RconPort = context.Instance.RconPort,
                                 RconPassword = context.Instance.RconPassword
@@ -496,6 +508,60 @@ public sealed class GameProcessManager : IGameProcessManager, IDisposable
         }
 
         _disposed = true;
+    }
+
+    private async Task PrepareInstallDirectoryAsync(GameServerInstance instance, CancellationToken cancellationToken)
+    {
+        var installRoot = Path.GetFullPath(instance.InstallDirectory);
+        Directory.CreateDirectory(installRoot);
+
+        foreach (var relativeDirectory in instance.DirectoriesToEnsure.Where(path => !string.IsNullOrWhiteSpace(path)))
+        {
+            var fullPath = ResolveInstallRootPath(installRoot, relativeDirectory);
+            Directory.CreateDirectory(fullPath);
+        }
+
+        foreach (var file in instance.TextFilesToWrite.Where(file => !string.IsNullOrWhiteSpace(file.RelativePath)))
+        {
+            var filePath = ResolveInstallRootPath(installRoot, file.RelativePath);
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await File.WriteAllTextAsync(filePath, file.Content ?? string.Empty, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static string ResolveInstallRootPath(string installRoot, string relativePath)
+    {
+        if (Path.IsPathRooted(relativePath))
+        {
+            throw new ArgumentException("Pre-start file paths must be relative to the install directory.", nameof(relativePath));
+        }
+
+        var root = Path.GetFullPath(installRoot);
+        var fullPath = Path.GetFullPath(Path.Combine(root, relativePath));
+        var relative = Path.GetRelativePath(root, fullPath);
+        if (relative == ".."
+            || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+            || relative.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal)
+            || Path.IsPathRooted(relative))
+        {
+            throw new ArgumentException("Pre-start file paths must stay within the install directory.", nameof(relativePath));
+        }
+
+        return fullPath;
+    }
+
+    private static TextFileWriteRequest CloneTextFileWrite(TextFileWriteRequest source)
+    {
+        return new TextFileWriteRequest
+        {
+            RelativePath = source.RelativePath,
+            Content = source.Content
+        };
     }
 
     private class ManagedServerContext

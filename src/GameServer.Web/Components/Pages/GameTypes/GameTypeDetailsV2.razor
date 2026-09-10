@@ -289,7 +289,7 @@
     private string detectionVersionTag = string.Empty;
     private GameTypeSetupDetectionResult? detectionResult;
     private GameTypeSetupComparisonResult? detectionComparison;
-    private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
+    private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker", "windows"];
     private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
     private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "saves", "backups", "gamefiles", "logs"];
     private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "password", "number", "boolean", "yesno", "enum", "port", "timezone", "servervariable"];

@@ -6,6 +6,11 @@ namespace GameServer.API.Interfaces;
 public interface IWindowsAgentOperations
 {
     /// <summary>
+    /// Installs or updates dedicated server files via SteamCMD on the specified Windows Agent.
+    /// </summary>
+    Task<WindowsSteamCmdJobResult?> InstallOrUpdateSteamAppAsync(string agentUrl, WindowsSteamAppInstallRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Starts a game server process on the specified Windows Agent.
     /// </summary>
     Task<WindowsProcessInfo?> StartServerAsync(string agentUrl, WindowsStartServerRequest request, CancellationToken cancellationToken = default);
@@ -31,6 +36,30 @@ public interface IWindowsAgentOperations
     Task<WindowsProcessStats?> GetServerStatsAsync(string agentUrl, string serverId, CancellationToken cancellationToken = default);
 }
 
+public sealed record WindowsSteamAppInstallRequest
+{
+    public uint AppId { get; init; }
+    public string? InstallDirectory { get; init; }
+    public bool Validate { get; init; } = true;
+    public string? Branch { get; init; }
+    public string? BetaPassword { get; init; }
+    public bool AnonymousLogin { get; init; } = true;
+    public string? Username { get; init; }
+    public string? Password { get; init; }
+    public string? SteamAuthToken { get; init; }
+}
+
+public sealed record WindowsSteamCmdJobResult
+{
+    public string JobId { get; init; } = string.Empty;
+    public uint AppId { get; init; }
+    public bool Success { get; init; }
+    public int ExitCode { get; init; }
+    public string Message { get; init; } = string.Empty;
+    public List<string> OutputLines { get; init; } = [];
+    public TimeSpan Duration { get; init; }
+}
+
 public sealed record WindowsStartServerRequest
 {
     public string ServerId { get; init; } = string.Empty;
@@ -42,9 +71,17 @@ public sealed record WindowsStartServerRequest
     public string? Arguments { get; init; }
     public string? WorkingDirectory { get; init; }
     public Dictionary<string, string>? EnvironmentVariables { get; init; }
+    public List<string> DirectoriesToEnsure { get; init; } = [];
+    public List<WindowsTextFileWrite> TextFilesToWrite { get; init; } = [];
     public bool AutoRestart { get; init; } = true;
     public int? RconPort { get; init; }
     public string? RconPassword { get; init; }
+}
+
+public sealed record WindowsTextFileWrite
+{
+    public string RelativePath { get; init; } = string.Empty;
+    public string Content { get; init; } = string.Empty;
 }
 
 public sealed record WindowsStopServerRequest

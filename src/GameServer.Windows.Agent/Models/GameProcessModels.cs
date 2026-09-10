@@ -21,6 +21,8 @@ public class GameServerInstance
     public string Arguments { get; set; } = string.Empty;
     public string? WorkingDirectory { get; set; }
     public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
+    public List<string> DirectoriesToEnsure { get; set; } = [];
+    public List<TextFileWriteRequest> TextFilesToWrite { get; set; } = [];
     public bool AutoRestart { get; set; } = true;
     public int? RconPort { get; set; }
     public string? RconPassword { get; set; }
@@ -56,9 +58,17 @@ public class StartServerRequest
     public string? Arguments { get; set; }
     public string? WorkingDirectory { get; set; }
     public Dictionary<string, string>? EnvironmentVariables { get; set; }
+    public List<string> DirectoriesToEnsure { get; set; } = [];
+    public List<TextFileWriteRequest> TextFilesToWrite { get; set; } = [];
     public bool AutoRestart { get; set; } = true;
     public int? RconPort { get; set; }
     public string? RconPassword { get; set; }
+}
+
+public class TextFileWriteRequest
+{
+    public string RelativePath { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
 }
 
 public class StopServerRequest

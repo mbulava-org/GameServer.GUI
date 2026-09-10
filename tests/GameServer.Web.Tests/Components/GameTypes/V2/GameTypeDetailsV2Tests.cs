@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Bunit;
 using GameServer.Web.Components.Pages.GameTypes;
+using GameServer.Web.Components.Pages.GameTypes.Components.V2;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services;
@@ -129,6 +130,25 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
             Assert.DoesNotContain("Save GameType first", cut.Markup);
             Assert.Contains("Version Tag", cut.Markup);
         });
+    }
+
+    [Fact]
+    public void GameTypeDetailsV2_BasicInfoEditor_ShouldOfferWindowsGameTypeOption()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(new GameTypeDetail
+        {
+            Key = string.Empty,
+            DisplayName = string.Empty,
+            Type = "docker",
+            Revisions = []
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+        var basicInfoEditor = cut.FindComponent<GameTypeBasicInfoV2Editor>().Instance;
+
+        Assert.Contains("docker", basicInfoEditor.TypeOptions);
+        Assert.Contains("windows", basicInfoEditor.TypeOptions);
     }
 
     [Fact]

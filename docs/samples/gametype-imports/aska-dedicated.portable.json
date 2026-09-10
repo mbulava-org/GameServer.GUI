@@ -1,0 +1,245 @@
+{
+  "formatVersion": "1.0",
+  "gameType": {
+    "key": "aska-dedicated",
+    "displayName": "ASKA Dedicated Server",
+    "description": "Portable V2 GameType import for the Windows-only ASKA dedicated server. It provisions the SteamCMD app update, writes server properties.txt before launch, and prepares standard BepInEx plugin directories in the install root.",
+    "type": "windows",
+    "documentationUrl": "https://xgamingserver.com/blog/aska-dedicated-server-installation-guide/",
+    "isActive": true,
+    "currentRevisionVersionTag": "latest",
+    "revisions": [
+      {
+        "versionTag": "latest",
+        "imageReference": "AskaServer.exe",
+        "enableTTY": false,
+        "notes": "Uses SteamCMD App ID 3246670 on Windows agents. The API writes server properties.txt with the configured ASKA_* settings before launch. Extract BepInEx IL2CPP files into the install root beside AskaServer.exe; plugins belong in BepInEx/plugins and configs in BepInEx/config.",
+        "isPublished": false,
+        "ports": [
+          {
+            "containerPort": 7777,
+            "protocol": "udp",
+            "advertisedPort": true,
+            "description": "Primary ASKA game traffic port",
+            "displayOrder": 0
+          },
+          {
+            "containerPort": 27015,
+            "protocol": "udp",
+            "advertisedPort": false,
+            "description": "Steam query port",
+            "displayOrder": 1
+          }
+        ],
+        "settingDefinitions": [
+          {
+            "settingKey": "STEAMCMD_APP_ID",
+            "defaultValue": "3246670",
+            "description": "SteamCMD App ID for the ASKA dedicated server package.",
+            "displayOrder": 0,
+            "metadata": {
+              "dataType": "number",
+              "category": "Windows Deployment",
+              "isRequired": true,
+              "cannotBeEmpty": true
+            }
+          },
+          {
+            "settingKey": "STEAMCMD_ANONYMOUS_LOGIN",
+            "defaultValue": "true",
+            "description": "Use anonymous SteamCMD login when installing or updating ASKA server files.",
+            "displayOrder": 1,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "Windows Deployment",
+              "isRequired": true
+            }
+          },
+          {
+            "settingKey": "ASKA_AUTHENTICATION_TOKEN",
+            "defaultValue": "",
+            "description": "Steam Game Server Login Token written into server properties.txt as 'authentication token'. Required before the Windows agent will install/update and start the server.",
+            "displayOrder": 2,
+            "metadata": {
+              "dataType": "password",
+              "category": "Authentication",
+              "isRequired": true,
+              "cannotBeEmpty": true,
+              "placeholder": "Enter Steam GSLT for App ID 1898300"
+            }
+          },
+          {
+            "settingKey": "ASKA_DISPLAY_NAME",
+            "defaultValue": "My ASKA Server",
+            "description": "Display name shown in the in-game server browser.",
+            "displayOrder": 3,
+            "metadata": {
+              "dataType": "string",
+              "category": "General",
+              "isRequired": true,
+              "cannotBeEmpty": true
+            }
+          },
+          {
+            "settingKey": "ASKA_SERVER_NAME",
+            "defaultValue": "aska-server",
+            "description": "Internal server identifier written to server properties.txt.",
+            "displayOrder": 4,
+            "metadata": {
+              "dataType": "string",
+              "category": "General",
+              "isRequired": true,
+              "cannotBeEmpty": true
+            }
+          },
+          {
+            "settingKey": "ASKA_PASSWORD",
+            "defaultValue": "",
+            "description": "Optional join password.",
+            "displayOrder": 5,
+            "metadata": {
+              "dataType": "password",
+              "category": "Authentication",
+              "isRequired": false,
+              "placeholder": "Leave blank for public access"
+            }
+          },
+          {
+            "settingKey": "ASKA_SAVE_ID",
+            "defaultValue": "",
+            "description": "Existing save id to load, or blank to create a new world.",
+            "displayOrder": 6,
+            "metadata": {
+              "dataType": "string",
+              "category": "World",
+              "isRequired": false
+            }
+          },
+          {
+            "settingKey": "ASKA_SEED",
+            "defaultValue": "",
+            "description": "World generation seed for new worlds.",
+            "displayOrder": 7,
+            "metadata": {
+              "dataType": "string",
+              "category": "World",
+              "isRequired": false
+            }
+          },
+          {
+            "settingKey": "ASKA_MODE",
+            "defaultValue": "normal",
+            "description": "Server rules preset written to server properties.txt.",
+            "displayOrder": 8,
+            "metadata": {
+              "dataType": "enum",
+              "category": "General",
+              "isRequired": true,
+              "allowedValuesJson": "[{\"value\":\"normal\",\"label\":\"Normal\"},{\"value\":\"custom\",\"label\":\"Custom\"}]"
+            }
+          },
+          {
+            "settingKey": "ASKA_REGION",
+            "defaultValue": "default",
+            "description": "Region label shown by the server browser.",
+            "displayOrder": 9,
+            "metadata": {
+              "dataType": "string",
+              "category": "General",
+              "isRequired": true
+            }
+          },
+          {
+            "settingKey": "ASKA_KEEP_SERVER_WORLD_ALIVE",
+            "defaultValue": "true",
+            "description": "Controls whether the world keeps simulating when nobody is connected.",
+            "displayOrder": 10,
+            "metadata": {
+              "dataType": "boolean",
+              "category": "World",
+              "isRequired": true
+            }
+          },
+          {
+            "settingKey": "ASKA_AUTOSAVE_STYLE",
+            "defaultValue": "every 10 minutes",
+            "description": "Autosave cadence written to server properties.txt.",
+            "displayOrder": 11,
+            "metadata": {
+              "dataType": "enum",
+              "category": "World",
+              "isRequired": true,
+              "allowedValuesJson": "[{\"value\":\"disabled\",\"label\":\"Disabled\"},{\"value\":\"every 5 minutes\",\"label\":\"Every 5 Minutes\"},{\"value\":\"every 10 minutes\",\"label\":\"Every 10 Minutes\"},{\"value\":\"every 15 minutes\",\"label\":\"Every 15 Minutes\"},{\"value\":\"every morning\",\"label\":\"Every Morning\"}]"
+            }
+          },
+          {
+            "settingKey": "ASKA_STEAM_GAME_PORT",
+            "defaultValue": "7777",
+            "description": "Primary UDP game traffic port written to server properties.txt.",
+            "displayOrder": 12,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 7777,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "ASKA_STEAM_QUERY_PORT",
+            "defaultValue": "27015",
+            "description": "Steam query UDP port written to server properties.txt.",
+            "displayOrder": 13,
+            "metadata": {
+              "dataType": "port",
+              "category": "Networking",
+              "isRequired": true,
+              "portMappings": [
+                {
+                  "mappingRole": "Primary",
+                  "relationType": "Direct",
+                  "targetContainerPort": 27015,
+                  "targetProtocol": "udp",
+                  "isRequired": true,
+                  "displayOrder": 0
+                }
+              ]
+            }
+          },
+          {
+            "settingKey": "ASKA_DAY_LENGTH",
+            "defaultValue": "default",
+            "description": "Custom-mode day length.",
+            "displayOrder": 14,
+            "metadata": {
+              "dataType": "enum",
+              "category": "Custom World",
+              "isRequired": false,
+              "allowedValuesJson": "[{\"value\":\"minimum\",\"label\":\"Minimum\"},{\"value\":\"reduced\",\"label\":\"Reduced\"},{\"value\":\"default\",\"label\":\"Default\"},{\"value\":\"extended\",\"label\":\"Extended\"},{\"value\":\"maximum\",\"label\":\"Maximum\"}]"
+            }
+          },
+          {
+            "settingKey": "ASKA_YEAR_LENGTH",
+            "defaultValue": "default",
+            "description": "Custom-mode year length.",
+            "displayOrder": 15,
+            "metadata": {
+              "dataType": "enum",
+              "category": "Custom World",
+              "isRequired": false,
+              "allowedValuesJson": "[{\"value\":\"minimum\",\"label\":\"Minimum\"},{\"value\":\"reduced\",\"label\":\"Reduced\"},{\"value\":\"default\",\"label\":\"Default\"},{\"value\":\"extended\",\"label\":\"Extended\"},{\"value\":\"maximum\",\"label\":\"Maximum\"}]"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
