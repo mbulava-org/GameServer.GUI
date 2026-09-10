@@ -288,6 +288,15 @@ namespace GameServer.API.Services
         {
             _logger.LogDebug("Finding agent for server {ServerId}", serverId);
 
+            // Strategy 0: Direct registry lookup for server ID (e.g. Windows Agent or direct server-mapped agent)
+            var directAgent = _agentRegistry.GetAgentForServer(serverId);
+            if (directAgent != null)
+            {
+                _logger.LogDebug("Found agent directly in registry for server {ServerId} on node {NodeName}: {AgentUrl}",
+                    serverId, directAgent.NodeName, directAgent.InternalUrl);
+                return directAgent;
+            }
+
             // Strategy 1: If any registered agent already reports a container labelled with this server ID,
             // use the registry mapping.
             var containerId = await ResolveContainerIdForServerAsync(serverId).ConfigureAwait(false);

@@ -24,6 +24,16 @@ namespace GameServer.API.Models
         public DateTime LastHeartbeat { get; set; } = DateTime.UtcNow;
 
         /// <summary>
+        /// Host type of the agent ("docker" or "windows")
+        /// </summary>
+        public string HostType { get; set; } = "docker";
+
+        /// <summary>
+        /// Capabilities advertised by the agent
+        /// </summary>
+        public List<string> Capabilities { get; set; } = new();
+
+        /// <summary>
         /// Whether this agent is running on a Docker Swarm manager node
         /// </summary>
         public bool IsManagerNode { get; set; }
@@ -41,6 +51,11 @@ namespace GameServer.API.Models
         public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
 
         /// <summary>
+        /// Host type of the agent ("docker" or "windows")
+        /// </summary>
+        public string HostType { get; set; } = "docker";
+
+        /// <summary>
         /// Whether this agent is running on a Docker Swarm manager node
         /// Only manager nodes can perform service-level operations
         /// </summary>
@@ -54,6 +69,7 @@ namespace GameServer.API.Models
     {
         public string NodeId { get; set; } = string.Empty;
         public List<string> ContainerIds { get; set; } = new();
+        public List<string> ServerIds { get; set; } = new();
         public string Health { get; set; } = "healthy";
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }

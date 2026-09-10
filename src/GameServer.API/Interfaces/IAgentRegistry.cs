@@ -19,6 +19,11 @@ namespace GameServer.API.Interfaces
         void UpdateAgentContainers(string connectionId, List<string> containerIds);
 
         /// <summary>
+        /// Update the heartbeat and reported containers/servers for an agent
+        /// </summary>
+        void UpdateAgentHeartbeat(string connectionId, AgentHeartbeatInfo heartbeat);
+
+        /// <summary>
         /// Mark an agent as disconnected
         /// </summary>
         void MarkAgentDisconnected(string connectionId);
@@ -29,6 +34,11 @@ namespace GameServer.API.Interfaces
         NodeAgentEndpoint? GetAgentForContainer(string containerId);
 
         /// <summary>
+        /// Get the agent endpoint for a specific server ID
+        /// </summary>
+        NodeAgentEndpoint? GetAgentForServer(string serverId);
+
+        /// <summary>
         /// Get all registered agents
         /// </summary>
         List<NodeAgentEndpoint> GetAllAgents();
@@ -37,6 +47,16 @@ namespace GameServer.API.Interfaces
         /// Get all healthy agents
         /// </summary>
         List<NodeAgentEndpoint> GetHealthyAgents();
+
+        /// <summary>
+        /// Get all agents matching the specified host type (e.g. "docker" or "windows")
+        /// </summary>
+        List<NodeAgentEndpoint> GetAgentsByHostType(string hostType);
+
+        /// <summary>
+        /// Get all agents advertising the specified capability
+        /// </summary>
+        List<NodeAgentEndpoint> GetAgentsByCapability(string capability);
 
         /// <summary>
         /// Get agent by node ID

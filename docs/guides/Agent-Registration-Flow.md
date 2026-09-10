@@ -6,10 +6,12 @@ Game Server Manager uses a push-based agent registration model. Each Docker node
 
 | Component | Project | Responsibility |
 |---|---|---|
-| `AgentRegistryService` | `GameServer.Docker` | In-memory registry of connected agents, their capabilities, and container-to-agent mappings |
+| `AgentRegistryService` | `GameServer.Docker` | In-memory registry of connected agents, their capabilities, and container/server-to-agent mappings |
 | `AgentRegistrationHub` | `GameServer.Docker` | SignalR hub at `/hubs/agentregistration` that receives registrations and heartbeats |
-| `AgentRegistrationService` | `GameServer.Docker.Agent` | Background service that connects to the primary service and pushes registration/heartbeats |
-| `NodeAgentHub` | `GameServer.Docker.Agent` | Agent-side SignalR hub at `/hubs/nodeagent` used for streaming container data |
+| `AgentRegistrationService` | `GameServer.Docker.Agent` | Docker Agent background service that pushes registration/heartbeats for Docker nodes |
+| `AgentRegistrationService` | `GameServer.Windows.Agent` | Windows Agent background service that pushes registration/heartbeats for Windows hosts |
+| `NodeAgentHub` | `GameServer.Docker.Agent` | Docker Agent SignalR hub at `/hubs/nodeagent` used for streaming container data |
+| `WindowsAgentHub` | `GameServer.Windows.Agent` | Windows Agent SignalR hub at `/hubs/windowsagent` (and `/hubs/nodeagent`) for process data |
 
 ## Registration Flow
 
@@ -65,7 +67,8 @@ app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration");
 - Restart the agent on the affected node if its heartbeat has expired.
 
 ## Related Documentation
-
-- [Architecture Overview](../ARCHITECTURE.md)
-- [Terminal & Console Guide](Terminal-And-Console.md)
-- [Current Features](../CURRENT-FEATURES.md)
+ 
+ - [Architecture Overview](../ARCHITECTURE.md)
+ - [Windows Agent Setup & Communication Guide](Windows-Agent-Setup-And-Communication.md)
+ - [Terminal & Console Guide](Terminal-And-Console.md)
+ - [Current Features](../CURRENT-FEATURES.md)
