@@ -15,6 +15,7 @@ public class SamplePortableGameTypePackageTests
     [InlineData("minecraft-bedrock.portable.json", "minecraft-bedrock", "itzg/minecraft-bedrock-server")]
     [InlineData("minecraft-java.portable.json", "minecraft-java", "itzg/minecraft-server")]
     [InlineData("conan-exiles-dedicated.portable.json", "conan-exiles-dedicated", "othrayte/docker-conanexiles")]
+    [InlineData("aska-dedicated.portable.json", "aska-dedicated", "AskaServer.exe")]
     public void SamplePackage_DeserializesCorrectly(string fileName, string expectedKey, string expectedImage)
     {
         // Arrange
