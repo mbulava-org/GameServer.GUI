@@ -1,0 +1,343 @@
+@page "/login"
+@page "/register"
+@layout Layout.MainLayout
+@inject IAuthApiService AuthService
+@inject NavigationManager Navigation
+@inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>@(_selectedTabIndex == 1 ? "Create Account" : "Sign In") - Game Server Manager</PageTitle>
+
+<div class="login-container">
+    <RadzenCard class="login-card rz-shadow-6">
+        <RadzenStack Gap="1.5rem" AlignItems="AlignItems.Center">
+            <div class="login-header">
+                <RadzenIcon Icon="dns" Style="font-size: 3.5rem; color: var(--rz-primary);" />
+                <RadzenText TextStyle="TextStyle.H4" Style="font-weight: 700; margin-top: 0.5rem;" class="rz-text-align-center">Game Server Manager</RadzenText>
+                <RadzenText TextStyle="TextStyle.Body2" class="rz-text-secondary rz-text-align-center">
+                    @(_selectedTabIndex == 1 ? "Register a new account (pending administrator activation)" : "Sign in to your account to manage servers")
+                </RadzenText>
+            </div>
+
+            <RadzenSelectBar @bind-Value="@_selectedTabIndex" TValue="int" Size="ButtonSize.Medium" Style="width: 100%;">
+                <Items>
+                    <RadzenSelectBarItem Text="Sign In" Value="0" />
+                    <RadzenSelectBarItem Text="Create Account" Value="1" />
+                </Items>
+            </RadzenSelectBar>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Filled" Shade="Shade.Light" AllowClose="true" Size="AlertSize.Small" Style="width: 100%;" Close="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </RadzenAlert>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_successMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Filled" Shade="Shade.Light" AllowClose="true" Size="AlertSize.Small" Style="width: 100%;" Close="@(() => _successMessage = null)">
+                    @_successMessage
+                </RadzenAlert>
+            }
+
+            @if (_selectedTabIndex == 0)
+            {
+                <RadzenTemplateForm TItem="LoginModel" Data="@_loginModel" Submit="@HandleLogin" Style="width: 100%;">
+                    <RadzenStack Gap="1.25rem">
+                        <RadzenFormField Text="Username" Variant="Variant.Outlined" Style="width: 100%;">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="@_loginModel.Username" Name="Username" AutoComplete="true" Style="width: 100%;" />
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="Username" Text="Username is required" />
+                            </Helper>
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="Password" Variant="Variant.Outlined" Style="width: 100%;">
+                            <ChildContent>
+                                <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                                    @if (_showLoginPassword)
+                                    {
+                                        <RadzenTextBox @bind-Value="@_loginModel.Password" Name="Password" Style="width: 100%; padding-right: 2.5rem;" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenPassword @bind-Value="@_loginModel.Password" Name="Password" Style="width: 100%; padding-right: 2.5rem;" />
+                                    }
+                                    <RadzenButton Icon="@(_showLoginPassword ? "visibility_off" : "visibility")"
+                                                  ButtonStyle="ButtonStyle.Light"
+                                                  Variant="Variant.Text"
+                                                  Size="ButtonSize.Small"
+                                                  @onpointerdown="@(() => _showLoginPassword = true)"
+                                                  @onpointerup="@(() => _showLoginPassword = false)"
+                                                  @onpointerleave="@(() => _showLoginPassword = false)"
+                                                  @onpointercancel="@(() => _showLoginPassword = false)"
+                                                  @onmousedown="@(() => _showLoginPassword = true)"
+                                                  @onmouseup="@(() => _showLoginPassword = false)"
+                                                  @onmouseleave="@(() => _showLoginPassword = false)"
+                                                  @ontouchstart="@(() => _showLoginPassword = true)"
+                                                  @ontouchend="@(() => _showLoginPassword = false)"
+                                                  @ontouchcancel="@(() => _showLoginPassword = false)"
+                                                  Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                                  Title="Press and hold to view password" />
+                                </div>
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="Password" Text="Password is required" />
+                            </Helper>
+                        </RadzenFormField>
+
+                        <RadzenButton ButtonType="ButtonType.Submit" Text="Sign In" Icon="login" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Large" IsBusy="@_isBusy" BusyText="Signing in..." Style="width: 100%; margin-top: 0.5rem; font-weight: 600;" />
+
+                        <div class="text-center mt-2">
+                            <span class="text-muted small">Don't have an account? </span>
+                            <RadzenLink Text="Create an account" Click="@(() => { _selectedTabIndex = 1; _errorMessage = null; })" Style="cursor: pointer; font-weight: 600;" />
+                        </div>
+                    </RadzenStack>
+                </RadzenTemplateForm>
+            }
+            else
+            {
+                <RadzenTemplateForm TItem="RegisterModel" Data="@_registerModel" Submit="@HandleRegister" Style="width: 100%;">
+                    <RadzenStack Gap="1.25rem">
+                        <RadzenFormField Text="Username" Variant="Variant.Outlined" Style="width: 100%;">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="@_registerModel.Username" Name="RegUsername" AutoComplete="false" Style="width: 100%;" />
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="RegUsername" Text="Username is required" />
+                            </Helper>
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="Email (optional)" Variant="Variant.Outlined" Style="width: 100%;">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="@_registerModel.Email" Name="RegEmail" AutoComplete="true" Style="width: 100%;" />
+                            </ChildContent>
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="Password" Variant="Variant.Outlined" Style="width: 100%;">
+                            <ChildContent>
+                                <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                                    @if (_showRegPassword)
+                                    {
+                                        <RadzenTextBox @bind-Value="@_registerModel.Password" Name="RegPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenPassword @bind-Value="@_registerModel.Password" Name="RegPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                                    }
+                                    <RadzenButton Icon="@(_showRegPassword ? "visibility_off" : "visibility")"
+                                                  ButtonStyle="ButtonStyle.Light"
+                                                  Variant="Variant.Text"
+                                                  Size="ButtonSize.Small"
+                                                  @onpointerdown="@(() => _showRegPassword = true)"
+                                                  @onpointerup="@(() => _showRegPassword = false)"
+                                                  @onpointerleave="@(() => _showRegPassword = false)"
+                                                  @onpointercancel="@(() => _showRegPassword = false)"
+                                                  @onmousedown="@(() => _showRegPassword = true)"
+                                                  @onmouseup="@(() => _showRegPassword = false)"
+                                                  @onmouseleave="@(() => _showRegPassword = false)"
+                                                  @ontouchstart="@(() => _showRegPassword = true)"
+                                                  @ontouchend="@(() => _showRegPassword = false)"
+                                                  @ontouchcancel="@(() => _showRegPassword = false)"
+                                                  Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                                  Title="Press and hold to view password" />
+                                </div>
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="RegPassword" Text="Password is required" />
+                                <RadzenLengthValidator Component="RegPassword" Min="6" Text="Password must be at least 6 characters" />
+                            </Helper>
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="Confirm Password" Variant="Variant.Outlined" Style="width: 100%;">
+                            <ChildContent>
+                                <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                                    @if (_showRegConfirmPassword)
+                                    {
+                                        <RadzenTextBox @bind-Value="@_registerModel.ConfirmPassword" Name="RegConfirmPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenPassword @bind-Value="@_registerModel.ConfirmPassword" Name="RegConfirmPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                                    }
+                                    <RadzenButton Icon="@(_showRegConfirmPassword ? "visibility_off" : "visibility")"
+                                                  ButtonStyle="ButtonStyle.Light"
+                                                  Variant="Variant.Text"
+                                                  Size="ButtonSize.Small"
+                                                  @onpointerdown="@(() => _showRegConfirmPassword = true)"
+                                                  @onpointerup="@(() => _showRegConfirmPassword = false)"
+                                                  @onpointerleave="@(() => _showRegConfirmPassword = false)"
+                                                  @onpointercancel="@(() => _showRegConfirmPassword = false)"
+                                                  @onmousedown="@(() => _showRegConfirmPassword = true)"
+                                                  @onmouseup="@(() => _showRegConfirmPassword = false)"
+                                                  @onmouseleave="@(() => _showRegConfirmPassword = false)"
+                                                  @ontouchstart="@(() => _showRegConfirmPassword = true)"
+                                                  @ontouchend="@(() => _showRegConfirmPassword = false)"
+                                                  @ontouchcancel="@(() => _showRegConfirmPassword = false)"
+                                                  Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                                  Title="Press and hold to view password" />
+                                </div>
+                            </ChildContent>
+                            <Helper>
+                                <RadzenRequiredValidator Component="RegConfirmPassword" Text="Please confirm password" />
+                                <RadzenCompareValidator Component="RegConfirmPassword" Value="@_registerModel.Password" Text="Passwords do not match" />
+                            </Helper>
+                        </RadzenFormField>
+
+                        <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-200); padding: 0.75rem; border-radius: 8px;">
+                            <div class="d-flex align-items-center gap-2">
+                                <RadzenIcon Icon="info" Style="color: var(--rz-info); font-size: 1.25rem;" />
+                                <RadzenText TextStyle="TextStyle.Caption" class="rz-text-secondary mb-0">
+                                    New accounts are created in an inactive state. An administrator will review your account, activate it, and assign your group permissions.
+                                </RadzenText>
+                            </div>
+                        </RadzenCard>
+
+                        <RadzenButton ButtonType="ButtonType.Submit" Text="Create Account" Icon="person_add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Large" IsBusy="@_isBusy" BusyText="Creating account..." Style="width: 100%; margin-top: 0.5rem; font-weight: 600;" />
+
+                        <div class="text-center mt-2">
+                            <span class="text-muted small">Already have an account? </span>
+                            <RadzenLink Text="Sign in" Click="@(() => { _selectedTabIndex = 0; _errorMessage = null; })" Style="cursor: pointer; font-weight: 600;" />
+                        </div>
+                    </RadzenStack>
+                </RadzenTemplateForm>
+            }
+        </RadzenStack>
+    </RadzenCard>
+</div>
+
+<style>
+    .login-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 120px);
+        padding: 2rem;
+    }
+
+    .login-card {
+        width: 100%;
+        max-width: 480px;
+        padding: 2.5rem;
+        border-radius: 16px;
+        background: var(--rz-base-background-color, #ffffff);
+        border: 1px solid var(--rz-border-color, #e0e0e0);
+    }
+
+    .login-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+</style>
+
+@code {
+    private class LoginModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private class RegisterModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    private readonly LoginModel _loginModel = new();
+    private readonly RegisterModel _registerModel = new();
+    private int _selectedTabIndex;
+    private bool _isBusy;
+    private bool _showLoginPassword;
+    private bool _showRegPassword;
+    private bool _showRegConfirmPassword;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Tab { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Navigation.Uri;
+        if (uri.Contains("/register", StringComparison.OrdinalIgnoreCase) || string.Equals(Tab, "register", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedTabIndex = 1;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl);
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        _isBusy = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var (success, error, response) = await AuthService.LoginAsync(_loginModel.Username, _loginModel.Password);
+            if (success && response is not null)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Welcome back!", $"Logged in as {response.Username} ({response.Role})");
+                Navigation.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl, forceLoad: true);
+            }
+            else
+            {
+                _errorMessage = error ?? "Invalid username or password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        _isBusy = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var (success, error, message) = await AuthService.RegisterAsync(_registerModel.Username, _registerModel.Email, _registerModel.Password);
+            if (success)
+            {
+                _successMessage = message ?? "Account created successfully! Your account is pending activation by an administrator.";
+                NotificationService.Notify(NotificationSeverity.Success, "Account Created", "Your account was created and is pending administrator activation.");
+                _registerModel.Username = string.Empty;
+                _registerModel.Email = string.Empty;
+                _registerModel.Password = string.Empty;
+                _registerModel.ConfirmPassword = string.Empty;
+                _selectedTabIndex = 0; // Switch to login tab
+            }
+            else
+            {
+                _errorMessage = error ?? "Could not register account.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

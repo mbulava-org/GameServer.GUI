@@ -567,7 +567,13 @@ public sealed class GameServerValidationService
             var scope = $"ports:{port.ContainerPort}/{port.Protocol}";
             if (port.PublishedPort < portAllocation.StartPort || port.PublishedPort > portAllocation.EndPort)
             {
-                issues.Add(CreateIssue("PortOutsideAllocationRange", $"Published port '{port.PublishedPort}/{port.Protocol}' is outside the configured allocation range.", scope));
+                issues.Add(CreateIssue("PortOutsideAllocationRange", $"Published port '{port.PublishedPort}/{port.Protocol}' is outside the configured allocation range ({portAllocation.StartPort}-{portAllocation.EndPort}).", scope));
+                continue;
+            }
+
+            if (portAllocation.IsPortReserved(port.PublishedPort))
+            {
+                issues.Add(CreateIssue("PortReserved", $"Published port '{port.PublishedPort}/{port.Protocol}' is in the reserved ports range and cannot be allocated.", scope));
                 continue;
             }
 
@@ -618,46 +624,48 @@ public sealed class GameServerValidationService
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-                    var results = new List<GameServerPortAvailabilityDto>();
-                    if (request.Ports.Count == 0)
-                    {
-                        return new GameServerPortAvailabilityResultDto { Ports = results };
-                    }
+        var results = new List<GameServerPortAvailabilityDto>();
+        if (request.Ports.Count == 0)
+        {
+            return new GameServerPortAvailabilityResultDto { Ports = results };
+        }
 
-                    var occupiedPorts = await GetOccupiedPortsAsync(request.ServerId, cancellationToken).ConfigureAwait(false);
-                    var requestedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var duplicateKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var occupiedPorts = await GetOccupiedPortsAsync(request.ServerId, cancellationToken).ConfigureAwait(false);
+        var requestedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var duplicateKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                    foreach (var port in request.Ports)
-                    {
-                        if (!requestedKeys.Add(BuildPortKey(port.Port, port.Protocol)))
-                        {
-                            duplicateKeys.Add(BuildPortKey(port.Port, port.Protocol));
-                        }
-                    }
+        foreach (var port in request.Ports)
+        {
+            if (!requestedKeys.Add(BuildPortKey(port.Port, port.Protocol)))
+            {
+                duplicateKeys.Add(BuildPortKey(port.Port, port.Protocol));
+            }
+        }
 
-                    foreach (var port in request.Ports)
-                    {
-                        var key = BuildPortKey(port.Port, port.Protocol);
+        foreach (var port in request.Ports)
+        {
+            var key = BuildPortKey(port.Port, port.Protocol);
 
-                        var (isAvailable, reason) =
-                            port.Port < portAllocation.StartPort || port.Port > portAllocation.EndPort
-                                ? (false, $"Port '{key}' is outside the configured allocation range ({portAllocation.StartPort}-{portAllocation.EndPort}).")
-                                : duplicateKeys.Contains(key)
-                                    ? (false, $"Port '{key}' is used more than once by this server.")
-                                    : occupiedPorts.Contains(key)
-                                        ? (false, $"Port '{key}' is already in use by another managed server.")
-                                        : (true, (string?)null);
+            var (isAvailable, reason) =
+                port.Port < portAllocation.StartPort || port.Port > portAllocation.EndPort
+                    ? (false, $"Port '{key}' is outside the configured allocation range ({portAllocation.StartPort}-{portAllocation.EndPort}).")
+                    : portAllocation.IsPortReserved(port.Port)
+                        ? (false, $"Port '{key}' is in the reserved ports range and cannot be allocated.")
+                        : duplicateKeys.Contains(key)
+                            ? (false, $"Port '{key}' is used more than once by this server.")
+                            : occupiedPorts.Contains(key)
+                                ? (false, $"Port '{key}' is already in use by another managed server.")
+                                : (true, (string?)null);
 
-                        results.Add(new GameServerPortAvailabilityDto
-                        {
-                            PortId = port.PortId,
-                            Port = port.Port,
-                            Protocol = port.Protocol,
-                            IsAvailable = isAvailable,
-                            Reason = reason
-                        });
-                    }
+            results.Add(new GameServerPortAvailabilityDto
+            {
+                PortId = port.PortId,
+                Port = port.Port,
+                Protocol = port.Protocol,
+                IsAvailable = isAvailable,
+                Reason = reason
+            });
+        }
 
                     return new GameServerPortAvailabilityResultDto { Ports = results };
                 }

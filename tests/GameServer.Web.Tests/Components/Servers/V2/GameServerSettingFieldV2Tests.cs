@@ -206,6 +206,102 @@ public sealed class GameServerSettingFieldV2Tests : BunitContext
         Assert.Contains("text-danger", cut.Markup);
     }
 
+    [Fact]
+    public void TimezoneSetting_ShouldRenderDropDownWithFiltering()
+    {
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "TZ",
+                DefaultValue = "UTC",
+                Metadata = new GameTypeSettingMetadata { DataType = "timezone" }
+            })
+            .Add(p => p.Value, "America/New_York"));
+
+        var dropdown = cut.FindComponent<RadzenDropDown<string>>();
+        Assert.NotNull(dropdown);
+        Assert.True(dropdown.Instance.AllowFiltering);
+        Assert.Equal("America/New_York", dropdown.Instance.Value);
+    }
+
+    [Fact]
+    public void TimezoneSetting_WhenSelected_ShouldEmitValue()
+    {
+        string? saved = null;
+
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "TZ",
+                DefaultValue = "UTC",
+                Metadata = new GameTypeSettingMetadata { DataType = "timezone" }
+            })
+            .Add(p => p.Value, "UTC")
+            .Add(p => p.ValueChanged, value => saved = value));
+
+        var dropdown = cut.FindComponent<RadzenDropDown<string>>();
+        cut.InvokeAsync(() => dropdown.Instance.ValueChanged.InvokeAsync("America/Chicago")).GetAwaiter().GetResult();
+
+        Assert.Equal("America/Chicago", saved);
+    }
+
+    [Fact]
+    public void PasswordSetting_ShouldRenderPasswordInputAndVisibilityToggle()
+    {
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "ADMIN_PASSWORD",
+                Metadata = new GameTypeSettingMetadata { DataType = "password" }
+            })
+            .Add(p => p.Value, "Secret123!"));
+
+        Assert.NotNull(cut.FindComponent<RadzenPassword>());
+        Assert.Equal("Secret123!", cut.FindComponent<RadzenPassword>().Instance.Value);
+    }
+
+    [Fact]
+    public void PasswordSetting_WhenMasked_ShouldRenderRestrictedBadge()
+    {
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "RCON_PASSWORD",
+                Metadata = new GameTypeSettingMetadata { DataType = "password" }
+            })
+            .Add(p => p.Value, "********")
+            .Add(p => p.IsMasked, true));
+
+        Assert.Contains("Restricted", cut.Markup);
+        Assert.Contains("Change", cut.Markup);
+    }
+
+    [Fact]
+    public void PasswordSetting_WithAccessPolicyConfig_ShouldRenderPolicySelector()
+    {
+        var users = new List<GameServerSettingFieldV2.UserOption>
+        {
+            new(1, "alice"),
+            new(2, "bob")
+        };
+
+        var cut = Render<GameServerSettingFieldV2>(parameters => parameters
+            .Add(p => p.Definition, new GameTypeSettingDefinition
+            {
+                SettingKey = "GAME_PASSWORD",
+                Metadata = new GameTypeSettingMetadata { DataType = "password" }
+            })
+            .Add(p => p.Value, "play123")
+            .Add(p => p.AllowAccessPolicyConfig, true)
+            .Add(p => p.AccessPolicy, "Individual")
+            .Add(p => p.AllowedUserIds, [1])
+            .Add(p => p.AvailableUsers, users));
+
+        Assert.Contains("Password Access Policy", cut.Markup);
+        Assert.NotNull(cut.FindComponent<RadzenSelectBar<string>>());
+        Assert.NotNull(cut.FindComponent<RadzenDropDown<IEnumerable<int>>>());
+    }
+
     private static GameTypeSettingDefinition CreatePortDefinition()
     {
         return new GameTypeSettingDefinition

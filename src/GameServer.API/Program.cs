@@ -3,6 +3,7 @@ using GameServer.API.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
+using Serilog.Events;
 using System.Reflection;
 using Scalar.AspNetCore;
 using RepositoriesV2 = GameServer.API.Repositories.V2;
@@ -46,8 +47,18 @@ namespace GameServer.API
                         .Enrich.WithProperty("ApplicationInformationalVersion", informationalVersion));
                         // Console sink is configured in appsettings.json - don't add it here!
 
-                // Bind configuration classes directly from appsettings.json.
-                builder.Services.AddSingleton(builder.Configuration.GetSection("PortAllocation").Get<Configurations.PortAllocation>() ?? new Configurations.PortAllocation());
+                // Bind configuration classes directly from appsettings.json or environment variables.
+                var portAllocationConfig = builder.Configuration.GetSection("PortAllocation").Get<Configurations.PortAllocation>() ?? new Configurations.PortAllocation();
+                var rawReservedPorts = builder.Configuration["PortAllocation:ReservedPortRanges"] ?? builder.Configuration["PortAllocation__ReservedPortRanges"];
+                if (!string.IsNullOrWhiteSpace(rawReservedPorts))
+                {
+                    var rawTokens = rawReservedPorts.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    portAllocationConfig.ReservedPortRanges = (portAllocationConfig.ReservedPortRanges ?? Array.Empty<string>())
+                        .Concat(rawTokens)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                }
+                builder.Services.AddSingleton(portAllocationConfig);
                 builder.Services.AddSingleton(builder.Configuration.GetSection("NetworkOptions").Get<Configurations.NetworkOptions>() ?? new Configurations.NetworkOptions());
                 builder.Services.AddSingleton(builder.Configuration.GetSection("NodeAgentOptions").Get<Configurations.NodeAgentOptions>() ?? new Configurations.NodeAgentOptions());
                 builder.Services.AddSingleton(builder.Configuration.GetSection(Configurations.UdpAgentDiscoveryOptions.SectionName).Get<Configurations.UdpAgentDiscoveryOptions>() ?? new Configurations.UdpAgentDiscoveryOptions());
@@ -165,6 +176,56 @@ namespace GameServer.API
                 // Add V2 repositories
                 // Register IMemoryCache for GameType caching
                 builder.Services.AddMemoryCache();
+
+                builder.Services.Configure<Configurations.JwtOptions>(builder.Configuration.GetSection(Configurations.JwtOptions.SectionName));
+                var jwtOptions = builder.Configuration.GetSection(Configurations.JwtOptions.SectionName).Get<Configurations.JwtOptions>() ?? new Configurations.JwtOptions();
+
+                if (string.IsNullOrWhiteSpace(jwtOptions.SecretKey) || System.Text.Encoding.UTF8.GetByteCount(jwtOptions.SecretKey) < 32)
+                {
+                    throw new InvalidOperationException("Jwt:SecretKey must be configured and be at least 256 bits (32 bytes) long.");
+                }
+
+                builder.Services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+                })
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions.Issuer,
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+                        ValidateLifetime = true,
+                        ClockSkew = TimeSpan.FromMinutes(1)
+                    };
+
+                    // Support token in query string for SignalR hub connections
+                    options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+                    {
+                        OnMessageReceived = context =>
+                        {
+                            var accessToken = context.Request.Query["access_token"];
+                            var path = context.HttpContext.Request.Path;
+                            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                            {
+                                context.Token = accessToken;
+                            }
+                            return Task.CompletedTask;
+                        }
+                    };
+                });
+
+                builder.Services.AddScoped<RepositoriesV2.IUserRepository, RepositoriesV2.UserRepository>();
+                builder.Services.AddScoped<RepositoriesV2.IGroupRepository, RepositoriesV2.GroupRepository>();
+                builder.Services.AddSingleton<ServicesV2.IPasswordHasher, ServicesV2.PasswordHasher>();
+                builder.Services.AddSingleton<ServicesV2.ITokenService, ServicesV2.TokenService>();
+                builder.Services.AddScoped<ServicesV2.IServerAuthorizationService, ServicesV2.ServerAuthorizationService>();
+
                 builder.Services.AddScoped<RepositoriesV2.IGameTypeRepository, RepositoriesV2.GameTypeRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerRepository, RepositoriesV2.GameServerRepository>();
                 builder.Services.AddScoped<RepositoriesV2.IGameServerResourceUtilizationRepository, RepositoriesV2.GameServerResourceUtilizationRepository>();
@@ -287,8 +348,37 @@ namespace GameServer.API
                 mainLogger.LogInformation("GameServer.API runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
                 mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
 
-                // Add Serilog request logging
-                app.UseSerilogRequestLogging();
+                // Add Serilog request logging with clean handling for client-aborted requests
+                app.UseSerilogRequestLogging(options =>
+                {
+                    options.GetLevel = (httpContext, elapsed, ex) =>
+                    {
+                        if (ex is OperationCanceledException || httpContext.Response.StatusCode == 499)
+                        {
+                            return LogEventLevel.Debug;
+                        }
+
+                        if (ex != null || httpContext.Response.StatusCode >= 500)
+                        {
+                            return LogEventLevel.Error;
+                        }
+
+                        return LogEventLevel.Information;
+                    };
+                });
+
+                // Handle client-aborted requests cleanly without unhandled 500 errors
+                app.Use(async (context, next) =>
+                {
+                    try
+                    {
+                        await next();
+                    }
+                    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                    {
+                        context.Response.StatusCode = 499; // Client Closed Request
+                    }
+                });
 
                 // Map OpenAPI endpoint and Scalar UI
                 app.MapOpenApi();
@@ -309,6 +399,7 @@ namespace GameServer.API
                 // Enable CORS (must be before routing)
                 app.UseCors();
 
+                app.UseAuthentication();
                 app.UseAuthorization();
 
                 // Reject API requests with 503 while database initialization is still running in the

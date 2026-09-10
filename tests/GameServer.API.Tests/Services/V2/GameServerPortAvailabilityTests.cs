@@ -142,7 +142,37 @@ public class GameServerPortAvailabilityTests
         };
     }
 
-    private static GameServerValidationService CreateService(IList<SwarmService> services)
+    [Fact]
+    public async Task CheckPortAvailabilityAsync_WhenPortIsReserved_ShouldReportUnavailable()
+    {
+        // Arrange
+        var portAllocation = new PortAllocation
+        {
+            StartPort = 2000,
+            EndPort = 100000,
+            ReservedPortRanges = ["22,6666,9443,8000-9002,11434"]
+        };
+        var service = CreateService([], portAllocation);
+
+        // Act - Port in range 8000-9002
+        var result = await service.CheckPortAvailabilityAsync(BuildRequest("server-a", (1, 8080, "tcp"), (2, 9002, "tcp"), (3, 6666, "tcp"), (4, 25565, "tcp")));
+
+        // Assert
+        Assert.Equal(4, result.Ports.Count);
+        Assert.False(result.Ports[0].IsAvailable);
+        Assert.Contains("reserved", result.Ports[0].Reason);
+
+        Assert.False(result.Ports[1].IsAvailable);
+        Assert.Contains("reserved", result.Ports[1].Reason);
+
+        Assert.False(result.Ports[2].IsAvailable);
+        Assert.Contains("reserved", result.Ports[2].Reason);
+
+        Assert.True(result.Ports[3].IsAvailable);
+        Assert.Null(result.Ports[3].Reason);
+    }
+
+    private static GameServerValidationService CreateService(IList<SwarmService> services, PortAllocation? portAllocation = null)
     {
         var serviceOperations = new Mock<IServiceOperations>();
         serviceOperations
@@ -152,7 +182,7 @@ public class GameServerPortAvailabilityTests
         return new GameServerValidationService(
             Mock.Of<IGameTypeRepository>(),
             serviceOperations.Object,
-            new PortAllocation { StartPort = 2000, EndPort = 100000 },
+            portAllocation ?? new PortAllocation { StartPort = 2000, EndPort = 100000 },
             new VolumeSetupResolver(Mock.Of<IMountTypeConfigRepository>(), Mock.Of<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>(), NullLogger<VolumeSetupResolver>.Instance),
             Mock.Of<IMountTypeConfigRepository>());
     }

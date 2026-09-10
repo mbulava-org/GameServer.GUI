@@ -1,4 +1,5 @@
 @page "/gameservers-v2"
+@attribute [Authorize]
 @rendermode InteractiveServer
 @using GameServer.Web.Models.V2
 @using Radzen
@@ -7,6 +8,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject Services.IThumbnailCacheService ThumbnailCacheService
+@inject Services.IUserTimeZoneService TimeZoneService
 
 <PageTitle>Game Servers</PageTitle>
 
@@ -19,14 +21,9 @@
         <div class="d-flex gap-2 align-items-center">
             <RadzenCheckBox @bind-Value="includeDeleted" TValue="bool" Change="@(_ => LoadAsync())" />
             <span>Include deleted</span>
-            <RadzenButton Text="New Server"
-                          Icon="add"
-                          ButtonStyle="ButtonStyle.Primary"
+            <RadzenButton Text="New Server" Icon="add" ButtonStyle="ButtonStyle.Primary"
                           Click='@(() => Navigation.NavigateTo("/gameservers-v2/new"))' />
-            <RadzenButton Text="Refresh"
-                          Icon="refresh"
-                          ButtonStyle="ButtonStyle.Light"
-                          Click="@LoadAsync" />
+            <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadAsync" />
         </div>
     </div>
 
@@ -43,200 +40,167 @@
             <div class="text-center py-5">
                 <RadzenIcon Icon="dns" Style="font-size: 4rem; color: var(--rz-text-disabled-color);" />
                 <h4 class="mt-3">No Game Servers Found</h4>
-                <p class="text-muted">Once game servers are created, they will appear here with their resolved revision state.</p>
-            </div>
-        </RadzenCard>
-    }
+                <p class="text-muted">Once game servers are created, they will appear here with their resolved revision
+                    state.</p>
+                </div>
+            </RadzenCard>
+        }
     else
-    {
-        <RadzenCard>
-            <RadzenDataGrid @ref="grid"
-                            Data="@servers"
-                            TItem="GameServerListItem"
-                            AllowSorting="true"
-                            AllowFiltering="true"
-                            FilterMode="FilterMode.Advanced"
-                            AllowColumnResize="true"
-                            RowClick="@OnRowClick"
-                            RowRender="@OnRowRender">
-                <Columns>
-                    <RadzenDataGridColumn TItem="GameServerListItem"
-                                          Property="GameTypeThumbnailUrl"
-                                          Title=""
-                                          Width="80px"
-                                          Sortable="false"
-                                          Filterable="false">
-                        <Template Context="server">
-                            @if (!string.IsNullOrWhiteSpace(server.GameTypeThumbnailUrl))
-                            {
-                                <img src="@GetThumbnailUrl(server.GameTypeThumbnailUrl)"
-                                     alt="@server.GameTypeDisplayName"
-                                     class="gameserver-list-thumbnail"
-                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                                <div class="gameserver-list-thumbnail-fallback" style="display: none;">
-                                    <RadzenIcon Icon="dns" Style="font-size: 1.5rem;" />
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="gameserver-list-thumbnail-fallback">
-                                    <RadzenIcon Icon="dns" Style="font-size: 1.5rem;" />
-                                </div>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerListItem" Property="Name" Title="Server" Width="240px">
-                        <Template Context="server">
-                            <div class="gameserver-list-name">
-                                <strong>@server.Name</strong>
-                                <div class="small text-muted">@server.ServerId</div>
-                                @if (!string.IsNullOrWhiteSpace(server.Description))
+        {
+            <RadzenCard>
+                <RadzenDataGrid @ref="grid" Data="@servers" TItem="GameServerListItem" AllowSorting="true" AllowFiltering="true"
+                                FilterMode="FilterMode.Advanced" AllowColumnResize="true" RowClick="@OnRowClick" RowRender="@OnRowRender">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="GameServerListItem" Property="GameTypeThumbnailUrl" Title="" Width="80px"
+                                              Sortable="false" Filterable="false">
+                            <Template Context="server">
+                                @if (!string.IsNullOrWhiteSpace(server.GameTypeThumbnailUrl))
                                 {
-                                    <div class="small text-muted">@server.Description</div>
+                                    <img src="@GetThumbnailUrl(server.GameTypeThumbnailUrl)" alt="@server.GameTypeDisplayName"
+                                         class="gameserver-list-thumbnail"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                                    <div class="gameserver-list-thumbnail-fallback" style="display: none;">
+                                        <RadzenIcon Icon="dns" Style="font-size: 1.5rem;" />
+                                    </div>
                                 }
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerListItem" Property="Status" Title="State" Width="120px">
-                        <Template Context="server">
-                            <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status)"
-                                         Text="@GetStatusText(server.Status)" />
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerListItem" Title="Game Type" Width="180px" Sortable="false" Filterable="false">
-                        <Template Context="server">
-                            <div>
-                                <strong>@(string.IsNullOrWhiteSpace(server.GameTypeDisplayName) ? "Unknown revision" : server.GameTypeDisplayName)</strong>
-                                @if (!string.IsNullOrWhiteSpace(server.GameTypeKey))
+                                else
                                 {
-                                    <div class="small text-muted">@server.GameTypeKey</div>
+                                    <div class="gameserver-list-thumbnail-fallback">
+                                        <RadzenIcon Icon="dns" Style="font-size: 1.5rem;" />
+                                    </div>
                                 }
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
+                            </Template>
+                        </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="GameServerListItem" Title="Revision" Width="180px" Sortable="false" Filterable="false">
-                        <Template Context="server">
-                            @if (string.IsNullOrWhiteSpace(server.RevisionVersionTag))
-                            {
-                                <span class="text-muted">No revision context</span>
-                            }
-                            else
-                            {
+                        <RadzenDataGridColumn TItem="GameServerListItem" Property="Name" Title="Server" Width="240px">
+                            <Template Context="server">
+                                <div class="gameserver-list-name">
+                                    <strong>@server.Name</strong>
+                                    <div class="small text-muted">@server.ServerId</div>
+                                    @if (!string.IsNullOrWhiteSpace(server.CreatedByUsername))
+                                    {
+                                        <div class="small text-muted"><RadzenIcon Icon="person" Style="font-size: 0.85rem; vertical-align: text-bottom;" /> @server.CreatedByUsername</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(server.Description))
+                                    {
+                                        <div class="small text-muted">@server.Description</div>
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="GameServerListItem" Property="Status" Title="State" Width="120px">
+                            <Template Context="server">
+                                <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status, server.IsDeleted)"
+                                             Text="@GetStatusText(server.Status, server.IsDeleted)" />
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="GameServerListItem" Title="Game Type" Width="180px" Sortable="false"
+                                              Filterable="false">
+                            <Template Context="server">
                                 <div>
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@server.RevisionVersionTag" Variant="Variant.Outlined" />
-                                    @if (!string.IsNullOrWhiteSpace(server.RevisionImageReference))
+                                    <strong>@(string.IsNullOrWhiteSpace(server.GameTypeDisplayName) ? "Unknown revision" :
+                                                                                                                server.GameTypeDisplayName)</strong>
+                                        @if (!string.IsNullOrWhiteSpace(server.GameTypeKey))
+                                        {
+                                            <div class="small text-muted">@server.GameTypeKey</div>
+                                        }
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerListItem" Property="ServiceName" Title="Service" Width="170px">
+                                <Template Context="server">
+                                    @if (string.IsNullOrWhiteSpace(server.ServiceName))
                                     {
-                                        <div class="small text-muted mt-1">@server.RevisionImageReference</div>
+                                        <span class="text-muted">Not assigned</span>
                                     }
-                                </div>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerListItem" Property="ServiceName" Title="Service" Width="170px">
-                        <Template Context="server">
-                            @if (string.IsNullOrWhiteSpace(server.ServiceName))
-                            {
-                                <span class="text-muted">Not assigned</span>
-                            }
-                            else
-                            {
-                                <code class="gameserver-list-service">@server.ServiceName</code>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="GameServerListItem" Title="Ports" Width="220px" Sortable="false" Filterable="false">
-                        <Template Context="server">
-                            @if (!server.ResolvedPorts.Any())
-                            {
-                                <span class="text-muted">No resolved ports</span>
-                            }
-                            else
-                            {
-                                <div class="gameserver-list-ports">
-                                    @foreach (var port in server.ResolvedPorts.OrderBy(port => port.DisplayOrder).Take(3))
+                                    else
                                     {
-                                        <RadzenBadge BadgeStyle="@(port.AdvertisedPort ? BadgeStyle.Success : BadgeStyle.Light)"
-                                                     Text="@FormatPort(port)"
-                                                     Size="BadgeSize.Small"
-                                                     class="me-1 mb-1" />
+                                        <code class="gameserver-list-service">@server.ServiceName</code>
                                     }
-                                    @if (server.ResolvedPorts.Count > 3)
+                                </Template>
+                            </RadzenDataGridColumn>
+
+                            <RadzenDataGridColumn TItem="GameServerListItem" Title="Ports" Width="140px" Sortable="false"
+                                                  Filterable="false">
+                                <Template Context="server">
+                                    @{
+                                        var primaryPort = server.ResolvedPorts.FirstOrDefault(p => p.AdvertisedPort)
+                                            ?? server.ResolvedPorts.OrderBy(p => p.DisplayOrder).FirstOrDefault();
+                                        var portText = FormatPublishedPort(primaryPort);
+                                    }
+                                    @if (string.IsNullOrEmpty(portText))
                                     {
-                                        <span class="small text-muted">+@(server.ResolvedPorts.Count - 3) more</span>
+                                        <span class="text-muted">No resolved ports</span>
                                     }
-                                </div>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
+                                    else
+                                    {
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="@portText" Size="BadgeSize.Small"
+                                                     title="Primary Port (Published)" />
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="GameServerListItem" Property="UpdatedAt" Title="Updated" Width="160px">
-                        <Template Context="server">
-                            <span>@server.UpdatedAt.ToLocalTime().ToString("g")</span>
-                        </Template>
-                    </RadzenDataGridColumn>
 
-                    <RadzenDataGridColumn TItem="GameServerListItem" Title="Actions" Width="140px" Sortable="false" Filterable="false">
-                        <Template Context="server">
-                            <div class="d-flex gap-2 justify-content-end" @onclick:stopPropagation="true">
-                                <RadzenButton Icon="edit"
-                                              Size="ButtonSize.Small"
-                                              ButtonStyle="ButtonStyle.Light"
-                                              Click="@(() => EditServer(server))"
-                                              title="Edit" />
-                                <RadzenButton Icon="delete"
-                                              Size="ButtonSize.Small"
-                                              ButtonStyle="ButtonStyle.Danger"
-                                              Click="@(() => DeleteServerAsync(server))"
-                                              title="Delete" />
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
-        </RadzenCard>
-    }
-</div>
+                            <RadzenDataGridColumn TItem="GameServerListItem" Property="UpdatedAt" Title="Updated" Width="160px">
+                                <Template Context="server">
+                                    <span>@FormatLocalDateTime(server.UpdatedAt)</span>
+                                </Template>
+                            </RadzenDataGridColumn>
 
-<style>
-    .gameserver-list-thumbnail,
-    .gameserver-list-thumbnail-fallback {
-        width: 60px;
-        height: 60px;
-        border-radius: 8px;
-        object-fit: cover;
-        background: linear-gradient(135deg, var(--rz-base-100) 0%, var(--rz-base-200) 100%);
-    }
+                            <RadzenDataGridColumn TItem="GameServerListItem" Title="Actions" Width="140px" Sortable="false"
+                                                  Filterable="false">
+                                <Template Context="server">
+                                    <div class="d-flex gap-2 justify-content-end" @onclick:stopPropagation="true">
+                                        <RadzenButton Icon="edit" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                                      Click="@(() => EditServer(server))" title="Edit" />
+                                        <RadzenButton Icon="delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                                      Click="@(() => DeleteServerAsync(server))" title="Delete" />
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                </RadzenCard>
+            }
+        </div>
 
-    .gameserver-list-thumbnail-fallback {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--rz-text-disabled-color);
-    }
+        <style>
+            .gameserver-list-thumbnail,
+            .gameserver-list-thumbnail-fallback {
+                width: 60px;
+                height: 60px;
+                border-radius: 8px;
+                object-fit: cover;
+                background: linear-gradient(135deg, var(--rz-base-100) 0%, var(--rz-base-200) 100%);
+            }
 
-    .gameserver-list-name {
-        display: flex;
-        flex-direction: column;
-        gap: 0.15rem;
-    }
+            .gameserver-list-thumbnail-fallback {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--rz-text-disabled-color);
+            }
 
-    .gameserver-list-service {
-        font-size: 0.8rem;
-        word-break: break-word;
-    }
+            .gameserver-list-name {
+                display: flex;
+                flex-direction: column;
+                gap: 0.15rem;
+            }
 
-    .gameserver-list-ports {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-    }
-</style>
+            .gameserver-list-service {
+                font-size: 0.8rem;
+                word-break: break-word;
+            }
+
+            .gameserver-list-ports {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+            }
+        </style>
 
 @code {
     private List<GameServerListItem> servers = [];
@@ -248,6 +212,18 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private async Task LoadAsync()
@@ -348,38 +324,59 @@
         }
     }
 
-    private static string FormatPort(GameServerResolvedPort port)
+    private static string FormatPublishedPort(GameServerResolvedPort? port)
     {
-        ArgumentNullException.ThrowIfNull(port);
-        return $"{port.ContainerPort}/{port.Protocol}";
+        if (port == null)
+        {
+            return string.Empty;
+        }
+
+        var exposedPort = port.PublishedPort > 0 ? port.PublishedPort : port.ContainerPort;
+        return exposedPort > 0 ? exposedPort.ToString() : string.Empty;
     }
 
-    private static BadgeStyle GetStatusBadgeStyle(string? status)
+    private string FormatLocalDateTime(DateTime dateTime)
     {
-        return status?.Trim().ToLowerInvariant() switch
+        return TimeZoneService.FormatLocalDateTime(dateTime);
+    }
+
+    private static BadgeStyle GetStatusBadgeStyle(string? status, bool isDeleted = false)
+    {
+        if (isDeleted)
         {
-            "running" => BadgeStyle.Success,
-            "preparing" => BadgeStyle.Primary,
-            "starting" => BadgeStyle.Info,
-            "stopped" => BadgeStyle.Secondary,
-            "stopping" => BadgeStyle.Warning,
-            "failed" => BadgeStyle.Danger,
-            "scaling down" => BadgeStyle.Warning,
+            return BadgeStyle.Danger;
+        }
+
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
+        {
+            "running" or "available" => BadgeStyle.Success,
+            "preparing" or "starting" => BadgeStyle.Info,
+            "stopped" or "deleted" or "failed" => BadgeStyle.Danger,
+            "stopping" or "scalingdown" => BadgeStyle.Warning,
             _ => BadgeStyle.Secondary
         };
     }
 
-    private static string GetStatusText(string? status)
+    private static string GetStatusText(string? status, bool isDeleted = false)
     {
-        return status?.Trim().ToLowerInvariant() switch
+        if (isDeleted)
+        {
+            return "Deleted";
+        }
+
+        var normalized = status?.Trim().ToLowerInvariant().Replace("-", "");
+        return normalized switch
         {
             "running" => "Running",
+            "available" => "Available",
             "preparing" => "Preparing",
             "starting" => "Starting",
             "stopped" => "Stopped",
             "stopping" => "Stopping",
             "failed" => "Failed",
-            "scaling down" => "Scaling Down",
+            "deleted" => "Deleted",
+            "scalingdown" => "Scaling Down",
             _ => string.IsNullOrWhiteSpace(status) ? "Unknown" : status
         };
     }

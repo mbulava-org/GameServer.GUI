@@ -1,4 +1,5 @@
 using Bunit;
+using GameServer.Web.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Radzen;
 
@@ -8,11 +9,12 @@ public class HomePageTests : BunitContext
 {
     public HomePageTests()
     {
-        // Register required services for Radzen components
+        // Register required services for Radzen components and Auth
         Services.AddScoped<DialogService>();
         Services.AddScoped<NotificationService>();
         Services.AddScoped<TooltipService>();
         Services.AddScoped<ContextMenuService>();
+        Services.AddTestAuthServices();
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 @page "/gametypes-v2/{Key}"
 @page "/gametypes-v2/new"
+@attribute [Authorize(Roles = "Admin,GameManager")]
 @rendermode InteractiveServer
 @using System.Text
 @using System.Text.Json
@@ -13,6 +14,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject Services.IUserTimeZoneService TimeZoneService
 
 <PageTitle>@(isNew ? "Create Game Type V2" : gameType?.DisplayName ?? "Game Type V2")</PageTitle>
 
@@ -82,7 +84,7 @@
                             <div class="text-end">
                                 <div><strong>Revisions:</strong> @gameType.Revisions.Count</div>
                                 <div><strong>Current:</strong> @(CurrentRevision?.VersionTag ?? "None")</div>
-                                <div><strong>Updated:</strong> @gameType.UpdatedAt.ToLocalTime().ToString("g")</div>
+                                <div><strong>Updated:</strong> @TimeZoneService.FormatLocalDateTime(gameType.UpdatedAt)</div>
                             </div>
                         </div>
                     </RadzenCard>
@@ -215,6 +217,13 @@
                         </div>
                     </RadzenTabsItem>
 
+                    <RadzenTabsItem Text="UI Extensions">
+                        <div class="p-4">
+                            <GameTypeRevisionUiExtensionsEditor Extensions="revisionUiExtensions"
+                                                                OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
                     <RadzenTabsItem Text="Review">
                         <div class="p-4">
                             <GameTypeRevisionReviewEditor RevisionImageReference="revisionImageReference"
@@ -274,6 +283,7 @@
     private List<GameTypeRevisionVolumeDraft> revisionVolumes = [];
     private List<GameTypeRevisionSettingDraft> revisionSettingDefinitions = [];
     private List<GameTypeRevisionWebHostDraft> revisionWebHosts = [];
+    private List<GameTypeRevisionUiExtensionDraft> revisionUiExtensions = [];
     private List<VolumeMountTypeOption> mountTypeOptions = [];
     private string detectionImageReference = string.Empty;
     private string detectionVersionTag = string.Empty;
@@ -282,7 +292,7 @@
     private static readonly IReadOnlyList<string> gameTypeTypeOptions = ["docker"];
     private static readonly IReadOnlyList<string> protocolOptions = ["tcp", "udp"];
     private static readonly IReadOnlyList<string> volumeUsageOptions = ["config", "saves", "backups", "gamefiles", "logs"];
-    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "password", "number", "boolean", "yesno", "enum", "port", "servervariable"];
+    private static readonly IReadOnlyList<string> dataTypeOptions = ["string", "password", "number", "boolean", "yesno", "enum", "port", "timezone", "servervariable"];
     private static readonly IReadOnlyList<string> portMappingRoleOptions = ["Primary", "Related"];
     private static readonly IReadOnlyList<string> portRelationTypeOptions = ["Direct", "Offset", "Fixed", "Multiplier"];
     private static readonly HashSet<string> supportedWebHostVariableDataTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -325,6 +335,18 @@
     protected override async Task OnParametersSetAsync()
     {
         await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private async Task LoadAsync()
@@ -535,6 +557,7 @@
                 ReadyLogPattern = revisionReadyLogPattern,
                 Notes = revisionNotes,
                 IsPublished = revisionIsPublished,
+                UiExtensionsJson = SerializeUiExtensions(revisionUiExtensions),
                 Ports = revisionPorts.Select((port, index) => new GameTypePort
                 {
                     ContainerPort = port.ContainerPort,
@@ -1030,6 +1053,19 @@
             ContainerPortVariable = x.ContainerPortVariable,
             EnabledWhen = x.EnabledWhen
         }).ToList() ?? [];
+        revisionUiExtensions = revision?.UiExtensions?.Select(x => new GameTypeRevisionUiExtensionDraft
+        {
+            Title = x.Title,
+            ComponentTypeName = x.ComponentTypeName,
+            AssemblyName = x.AssemblyName,
+            Icon = x.Icon,
+            Order = x.Order,
+            Parameters = x.Parameters?.Select(kvp => new GameTypeRevisionUiExtensionParameterDraft
+            {
+                Key = kvp.Key,
+                Value = kvp.Value
+            }).ToList() ?? []
+        }).ToList() ?? [];
         detectionImageReference = string.IsNullOrWhiteSpace(revisionImageReference) ? detectionImageReference : revisionImageReference;
         detectionVersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? detectionVersionTag : revisionVersionTag;
         detectionComparison = null;
@@ -1096,6 +1132,14 @@
         if (key.Contains("PORT", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out _))
         {
             return "port";
+        }
+
+        if (key.Equals("TZ", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("TIMEZONE", StringComparison.OrdinalIgnoreCase)
+            || key.EndsWith("_TZ", StringComparison.OrdinalIgnoreCase)
+            || key.EndsWith("_TIMEZONE", StringComparison.OrdinalIgnoreCase))
+        {
+            return "timezone";
         }
 
         if (LooksLikeYesNoValue(value))
@@ -1865,6 +1909,34 @@
         return string.Equals(mapping.MappingRole, nameof(GameTypeSettingPortMappingRole.Related), StringComparison.OrdinalIgnoreCase)
             ? "default related port"
             : "target port";
+    }
+
+    private static readonly JsonSerializerOptions uiExtensionsSerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private static string? SerializeUiExtensions(IReadOnlyList<GameTypeRevisionUiExtensionDraft> drafts)
+    {
+        if (drafts is null || drafts.Count == 0)
+        {
+            return null;
+        }
+
+        var descriptors = drafts.Select(d => new GameTypeUiExtensionDescriptor
+        {
+            Title = d.Title?.Trim() ?? string.Empty,
+            ComponentTypeName = d.ComponentTypeName?.Trim() ?? string.Empty,
+            AssemblyName = string.IsNullOrWhiteSpace(d.AssemblyName) ? null : d.AssemblyName!.Trim(),
+            Icon = string.IsNullOrWhiteSpace(d.Icon) ? null : d.Icon!.Trim(),
+            Order = d.Order,
+            Parameters = d.Parameters
+                .Where(p => !string.IsNullOrWhiteSpace(p.Key))
+                .GroupBy(p => p.Key.Trim(), StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Last().Value ?? string.Empty, StringComparer.Ordinal)
+        }).ToList();
+
+        return JsonSerializer.Serialize(descriptors, uiExtensionsSerializerOptions);
     }
 
 }

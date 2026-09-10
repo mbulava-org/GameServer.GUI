@@ -7,41 +7,37 @@ This implementation adds a **global node agent architecture** to GameServer.Dock
 ## Architecture
 
 ```
-???????????????????????????????????????????????????
-?  Management Service (Swarm Manager Node)        ?
-?  ????????????????????????????????????????????  ?
-?  ?  GameServerController                     ?  ?
-?  ?  - /api/servers/{id}/stats (new)         ?  ?
-?  ?  - /api/servers/{id}/resources (enhanced)?  ?
-?  ?  - /api/servers/agents (new)             ?  ?
-?  ????????????????????????????????????????????  ?
-?                     ?                            ?
-?  ????????????????????????????????????????????  ?
-?  ?  NodeAgentDiscoveryService                ?  ?
-?  ?  - Discovers agents via Swarm API        ?  ?
-?  ?  - Maps containers to nodes              ?  ?
-?  ?  - Routes requests to agents             ?  ?
-?  ????????????????????????????????????????????  ?
-?                     ?                            ?
-?  ????????????????????????????????????????????  ?
-?  ?  GameServerResourceMonitorService        ?  ?
-?  ?  - Service-level data (Swarm API)       ?  ?
-?  ?  - Real-time stats (via agents)          ?  ?
-?  ????????????????????????????????????????????  ?
-???????????????????????????????????????????????????
-                      ? HTTP
-        ??????????????????????????????
-        ?             ?              ?
-???????????????? ????????????? ??????????????
-? Node 1       ? ? Node 2    ? ? Node 3     ?
-?  Agent       ? ?  Agent    ? ?  Agent     ?
-?  :8080       ? ?  :8080    ? ?  :8080     ?
-?    ?         ? ?    ?      ? ?    ?       ?
-? Docker       ? ? Docker    ? ? Docker     ?
-? Socket (RO)  ? ? Socket(RO)? ? Socket(RO) ?
-?    ?         ? ?    ?      ? ?    ?       ?
-? Containers   ? ? Containers? ? Containers ?
-???????????????? ????????????? ??????????????
+┌──────────────────────────────────────────────────┐
+│  Primary Service (GameServer.API)                │
+│  ┌────────────────────────────────────────────┐  │
+│  │  SignalR Hubs (client-facing real-time)    │  │
+│  │  - /hubs/serverlogs   (shared log stream)  │  │
+│  │  - /hubs/attach       (shared TTY attach)  │  │
+│  │  - /hubs/terminal     (per-user exec)      │  │
+│  │  - /hubs/resources    (real-time stats)    │  │
+│  │  - /hubs/agentregistration (agents push)   │  │
+│  └────────────────────────────────────────────┘  │
+│                     │                            │
+│  ┌────────────────────────────────────────────┐  │
+│  │  INodeAgentDiscovery (internal service)    │  │
+│  │  - Tracks registered agents & capabilities │  │
+│  │  - Maps containers/services to nodes       │  │
+│  │  - Routes hub calls to the correct agent   │  │
+│  └────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
+                      │ HTTP + WebSocket (internal)
+        ┌─────────────┼──────────────┐
+        │             │              │
+┌───────────────┐ ┌─────────────┐ ┌──────────────┐
+│ Node 1        │ │ Node 2      │ │ Node 3       │
+│  Agent :8080  │ │  Agent :8080│ │  Agent :8080 │
+│  /api/*       │ │  /api/*     │ │  /api/*      │
+│  /hubs/nodeagent│ /hubs/nodeagent│/hubs/nodeagent│
+│    │          │ │    │        │ │    │         │
+│ Docker Socket │ │ Docker Sock │ │ Docker Sock  │
+│    │          │ │    │        │ │    │         │
+│ Containers    │ │ Containers  │ │ Containers   │
+└───────────────┘ └─────────────┘ └──────────────┘
 ```
 
 ## Components
@@ -55,33 +51,39 @@ Lightweight ASP.NET Core minimal API that runs on each node.
 - Container inspection
 - Read-only access to local Docker daemon
 
-**Endpoints:**
-- `GET /health` - Health check
-- `GET /containers/{id}/stats` - Real-time stats
-- `GET /containers/{id}/logs?tail=N` - Container logs
-- `GET /containers/{id}/inspect` - Container details
-- `GET /containers` - List containers on node
+**Endpoints (internal to the overlay network):**
+- `GET /health` — Health check
+- `GET /api/containers` / `GET /api/containers/{id}/inspect` — Container listing & inspection
+- `GET /api/containers/{id}/stats` — Real-time stats
+- `GET /api/containers/{id}/logs` — Container logs
+- `GET /api/containers/{id}/attach/ws` — TTY attach WebSocket
+- `POST /api/containers/{id}/exec` · `GET /api/containers/{id}/exec/ws` — Exec sessions
+- `GET /api/containers/{id}/files` · `content` · `download` · `POST upload` · `POST directory` — File-manager operations
+- `GET /api/services/{serviceId}` · `GET /api/services/{serviceId}/logs` — Service inspection
+- `GET /api/networks/{id}` — Network inspection
+- `POST /api/images/inspect` — Image inspection
+- `GET /api/tasks` — Swarm task listing (manager agents only)
+- `/hubs/nodeagent` — SignalR hub the primary service uses to push/pull real-time work
 
 **Deployment:** Global service (one per node)
 
 **Resources:** ~0.1 CPU, ~50-100MB RAM
 
-### 2. **NodeAgentDiscoveryService** (New)
-Service in main application for agent discovery and communication.
+### 2. **INodeAgentDiscovery / NodeAgentDiscoveryService** (Primary Service)
+Internal service in `GameServer.API` for agent discovery and communication. Not exposed as an HTTP endpoint — consumed only by hubs and internal services.
 
 **Responsibilities:**
-- Discover agents via Swarm API
-- Map containers to nodes
-- Route requests to appropriate agents
-- Cache agent endpoints (30s TTL)
+- Track agents that register via `/hubs/agentregistration`
+- Map containers/services to their owning node & agent
+- Route hub-driven requests to the appropriate agent
+- Cache agent endpoints and capabilities
 - Health checking
 
-**Methods:**
-- `DiscoverAgentsAsync()` - Find all agents
-- `GetAgentForContainerAsync(containerId)` - Find agent for container
-- `GetAgentForServerAsync(serverId)` - Find agent for game server
-- `GetContainerStatsAsync(containerId)` - Get real-time stats
-- `GetContainerLogsAsync(containerId, tail)` - Get container logs
+**Key methods (internal API):**
+- `GetAgentForContainerAsync(containerId)` — Find agent hosting a container
+- `GetAgentForServerAsync(serverId)` — Find agent for a game server
+- `GetContainerStatsAsync(containerId)` — Aggregate real-time stats via agent HTTP
+- `GetContainerLogsAsync(containerId, tail)` — Fetch container logs via agent HTTP
 
 ### 3. **Enhanced Resource Monitoring**
 Updated `GameServerResourceMonitorService` to combine Swarm-level and container-level data.
@@ -94,25 +96,33 @@ Updated `GameServerResourceMonitorService` to combine Swarm-level and container-
 - `ServerResourceUsage` - Added `RealTimeStats` property
 - `ContainerStats` - New model for agent-provided stats
 
-### 4. **New API Endpoints**
+### 4. **Client-Facing Real-Time Surface**
 
-#### Get Real-Time Container Stats
-```
-GET /api/servers/{id}/stats
-```
-Returns real-time CPU, memory, network, and I/O statistics via node agent.
+All real-time container operations are exposed to clients through SignalR hubs on the primary service. There is no `/api/servers/*` HTTP surface for stats, logs, or agent discovery.
 
-#### Discover Agents
+#### Real-Time Resource Stats
 ```
-GET /api/servers/agents
+SignalR: /hubs/resources   (shared, multi-subscriber)
 ```
-Returns list of all discovered agents in the swarm.
+Real-time CPU, memory, network, and I/O statistics fanned out from `IServerResourceAggregator`, which pulls from the container's agent via `INodeAgentDiscovery`.
 
-#### Enhanced Resource Usage
+#### Log Streaming
 ```
-GET /api/servers/{id}/resources
+SignalR: /hubs/serverlogs  (shared, multi-subscriber)
 ```
-Now includes both service-level and real-time container stats.
+Streams `docker logs`-equivalent output from the agent hosting the container.
+
+#### Interactive Terminal
+```
+SignalR: /hubs/terminal    (per-user exec)
+SignalR: /hubs/attach      (shared TTY attach)
+```
+
+#### Agent Registration
+```
+SignalR: /hubs/agentregistration
+```
+Agents connect and push registration, heartbeats, capabilities, and container/agent mapping updates. The primary service never polls agents to discover them.
 
 ## Deployment
 
@@ -181,48 +191,39 @@ docker service logs -f gameserver-agent
 
 ## Usage
 
-### Via Management API
+### Via the Web UI
+
+All agent-backed features are consumed through the V2 server pages:
+- `/gameservers-v2/{serverId}` — Overview, Logs, Terminal, Files, TTY Console tabs
+
+Each tab opens a SignalR connection to the corresponding hub (`/hubs/resources`, `/hubs/serverlogs`, `/hubs/terminal`, `/hubs/attach`).
+
+### Direct Agent Access (for debugging, internal network only)
 
 ```bash
-# Discover all agents
-curl http://localhost:5000/api/servers/agents
-
-# Get real-time stats for a server
-curl http://localhost:5000/api/servers/{serverId}/stats
-
-# Get resource usage (includes real-time stats)
-curl http://localhost:5000/api/servers/{serverId}/resources
-```
-
-### Direct Agent Access (for debugging)
-
-```bash
-# From another container on the same network
+# From another container on the same overlay network
 curl http://gameserver-agent:8080/health
-curl http://gameserver-agent:8080/containers
-curl http://gameserver-agent:8080/containers/{containerId}/stats
+curl http://gameserver-agent:8080/api/containers
+curl http://gameserver-agent:8080/api/containers/{containerId}/stats
+curl http://gameserver-agent:8080/api/containers/{containerId}/logs
 ```
 
 ## Data Flow
 
-### Real-Time Stats Request
-1. Client calls `GET /api/servers/{serverId}/stats`
-2. Controller calls `NodeAgentDiscovery.GetAgentForServerAsync(serverId)`
+### Real-Time Stats Subscription
+1. Client connects to `/hubs/resources` and subscribes to a `serverId`.
+2. `IServerResourceAggregator` calls `INodeAgentDiscovery.GetAgentForServerAsync(serverId)`.
 3. Discovery service:
-   - Gets running container ID from Swarm API
-   - Finds which node the container is on
-   - Discovers agent on that node (from cache or fresh)
-4. Discovery service calls agent's `/containers/{id}/stats` endpoint
-5. Agent queries local Docker daemon
-6. Stats returned to client
+   - Resolves the container ID for the server (via labels / Swarm API)
+   - Looks up which registered agent hosts that container
+4. Aggregator calls the agent's `GET /api/containers/{id}/stats`.
+5. Agent queries its local Docker daemon.
+6. Stats are fanned out to every subscriber of that `serverId`.
 
-### Resource Monitoring Stream
-1. Client calls `GET /api/servers/{serverId}/resources`
-2. Resource monitor service:
-   - Gets service-level data from Swarm API
-   - Calls NodeAgentDiscovery for real-time stats
-   - Combines both data sets
-3. Returns hybrid result with both service and container data
+### Log Streaming
+1. Client connects to `/hubs/serverlogs` and subscribes to a `serverId`.
+2. `IServerLogAggregator` opens (or reuses) a single stream to the owning agent's `GET /api/containers/{id}/logs`.
+3. Every line is fanned out to all subscribers of that server.
 
 ## What's Available Where
 
@@ -255,7 +256,7 @@ curl http://gameserver-agent:8080/containers/{containerId}/stats
 
 ### Health Checks
 - Agents have built-in health checks (every 30s)
-- Management service checks agent health during discovery
+- Primary service checks agent health during discovery
 - Unhealthy agents excluded from routing
 
 ### Logging
@@ -293,17 +294,14 @@ docker network inspect gameserver-network
 ```
 
 ### Stats Not Available
-1. Verify server has running container:
+1. Verify server has a running container:
    ```bash
-   curl http://localhost:5000/api/servers/{serverId}
+   curl http://localhost:5164/api/v2/gameservers/{serverId}
    ```
 
-2. Check if agent exists on container's node:
-   ```bash
-   curl http://localhost:5000/api/servers/agents
-   ```
+2. Check that an agent has registered for the container's node (via primary-service logs for `AgentRegistrationHub`).
 
-3. Test agent directly (from within network):
+3. Test agent directly (from within the overlay network):
    ```bash
    docker run --rm --network gameserver-network alpine wget -O- http://gameserver-agent:8080/health
    ```
@@ -388,7 +386,7 @@ dotnet run
 
 # Test endpoints
 curl http://localhost:8080/health
-curl http://localhost:8080/containers
+curl http://localhost:8080/api/containers
 ```
 
 ### Debugging

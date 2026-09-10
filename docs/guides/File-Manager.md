@@ -5,9 +5,7 @@ The file manager lets you browse, upload, download, and edit files inside a game
 ## Current Implementation
 
 **Component:** `src/GameServer.Web/Components/Server/ServerFileManager.razor`  
-Route: used inside the legacy server details page (`/servers/{id}`) Files tab.
-
-> Note: The component is marked `[Obsolete]` because it depends on the legacy `IGameServerApi` and `GameServer` model. A V2-aligned file manager will be needed before the legacy path can be removed.
+Route: rendered inside the V2 server details page (`/gameservers-v2/{serverId}`) Files tab.
 
 ## Features
 

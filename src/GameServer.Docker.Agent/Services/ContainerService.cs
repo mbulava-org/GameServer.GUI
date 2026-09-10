@@ -2,6 +2,7 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Interfaces;
 using System.Runtime.CompilerServices;
+using System.Text;
 using DockerStatsResponse = Docker.DotNet.Models.ContainerStatsResponse;
 
 namespace GameServer.Docker.Agent.Services
@@ -40,9 +41,16 @@ namespace GameServer.Docker.Agent.Services
             {
                 _logger.LogTrace("Starting stats collection for container {ContainerId}", containerId);
 
+                // NOTE: OneShot=true causes the Docker daemon to return stats WITHOUT
+                // populating PreCPUStats, which breaks the standard CPU% delta formula
+                // (cpu_delta / system_delta * cpus * 100). The result is a lifetime average
+                // instead of instantaneous CPU%, causing readings that are off by an order
+                // of magnitude (typically far too low) versus what Portainer/`docker stats`
+                // report. With OneShot=false + Stream=false the daemon internally samples
+                // twice ~1s apart and returns a single response with proper pre-stats.
                 var statsTask = _dockerClient.Containers.GetContainerStatsAsync(
                     containerId,
-                    new ContainerStatsParameters { Stream = false, OneShot = true },
+                    new ContainerStatsParameters { Stream = false, OneShot = false },
                     progress,
                     cts.Token);
 
@@ -151,7 +159,7 @@ namespace GameServer.Docker.Agent.Services
                 ShowStdout = true,
                 ShowStderr = true,
                 Timestamps = true,
-                Tail = tailLines > 0 ? tailLines.ToString() : "100"
+                Tail = tailLines > 0 ? tailLines.ToString() : "all"
             };
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -466,6 +474,530 @@ namespace GameServer.Docker.Agent.Services
                 },
                 Pids = stats.PidsStats?.Current ?? 0
             };
+        }
+
+        public async Task<IReadOnlyList<Models.ContainerFileItemResponse>> ListFilesAsync(
+            string containerId,
+            string path,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            var normalizedPath = NormalizeContainerPath(path);
+
+            _logger.LogDebug("Listing files in container {ContainerId} at path {Path}", containerId, normalizedPath);
+
+            // Fast path: use non-recursive exec inspection to avoid tar-streaming gigabytes of container files
+            try
+            {
+                var execItems = await ListFilesViaExecAsync(containerId, normalizedPath, cancellationToken);
+                if (execItems != null)
+                {
+                    return execItems;
+                }
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Exec-based file listing not available for container {ContainerId} at path {Path}, falling back to archive", containerId, normalizedPath);
+            }
+
+            return await ListFilesViaArchiveAsync(containerId, normalizedPath, cancellationToken);
+        }
+
+        private async Task<IReadOnlyList<Models.ContainerFileItemResponse>?> ListFilesViaExecAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            var script = "dir=\"$1\"\ncd \"$dir\" 2>/dev/null || exit 1\nfor f in .* *; do\n  [ \"$f\" = \".\" ] || [ \"$f\" = \"..\" ] && continue\n  [ -e \"$f\" ] || [ -L \"$f\" ] || continue\n  if [ -d \"$f\" ]; then\n    type=\"d\"\n    size=0\n  else\n    type=\"f\"\n    size=$(wc -c < \"$f\" 2>/dev/null || stat -c %s \"$f\" 2>/dev/null || echo 0)\n  fi\n  mtime=$(stat -c %Y \"$f\" 2>/dev/null || date +%s)\n  mode=$(stat -c %a \"$f\" 2>/dev/null || echo \"755\")\n  printf \"%s\\t%s\\t%s\\t%s\\t%s\\n\" \"$type\" \"$size\" \"$mtime\" \"$mode\" \"$f\"\ndone";
+
+            var execCreateParams = new ContainerExecCreateParameters
+            {
+                Cmd = ["/bin/sh", "-c", script, "--", normalizedPath],
+                AttachStdout = true,
+                AttachStderr = true,
+                AttachStdin = false,
+                TTY = false
+            };
+
+            var exec = await _dockerClient.Exec.CreateContainerExecAsync(containerId, execCreateParams, cancellationToken);
+            using var stream = await _dockerClient.Exec.StartContainerExecAsync(exec.ID, new ContainerExecStartParameters { Detach = false, TTY = false }, cancellationToken);
+
+            using var stdoutMs = new MemoryStream();
+            using var stderrMs = new MemoryStream();
+            await stream.CopyOutputToAsync(null, stdoutMs, stderrMs, cancellationToken);
+
+            var output = Encoding.UTF8.GetString(stdoutMs.ToArray());
+            var items = new List<Models.ContainerFileItemResponse>();
+            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.TrimEnd('\r');
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                var parts = line.Split('\t', 5);
+                if (parts.Length < 5)
+                {
+                    continue;
+                }
+
+                var type = parts[0];
+                var sizeStr = parts[1];
+                var mtimeStr = parts[2];
+                var modeStr = parts[3];
+                var name = parts[4];
+
+                var isDir = type == "d";
+                long.TryParse(sizeStr, out var size);
+                var lastModified = DateTime.UtcNow;
+                if (long.TryParse(mtimeStr, out var mtimeSeconds) && mtimeSeconds > 0)
+                {
+                    lastModified = DateTimeOffset.FromUnixTimeSeconds(mtimeSeconds).UtcDateTime;
+                }
+
+                var itemSubPath = (normalizedPath.TrimEnd('/') + "/" + name.TrimStart('/')).Replace("//", "/");
+                var permissions = FormatOctalPermissions(modeStr, isDir);
+
+                items.Add(new Models.ContainerFileItemResponse
+                {
+                    Name = name,
+                    Path = itemSubPath,
+                    IsDirectory = isDir,
+                    Size = isDir ? 0 : size,
+                    LastModified = lastModified,
+                    Extension = isDir ? null : Path.GetExtension(name),
+                    Permissions = permissions
+                });
+            }
+
+            return items.OrderByDescending(i => i.IsDirectory).ThenBy(i => i.Name).ToList();
+        }
+
+        private static string FormatOctalPermissions(string modeStr, bool isDirectory)
+        {
+            var fallback = isDirectory ? "drwxr-xr-x" : "-rw-r--r--";
+            if (string.IsNullOrWhiteSpace(modeStr))
+            {
+                return fallback;
+            }
+
+            try
+            {
+                var octalValue = Convert.ToInt32(modeStr.Trim(), 8);
+                return FormatPermissions(octalValue, isDirectory);
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private async Task<IReadOnlyList<Models.ContainerFileItemResponse>> ListFilesViaArchiveAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
+                    containerId,
+                    new ContainerPathStatParameters { Path = normalizedPath },
+                    false,
+                    cancellationToken);
+
+                using var memoryStream = new MemoryStream();
+                await archive.Stream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                var items = new List<Models.ContainerFileItemResponse>();
+                using var tarReader = new System.Formats.Tar.TarReader(memoryStream);
+
+                string? rootEntryPrefix = null;
+
+                while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+                {
+                    var entryName = entry.Name.TrimStart('/');
+                    if (string.IsNullOrEmpty(entryName))
+                    {
+                        continue;
+                    }
+
+                    if (rootEntryPrefix == null)
+                    {
+                        // The first entry is usually the queried directory itself
+                        rootEntryPrefix = entryName.TrimEnd('/') + "/";
+                        if (entry.EntryType != System.Formats.Tar.TarEntryType.Directory)
+                        {
+                            // If the queried path itself was a single file, return it
+                            var fileName = Path.GetFileName(normalizedPath);
+                            items.Add(new Models.ContainerFileItemResponse
+                            {
+                                Name = fileName,
+                                Path = normalizedPath,
+                                IsDirectory = false,
+                                Size = entry.Length,
+                                LastModified = entry.ModificationTime.UtcDateTime,
+                                Extension = Path.GetExtension(fileName),
+                                Permissions = FormatPermissions((int)entry.Mode, false)
+                            });
+                            return items;
+                        }
+                        continue;
+                    }
+
+                    // Strip root prefix if present
+                    var relative = entryName;
+                    if (relative.StartsWith(rootEntryPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        relative = relative[rootEntryPrefix.Length..];
+                    }
+
+                    relative = relative.Trim('/');
+                    if (string.IsNullOrEmpty(relative))
+                    {
+                        continue;
+                    }
+
+                    // Only take immediate children (no subsequent slashes)
+                    if (relative.Contains('/'))
+                    {
+                        continue;
+                    }
+
+                    var isDir = entry.EntryType == System.Formats.Tar.TarEntryType.Directory;
+                    var itemSubPath = normalizedPath.TrimEnd('/') + "/" + relative;
+
+                    items.Add(new Models.ContainerFileItemResponse
+                    {
+                        Name = relative,
+                        Path = itemSubPath,
+                        IsDirectory = isDir,
+                        Size = isDir ? 0 : entry.Length,
+                        LastModified = entry.ModificationTime.UtcDateTime,
+                        Extension = isDir ? null : Path.GetExtension(relative),
+                        Permissions = FormatPermissions((int)entry.Mode, isDir)
+                    });
+                }
+
+                return items.OrderByDescending(i => i.IsDirectory).ThenBy(i => i.Name).ToList();
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to list archive in container {ContainerId} at path {Path}", containerId, normalizedPath);
+                return [];
+            }
+        }
+
+        public async Task<string> GetFileContentTextAsync(
+            string containerId,
+            string path,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            var normalizedPath = NormalizeContainerPath(path);
+
+            // Fast path: use exec to read file content directly
+            try
+            {
+                var content = await GetFileContentViaExecAsync(containerId, normalizedPath, cancellationToken);
+                if (content != null)
+                {
+                    return content;
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                throw;
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Exec-based file read not available for container {ContainerId} at path {Path}, falling back to archive", containerId, normalizedPath);
+            }
+
+            return await GetFileContentViaArchiveAsync(containerId, normalizedPath, cancellationToken);
+        }
+
+        private async Task<string?> GetFileContentViaExecAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            var script = "file=\"$1\"\nif [ ! -e \"$file\" ] && [ ! -L \"$file\" ]; then\n  echo \"__GS_NOT_FOUND__\" >&2\n  exit 1\nfi\ncat -- \"$file\"";
+
+            var execCreateParams = new ContainerExecCreateParameters
+            {
+                Cmd = ["/bin/sh", "-c", script, "--", normalizedPath],
+                AttachStdout = true,
+                AttachStderr = true,
+                AttachStdin = false,
+                TTY = false
+            };
+
+            var exec = await _dockerClient.Exec.CreateContainerExecAsync(containerId, execCreateParams, cancellationToken);
+            using var stream = await _dockerClient.Exec.StartContainerExecAsync(exec.ID, new ContainerExecStartParameters { Detach = false, TTY = false }, cancellationToken);
+
+            using var stdoutMs = new MemoryStream();
+            using var stderrMs = new MemoryStream();
+            await stream.CopyOutputToAsync(null, stdoutMs, stderrMs, cancellationToken);
+
+            var stderr = Encoding.UTF8.GetString(stderrMs.ToArray());
+            if (stderr.Contains("__GS_NOT_FOUND__"))
+            {
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container {containerId}.");
+            }
+
+            return Encoding.UTF8.GetString(stdoutMs.ToArray());
+        }
+
+        private async Task<string> GetFileContentViaArchiveAsync(
+            string containerId,
+            string normalizedPath,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
+                    containerId,
+                    new ContainerPathStatParameters { Path = normalizedPath },
+                    false,
+                    cancellationToken);
+
+                using var memoryStream = new MemoryStream();
+                await archive.Stream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                using var tarReader = new System.Formats.Tar.TarReader(memoryStream);
+                while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+                {
+                    if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
+                    {
+                        using var reader = new StreamReader(entry.DataStream, Encoding.UTF8);
+                        return await reader.ReadToEndAsync(cancellationToken);
+                    }
+                }
+
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container archive.");
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container {containerId}.", ex);
+            }
+        }
+
+        public async Task<(Stream Stream, string ContentType, string FileName)> GetFileStreamAsync(
+            string containerId,
+            string path,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            var normalizedPath = NormalizeContainerPath(path);
+            var fileName = Path.GetFileName(normalizedPath);
+
+            try
+            {
+                var archive = await _dockerClient.Containers.GetArchiveFromContainerAsync(
+                    containerId,
+                    new ContainerPathStatParameters { Path = normalizedPath },
+                    false,
+                    cancellationToken);
+
+                using var memoryStream = new MemoryStream();
+                await archive.Stream.CopyToAsync(memoryStream, cancellationToken);
+                memoryStream.Position = 0;
+
+                using var tarReader = new System.Formats.Tar.TarReader(memoryStream);
+                while (await tarReader.GetNextEntryAsync(cancellationToken: cancellationToken) is { } entry)
+                {
+                    if (entry.DataStream != null && (entry.EntryType == System.Formats.Tar.TarEntryType.RegularFile || entry.EntryType == System.Formats.Tar.TarEntryType.V7RegularFile))
+                    {
+                        var ms = new MemoryStream();
+                        await entry.DataStream.CopyToAsync(ms, cancellationToken);
+                        ms.Position = 0;
+                        return (ms, "application/octet-stream", fileName);
+                    }
+                }
+
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container archive.");
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new FileNotFoundException($"File '{normalizedPath}' was not found in container {containerId}.", ex);
+            }
+        }
+
+        public async Task SaveFileContentTextAsync(
+            string containerId,
+            string path,
+            string content,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            var normalizedPath = NormalizeContainerPath(path);
+            var fileName = Path.GetFileName(normalizedPath);
+            var parentDir = Path.GetDirectoryName(normalizedPath)?.Replace('\\', '/') ?? "/";
+
+            var contentBytes = Encoding.UTF8.GetBytes(content);
+            using var fileDataStream = new MemoryStream(contentBytes);
+
+            using var tarMs = new MemoryStream();
+            using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+            {
+                var entry = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, fileName)
+                {
+                    DataStream = fileDataStream,
+                    ModificationTime = DateTimeOffset.UtcNow,
+                    Mode = (UnixFileMode)0644
+                };
+                await tarWriter.WriteEntryAsync(entry, cancellationToken);
+            }
+
+            tarMs.Position = 0;
+            await _dockerClient.Containers.ExtractArchiveToContainerAsync(
+                containerId,
+                new CopyToContainerParameters { AllowOverwriteDirWithFile = true, Path = parentDir },
+                tarMs,
+                cancellationToken);
+
+            _logger.LogInformation("Saved text file to container {ContainerId} at {Path}", containerId, normalizedPath);
+        }
+
+        public async Task UploadFileAsync(
+            string containerId,
+            string directoryPath,
+            string fileName,
+            Stream content,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+            var normalizedDir = NormalizeContainerPath(directoryPath);
+            var safeFileName = Path.GetFileName(fileName);
+
+            using var memoryContent = new MemoryStream();
+            await content.CopyToAsync(memoryContent, cancellationToken);
+            memoryContent.Position = 0;
+
+            using var tarMs = new MemoryStream();
+            using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+            {
+                var entry = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, safeFileName)
+                {
+                    DataStream = memoryContent,
+                    ModificationTime = DateTimeOffset.UtcNow,
+                    Mode = (UnixFileMode)0644
+                };
+                await tarWriter.WriteEntryAsync(entry, cancellationToken);
+            }
+
+            tarMs.Position = 0;
+            await _dockerClient.Containers.ExtractArchiveToContainerAsync(
+                containerId,
+                new CopyToContainerParameters { AllowOverwriteDirWithFile = true, Path = normalizedDir },
+                tarMs,
+                cancellationToken);
+
+            _logger.LogInformation("Uploaded file {FileName} to container {ContainerId} at {Directory}", safeFileName, containerId, normalizedDir);
+        }
+
+        public async Task CreateDirectoryAsync(
+            string containerId,
+            string path,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            var normalizedPath = NormalizeContainerPath(path);
+            var parentDir = Path.GetDirectoryName(normalizedPath)?.Replace('\\', '/') ?? "/";
+            var dirName = Path.GetFileName(normalizedPath.TrimEnd('/')) + "/";
+
+            using var tarMs = new MemoryStream();
+            using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+            {
+                var entry = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.Directory, dirName)
+                {
+                    ModificationTime = DateTimeOffset.UtcNow,
+                    Mode = (UnixFileMode)0755
+                };
+                await tarWriter.WriteEntryAsync(entry, cancellationToken);
+            }
+
+            tarMs.Position = 0;
+            await _dockerClient.Containers.ExtractArchiveToContainerAsync(
+                containerId,
+                new CopyToContainerParameters { AllowOverwriteDirWithFile = true, Path = parentDir },
+                tarMs,
+                cancellationToken);
+
+            _logger.LogInformation("Created directory in container {ContainerId} at {Path}", containerId, normalizedPath);
+        }
+
+        public async Task DeleteFileOrDirectoryAsync(
+            string containerId,
+            string path,
+            bool recursive = false,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+            var normalizedPath = NormalizeContainerPath(path);
+            var rmCmd = recursive ? $"rm -rf \"{normalizedPath}\"" : $"rm -f \"{normalizedPath}\" || rmdir \"{normalizedPath}\"";
+
+            var execCreateParams = new ContainerExecCreateParameters
+            {
+                Cmd = ["/bin/sh", "-c", rmCmd],
+                AttachStdout = true,
+                AttachStderr = true,
+                AttachStdin = false,
+                TTY = false
+            };
+
+            var exec = await _dockerClient.Exec.CreateContainerExecAsync(containerId, execCreateParams, cancellationToken);
+            using var stream = await _dockerClient.Exec.StartContainerExecAsync(exec.ID, new ContainerExecStartParameters { Detach = false, TTY = false }, cancellationToken);
+
+            var buffer = new byte[1024];
+            while (await stream.ReadOutputAsync(buffer, 0, buffer.Length, cancellationToken) is { Count: > 0 }) { }
+
+            _logger.LogInformation("Deleted item {Path} (recursive={Recursive}) in container {ContainerId}", normalizedPath, recursive, containerId);
+        }
+
+        private static string NormalizeContainerPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return "/";
+            }
+
+            var normalized = path.Replace('\\', '/').Trim();
+            return normalized.StartsWith('/') ? normalized : "/" + normalized;
+        }
+
+        private static string FormatPermissions(int mode, bool isDirectory)
+        {
+            var typeChar = isDirectory ? 'd' : '-';
+            var r1 = (mode & 0400) != 0 ? 'r' : '-';
+            var w1 = (mode & 0200) != 0 ? 'w' : '-';
+            var x1 = (mode & 0100) != 0 ? 'x' : '-';
+            var r2 = (mode & 0040) != 0 ? 'r' : '-';
+            var w2 = (mode & 0020) != 0 ? 'w' : '-';
+            var x2 = (mode & 0010) != 0 ? 'x' : '-';
+            var r3 = (mode & 0004) != 0 ? 'r' : '-';
+            var w3 = (mode & 0002) != 0 ? 'w' : '-';
+            var x3 = (mode & 0001) != 0 ? 'x' : '-';
+
+            return $"{typeChar}{r1}{w1}{x1}{r2}{w2}{x2}{r3}{w3}{x3}";
         }
     }
 

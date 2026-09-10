@@ -232,7 +232,33 @@ public class GameServerV2ApiServiceTests
         Assert.Equal("Running", result.Status);
     }
 
-    private static GameServerV2ApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+    [Fact]
+    public async Task GetListAsync_WhenAuthenticated_ShouldSendBearerToken()
+    {
+        // Arrange
+        string? capturedAuthHeader = null;
+        var jsRuntimeMock = new Mock<Microsoft.JSInterop.IJSRuntime>();
+        jsRuntimeMock.Setup(j => j.InvokeAsync<string?>("localStorage.getItem", It.Is<object[]>(a => (string)a[0] == "gs_auth_token")))
+            .ReturnsAsync("test-jwt-token");
+
+        var authStateProvider = new GameServer.Web.Services.Auth.JwtAuthenticationStateProvider(jsRuntimeMock.Object);
+
+        var service = CreateService(request =>
+        {
+            capturedAuthHeader = request.Headers.Authorization?.ToString();
+            return CreateJsonResponse(new List<GameServerListItem>());
+        }, authStateProvider);
+
+        // Act
+        await service.GetListAsync();
+
+        // Assert
+        Assert.Equal("Bearer test-jwt-token", capturedAuthHeader);
+    }
+
+    private static GameServerV2ApiService CreateService(
+        Func<HttpRequestMessage, HttpResponseMessage> handler,
+        GameServer.Web.Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory
@@ -247,7 +273,7 @@ public class GameServerV2ApiServiceTests
             BaseUri = "http://localhost/"
         };
 
-        return new GameServerV2ApiService(httpClientFactory.Object, options);
+        return new GameServerV2ApiService(httpClientFactory.Object, options, authStateProvider);
     }
 
     private static HttpResponseMessage CreateJsonResponse<T>(T payload)

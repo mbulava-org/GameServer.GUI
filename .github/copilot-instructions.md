@@ -102,10 +102,9 @@
 - Pre-fetch related data (like tasks) to avoid N+1 queries
 
 ### Database
-- GameTypes are stored in SQLite database
-- Extended metadata is JSON-serialized in `ExtendedMetadataJson` column
-- Use `IGameTypeRepository` for database operations
-- `GameTypeRegistry` is marked `[Obsolete]` - use database instead
+- V2 GameTypes, revisions, and servers are stored via the V2 persistence layer (SQLite default; MySQL supported; PostgreSQL experimental)
+- Use `IGameTypeRepository` and `IGameServerRepository` under `Repositories/V2` for database operations
+- The old V1 persistence layer, `GameTypeRegistry`, file-based configuration, and legacy repositories have been removed — do not reintroduce them
 - For this project, the new persistence layer should use a `V2` namespace under `Models` and `Repositories` rather than prefixing every type and repository with `Versioned`. The V2 persistence layer is a separate new implementation that must coexist with the old models and repositories as distinct old and new data models/repositories.
 
 ### Web Hosts

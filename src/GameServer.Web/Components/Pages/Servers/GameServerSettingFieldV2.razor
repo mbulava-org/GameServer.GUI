@@ -1,5 +1,6 @@
 @using System.Text.Json
 @using GameServer.Web.Models.V2
+@using GameServer.Web.Services
 @using Radzen
 @using Radzen.Blazor
 
@@ -55,6 +56,108 @@ else if (dataType == "port")
         }
     </div>
 }
+else if (dataType == "timezone" || dataType == "time zone")
+{
+    <RadzenDropDown TValue="string"
+                    Value="@Value"
+                    ValueChanged="@OnStringChanged"
+                    Data="@LinuxTimeZoneProvider.AllTimeZones"
+                    AllowFiltering="true"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    FilterOperator="StringFilterOperator.Contains"
+                    Placeholder="@GetTimeZonePlaceholder()"
+                    AllowClear="true"
+                    class="w-100" />
+}
+else if (dataType == "password")
+{
+    <div class="d-flex flex-column gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <div class="flex-grow-1">
+                @if (IsMasked && !isEditingMaskedPassword)
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        <RadzenTextBox Value="••••••••••••" Disabled="true" class="w-100" />
+                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Restricted" />
+                        <RadzenButton Text="Change"
+                                      Size="ButtonSize.Small"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => isEditingMaskedPassword = true)" />
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        @if (showPassword)
+                        {
+                            <RadzenTextBox Value="@Value"
+                                           ValueChanged="@OnStringChanged"
+                                           Placeholder="Enter password..."
+                                           class="w-100" />
+                        }
+                        else
+                        {
+                            <RadzenPassword Value="@Value"
+                                            ValueChanged="@OnStringChanged"
+                                            Placeholder="Enter password..."
+                                            class="w-100" />
+                        }
+                        <RadzenButton Icon="@(showPassword ? "visibility_off" : "visibility")"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Size="ButtonSize.Small"
+                                      Click="@(() => showPassword = !showPassword)"
+                                      Title="@(showPassword ? "Hide password" : "Show password")" />
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (AllowAccessPolicyConfig)
+        {
+            <div class="p-2 border rounded bg-light mt-1">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="small fw-semibold text-muted">
+                        <RadzenIcon Icon="security" Style="font-size: 1rem; vertical-align: text-bottom;" /> Password Access Policy:
+                    </span>
+                    <RadzenSelectBar TValue="string"
+                                     Value="@EffectiveAccessPolicy"
+                                     ValueChanged="@OnAccessPolicyChanged"
+                                     Size="ButtonSize.ExtraSmall">
+                        <Items>
+                            <RadzenSelectBarItem Value="@("Group")" Text="Entire Group" />
+                            <RadzenSelectBarItem Value="@("Individual")" Text="Specific Users / Creator Only" />
+                        </Items>
+                    </RadzenSelectBar>
+                </div>
+
+                @if (EffectiveAccessPolicy == "Individual")
+                {
+                    <div class="mt-1">
+                        <span class="small text-muted d-block mb-1">Users permitted to view this password:</span>
+                        @if (AvailableUsers is not null && AvailableUsers.Count > 0)
+                        {
+                            <RadzenDropDown TValue="IEnumerable<int>"
+                                            Value="@SelectedUserIdsEnumerable"
+                                            ValueChanged="@OnAllowedUsersChanged"
+                                            Data="@AvailableUsers"
+                                            TextProperty="Username"
+                                            ValueProperty="Id"
+                                            Multiple="true"
+                                            AllowClear="true"
+                                            Placeholder="Select specific users..."
+                                            Chips="true"
+                                            class="w-100" />
+                        }
+                        else
+                        {
+                            <small class="text-muted fst-italic">Creator and Administrators always retain access.</small>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
 else if (dataType == ServerVariableSetting.DataType)
 {
     <div class="d-flex flex-column gap-2">
@@ -91,6 +194,27 @@ else
     [Parameter]
     public EventCallback<string?> ValueChanged { get; set; }
 
+    [Parameter]
+    public string? AccessPolicy { get; set; } = "Group";
+
+    [Parameter]
+    public EventCallback<string?> AccessPolicyChanged { get; set; }
+
+    [Parameter]
+    public List<int>? AllowedUserIds { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<List<int>?> AllowedUserIdsChanged { get; set; }
+
+    [Parameter]
+    public bool IsMasked { get; set; } = false;
+
+    [Parameter]
+    public bool AllowAccessPolicyConfig { get; set; } = false;
+
+    [Parameter]
+    public IReadOnlyList<UserOption>? AvailableUsers { get; set; }
+
     /// <summary>
     /// Optional validation message rendered under the field, used for live port availability feedback.
     /// </summary>
@@ -101,6 +225,12 @@ else
     private IReadOnlyList<EnumOption> enumOptions = [];
     private string? rawValue;
     private bool expandVariables;
+    private bool showPassword = false;
+    private bool isEditingMaskedPassword = false;
+
+    private string EffectiveAccessPolicy => string.IsNullOrWhiteSpace(AccessPolicy) ? "Group" : AccessPolicy;
+
+    private IEnumerable<int> SelectedUserIdsEnumerable => AllowedUserIds ?? [];
 
     private int PortValue => int.TryParse(Value, out var parsed) ? parsed : 0;
 
@@ -153,6 +283,19 @@ else
         }
     }
 
+    private Task OnAccessPolicyChanged(string value)
+    {
+        AccessPolicy = value;
+        return AccessPolicyChanged.InvokeAsync(value);
+    }
+
+    private Task OnAllowedUsersChanged(IEnumerable<int> userIds)
+    {
+        var list = userIds?.ToList() ?? [];
+        AllowedUserIds = list;
+        return AllowedUserIdsChanged.InvokeAsync(list);
+    }
+
     private Task OnServerVariableTextChanged(string? value)
     {
         rawValue = value;
@@ -163,7 +306,6 @@ else
     {
         var (defEnabled, defOn, defOff) = ServerVariableSetting.DecodeDefinitionDefault(Definition.DefaultValue);
         
-        // If the current raw value was equal to the previous default or empty, switch to the new default value
         if (value)
         {
             if (string.IsNullOrEmpty(rawValue) || string.Equals(rawValue, defOff, StringComparison.Ordinal))
@@ -185,6 +327,7 @@ else
 
     private Task OnStringChanged(string? value)
     {
+        isEditingMaskedPassword = false;
         return ValueChanged.InvokeAsync(value);
     }
 
@@ -214,6 +357,21 @@ else
         return "no";
     }
 
+    private string GetTimeZonePlaceholder()
+    {
+        if (!string.IsNullOrWhiteSpace(Definition?.Metadata?.Placeholder))
+        {
+            return Definition.Metadata.Placeholder;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Definition?.DefaultValue))
+        {
+            return $"Select timezone (Default: {Definition.DefaultValue})";
+        }
+
+        return "Select timezone...";
+    }
+
     private static IReadOnlyList<EnumOption> GetEnumOptions(GameTypeSettingDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
@@ -240,5 +398,6 @@ else
         }
     }
 
+    public sealed record UserOption(int Id, string Username);
     private sealed record EnumOption(string Value, string Label);
 }

@@ -8,7 +8,7 @@ The agent API is **NOT exposed** outside the Docker overlay network. This is muc
 
 ```
 ???????????????????????????????????????????????
-?  Management Service (on gameserver-network) ?
+?  Primary Service (on gameserver-network)     ?
 ?  ?????????????????????????????????????????? ?
 ?  ?  Discovers agent overlay IPs via       ? ?
 ?  ?  task.NetworksAttachments              ? ?
@@ -36,12 +36,12 @@ The agent API is **NOT exposed** outside the Docker overlay network. This is muc
 
 2. **Overlay Network IPs**
    - Agents get IPs on `gameserver-network` (e.g., 10.0.1.x)
-   - Management service discovers these IPs via `task.NetworksAttachments`
+   - Primary service discovers these IPs via `task.NetworksAttachments`
    - Routes directly to correct agent on overlay network
 
 3. **Automatic Routing**
    - Each agent has unique overlay IP
-   - Management service caches these IPs (30s)
+   - Primary service caches these IPs (30s)
    - No load balancing issues - correct agent every time
 
 ## Discovery Implementation
@@ -76,7 +76,7 @@ var internalUrl = $"http://{agentIp}:{AGENT_PORT}";
 
 3. **Better Isolation**
    - Agents can only be reached by services on same network
-   - Management service must be on `gameserver-network`
+   - Primary service must be on `gameserver-network`
    - Clear security boundary
 
 4. **No Port Conflicts**
@@ -112,10 +112,10 @@ networks:
 
 ### Prerequisites
 
-**Only requirement:** Management service must be on `gameserver-network`
+**Only requirement:** Primary service must be on `gameserver-network`
 
 ```yaml
-# In your management service stack:
+# In your primary service stack:
 services:
   gameserver-management:
     networks:
@@ -142,52 +142,37 @@ docker service ps gameserver-agent
 ### Verify Network Connectivity
 
 ```bash
-# From management service container
-docker exec {mgmt-container} curl http://{agent-overlay-ip}:8080/health
-
-# Or test via API
-curl http://localhost:5000/api/servers/agents
+# From primary service container, exercise an agent directly
+docker exec {primary-container} curl http://{agent-overlay-ip}:8080/health
+docker exec {primary-container} curl http://{agent-overlay-ip}:8080/api/containers
 ```
 
 ## Testing
 
-### 1. Discover Agent IPs
-```bash
-curl http://localhost:5000/api/servers/agents
-```
+### 1. Confirm Agents Have Registered
 
-Response shows overlay IPs:
+Agents push registration to the primary service over `/hubs/agentregistration`. Verify from the primary service's logs (search for `AgentRegistrationHub`) that each expected node has connected and reported its overlay IP.
+
+Example registration payload logged by the hub:
 ```json
 {
-  "timestamp": "2024-01-15T10:30:00Z",
-  "agentCount": 2,
-  "agents": [
-    {
-      "nodeId": "abc123",
-      "nodeName": "node-1",
-      "internalUrl": "http://10.0.1.3:8080",
-      "isHealthy": true
-    },
-    {
-      "nodeId": "def456",
-      "nodeName": "node-2",
-      "internalUrl": "http://10.0.1.5:8080",
-      "isHealthy": true
-    }
-  ]
+  "nodeId": "abc123",
+  "nodeName": "node-1",
+  "internalUrl": "http://10.0.1.3:8080",
+  "capabilities": ["containers", "services", "tasks"],
+  "isHealthy": true
 }
 ```
 
 ### 2. Test Stats (Uses Correct Agent)
-```bash
-curl http://localhost:5000/api/servers/{serverId}/stats
-```
 
-Management service:
+Open the V2 server details page (`/gameservers-v2/{serverId}`) or connect a client to `/hubs/resources` and subscribe to a `serverId`.
+
+Primary service:
 1. Finds container on node-2
-2. Discovers agent on node-2 has IP 10.0.1.5
-3. Calls `http://10.0.1.5:8080/containers/{id}/stats`
-4. Returns real-time stats
+2. Looks up the registered agent for node-2 (overlay IP 10.0.1.5)
+3. Calls `http://10.0.1.5:8080/api/containers/{id}/stats`
+4. Fans real-time stats out to hub subscribers
 
 ### 3. Verify External Isolation
 ```bash
@@ -225,7 +210,7 @@ Benefits of overlay outweigh the microsecond difference!
 
 ### Agent IPs Not Discovered
 
-**Symptom:** `/api/servers/agents` returns empty or no IPs
+**Symptom:** No agents show as registered in the primary service's `AgentRegistrationHub` logs, or hub-driven operations fail with "no agent available".
 
 **Check:**
 ```bash
@@ -246,12 +231,12 @@ docker service inspect gameserver-agent
 
 **Check:**
 ```bash
-# Verify management service on same network
-docker service inspect {mgmt-service} | grep Networks
+# Verify primary service on same network
+docker service inspect {primary-service} | grep Networks
 
-# Test from management service
-docker exec {mgmt-container} ping {agent-overlay-ip}
-docker exec {mgmt-container} curl http://{agent-overlay-ip}:8080/health
+# Test from primary service
+docker exec {primary-container} ping {agent-overlay-ip}
+docker exec {primary-container} curl http://{agent-overlay-ip}:8080/health
 ```
 
 **Fix:** Ensure both services on `gameserver-network`
@@ -263,13 +248,8 @@ docker exec {mgmt-container} curl http://{agent-overlay-ip}:8080/health
 **Cause:** This shouldn't happen now! Each agent has unique IP.
 
 **Debug:**
-```bash
-# Check discovered agents
-curl http://localhost:5000/api/servers/agents
-
-# Verify each has different IP
-# Each IP should map to specific node
-```
+- Inspect `AgentRegistrationHub` logs on the primary service; each connected agent reports its `nodeId`, `nodeName`, and `internalUrl`.
+- Each IP should map to a distinct node.
 
 ## Summary
 

@@ -7,8 +7,51 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IJSRuntime JSRuntime
+@inject GameServer.Web.Services.IUserTimeZoneService TimeZoneService
+@implements IAsyncDisposable
 
-<div class="file-manager-container">
+<div class="file-manager-container" @ref="containerRef">
+    @if (activeUploads.Count > 0)
+    {
+        <div class="mb-3 border rounded p-2 bg-light file-manager-upload-panel">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>
+                    Uploads (@activeUploads.Count(u => u.IsComplete) / @activeUploads.Count)
+                </strong>
+                @if (activeUploads.All(u => u.IsComplete || u.Error is not null))
+                {
+                    <RadzenButton Text="Clear"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.ExtraSmall"
+                                  Click="@(() => { activeUploads.Clear(); StateHasChanged(); })" />
+                }
+            </div>
+            @foreach (var prog in activeUploads)
+            {
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small">
+                        <span title="@prog.FileName">@prog.FileName</span>
+                        <span>
+                            @if (prog.Error is not null)
+                            {
+                                <span class="text-danger">@prog.Error</span>
+                            }
+                            else if (prog.IsComplete)
+                            {
+                                <span class="text-success">Done</span>
+                            }
+                            else
+                            {
+                                <span>Uploading...</span>
+                            }
+                        </span>
+                    </div>
+                    <RadzenProgressBar Value="@(prog.IsComplete ? 100 : 50)" Max="100" ShowValue="false" Style="height: 4px;" />
+                </div>
+            }
+        </div>
+    }
+
     @if (Volumes is null || !Volumes.Any())
     {
         <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat">
@@ -141,7 +184,7 @@
 
                     <RadzenDataGridColumn TItem="FileItem" Property="LastModified" Title="Modified" Width="180px">
                         <Template Context="file">
-                            @file.LastModified.ToLocalTime().ToString("g")
+                            @TimeZoneService.FormatLocalDateTime(file.LastModified)
                         </Template>
                     </RadzenDataGridColumn>
 
@@ -188,6 +231,20 @@
     private bool isLoading;
     private string? loadError;
 
+    private ElementReference containerRef;
+    private DotNetObjectReference<ServerFileManager>? dotNetRef;
+    private bool dropZoneAttached;
+    private readonly List<UploadProgress> activeUploads = [];
+
+    public sealed class DroppedItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public long Size { get; set; }
+        public string RelativePath { get; set; } = string.Empty;
+        public bool IsDirectory { get; set; }
+    }
+
     private string CurrentVolumeInfo =>
         Volumes?.FirstOrDefault(v => v.ContainerPath == selectedVolumePath)?.Usage ?? "Volume";
 
@@ -219,6 +276,141 @@
             currentSubPath = string.Empty;
             await LoadFilesAsync();
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        if (!dropZoneAttached)
+        {
+            try
+            {
+                dotNetRef ??= DotNetObjectReference.Create(this);
+                await JSRuntime.InvokeVoidAsync("gameServerFileDragDrop.attach", containerRef, dotNetRef);
+                dropZoneAttached = true;
+            }
+            catch (JSException)
+            {
+                // Script may not yet be loaded on the first render pass; retry next render.
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (dropZoneAttached)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("gameServerFileDragDrop.detach", containerRef);
+            }
+            catch
+            {
+                // Ignore disposal errors (e.g., circuit already gone).
+            }
+        }
+        dotNetRef?.Dispose();
+    }
+
+    [JSInvokable]
+    public async Task OnFilesDropped(List<DroppedItem> items)
+    {
+        if (string.IsNullOrWhiteSpace(ServerId) || string.IsNullOrWhiteSpace(selectedVolumePath) || items.Count == 0)
+        {
+            // Release any files JS is holding for us so we don't leak.
+            foreach (var it in items.Where(i => !string.IsNullOrEmpty(i.Id)))
+            {
+                try { await JSRuntime.InvokeVoidAsync("gameServerFileDragDrop.releaseFile", it.Id); } catch { }
+            }
+            return;
+        }
+
+        // Directories first (sorted shallow-to-deep) so parent paths exist before files are uploaded.
+        var directories = items
+            .Where(i => i.IsDirectory)
+            .OrderBy(i => i.RelativePath.Count(c => c == '/'))
+            .ToList();
+
+        foreach (var dir in directories)
+        {
+            try
+            {
+                var targetPath = CombineSubPath(currentSubPath, dir.RelativePath);
+                await FilesApi.CreateDirectoryAsync(ServerId!, selectedVolumePath!, targetPath);
+            }
+            catch (Exception ex)
+            {
+                NotificationService.NotifyTimed(NotificationSeverity.Warning, "Folder Create Failed", $"{dir.RelativePath}: {ex.Message}");
+            }
+        }
+
+        var fileItems = items.Where(i => !i.IsDirectory).ToList();
+        foreach (var descriptor in fileItems)
+        {
+            var progress = new UploadProgress { FileName = descriptor.RelativePath, TotalBytes = descriptor.Size };
+            activeUploads.Add(progress);
+        }
+        await InvokeAsync(StateHasChanged);
+
+        for (int i = 0; i < fileItems.Count; i++)
+        {
+            var descriptor = fileItems[i];
+            var progress = activeUploads[activeUploads.Count - fileItems.Count + i];
+            IJSStreamReference? streamRef = null;
+            try
+            {
+                streamRef = await JSRuntime.InvokeAsync<IJSStreamReference>("gameServerFileDragDrop.getFileStream", descriptor.Id);
+                await using var stream = await streamRef.OpenReadStreamAsync(maxAllowedSize: 100L * 1024 * 1024);
+
+                // The parent directory of the file within the current volume subpath.
+                var parentRel = GetParentPath(descriptor.RelativePath);
+                var targetSubPath = CombineSubPath(currentSubPath, parentRel);
+
+                await FilesApi.UploadAsync(ServerId!, selectedVolumePath!, targetSubPath, descriptor.Name, stream);
+                progress.UploadedBytes = descriptor.Size;
+                progress.IsComplete = true;
+            }
+            catch (Exception ex)
+            {
+                progress.Error = ex.Message;
+            }
+            finally
+            {
+                try { await JSRuntime.InvokeVoidAsync("gameServerFileDragDrop.releaseFile", descriptor.Id); } catch { }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        var succeeded = fileItems.Count(f => activeUploads.Any(u => u.FileName == f.RelativePath && u.IsComplete));
+        NotificationService.NotifyTimed(
+            succeeded == fileItems.Count ? NotificationSeverity.Success : NotificationSeverity.Warning,
+            "Upload Complete",
+            $"{succeeded} of {fileItems.Count} file(s) uploaded.");
+
+        await LoadFilesAsync();
+    }
+
+    private static string CombineSubPath(string basePath, string? relative)
+    {
+        var b = (basePath ?? string.Empty).Trim('/');
+        var r = (relative ?? string.Empty).Trim('/');
+        if (b.Length == 0) return r;
+        if (r.Length == 0) return b;
+        return $"{b}/{r}";
+    }
+
+    private static string GetParentPath(string relativePath)
+    {
+        var idx = relativePath.LastIndexOf('/');
+        return idx < 0 ? string.Empty : relativePath[..idx];
     }
 
     private async Task OnVolumeChanged(string newVolume)

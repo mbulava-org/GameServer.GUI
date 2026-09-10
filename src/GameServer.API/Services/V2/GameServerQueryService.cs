@@ -9,7 +9,9 @@ namespace GameServer.API.Services.V2;
 public sealed class GameServerQueryService(
     IGameServerRepository gameServerRepository,
     IGameTypeRepository gameTypeRepository,
-    IGameServerResourceCollector? resourceCollector = null)
+    IGameServerResourceCollector? resourceCollector = null,
+    Interfaces.IGameServerReadinessWatcherService? readinessWatcher = null,
+    IServerAuthorizationService? authorizationService = null)
 {
     /// <summary>
     /// Gets the V2 GameServer list payload.
@@ -31,9 +33,17 @@ public sealed class GameServerQueryService(
     }
 
     /// <summary>
+    /// Gets the V2 GameServer detail payload for a specific server id without user claims (default access).
+    /// </summary>
+    public Task<GameServerDetailDto?> GetByServerIdAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        return GetByServerIdAsync(serverId, user: null, cancellationToken);
+    }
+
+    /// <summary>
     /// Gets the V2 GameServer detail payload for a specific server id.
     /// </summary>
-    public async Task<GameServerDetailDto?> GetByServerIdAsync(string serverId, CancellationToken cancellationToken = default)
+    public async Task<GameServerDetailDto?> GetByServerIdAsync(string serverId, System.Security.Claims.ClaimsPrincipal? user, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         cancellationToken.ThrowIfCancellationRequested();
@@ -50,7 +60,7 @@ public sealed class GameServerQueryService(
         cancellationToken.ThrowIfCancellationRequested();
 
         var revisionIndex = BuildRevisionIndex(gameTypes);
-        return MapDetail(server, ResolveRevisionContext(server.GameTypeRevisionId, revisionIndex));
+        return MapDetail(server, ResolveRevisionContext(server.GameTypeRevisionId, revisionIndex), user);
     }
 
     private static Dictionary<int, RevisionContext> BuildRevisionIndex(IEnumerable<GameTypeModel> gameTypes)
@@ -70,6 +80,11 @@ public sealed class GameServerQueryService(
 
     private string ResolveEffectiveStatus(string serverId, string fallbackStatus)
     {
+        if (readinessWatcher?.IsServerReady(serverId) == true)
+        {
+            return "Available";
+        }
+
         if (resourceCollector == null) return fallbackStatus;
         var cached = resourceCollector.GetCachedUsage(serverId);
         if (cached == null || string.IsNullOrWhiteSpace(cached.ServiceStatus))
@@ -99,6 +114,8 @@ public sealed class GameServerQueryService(
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = ResolveEffectiveStatus(server.ServerId, server.Status),
+            CreatedByUserId = server.CreatedByUserId,
+            CreatedByUsername = server.CreatedByUsername,
             CreatedAt = server.CreatedAt,
             UpdatedAt = server.UpdatedAt,
             LastDeployedAt = server.LastDeployedAt,
@@ -122,7 +139,7 @@ public sealed class GameServerQueryService(
         };
     }
 
-    private GameServerDetailDto MapDetail(GameServerModel server, RevisionContext? revisionContext)
+    private GameServerDetailDto MapDetail(GameServerModel server, RevisionContext? revisionContext, System.Security.Claims.ClaimsPrincipal? user = null)
     {
         ArgumentNullException.ThrowIfNull(server);
 
@@ -135,6 +152,8 @@ public sealed class GameServerQueryService(
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = ResolveEffectiveStatus(server.ServerId, server.Status),
+            CreatedByUserId = server.CreatedByUserId,
+            CreatedByUsername = server.CreatedByUsername,
             CreatedAt = server.CreatedAt,
             UpdatedAt = server.UpdatedAt,
             LastDeployedAt = server.LastDeployedAt,
@@ -148,11 +167,27 @@ public sealed class GameServerQueryService(
             RevisionImageReference = revisionContext?.Revision.ImageReference,
             Settings = server.Settings
                 .OrderBy(setting => setting.SettingKey, StringComparer.OrdinalIgnoreCase)
-                .Select(setting => new GameServerSettingDto
+                .Select(setting =>
                 {
-                    Id = setting.Id,
-                    SettingKey = setting.SettingKey,
-                    Value = setting.Value
+                    var isPassword = revisionContext?.Revision.SettingDefinitions
+                        .FirstOrDefault(d => string.Equals(d.SettingKey, setting.SettingKey, StringComparison.OrdinalIgnoreCase))
+                        ?.Metadata?.DataType?.Equals("password", StringComparison.OrdinalIgnoreCase) == true;
+
+                    var canView = true;
+                    if (isPassword && authorizationService is not null)
+                    {
+                        canView = authorizationService.CanViewPassword(user, server.CreatedByUserId, setting.AccessPolicy, setting.AllowedUserIds);
+                    }
+
+                    return new GameServerSettingDto
+                    {
+                        Id = setting.Id,
+                        SettingKey = setting.SettingKey,
+                        Value = canView ? setting.Value : "********",
+                        AccessPolicy = setting.AccessPolicy,
+                        AllowedUserIds = setting.AllowedUserIds,
+                        IsMasked = !canView
+                    };
                 })
                 .ToList(),
             Ports = server.Ports
@@ -185,7 +220,9 @@ public sealed class GameServerQueryService(
                 ?? [],
             DockerVolumeOptions = [],
             NetworkOptions = [],
-            ConfigurationRules = []
+            ConfigurationRules = [],
+            UiExtensionsJson = revisionContext?.Revision.UiExtensionsJson,
+            UiExtensions = GameTypeUiExtensionsSerializer.Parse(revisionContext?.Revision.UiExtensionsJson)
         };
     }
 

@@ -24,6 +24,16 @@ public sealed record SaveGameServerRequest
     public string VolumeBindingLayout { get; init; } = "standard";
 
     public List<GameServerConfigurationOption> NetworkOptions { get; init; } = [];
+
+    /// <summary>
+    /// Optional group ID to assign the new game server to upon creation.
+    /// </summary>
+    public int? InitialGroupId { get; init; }
+
+    /// <summary>
+    /// Access level for the initial group ("Edit" or "View").
+    /// </summary>
+    public string InitialGroupAccessLevel { get; init; } = "Edit";
 }
 
 public sealed record GameServerPort

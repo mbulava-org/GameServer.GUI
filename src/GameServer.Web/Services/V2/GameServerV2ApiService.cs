@@ -3,14 +3,17 @@ using GameServer.Web.Models.V2;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions) : IGameServerV2ApiService
+public sealed class GameServerV2ApiService(
+    IHttpClientFactory httpClientFactory,
+    Configurations.GameServerDockerApi apiOptions,
+    Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null) : IGameServerV2ApiService
 {
     /// <summary>
     /// Gets the V2 GameServer list.
     /// </summary>
     public async Task<IReadOnlyList<GameServerListItem>> GetListAsync(bool includeDeleted = false, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gameservers?includeDeleted={includeDeleted}", cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -25,7 +28,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}", cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -43,7 +46,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gameservers/validate", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -58,7 +61,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gameservers/preview", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -73,7 +76,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gameservers/ports/availability", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -88,7 +91,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gameservers", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -104,7 +107,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PutAsJsonAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -130,7 +133,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/start", null, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -145,7 +148,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/stop", null, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -160,7 +163,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/restart", null, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -175,7 +178,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/redeploy", null, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -183,6 +186,17 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
             ?? throw new InvalidOperationException("The V2 GameServer redeploy response did not contain a payload.");
     }
 
+    /// <summary>
+    /// Deletes a V2 GameServer.
+    /// </summary>
+    public async Task DeleteAsync(string serverId, bool softDelete = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.DeleteAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}?softDelete={softDelete}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 
     /// <summary>
     /// Gets the historical resource utilization records for a V2 GameServer.
@@ -196,7 +210,7 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/resources/history?limit={limit}";
         if (from.HasValue)
         {
@@ -214,7 +228,36 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
             ?? [];
     }
 
-    private HttpClient CreateClient()
+    /// <summary>
+    /// Gets per-group access rows for a server, scoped to the current user's groups.
+    /// </summary>
+    public async Task<IReadOnlyList<ServerGroupAccessRow>> GetServerGroupAccessAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.GetAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/group-access", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<ServerGroupAccessRow>>(cancellationToken) ?? [];
+    }
+
+    /// <summary>
+    /// Sets per-group access for a server, scoped to the current user's groups.
+    /// </summary>
+    public async Task<IReadOnlyList<ServerGroupAccessRow>> SetServerGroupAccessAsync(string serverId, SetServerGroupAccessRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.PutAsJsonAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/group-access", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<ServerGroupAccessRow>>(cancellationToken) ?? [];
+    }
+
+    private async Task<HttpClient> CreateClientAsync()
     {
         var baseUri = apiOptions.BaseUri;
         if (string.IsNullOrWhiteSpace(baseUri))
@@ -222,8 +265,22 @@ public sealed class GameServerV2ApiService(IHttpClientFactory httpClientFactory,
             throw new InvalidOperationException("GameServerDockerApi:BaseUri must be configured.");
         }
 
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("GameServerApi");
+        if (!baseUri.EndsWith('/'))
+        {
+            baseUri += "/";
+        }
         client.BaseAddress = new Uri(baseUri);
+
+        if (authStateProvider is not null)
+        {
+            var token = await authStateProvider.GetTokenAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
         return client;
     }
 }

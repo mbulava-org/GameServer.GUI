@@ -187,4 +187,169 @@ public class ContainerServiceTests
         Assert.Equal(0.0, result.Cpu.UsagePercent);
         Assert.Equal((ulong)0, result.Memory.UsageBytes);
     }
+
+    [Fact]
+    public async Task SaveFileContentTextAsync_ExtractsArchiveToParentDirectory()
+    {
+        var containerId = "cnt-save-1";
+        var filePath = "/home/steam/server/config.json";
+        CopyToContainerParameters? capturedParams = null;
+
+        _mockContainerOperations
+            .Setup(x => x.ExtractArchiveToContainerAsync(
+                containerId,
+                It.IsAny<CopyToContainerParameters>(),
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, CopyToContainerParameters, Stream, CancellationToken>(
+                (id, p, s, t) => capturedParams = p)
+            .Returns(Task.CompletedTask);
+
+        await _service.SaveFileContentTextAsync(containerId, filePath, "{\"key\":\"value\"}", CancellationToken.None);
+
+        Assert.NotNull(capturedParams);
+        Assert.Equal("/home/steam/server", capturedParams.Path);
+    }
+
+    [Fact]
+    public async Task UploadFileAsync_ExtractsArchiveToTargetDirectory()
+    {
+        var containerId = "cnt-upload-1";
+        var dirPath = "/home/steam/server/mods";
+        var fileName = "mod.dll";
+        using var stream = new MemoryStream([1, 2, 3]);
+        CopyToContainerParameters? capturedParams = null;
+
+        _mockContainerOperations
+            .Setup(x => x.ExtractArchiveToContainerAsync(
+                containerId,
+                It.IsAny<CopyToContainerParameters>(),
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, CopyToContainerParameters, Stream, CancellationToken>(
+                (id, p, s, t) => capturedParams = p)
+            .Returns(Task.CompletedTask);
+
+        await _service.UploadFileAsync(containerId, dirPath, fileName, stream, CancellationToken.None);
+
+        Assert.NotNull(capturedParams);
+        Assert.Equal("/home/steam/server/mods", capturedParams.Path);
+    }
+
+    [Fact]
+    public async Task CreateDirectoryAsync_ExtractsArchiveToParentDirectory()
+    {
+        var containerId = "cnt-mkdir-1";
+        var dirPath = "/home/steam/server/BepInEx/plugins";
+        CopyToContainerParameters? capturedParams = null;
+
+        _mockContainerOperations
+            .Setup(x => x.ExtractArchiveToContainerAsync(
+                containerId,
+                It.IsAny<CopyToContainerParameters>(),
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, CopyToContainerParameters, Stream, CancellationToken>(
+                (id, p, s, t) => capturedParams = p)
+            .Returns(Task.CompletedTask);
+
+        await _service.CreateDirectoryAsync(containerId, dirPath, CancellationToken.None);
+
+        Assert.NotNull(capturedParams);
+        Assert.Equal("/home/steam/server/BepInEx", capturedParams.Path);
+    }
+
+    [Fact]
+    public async Task GetFileContentTextAsync_WhenArchiveContainsFile_ReturnsContent()
+    {
+        var containerId = "cnt-get-file-1";
+        var filePath = "/home/steam/aska_server/doorstop_config.ini";
+        var expectedContent = "[General]\nenabled=true";
+        var tarStream = CreateTarArchiveWithFile("doorstop_config.ini", expectedContent);
+
+        // Exec mock fails so it falls back to archive
+        var mockExecOps = new Mock<IExecOperations>();
+        _mockDockerClient.SetupGet(x => x.Exec).Returns(mockExecOps.Object);
+        mockExecOps
+            .Setup(x => x.CreateContainerExecAsync(It.IsAny<string>(), It.IsAny<ContainerExecCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Exec not available"));
+
+        _mockContainerOperations
+            .Setup(x => x.GetArchiveFromContainerAsync(
+                containerId,
+                It.IsAny<ContainerPathStatParameters>(),
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerArchiveResponse { Stream = tarStream });
+
+        var content = await _service.GetFileContentTextAsync(containerId, filePath, CancellationToken.None);
+
+        Assert.Equal(expectedContent, content);
+    }
+
+    [Fact]
+    public async Task GetFileStreamAsync_WhenArchiveContainsFile_ReturnsStream()
+    {
+        var containerId = "cnt-get-stream-1";
+        var filePath = "/home/steam/aska_server/Doorstop_LICENSE.txt";
+        var expectedContent = "MIT License";
+        var tarStream = CreateTarArchiveWithFile("Doorstop_LICENSE.txt", expectedContent);
+
+        _mockContainerOperations
+            .Setup(x => x.GetArchiveFromContainerAsync(
+                containerId,
+                It.IsAny<ContainerPathStatParameters>(),
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerArchiveResponse { Stream = tarStream });
+
+        var (stream, contentType, fileName) = await _service.GetFileStreamAsync(containerId, filePath, CancellationToken.None);
+
+        Assert.NotNull(stream);
+        Assert.Equal("Doorstop_LICENSE.txt", fileName);
+        using var reader = new StreamReader(stream);
+        var content = await reader.ReadToEndAsync();
+        Assert.Equal(expectedContent, content);
+    }
+
+    [Fact]
+    public async Task GetFileContentTextAsync_WhenDockerReturns404_ThrowsFileNotFoundException()
+    {
+        var containerId = "cnt-not-found-1";
+        var filePath = "/home/steam/nonexistent.txt";
+
+        var mockExecOps = new Mock<IExecOperations>();
+        _mockDockerClient.SetupGet(x => x.Exec).Returns(mockExecOps.Object);
+        mockExecOps
+            .Setup(x => x.CreateContainerExecAsync(It.IsAny<string>(), It.IsAny<ContainerExecCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Exec not available"));
+
+        _mockContainerOperations
+            .Setup(x => x.GetArchiveFromContainerAsync(
+                containerId,
+                It.IsAny<ContainerPathStatParameters>(),
+                false,
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerApiException(System.Net.HttpStatusCode.NotFound, "Could not find the file"));
+
+        await Assert.ThrowsAsync<FileNotFoundException>(
+            () => _service.GetFileContentTextAsync(containerId, filePath, CancellationToken.None));
+    }
+
+    private static Stream CreateTarArchiveWithFile(string fileName, string content)
+    {
+        var contentBytes = System.Text.Encoding.UTF8.GetBytes(content);
+        var tarMs = new MemoryStream();
+        using (var tarWriter = new System.Formats.Tar.TarWriter(tarMs, System.Formats.Tar.TarEntryFormat.Pax, leaveOpen: true))
+        {
+            var entry = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, fileName)
+            {
+                DataStream = new MemoryStream(contentBytes),
+                Mode = (UnixFileMode)0644
+            };
+            tarWriter.WriteEntry(entry);
+        }
+        tarMs.Position = 0;
+        return tarMs;
+    }
 }

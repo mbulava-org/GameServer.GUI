@@ -1,0 +1,139 @@
+@using GameServer.Web.Models.V2
+@using GameServer.Web.Services.V2
+@inject IGameServerV2ApiService ServerService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenStack Gap="1.25rem">
+    <RadzenText TextStyle="TextStyle.Body2" class="rz-text-secondary">
+        Configure which of <strong>your</strong> groups can access <strong>@ServerName</strong>, and the permission level (View vs Edit).
+        Only groups you belong to are listed.
+    </RadzenText>
+
+    @if (_isLoading)
+    {
+        <div class="text-center py-4">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" />
+        </div>
+    }
+    else if (_rows.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" ShowIcon="true">
+            You are not a member of any groups, so there is nothing to configure here.
+        </RadzenAlert>
+    }
+    else
+    {
+        <RadzenDataGrid Data="@_rows"
+                        TItem="ServerGroupAccessRow"
+                        AllowSorting="true"
+                        AllowFiltering="true"
+                        FilterMode="FilterMode.Simple"
+                        Responsive="true"
+                        Style="max-height: 400px; overflow-y: auto;">
+            <Columns>
+                <RadzenDataGridColumn Property="GroupName" Title="Group">
+                    <Template Context="row">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                            <RadzenIcon Icon="groups" Style="color: var(--rz-primary);" />
+                            <div>
+                                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;" class="mb-0">@row.GroupName</RadzenText>
+                                @if (!string.IsNullOrWhiteSpace(row.Description))
+                                {
+                                    <RadzenText TextStyle="TextStyle.Caption" class="rz-text-secondary mb-0">@row.Description</RadzenText>
+                                }
+                            </div>
+                        </RadzenStack>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Property="AccessLevel" Title="Permission Level" Width="200px" Sortable="false" Filterable="false">
+                    <Template Context="row">
+                        <RadzenDropDown TValue="string"
+                                        @bind-Value="@row.AccessLevel"
+                                        Data="@_accessOptions"
+                                        TextProperty="Text"
+                                        ValueProperty="Value"
+                                        Style="width: 100%;" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Save Group Access"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Click="@HandleSaveAsync"
+                      IsBusy="@_isBusy"
+                      Disabled="@(_isLoading || _rows.Count == 0)" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public string ServerId { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string ServerName { get; set; } = string.Empty;
+
+    private readonly List<AccessOption> _accessOptions =
+    [
+        new AccessOption { Text = "No Access", Value = "None" },
+        new AccessOption { Text = "View Only", Value = "View" },
+        new AccessOption { Text = "View & Edit", Value = "Edit" }
+    ];
+
+    private List<ServerGroupAccessRow> _rows = [];
+    private bool _isLoading = true;
+    private bool _isBusy;
+
+    private sealed class AccessOption
+    {
+        public string Text { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var rows = await ServerService.GetServerGroupAccessAsync(ServerId);
+            // Copy into mutable models bound to the grid.
+            _rows = rows.Select(r => new ServerGroupAccessRow
+            {
+                GroupId = r.GroupId,
+                GroupName = r.GroupName,
+                Description = r.Description,
+                AccessLevel = string.IsNullOrWhiteSpace(r.AccessLevel) ? "None" : r.AccessLevel
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Could not load group access: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSaveAsync()
+    {
+        _isBusy = true;
+        try
+        {
+            var request = new SetServerGroupAccessRequest(
+                _rows.Select(r => new ServerGroupAccessAssignment(r.GroupId, r.AccessLevel)).ToList());
+
+            await ServerService.SetServerGroupAccessAsync(ServerId, request);
+            NotificationService.Notify(NotificationSeverity.Success, "Access Saved", $"Group access for '{ServerName}' updated.");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

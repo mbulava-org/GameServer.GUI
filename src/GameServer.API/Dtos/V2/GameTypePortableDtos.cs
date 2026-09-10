@@ -44,6 +44,11 @@ public sealed record PortableGameTypeRevisionDto
 
     public bool IsPublished { get; init; }
 
+    /// <summary>
+    /// Raw JSON descriptor list for GUI-side extension tabs (see <c>GameTypeUiExtensionDescriptorDto</c>).
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
     public List<PortableGameTypePortDto> Ports { get; init; } = [];
 
     public List<PortableGameTypeVolumeDto> Volumes { get; init; } = [];

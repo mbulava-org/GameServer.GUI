@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using GameServer.Docker.Agent.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using Docker.DotNet.Models;
@@ -36,7 +37,7 @@ namespace GameServer.Docker.Agent.Controllers
         {
             try
             {
-                _logger.LogInformation("Getting stats for container {ContainerId}", id);
+                _logger.LogDebug("Getting stats for container {ContainerId}", id);
                 var stats = await _containerService.GetContainerStatsAsync(id, cancellationToken);
                 return Ok(stats);
             }
@@ -155,14 +156,14 @@ namespace GameServer.Docker.Agent.Controllers
                 using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
                 _logger.LogInformation("WebSocket connection established for container {ContainerId}", id);
 
-                // Create a multiplexed stream for Docker attach including previous logs
+                // Create a multiplexed stream for Docker attach
                 var parameters = new ContainerAttachParameters
                 {
                     Stream = true,
                     Stdin = true,
                     Stdout = true,
                     Stderr = true,
-                    Logs = true
+                    Logs = false
                 };
 
                 var dockerClient = HttpContext.RequestServices.GetRequiredService<IDockerClient>();
@@ -409,6 +410,332 @@ namespace GameServer.Docker.Agent.Controllers
                 {
                     await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stream ended", CancellationToken.None);
                 }
+            }
+        }
+
+        /// <summary>
+        /// List files and directories within a container path
+        /// </summary>
+        [HttpGet("{id}/files")]
+        [ProducesResponseType(typeof(IReadOnlyList<Models.ContainerFileItemResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> ListFiles(
+            string id,
+            [FromQuery] string path,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var files = await _containerService.ListFilesAsync(id, path, cancellationToken);
+                return Ok(files);
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error listing files for container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error listing files for container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get text content of a file within a container
+        /// </summary>
+        [HttpGet("{id}/files/content")]
+        [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetFileContent(
+            string id,
+            [FromQuery] string path,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var content = await _containerService.GetFileContentTextAsync(id, path, cancellationToken);
+                return Ok(content);
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error getting file content for container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting file content for container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Download a file from within a container
+        /// </summary>
+        [HttpGet("{id}/files/download")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> DownloadFile(
+            string id,
+            [FromQuery] string path,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var (stream, contentType, fileName) = await _containerService.GetFileStreamAsync(id, path, cancellationToken);
+                return File(stream, contentType, fileName);
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error downloading file from container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error downloading file from container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Save text content to a file within a container
+        /// </summary>
+        [HttpPut("{id}/files/content")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> SaveFileContent(
+            string id,
+            [FromQuery] string path,
+            [FromBody] Models.SaveFileRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await _containerService.SaveFileContentTextAsync(id, path, request?.Content ?? string.Empty, cancellationToken);
+                return Ok();
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error saving file content to container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving file content to container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Upload a file to a directory within a container
+        /// </summary>
+        [HttpPost("{id}/files/upload")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [RequestSizeLimit(100_000_000)] // 100 MB
+        public async Task<IActionResult> UploadFile(
+            string id,
+            [FromQuery] string path,
+            IFormFile? file = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new Models.ErrorResponse { Error = "No file was uploaded." });
+            }
+
+            try
+            {
+                using var stream = file.OpenReadStream();
+                await _containerService.UploadFileAsync(id, path, file.FileName, stream, cancellationToken);
+                return Ok(new { FileName = file.FileName, Size = file.Length });
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error uploading file to container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading file to container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Create a directory within a container
+        /// </summary>
+        [HttpPost("{id}/files/directory")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> CreateDirectory(
+            string id,
+            [FromQuery] string path,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await _containerService.CreateDirectoryAsync(id, path, cancellationToken);
+                return Ok();
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error creating directory in container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating directory in container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Delete a file or directory within a container
+        /// </summary>
+        [HttpDelete("{id}/files")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> DeleteFileOrDirectory(
+            string id,
+            [FromQuery] string path,
+            [FromQuery] bool recursive = false,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await _containerService.DeleteFileOrDirectoryAsync(id, path, recursive, cancellationToken);
+                return Ok();
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                return NotFound(new Models.ErrorResponse { Error = $"Container {id} not found on this node" });
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return NotFound(new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (DockerApiException ex)
+            {
+                _logger.LogError(ex, "Docker API error deleting file or directory in container {ContainerId} at path {Path}", id, path);
+                return StatusCode((int)ex.StatusCode, new Models.ErrorResponse { Error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting file or directory in container {ContainerId} at path {Path}", id, path);
+                return StatusCode(StatusCodes.Status500InternalServerError, new Models.ErrorResponse { Error = ex.Message });
             }
         }
     }

@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using GameServer.API.Configurations;
 using GameServer.API.Interfaces;
-// (Removed unused using GameServer.API.Extensions)
 
 namespace GameServer.API.Services
 {
@@ -26,7 +25,6 @@ namespace GameServer.API.Services
             _serviceOperations = secretsOperations;
         }
 
-
         /// <summary>
         /// Checks if the given port and protocol is available for allocation
         /// </summary>
@@ -42,17 +40,16 @@ namespace GameServer.API.Services
                 return false;
 
             // Check if the port is reserved via configuration
-            if (IsReserved(port))
+            if (_portOptions.IsPortReserved(port))
                 return false;
 
             protocol = (protocol ?? "tcp").ToLowerInvariant();
-
 
             // Check Docker Swarm services for the same published port + protocol
             var services = await _serviceOperations.ListServicesAsync();
             foreach (var svc in services)
             {
-                //If nothing is published, skip
+                // If nothing is published, skip
                 if (svc.Endpoint?.Ports == null || !svc.Endpoint.Ports.Any()) continue;
                 // Check each published port & Protocol 
                 foreach (var p in svc.Endpoint.Ports)
@@ -62,40 +59,9 @@ namespace GameServer.API.Services
                         return false;
                     }
                 }
-
             }
 
             return true;
         }
-        private bool IsReserved(uint port)
-        {
-            
-
-            if (_portOptions.ReservedPortRanges == null)
-                return false;
-
-            foreach (var range in _portOptions.ReservedPortRanges)
-            {
-                if (string.IsNullOrWhiteSpace(range))
-                    continue;
-                if (range.Contains("-"))
-                {
-                    var parts = range.Split('-');
-                    if (parts.Length != 2) continue;
-                    if (uint.TryParse(parts[0].Trim(), out var start) && uint.TryParse(parts[1].Trim(), out var end))
-                    {
-                        if (start <= port && port <= end)
-                            return true;
-                    }
-                }
-                else if (uint.TryParse(range.Trim(), out var single))
-                {
-                    if (single == port)
-                        return true;
-                }
-            }
-            return false;
-        }
     }
-
 }

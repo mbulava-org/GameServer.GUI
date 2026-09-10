@@ -1,0 +1,219 @@
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenStack Gap="1.5rem">
+    @if (_profile is null)
+    {
+        <RadzenProgressBar Value="100" Mode="ProgressBarMode.Indeterminate" />
+    }
+    else
+    {
+        <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-200); padding: 1.25rem;">
+            <RadzenStack Gap="0.75rem">
+                <RadzenRow>
+                    <RadzenColumn Size="4"><RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;">Username:</RadzenText></RadzenColumn>
+                    <RadzenColumn Size="8"><RadzenText TextStyle="TextStyle.Body2">@_profile.Username</RadzenText></RadzenColumn>
+                </RadzenRow>
+                <RadzenRow>
+                    <RadzenColumn Size="4"><RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;">Role:</RadzenText></RadzenColumn>
+                    <RadzenColumn Size="8">
+                        <RadzenBadge BadgeStyle="@GetRoleBadgeStyle(_profile.Role)" Text="@_profile.Role" />
+                    </RadzenColumn>
+                </RadzenRow>
+                <RadzenRow>
+                    <RadzenColumn Size="4"><RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;">Email:</RadzenText></RadzenColumn>
+                    <RadzenColumn Size="8"><RadzenText TextStyle="TextStyle.Body2">@(string.IsNullOrWhiteSpace(_profile.Email) ? "None" : _profile.Email)</RadzenText></RadzenColumn>
+                </RadzenRow>
+                <RadzenRow>
+                    <RadzenColumn Size="4"><RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: 600;">Groups:</RadzenText></RadzenColumn>
+                    <RadzenColumn Size="8">
+                        @if (_profile.Groups.Any())
+                        {
+                            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.25rem">
+                                @foreach (var g in _profile.Groups)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@g" />
+                                }
+                            </RadzenStack>
+                        }
+                        else
+                        {
+                            <span class="rz-text-secondary">None</span>
+                        }
+                    </RadzenColumn>
+                </RadzenRow>
+            </RadzenStack>
+        </RadzenCard>
+
+        <RadzenText TextStyle="TextStyle.H6" Style="font-weight: 600; margin-top: 0.5rem;">Change Password</RadzenText>
+
+        <RadzenTemplateForm TItem="ChangePasswordViewModel" Data="@_changeModel" Submit="@HandleChangePassword">
+            <RadzenStack Gap="1rem">
+                <RadzenFormField Text="Current Password" Variant="Variant.Outlined">
+                    <ChildContent>
+                        <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                            @if (_showCurrentPassword)
+                            {
+                                <RadzenTextBox @bind-Value="@_changeModel.CurrentPassword" Name="CurrentPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            else
+                            {
+                                <RadzenPassword @bind-Value="@_changeModel.CurrentPassword" Name="CurrentPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            <RadzenButton Icon="@(_showCurrentPassword ? "visibility_off" : "visibility")"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          @onpointerdown="@(() => _showCurrentPassword = true)"
+                                          @onpointerup="@(() => _showCurrentPassword = false)"
+                                          @onpointerleave="@(() => _showCurrentPassword = false)"
+                                          @onpointercancel="@(() => _showCurrentPassword = false)"
+                                          @onmousedown="@(() => _showCurrentPassword = true)"
+                                          @onmouseup="@(() => _showCurrentPassword = false)"
+                                          @onmouseleave="@(() => _showCurrentPassword = false)"
+                                          @ontouchstart="@(() => _showCurrentPassword = true)"
+                                          @ontouchend="@(() => _showCurrentPassword = false)"
+                                          @ontouchcancel="@(() => _showCurrentPassword = false)"
+                                          Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                          Title="Press and hold to view password" />
+                        </div>
+                    </ChildContent>
+                    <Helper>
+                        <RadzenRequiredValidator Component="CurrentPassword" Text="Current password is required" />
+                    </Helper>
+                </RadzenFormField>
+
+                <RadzenFormField Text="New Password" Variant="Variant.Outlined">
+                    <ChildContent>
+                        <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                            @if (_showNewPassword)
+                            {
+                                <RadzenTextBox @bind-Value="@_changeModel.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            else
+                            {
+                                <RadzenPassword @bind-Value="@_changeModel.NewPassword" Name="NewPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            <RadzenButton Icon="@(_showNewPassword ? "visibility_off" : "visibility")"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          @onpointerdown="@(() => _showNewPassword = true)"
+                                          @onpointerup="@(() => _showNewPassword = false)"
+                                          @onpointerleave="@(() => _showNewPassword = false)"
+                                          @onpointercancel="@(() => _showNewPassword = false)"
+                                          @onmousedown="@(() => _showNewPassword = true)"
+                                          @onmouseup="@(() => _showNewPassword = false)"
+                                          @onmouseleave="@(() => _showNewPassword = false)"
+                                          @ontouchstart="@(() => _showNewPassword = true)"
+                                          @ontouchend="@(() => _showNewPassword = false)"
+                                          @ontouchcancel="@(() => _showNewPassword = false)"
+                                          Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                          Title="Press and hold to view password" />
+                        </div>
+                    </ChildContent>
+                    <Helper>
+                        <RadzenRequiredValidator Component="NewPassword" Text="New password is required" />
+                        <RadzenLengthValidator Component="NewPassword" Min="6" Text="Password must be at least 6 characters" />
+                    </Helper>
+                </RadzenFormField>
+
+                <RadzenFormField Text="Confirm New Password" Variant="Variant.Outlined">
+                    <ChildContent>
+                        <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                            @if (_showConfirmPassword)
+                            {
+                                <RadzenTextBox @bind-Value="@_changeModel.ConfirmPassword" Name="ConfirmPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            else
+                            {
+                                <RadzenPassword @bind-Value="@_changeModel.ConfirmPassword" Name="ConfirmPassword" Style="width: 100%; padding-right: 2.5rem;" />
+                            }
+                            <RadzenButton Icon="@(_showConfirmPassword ? "visibility_off" : "visibility")"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          @onpointerdown="@(() => _showConfirmPassword = true)"
+                                          @onpointerup="@(() => _showConfirmPassword = false)"
+                                          @onpointerleave="@(() => _showConfirmPassword = false)"
+                                          @onpointercancel="@(() => _showConfirmPassword = false)"
+                                          @onmousedown="@(() => _showConfirmPassword = true)"
+                                          @onmouseup="@(() => _showConfirmPassword = false)"
+                                          @onmouseleave="@(() => _showConfirmPassword = false)"
+                                          @ontouchstart="@(() => _showConfirmPassword = true)"
+                                          @ontouchend="@(() => _showConfirmPassword = false)"
+                                          @ontouchcancel="@(() => _showConfirmPassword = false)"
+                                          Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                          Title="Press and hold to view password" />
+                        </div>
+                    </ChildContent>
+                    <Helper>
+                        <RadzenRequiredValidator Component="ConfirmPassword" Text="Please confirm password" />
+                        <RadzenCompareValidator Component="ConfirmPassword" Value="@_changeModel.NewPassword" Text="Passwords do not match" />
+                    </Helper>
+                </RadzenFormField>
+
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-2">
+                    <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close())" />
+                    <RadzenButton ButtonType="ButtonType.Submit" Text="Update Password" ButtonStyle="ButtonStyle.Primary" IsBusy="@_isBusy" />
+                </RadzenStack>
+            </RadzenStack>
+        </RadzenTemplateForm>
+    }
+</RadzenStack>
+
+@code {
+    private UserProfile? _profile;
+    private bool _isBusy;
+    private bool _showCurrentPassword;
+    private bool _showNewPassword;
+    private bool _showConfirmPassword;
+
+    public class ChangePasswordViewModel
+    {
+        public string CurrentPassword { get; set; } = string.Empty;
+        public string NewPassword { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    private readonly ChangePasswordViewModel _changeModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _profile = await AuthService.GetCurrentUserAsync();
+    }
+
+    private async Task HandleChangePassword()
+    {
+        _isBusy = true;
+        try
+        {
+            var (success, error) = await AuthService.ChangePasswordAsync(_changeModel.CurrentPassword, _changeModel.NewPassword);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Password changed successfully.");
+                DialogService.Close();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not change password.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private static BadgeStyle GetRoleBadgeStyle(string role) => role switch
+    {
+        "Admin" => BadgeStyle.Danger,
+        "GameManager" => BadgeStyle.Warning,
+        _ => BadgeStyle.Info
+    };
+}

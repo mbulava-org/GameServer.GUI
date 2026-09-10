@@ -129,6 +129,8 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             CreatedAt = revision.CreatedAt,
+            UiExtensionsJson = revision.UiExtensionsJson,
+            UiExtensions = GameTypeUiExtensionsSerializer.Parse(revision.UiExtensionsJson),
             Ports = revision.Ports
                 .OrderBy(x => x.DisplayOrder)
                 .Select(x => new GameTypePortDto
@@ -255,6 +257,7 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
             ReadyLogPattern = revision.ReadyLogPattern,
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
+            UiExtensionsJson = revision.UiExtensionsJson,
             Ports = revision.Ports
                 .OrderBy(port => port.DisplayOrder)
                 .Select(port => new PortableGameTypePortDto

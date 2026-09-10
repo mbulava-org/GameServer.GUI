@@ -3,14 +3,17 @@ using GameServer.Web.Models.V2;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions) : IMountTypeConfigApiService
+public sealed class MountTypeConfigApiService(
+    IHttpClientFactory httpClientFactory,
+    Configurations.GameServerDockerApi apiOptions,
+    Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null) : IMountTypeConfigApiService
 {
     /// <summary>
     /// Gets all mount-type configurations.
     /// </summary>
     public async Task<IReadOnlyList<MountTypeConfig>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync("api/v2/mounttypeconfigs", cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -23,7 +26,7 @@ public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFacto
     /// </summary>
     public async Task<MountTypeConfig> GetAsync(string key, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/mounttypeconfigs/{Uri.EscapeDataString(key)}", cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -38,7 +41,7 @@ public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFacto
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PutAsJsonAsync($"api/v2/mounttypeconfigs/{Uri.EscapeDataString(config.Key)}", config, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -51,15 +54,35 @@ public sealed class MountTypeConfigApiService(IHttpClientFactory httpClientFacto
     /// </summary>
     public async Task DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.DeleteAsync($"api/v2/mounttypeconfigs/{Uri.EscapeDataString(key)}", cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
-    private HttpClient CreateClient()
+    private async Task<HttpClient> CreateClientAsync()
     {
-        var client = httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(apiOptions.BaseUri);
+        var baseUri = apiOptions.BaseUri;
+        if (string.IsNullOrWhiteSpace(baseUri))
+        {
+            throw new InvalidOperationException("GameServerDockerApi:BaseUri must be configured.");
+        }
+
+        var client = httpClientFactory.CreateClient("GameServerApi");
+        if (!baseUri.EndsWith('/'))
+        {
+            baseUri += "/";
+        }
+        client.BaseAddress = new Uri(baseUri);
+
+        if (authStateProvider is not null)
+        {
+            var token = await authStateProvider.GetTokenAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
         return client;
     }
 }

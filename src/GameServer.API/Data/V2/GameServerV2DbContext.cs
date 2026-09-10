@@ -70,6 +70,14 @@ public class GameServerV2DbContext : DbContext
 
     public DbSet<GameServerResourceUtilizationEntity> ResourceUtilizations { get; set; }
 
+    public DbSet<UserEntity> Users { get; set; }
+
+    public DbSet<GroupEntity> Groups { get; set; }
+
+    public DbSet<UserGroupEntity> UserGroups { get; set; }
+
+    public DbSet<GameServerGroupEntity> GameServerGroups { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -252,6 +260,7 @@ public class GameServerV2DbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.ServerId).IsUnique();
             entity.HasIndex(e => e.GameTypeRevisionId);
+            entity.HasIndex(e => e.CreatedByUserId);
             entity.HasIndex(e => e.IsDeleted);
             entity.Property(e => e.ServerId).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
@@ -259,6 +268,11 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
             ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
             ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
+
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasMany(e => e.Settings)
                 .WithOne(e => e.GameServer)
@@ -272,6 +286,7 @@ public class GameServerV2DbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.GameServerId, e.SettingKey }).IsUnique();
             entity.Property(e => e.SettingKey).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.AccessPolicy).HasMaxLength(50).HasDefaultValue("Group");
         });
 
         modelBuilder.Entity<GameServerPortEntity>(entity =>
@@ -332,6 +347,109 @@ public class GameServerV2DbContext : DbContext
             entity.Property(e => e.ContainerId).HasMaxLength(100);
             ConfigureTimestampProperty(entity.Property(e => e.Timestamp), isMySql);
         });
+
+        modelBuilder.Entity<UserEntity>(entity =>
+        {
+            entity.ToTable("Users");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Username).IsUnique();
+            entity.Property(e => e.Username).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Email).HasMaxLength(200);
+            entity.Property(e => e.PasswordHash).IsRequired();
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(50);
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+            ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
+
+            entity.HasMany(e => e.UserGroups)
+                .WithOne(e => e.User)
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasData(
+                new UserEntity
+                {
+                    Id = 1,
+                    Username = "admin",
+                    Email = "admin@gameserver.local",
+                    PasswordHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.HcXuAK10SjWLJPp2fjPLGDZzYBUHjuLTj/VUPgmfEuE=",
+                    Role = "Admin",
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
+                });
+        });
+
+        modelBuilder.Entity<GroupEntity>(entity =>
+        {
+            entity.ToTable("Groups");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+            ConfigureTimestampProperty(entity.Property(e => e.UpdatedAt), isMySql);
+
+            entity.HasMany(e => e.UserGroups)
+                .WithOne(e => e.Group)
+                .HasForeignKey(e => e.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(e => e.ServerGroups)
+                .WithOne(e => e.Group)
+                .HasForeignKey(e => e.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasData(
+                new GroupEntity
+                {
+                    Id = 1,
+                    Name = "Administrators",
+                    Description = "System Administrators group",
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
+                },
+                new GroupEntity
+                {
+                    Id = 2,
+                    Name = "Default",
+                    Description = "Default user and server group",
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp
+                });
+        });
+
+        modelBuilder.Entity<UserGroupEntity>(entity =>
+        {
+            entity.ToTable("UserGroups");
+            entity.HasKey(e => new { e.UserId, e.GroupId });
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+
+            entity.HasData(
+                new UserGroupEntity
+                {
+                    UserId = 1,
+                    GroupId = 1,
+                    CreatedAt = SeedTimestamp
+                });
+        });
+
+        modelBuilder.Entity<GameServerGroupEntity>(entity =>
+        {
+            entity.ToTable("GameServerGroups");
+            entity.HasKey(e => new { e.GameServerId, e.GroupId });
+            entity.Property(e => e.AccessLevel).IsRequired().HasMaxLength(20);
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+
+            entity.HasOne(e => e.GameServer)
+                .WithMany(e => e.Groups)
+                .HasForeignKey(e => e.GameServerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Group)
+                .WithMany(e => e.ServerGroups)
+                .HasForeignKey(e => e.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     public override int SaveChanges()
@@ -361,6 +479,14 @@ public class GameServerV2DbContext : DbContext
             else if (entry.Entity is MountTypeConfigEntity mountTypeConfig)
             {
                 mountTypeConfig.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is UserEntity user)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is GroupEntity group)
+            {
+                group.UpdatedAt = DateTime.UtcNow;
             }
         }
     }

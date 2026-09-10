@@ -1,18 +1,22 @@
 using GameServer.API.Dtos.V2;
 using GameServer.API.Services.V2;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameServer.API.Controllers.V2;
 
 [ApiController]
 [Route("api/v2/gameservers")]
+[Authorize]
 public sealed class GameServersController(
     GameServerQueryService queryService,
     GameServerCommandService commandService,
     ILogger<GameServersController> logger,
+    IServerAuthorizationService? serverAuthorizationService = null,
     Repositories.V2.IGameServerResourceUtilizationRepository? resourceUtilizationRepository = null,
     IGameServerResourceCollector? resourceCollector = null,
-    Interfaces.IServerResourceMonitor? resourceMonitor = null) : ControllerBase
+    Interfaces.IServerResourceMonitor? resourceMonitor = null,
+    Repositories.V2.IGroupRepository? groupRepository = null) : ControllerBase
 {
     /// <summary>
     /// Gets the V2 GameServer list.
@@ -23,6 +27,16 @@ public sealed class GameServersController(
     {
         logger.LogDebug("Getting V2 game servers (IncludeDeleted={IncludeDeleted})", includeDeleted);
         var servers = await queryService.GetListAsync(includeDeleted, cancellationToken);
+        if (serverAuthorizationService is not null)
+        {
+            var accessibleServerIds = await serverAuthorizationService.GetAccessibleServerIdsAsync(User, cancellationToken);
+            if (accessibleServerIds is not null)
+            {
+                var accessibleSet = accessibleServerIds.ToHashSet();
+                servers = servers.Where(s => accessibleSet.Contains(s.ServerId)).ToList();
+            }
+        }
+
         return Ok(servers);
     }
 
@@ -31,10 +45,16 @@ public sealed class GameServersController(
     /// </summary>
     [HttpGet("{serverId}")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> GetByServerId(string serverId, CancellationToken cancellationToken = default)
     {
-        var server = await queryService.GetByServerIdAsync(serverId, cancellationToken);
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
         if (server is null)
         {
             logger.LogDebug("V2 game server '{ServerId}' was not found", serverId);
@@ -111,7 +131,35 @@ public sealed class GameServersController(
     {
         try
         {
-            var created = await commandService.CreateAsync(request, cancellationToken);
+            var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            int? currentUserId = int.TryParse(currentUserIdClaim, out var parsedId) ? parsedId : null;
+
+            var created = await commandService.CreateAsync(request, currentUserId, User, cancellationToken);
+
+            if (request.InitialGroupId.HasValue && groupRepository is not null)
+            {
+                if (!User.IsInRole("Admin"))
+                {
+                    if (currentUserId is null)
+                    {
+                        return Forbid();
+                    }
+
+                    var userGroupIds = await groupRepository.GetUserGroupIdsAsync(currentUserId.Value, cancellationToken).ConfigureAwait(false);
+                    if (!userGroupIds.Contains(request.InitialGroupId.Value))
+                    {
+                        return Forbid();
+                    }
+                }
+
+                var accessLevel = string.Equals(request.InitialGroupAccessLevel, "View", StringComparison.OrdinalIgnoreCase) ? "View" : "Edit";
+                await groupRepository.AddOrUpdateServerAccessAsync(
+                    request.InitialGroupId.Value,
+                    created.ServerId,
+                    accessLevel,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             return CreatedAtAction(nameof(GetByServerId), new { serverId = created.ServerId }, created);
         }
         catch (ArgumentException ex)
@@ -126,12 +174,18 @@ public sealed class GameServersController(
     [HttpPut("{serverId}")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
     [ProducesResponseType(400)]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Update(string serverId, [FromBody] SaveGameServerRequestDto request, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
-            var updated = await commandService.UpdateAsync(serverId, request, cancellationToken);
+            var updated = await commandService.UpdateAsync(serverId, request, User, cancellationToken);
             return Ok(updated);
         }
         catch (ArgumentException ex)
@@ -149,12 +203,18 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/start")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Start(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
-            var server = await commandService.StartAsync(serverId, cancellationToken);
+            var server = await commandService.StartAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -168,12 +228,18 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/stop")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Stop(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
-            var server = await commandService.StopAsync(serverId, cancellationToken);
+            var server = await commandService.StopAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -187,12 +253,18 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/restart")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Restart(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
-            var server = await commandService.RestartAsync(serverId, cancellationToken);
+            var server = await commandService.RestartAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -206,12 +278,18 @@ public sealed class GameServersController(
     /// </summary>
     [HttpPost("{serverId}/redeploy")]
     [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameServerDetailDto>> Redeploy(string serverId, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
-            var server = await commandService.RedeployAsync(serverId, cancellationToken);
+            var server = await commandService.RedeployAsync(serverId, User, cancellationToken);
             return Ok(server);
         }
         catch (KeyNotFoundException)
@@ -225,9 +303,15 @@ public sealed class GameServersController(
     /// </summary>
     [HttpDelete("{serverId}")]
     [ProducesResponseType(204)]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Delete(string serverId, [FromQuery] bool softDelete = true, CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         try
         {
             await commandService.DeleteAsync(serverId, softDelete, cancellationToken);
@@ -244,6 +328,7 @@ public sealed class GameServersController(
     /// </summary>
     [HttpGet("{serverId}/resources/history")]
     [ProducesResponseType(200, Type = typeof(IEnumerable<GameServerResourceHistoryDto>))]
+    [ProducesResponseType(403)]
     public async Task<ActionResult<IReadOnlyList<GameServerResourceHistoryDto>>> GetResourceHistory(
         string serverId,
         [FromQuery] DateTime? from = null,
@@ -251,6 +336,11 @@ public sealed class GameServersController(
         [FromQuery] int limit = 5000,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (resourceUtilizationRepository is null)
         {
             return Ok(Array.Empty<GameServerResourceHistoryDto>());
@@ -283,11 +373,17 @@ public sealed class GameServersController(
     /// </summary>
     [HttpGet("{serverId}/resources/latest")]
     [ProducesResponseType(200, Type = typeof(Models.ServerResourceUsage))]
+    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<ActionResult<Models.ServerResourceUsage>> GetLatestResource(
         string serverId,
         CancellationToken cancellationToken = default)
     {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
         // Try in-memory cached snapshot first
         var cached = resourceCollector?.GetCachedUsage(serverId);
         if (cached != null)
@@ -306,5 +402,160 @@ public sealed class GameServersController(
         }
 
         return NotFound();
+    }
+
+    /// <summary>
+    /// Gets the per-group access for a specific server, limited to the groups the current user belongs to.
+    /// Only the server's creator (or an admin) may call this endpoint.
+    /// </summary>
+    [HttpGet("{serverId}/group-access")]
+    [ProducesResponseType(200, Type = typeof(IReadOnlyList<ServerGroupAccessRowDto>))]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<IReadOnlyList<ServerGroupAccessRowDto>>> GetGroupAccess(
+        string serverId,
+        CancellationToken cancellationToken = default)
+    {
+        if (groupRepository is null)
+        {
+            return StatusCode(StatusCodes.Status501NotImplemented);
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
+        if (server is null)
+        {
+            return NotFound();
+        }
+
+        var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(currentUserIdClaim, out var currentUserId))
+        {
+            return Forbid();
+        }
+
+        var isAdmin = User.IsInRole("Admin");
+        var isCreator = server.CreatedByUserId.HasValue && server.CreatedByUserId.Value == currentUserId;
+        if (!isAdmin && !isCreator)
+        {
+            return Forbid();
+        }
+
+        var userGroupIds = await groupRepository.GetUserGroupIdsAsync(currentUserId, cancellationToken).ConfigureAwait(false);
+        if (userGroupIds.Count == 0)
+        {
+            return Ok(Array.Empty<ServerGroupAccessRowDto>());
+        }
+
+        var rows = new List<ServerGroupAccessRowDto>(userGroupIds.Count);
+        foreach (var groupId in userGroupIds)
+        {
+            var group = await groupRepository.GetByIdAsync(groupId, cancellationToken).ConfigureAwait(false);
+            if (group is null)
+            {
+                continue;
+            }
+
+            var existing = group.ServerGroups.FirstOrDefault(sg => sg.GameServer.ServerId == serverId);
+            rows.Add(new ServerGroupAccessRowDto(
+                GroupId: group.Id,
+                GroupName: group.Name,
+                Description: group.Description,
+                AccessLevel: existing?.AccessLevel ?? "None"));
+        }
+
+        return Ok(rows);
+    }
+
+    /// <summary>
+    /// Sets the per-group access for a specific server for a subset of the current user's groups.
+    /// Only the server's creator (or an admin) may call this endpoint.
+    /// </summary>
+    [HttpPut("{serverId}/group-access")]
+    [ProducesResponseType(200, Type = typeof(IReadOnlyList<ServerGroupAccessRowDto>))]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<IReadOnlyList<ServerGroupAccessRowDto>>> SetGroupAccess(
+        string serverId,
+        [FromBody] SetServerGroupAccessRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (groupRepository is null)
+        {
+            return StatusCode(StatusCodes.Status501NotImplemented);
+        }
+
+        if (request is null || request.Groups is null)
+        {
+            return BadRequest(new { error = "Group assignments are required." });
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
+        if (server is null)
+        {
+            return NotFound();
+        }
+
+        var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(currentUserIdClaim, out var currentUserId))
+        {
+            return Forbid();
+        }
+
+        var isAdmin = User.IsInRole("Admin");
+        var isCreator = server.CreatedByUserId.HasValue && server.CreatedByUserId.Value == currentUserId;
+        if (!isAdmin && !isCreator)
+        {
+            return Forbid();
+        }
+
+        // Defense-in-depth: only allow modifying groups the caller is a member of.
+        var userGroupIds = (await groupRepository.GetUserGroupIdsAsync(currentUserId, cancellationToken).ConfigureAwait(false)).ToHashSet();
+
+        foreach (var assignment in request.Groups)
+        {
+            if (!userGroupIds.Contains(assignment.GroupId))
+            {
+                return Forbid();
+            }
+
+            var level = assignment.AccessLevel?.Trim() ?? "None";
+            if (string.Equals(level, "None", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(level))
+            {
+                await groupRepository.RemoveServerAccessAsync(assignment.GroupId, serverId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (string.Equals(level, "View", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(level, "Edit", StringComparison.OrdinalIgnoreCase))
+            {
+                await groupRepository.AddOrUpdateServerAccessAsync(assignment.GroupId, serverId, level, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                return BadRequest(new { error = $"Invalid access level '{assignment.AccessLevel}'." });
+            }
+        }
+
+        logger.LogInformation("User {UserId} updated group access for server {ServerId} ({Count} group(s)).",
+            currentUserId, serverId, request.Groups.Count);
+
+        // Return refreshed rows so the caller can update its UI.
+        var refreshed = new List<ServerGroupAccessRowDto>();
+        foreach (var groupId in userGroupIds)
+        {
+            var group = await groupRepository.GetByIdAsync(groupId, cancellationToken).ConfigureAwait(false);
+            if (group is null)
+            {
+                continue;
+            }
+
+            var existing = group.ServerGroups.FirstOrDefault(sg => sg.GameServer.ServerId == serverId);
+            refreshed.Add(new ServerGroupAccessRowDto(
+                GroupId: group.Id,
+                GroupName: group.Name,
+                Description: group.Description,
+                AccessLevel: existing?.AccessLevel ?? "None"));
+        }
+
+        return Ok(refreshed);
     }
 }

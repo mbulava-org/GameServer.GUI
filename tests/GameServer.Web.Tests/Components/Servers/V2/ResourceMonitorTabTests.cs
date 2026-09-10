@@ -3,6 +3,7 @@ using GameServer.API.Client.Interfaces;
 using GameServer.Web.Components.Server;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,6 +21,7 @@ public class ResourceMonitorTabTests : BunitContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton<ILogger<LiveResourceMonitorTab>>(NullLogger<LiveResourceMonitorTab>.Instance);
         Services.AddSingleton(Options.Create(new GameServerDockerApi { BaseUri = "http://localhost:5164" }));
     }

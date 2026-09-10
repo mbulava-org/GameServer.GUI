@@ -15,6 +15,7 @@
         "enableTTY": false,
         "notes": "Seeded from the upstream Docker image README. Review passwords, auto-update, and backup settings before publishing.",
         "isPublished": false,
+        "uiExtensionsJson": "[{\"componentTypeName\":\"GameServer.Web.Components.Server.Extensions.PalworldApiTab\",\"assemblyName\":\"GameServer.Web\",\"title\":\"Palworld API\",\"icon\":\"cloud\",\"order\":10,\"parameters\":{}},{\"componentTypeName\":\"GameServer.Web.Components.Server.Extensions.RconTab\",\"assemblyName\":\"GameServer.Web\",\"title\":\"RCON\",\"icon\":\"terminal\",\"order\":20,\"parameters\":{\"presetCommands\":\"Info, ShowPlayers, Save\"}}]",
         "ports": [
           {
             "containerPort": 8211,

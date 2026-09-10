@@ -1,0 +1,183 @@
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-1">UI Extensions</h5>
+        <small class="text-muted">
+            Attach custom Blazor tabs to servers running this revision. Types must live in an assembly listed in
+            <code>GameTypeExtensions:AllowedAssemblies</code> in the GUI's appsettings.
+        </small>
+    </div>
+    <RadzenButton Text="Add Extension"
+                  Icon="add"
+                  ButtonStyle="ButtonStyle.Light"
+                  Click="@AddExtensionAsync"
+                  Disabled="@AtMax" />
+</div>
+
+@if (AtMax)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" AllowClose="false" class="mb-3">
+        Maximum of @MaxExtensions extensions per revision.
+    </RadzenAlert>
+}
+
+@if (!Extensions.Any())
+{
+    <p class="text-muted mb-0">No UI extensions declared for this draft.</p>
+}
+else
+{
+    @foreach (var extension in Extensions)
+    {
+        <RadzenCard class="mb-3">
+            <div class="row g-2 mb-2">
+                <div class="col-md-4">
+                    <RadzenFormField Text="Title" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="extension.Title"
+                                       @bind-Value:after="NotifyChangedAsync"
+                                       class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-6">
+                    <RadzenFormField Text="Component Type Name" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="extension.ComponentTypeName"
+                                       @bind-Value:after="NotifyChangedAsync"
+                                       Placeholder="GameServer.Web.Components.Server.Extensions.PalworldApiTab"
+                                       class="w-100" />
+                    </RadzenFormField>
+                </div>
+                <div class="col-md-2">
+                    <RadzenFormField Text="Order" Variant="Variant.Outlined" class="w-100">
+                        <RadzenNumeric TValue="int"
+                                       @bind-Value="extension.Order"
+                                       @bind-Value:after="NotifyChangedAsync"
+                                       class="w-100" />
+                    </RadzenFormField>
+                </div>
+            </div>
+            <div class="row g-2 mb-2">
+                <div class="col-md-6">
+                    <RadzenFormField Text="Assembly Name" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="extension.AssemblyName"
+                                       @bind-Value:after="NotifyChangedAsync"
+                                       Placeholder="GameServer.Web"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">Leave blank to search all whitelisted assemblies.</small>
+                </div>
+                <div class="col-md-4">
+                    <RadzenFormField Text="Icon" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox @bind-Value="extension.Icon"
+                                       @bind-Value:after="NotifyChangedAsync"
+                                       Placeholder="extension"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">Radzen icon name (Material). Defaults to <code>extension</code>.</small>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <RadzenButton Icon="delete"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Size="ButtonSize.Small"
+                                  Variant="Variant.Outlined"
+                                  Text="Remove"
+                                  Click="@(() => RemoveExtensionAsync(extension))" />
+                </div>
+            </div>
+
+            <div class="mt-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong class="small">Parameters</strong>
+                    <RadzenButton Icon="add"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small"
+                                  Text="Add Parameter"
+                                  Click="@(() => AddParameterAsync(extension))" />
+                </div>
+
+                @if (!extension.Parameters.Any())
+                {
+                    <small class="text-muted">No parameters.</small>
+                }
+                else
+                {
+                    @foreach (var parameter in extension.Parameters)
+                    {
+                        <div class="row g-2 mb-1">
+                            <div class="col-md-4">
+                                <RadzenTextBox @bind-Value="parameter.Key"
+                                               @bind-Value:after="NotifyChangedAsync"
+                                               Placeholder="key"
+                                               class="w-100" />
+                            </div>
+                            <div class="col-md-7">
+                                <RadzenTextBox @bind-Value="parameter.Value"
+                                               @bind-Value:after="NotifyChangedAsync"
+                                               Placeholder="value"
+                                               class="w-100" />
+                            </div>
+                            <div class="col-md-1 d-flex align-items-center">
+                                <RadzenButton Icon="close"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Size="ButtonSize.Small"
+                                              Click="@(() => RemoveParameterAsync(extension, parameter))" />
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </RadzenCard>
+    }
+}
+
+@code {
+    /// <summary>Maximum number of extension descriptors permitted per revision.</summary>
+    public const int MaxExtensions = 10;
+
+    [Parameter] public List<GameTypeRevisionUiExtensionDraft> Extensions { get; set; } = new();
+
+    [Parameter] public EventCallback OnDraftChanged { get; set; }
+
+    private bool AtMax => Extensions.Count >= MaxExtensions;
+
+    private async Task AddExtensionAsync()
+    {
+        if (AtMax)
+        {
+            return;
+        }
+
+        Extensions.Add(new GameTypeRevisionUiExtensionDraft
+        {
+            Order = Extensions.Count
+        });
+        await NotifyChangedAsync();
+    }
+
+    private async Task RemoveExtensionAsync(GameTypeRevisionUiExtensionDraft extension)
+    {
+        Extensions.Remove(extension);
+        await NotifyChangedAsync();
+    }
+
+    private async Task AddParameterAsync(GameTypeRevisionUiExtensionDraft extension)
+    {
+        extension.Parameters.Add(new GameTypeRevisionUiExtensionParameterDraft());
+        await NotifyChangedAsync();
+    }
+
+    private async Task RemoveParameterAsync(GameTypeRevisionUiExtensionDraft extension, GameTypeRevisionUiExtensionParameterDraft parameter)
+    {
+        extension.Parameters.Remove(parameter);
+        await NotifyChangedAsync();
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        if (OnDraftChanged.HasDelegate)
+        {
+            await OnDraftChanged.InvokeAsync();
+        }
+    }
+}
