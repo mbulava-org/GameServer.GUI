@@ -46,11 +46,12 @@ public class LiveResourceMonitorTabTests : BunitContext
             .Add(p => p.ServerId, "srv-1")
             .Add(p => p.AutoConnect, true)
             .Add(p => p.Client, mockClient.Object));
+        var timestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var update1 = new ServerResourceUsage
         {
             ServerId = "srv-1",
-            Timestamp = DateTime.UtcNow.AddSeconds(-1),
+            Timestamp = timestamp,
             CpuUsagePercent = 20.0,
             MemoryUsageBytes = 1024 * 1024 * 512,
             MemoryLimitBytes = 1024 * 1024 * 1024,
@@ -66,7 +67,7 @@ public class LiveResourceMonitorTabTests : BunitContext
         var update2 = new ServerResourceUsage
         {
             ServerId = "srv-1",
-            Timestamp = DateTime.UtcNow,
+            Timestamp = timestamp.AddSeconds(1),
             CpuUsagePercent = 42.5,
             MemoryUsageBytes = 1024 * 1024 * 512,
             MemoryLimitBytes = 1024 * 1024 * 1024,

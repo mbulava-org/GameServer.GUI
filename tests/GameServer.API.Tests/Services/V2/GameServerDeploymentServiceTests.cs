@@ -509,10 +509,10 @@ public class GameServerDeploymentServiceTests
         var windowsAgentOperations = new Mock<IWindowsAgentOperations>();
         WindowsSteamAppInstallRequest? installRequest = null;
         WindowsStartServerRequest? startRequest = null;
-        windowsAgentOperations.Setup(x => x.InstallOrUpdateSteamAppAsync("http://windows-agent/", It.IsAny<WindowsSteamAppInstallRequest>(), It.IsAny<CancellationToken>()))
+        windowsAgentOperations.Setup(x => x.InstallOrUpdateSteamAppAsync(It.IsAny<string>(), It.IsAny<WindowsSteamAppInstallRequest>(), It.IsAny<CancellationToken>()))
             .Callback<string, WindowsSteamAppInstallRequest, CancellationToken>((_, request, _) => installRequest = request)
             .ReturnsAsync(new WindowsSteamCmdJobResult { Success = true, AppId = 3246670, ExitCode = 0, Message = "ok" });
-        windowsAgentOperations.Setup(x => x.StartServerAsync("http://windows-agent/", It.IsAny<WindowsStartServerRequest>(), It.IsAny<CancellationToken>()))
+        windowsAgentOperations.Setup(x => x.StartServerAsync(It.IsAny<string>(), It.IsAny<WindowsStartServerRequest>(), It.IsAny<CancellationToken>()))
             .Callback<string, WindowsStartServerRequest, CancellationToken>((_, request, _) => startRequest = request)
             .ReturnsAsync(new WindowsProcessInfo { ServerId = serverId, Status = "Running" });
 

@@ -708,6 +708,18 @@ public sealed class GameServerDeploymentService(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in revision.SettingDefinitions)
+        {
+            if (string.IsNullOrWhiteSpace(definition.SettingKey))
+            {
+                continue;
+            }
+
+            values[definition.SettingKey] = serverVariableKeys.Contains(definition.SettingKey)
+                ? ServerVariableExpander.Resolve(definition.DefaultValue, tokenValues)
+                : definition.DefaultValue;
+        }
+
         foreach (var setting in server.Settings)
         {
             if (string.IsNullOrWhiteSpace(setting.SettingKey))
@@ -769,7 +781,7 @@ public sealed class GameServerDeploymentService(
         string agentUrl,
         GameServerModel server,
         GameType gameType,
-        Dictionary<string, string?> effectiveSettings,
+        IReadOnlyDictionary<string, string?> effectiveSettings,
         CancellationToken cancellationToken)
     {
         var installRequest = BuildWindowsSteamAppInstallRequest(server, effectiveSettings);
@@ -798,7 +810,7 @@ public sealed class GameServerDeploymentService(
         GameServerModel server,
         GameType gameType,
         GameTypeRevision revision,
-        Dictionary<string, string?> effectiveSettings)
+        IReadOnlyDictionary<string, string?> effectiveSettings)
     {
         var request = new WindowsStartServerRequest
         {
@@ -842,7 +854,7 @@ public sealed class GameServerDeploymentService(
 
     private static WindowsSteamAppInstallRequest? BuildWindowsSteamAppInstallRequest(
         GameServerModel server,
-        Dictionary<string, string?> effectiveSettings)
+        IReadOnlyDictionary<string, string?> effectiveSettings)
     {
         var appId = TryGetUIntSetting(effectiveSettings, SteamCmdAppIdSettingKey);
         if (!appId.HasValue || appId.Value == 0)
@@ -876,7 +888,7 @@ public sealed class GameServerDeploymentService(
         };
     }
 
-    private static Dictionary<string, string> BuildWindowsEnvironmentVariables(GameType gameType, Dictionary<string, string?> effectiveSettings)
+    private static Dictionary<string, string> BuildWindowsEnvironmentVariables(GameType gameType, IReadOnlyDictionary<string, string?> effectiveSettings)
     {
         return effectiveSettings
             .Where(kv => kv.Value != null && ShouldExposeWindowsSettingAsEnvironmentVariable(gameType, kv.Key))
@@ -893,7 +905,7 @@ public sealed class GameServerDeploymentService(
         return !IsAskaSettingKey(gameType, settingKey);
     }
 
-    private static void EnsureGameSpecificWindowsRequirements(GameType gameType, Dictionary<string, string?> effectiveSettings)
+    private static void EnsureGameSpecificWindowsRequirements(GameType gameType, IReadOnlyDictionary<string, string?> effectiveSettings)
     {
         if (IsAskaGameType(gameType))
         {
@@ -911,9 +923,9 @@ public sealed class GameServerDeploymentService(
     private static bool IsAskaSettingKey(GameType gameType, string settingKey) =>
         IsAskaGameType(gameType) && settingKey.StartsWith("ASKA_", StringComparison.OrdinalIgnoreCase);
 
-    private static string BuildAskaServerProperties(Dictionary<string, string?> effectiveSettings, string serverName)
+    private static string BuildAskaServerProperties(IReadOnlyDictionary<string, string?> effectiveSettings, string serverName)
     {
-        static string GetValue(Dictionary<string, string?> settings, string key, string fallback = "") =>
+        static string GetValue(IReadOnlyDictionary<string, string?> settings, string key, string fallback = "") =>
             string.IsNullOrWhiteSpace(GetOptionalSetting(settings, key)) ? fallback : GetOptionalSetting(settings, key)!;
 
         var lines = new List<string>
@@ -949,7 +961,7 @@ public sealed class GameServerDeploymentService(
         return string.Join(Environment.NewLine, lines) + Environment.NewLine;
     }
 
-    private static void AppendIfPresent(List<string> lines, Dictionary<string, string?> effectiveSettings, string settingKey, string propertyName)
+    private static void AppendIfPresent(List<string> lines, IReadOnlyDictionary<string, string?> effectiveSettings, string settingKey, string propertyName)
     {
         var value = GetOptionalSetting(effectiveSettings, settingKey);
         if (!string.IsNullOrWhiteSpace(value))
@@ -958,20 +970,20 @@ public sealed class GameServerDeploymentService(
         }
     }
 
-    private static string? GetOptionalSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    private static string? GetOptionalSetting(IReadOnlyDictionary<string, string?> effectiveSettings, string settingKey)
     {
         return effectiveSettings.TryGetValue(settingKey, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value.Trim()
             : null;
     }
 
-    private static string ResolveWindowsInstallDirectory(string serverId, Dictionary<string, string?> effectiveSettings)
+    private static string ResolveWindowsInstallDirectory(string serverId, IReadOnlyDictionary<string, string?> effectiveSettings)
     {
         return GetOptionalSetting(effectiveSettings, WindowsInstallDirectorySettingKey)
             ?? $@"{DefaultWindowsInstallRoot}\{serverId}";
     }
 
-    private static bool? TryGetBoolSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    private static bool? TryGetBoolSetting(IReadOnlyDictionary<string, string?> effectiveSettings, string settingKey)
     {
         var value = GetOptionalSetting(effectiveSettings, settingKey);
         if (string.IsNullOrWhiteSpace(value))
@@ -992,13 +1004,13 @@ public sealed class GameServerDeploymentService(
         };
     }
 
-    private static uint? TryGetUIntSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    private static uint? TryGetUIntSetting(IReadOnlyDictionary<string, string?> effectiveSettings, string settingKey)
     {
         var value = GetOptionalSetting(effectiveSettings, settingKey);
         return uint.TryParse(value, out var parsed) ? parsed : null;
     }
 
-    private static int? TryGetIntSetting(Dictionary<string, string?> effectiveSettings, string settingKey)
+    private static int? TryGetIntSetting(IReadOnlyDictionary<string, string?> effectiveSettings, string settingKey)
     {
         var value = GetOptionalSetting(effectiveSettings, settingKey);
         return int.TryParse(value, out var parsed) ? parsed : null;

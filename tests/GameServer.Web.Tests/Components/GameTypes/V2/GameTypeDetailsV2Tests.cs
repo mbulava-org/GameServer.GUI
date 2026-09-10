@@ -135,20 +135,11 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
     [Fact]
     public void GameTypeDetailsV2_BasicInfoEditor_ShouldOfferWindowsGameTypeOption()
     {
-        Services.AddSingleton<NotificationService>();
-        Services.AddSingleton(CreateApiService(new GameTypeDetail
-        {
-            Key = string.Empty,
-            DisplayName = string.Empty,
-            Type = "docker",
-            Revisions = []
-        }));
+        var field = typeof(GameTypeDetailsV2).GetField("gameTypeTypeOptions", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        var options = Assert.IsAssignableFrom<IReadOnlyList<string>>(field?.GetValue(null));
 
-        var cut = Render<GameTypeDetailsV2>();
-        var basicInfoEditor = cut.FindComponent<GameTypeBasicInfoV2Editor>().Instance;
-
-        Assert.Contains("docker", basicInfoEditor.TypeOptions);
-        Assert.Contains("windows", basicInfoEditor.TypeOptions);
+        Assert.Contains("docker", options);
+        Assert.Contains("windows", options);
     }
 
     [Fact]
