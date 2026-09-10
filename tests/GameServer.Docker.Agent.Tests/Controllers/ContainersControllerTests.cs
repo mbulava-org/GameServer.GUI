@@ -1,3 +1,4 @@
+using Docker.DotNet;
 using GameServer.Docker.Agent.Controllers;
 using GameServer.Docker.Agent.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -250,5 +251,78 @@ public class ContainersControllerTests
         _mockContainerService.Verify(
             x => x.GetContainerLogsAsync(containerId, tail, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task GetFileContent_WhenFileExists_ShouldReturnOkWithContent()
+    {
+        var controller = CreateController();
+        var containerId = "test-container-123";
+        var path = "/home/steam/server/config.json";
+        var expectedContent = "{\"key\":\"value\"}";
+
+        _mockContainerService
+            .Setup(x => x.GetFileContentTextAsync(containerId, path, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedContent);
+
+        var result = await controller.GetFileContent(containerId, path, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(expectedContent, okResult.Value);
+    }
+
+    [Fact]
+    public async Task GetFileContent_WhenFileNotFound_ShouldReturn404()
+    {
+        var controller = CreateController();
+        var containerId = "test-container-123";
+        var path = "/home/steam/server/missing.json";
+
+        _mockContainerService
+            .Setup(x => x.GetFileContentTextAsync(containerId, path, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FileNotFoundException("File not found"));
+
+        var result = await controller.GetFileContent(containerId, path, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var error = Assert.IsType<AgentModels.ErrorResponse>(notFoundResult.Value);
+        Assert.Contains("not found", error.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetFileContent_WhenDockerApiExceptionNotFound_ShouldReturn404()
+    {
+        var controller = CreateController();
+        var containerId = "test-container-123";
+        var path = "/home/steam/server/missing.json";
+
+        _mockContainerService
+            .Setup(x => x.GetFileContentTextAsync(containerId, path, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DockerApiException(System.Net.HttpStatusCode.NotFound, "Not found in container"));
+
+        var result = await controller.GetFileContent(containerId, path, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var error = Assert.IsType<AgentModels.ErrorResponse>(notFoundResult.Value);
+        Assert.Contains("Not found", error.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DownloadFile_WhenFileExists_ShouldReturnFileResult()
+    {
+        var controller = CreateController();
+        var containerId = "test-container-123";
+        var path = "/home/steam/server/save.zip";
+        var ms = new MemoryStream([1, 2, 3]);
+
+        _mockContainerService
+            .Setup(x => x.GetFileStreamAsync(containerId, path, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ms, "application/zip", "save.zip"));
+
+        var result = await controller.DownloadFile(containerId, path, CancellationToken.None);
+
+        var fileResult = Assert.IsType<FileStreamResult>(result);
+        Assert.Equal("application/zip", fileResult.ContentType);
+        Assert.Equal("save.zip", fileResult.FileDownloadName);
     }
 }

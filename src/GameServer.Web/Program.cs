@@ -78,7 +78,23 @@ namespace GameServer.Web
 
                 // Register WebSocket service as singleton
                 //builder.Services.AddSingleton<GameServerWebSocketService>();
+                builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
+                    .AddCookie(options =>
+                    {
+                        options.LoginPath = "/login";
+                        options.AccessDeniedPath = "/login";
+                    });
+                builder.Services.AddAuthorizationCore();
+                builder.Services.AddCascadingAuthenticationState();
+                builder.Services.AddScoped<Services.Auth.JwtAuthenticationStateProvider>();
+                builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider>(sp => sp.GetRequiredService<Services.Auth.JwtAuthenticationStateProvider>());
+                builder.Services.AddScoped<Services.Auth.AuthTokenHandler>();
+
                 builder.Services.AddHttpClient();
+                builder.Services.AddHttpClient("GameServerApi")
+                    .AddHttpMessageHandler<Services.Auth.AuthTokenHandler>();
+
+                builder.Services.AddScoped<Services.Auth.IAuthApiService, Services.Auth.AuthApiService>();
                 builder.Services.Configure<ThumbnailCacheOptions>(options =>
                 {
                     options.CacheDirectory = Path.Combine(Path.GetTempPath(), "GameServer.Web", "thumbnail-cache");
@@ -88,10 +104,22 @@ namespace GameServer.Web
                 builder.Services.AddHttpClient("PublicIpDiscovery");
                 builder.Services.AddSingleton<IPublicIpService, PublicIpService>();
                 builder.Services.AddScoped<IThumbnailCacheService, ThumbnailCacheService>();
+                builder.Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
                 builder.Services.AddScoped<Services.V2.IGameServerV2ApiService, Services.V2.GameServerV2ApiService>();
                 builder.Services.AddScoped<Services.V2.IGameTypeV2ApiService, Services.V2.GameTypeV2ApiService>();
                 builder.Services.AddScoped<Services.V2.IMountTypeConfigApiService, Services.V2.MountTypeConfigApiService>();
                 builder.Services.AddScoped<Services.V2.IGameServerFilesApiService, Services.V2.GameServerFilesApiService>();
+
+                // GameType UI extension framework: bind whitelist options and register the resolver.
+                builder.Services.Configure<Configurations.GameTypeExtensionsOptions>(
+                    builder.Configuration.GetSection(Configurations.GameTypeExtensionsOptions.SectionName));
+                builder.Services.AddSingleton<Services.V2.IGameTypeExtensionResolver, Services.V2.GameTypeExtensionResolver>();
+
+                // Palworld REST API extension client (registered typed HTTP client).
+                builder.Services.AddHttpClient(Services.Extensions.PalworldApiClient.HttpClientName);
+                builder.Services.AddSingleton<Services.Extensions.INodeAgentExtensionProxy, Services.Extensions.NotImplementedNodeAgentExtensionProxy>();
+                builder.Services.AddSingleton<Services.Extensions.IPalworldApiClient, Services.Extensions.PalworldApiClient>();
+                builder.Services.AddSingleton<Services.Extensions.IRconClient, Services.Extensions.RconClient>();
 
                 var apiBaseUrl = builder.Configuration["GameServerDockerApi:BaseUri"] ?? "http://localhost:5164/";
                 if (!apiBaseUrl.EndsWith('/'))

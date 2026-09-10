@@ -1,0 +1,125 @@
+@inject IAuthApiService AuthService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm TItem="UsersManager.CreateUserViewModel" Data="@Model" Submit="@HandleSubmit">
+    <RadzenStack Gap="1.25rem">
+        <RadzenFormField Text="Username" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextBox @bind-Value="@Model.Username" Name="Username" Style="width: 100%;" />
+            </ChildContent>
+            <Helper>
+                <RadzenRequiredValidator Component="Username" Text="Username is required" />
+            </Helper>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Email" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenTextBox @bind-Value="@Model.Email" Name="Email" Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Password" Variant="Variant.Outlined">
+            <ChildContent>
+                <div class="d-flex align-items-center" style="position: relative; width: 100%;">
+                    @if (_showPassword)
+                    {
+                        <RadzenTextBox @bind-Value="@Model.Password" Name="Password" Style="width: 100%; padding-right: 2.5rem;" />
+                    }
+                    else
+                    {
+                        <RadzenPassword @bind-Value="@Model.Password" Name="Password" Style="width: 100%; padding-right: 2.5rem;" />
+                    }
+                    <RadzenButton Icon="@(_showPassword ? "visibility_off" : "visibility")"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Variant="Variant.Text"
+                                  Size="ButtonSize.Small"
+                                  @onpointerdown="@(() => _showPassword = true)"
+                                  @onpointerup="@(() => _showPassword = false)"
+                                  @onpointerleave="@(() => _showPassword = false)"
+                                  @onpointercancel="@(() => _showPassword = false)"
+                                  @onmousedown="@(() => _showPassword = true)"
+                                  @onmouseup="@(() => _showPassword = false)"
+                                  @onmouseleave="@(() => _showPassword = false)"
+                                  @ontouchstart="@(() => _showPassword = true)"
+                                  @ontouchend="@(() => _showPassword = false)"
+                                  @ontouchcancel="@(() => _showPassword = false)"
+                                  Style="position: absolute; right: 4px; z-index: 10; padding: 0.25rem; cursor: pointer; user-select: none;"
+                                  Title="Press and hold to view password" />
+                </div>
+            </ChildContent>
+            <Helper>
+                <RadzenRequiredValidator Component="Password" Text="Password is required" />
+                <RadzenLengthValidator Component="Password" Min="6" Text="Password must be at least 6 characters" />
+            </Helper>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Role" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="@Model.Role" Data="@_roles" Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenFormField Text="Assigned Groups" Variant="Variant.Outlined">
+            <ChildContent>
+                <RadzenDropDown @bind-Value="@Model.SelectedGroupIds" Data="@AvailableGroups" TextProperty="Name" ValueProperty="Id" Multiple="true" AllowClear="true" Placeholder="Select groups..." Style="width: 100%;" />
+            </ChildContent>
+        </RadzenFormField>
+
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenCheckBox @bind-Value="@Model.IsActive" Name="IsActive" />
+            <RadzenLabel Text="Account is active" Component="IsActive" />
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem" class="mt-3">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Create User" ButtonStyle="ButtonStyle.Primary" IsBusy="@_isBusy" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter]
+    public UsersManager.CreateUserViewModel Model { get; set; } = new();
+
+    [Parameter]
+    public IReadOnlyList<GroupModel> AvailableGroups { get; set; } = [];
+
+    private readonly List<string> _roles = ["User", "GameManager", "Admin"];
+    private bool _showPassword;
+    private bool _isBusy;
+
+    private async Task HandleSubmit()
+    {
+        _isBusy = true;
+        try
+        {
+            var req = new CreateUserRequest(
+                Model.Username.Trim(),
+                Model.Email?.Trim(),
+                Model.Password,
+                Model.Role,
+                Model.SelectedGroupIds?.ToList(),
+                Model.IsActive);
+
+            var (success, error, user) = await AuthService.CreateUserAsync(req);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "User Created", $"User '{Model.Username}' created successfully.");
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not create user.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

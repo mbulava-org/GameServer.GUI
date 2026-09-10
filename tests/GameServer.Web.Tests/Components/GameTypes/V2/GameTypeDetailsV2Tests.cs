@@ -6,8 +6,11 @@ using Bunit;
 using GameServer.Web.Components.Pages.GameTypes;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
+using GameServer.Web.Tests.Helpers;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
@@ -19,9 +22,11 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
     public GameTypeDetailsV2Tests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddTestAuthServices("admin", "Admin");
 
         // GameTypeDetailsV2 injects MountTypeConfigApiService, so it must always be resolvable.
         Services.AddSingleton(CreateMountTypeConfigApiService());
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
     }
 
     [Fact]
@@ -408,6 +413,54 @@ public sealed class GameTypeDetailsV2Tests : BunitContext
         {
             Assert.Contains("USE_NATIVE_TRANSPORT", cut.Markup);
             Assert.Contains("yesno", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void DetectSettings_ShouldInferTimezoneDataType_WhenSettingKeyIsTZ()
+    {
+        Services.AddSingleton<NotificationService>();
+        Services.AddSingleton(CreateApiService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gametypes/detection/scan-tag")
+            {
+                return CreateJsonResponse(new GameTypeSetupDetectionResult
+                {
+                    ImageReference = "itzg/minecraft-server",
+                    VersionTag = "latest",
+                    Settings =
+                    [
+                        new DetectedSetting
+                        {
+                            Key = "TZ",
+                            DefaultValue = "UTC"
+                        }
+                    ]
+                });
+            }
+
+            return CreateJsonResponse(new GameTypeDetail
+            {
+                Key = string.Empty,
+                DisplayName = string.Empty,
+                Type = "docker",
+                Revisions = []
+            });
+        }));
+
+        var cut = Render<GameTypeDetailsV2>();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Detection", StringComparison.Ordinal)).Click();
+        var detectionEditor = cut.FindComponent<GameServer.Web.Components.Pages.GameTypes.Components.V2.GameTypeRevisionDetectionEditor>().Instance;
+        cut.InvokeAsync(() => detectionEditor.DetectionImageReferenceChanged.InvokeAsync("itzg/minecraft-server")).GetAwaiter().GetResult();
+        cut.FindAll("button").First(button => button.TextContent.Contains("Detect Settings", StringComparison.Ordinal)).Click();
+
+        cut.FindAll("a, button").First(element => element.TextContent.Contains("Settings", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("TZ", cut.Markup);
+            Assert.Contains("Time Zone", cut.Markup);
         });
     }
 

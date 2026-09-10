@@ -282,7 +282,7 @@ public sealed class VolumeSetupResolver(
             ? svcVal
             : $"{gameTypeKey}-{serverId}";
 
-        return template
+        var raw = template
             .Replace("{ServiceName}", serviceName, StringComparison.OrdinalIgnoreCase)
             .Replace("{gameTypeKey}", gameTypeKey, StringComparison.OrdinalIgnoreCase)
             .Replace("{serverId}", serverId, StringComparison.OrdinalIgnoreCase)
@@ -291,6 +291,52 @@ public sealed class VolumeSetupResolver(
             .Replace("{Source}", sourceToken, StringComparison.OrdinalIgnoreCase)
             .Replace("{Usage}", definition.Usage, StringComparison.OrdinalIgnoreCase)
             .Replace("{MountType}", definition.MountType, StringComparison.OrdinalIgnoreCase);
+
+        return SanitizeDockerVolumeName(raw);
+    }
+
+    /// <summary>
+    /// Docker local volume names must match [a-zA-Z0-9][a-zA-Z0-9_.-]+ (max 255 chars).
+    /// Replace any invalid character with '_', collapse duplicates, and ensure the first
+    /// character is alphanumeric.
+    /// </summary>
+    private static string SanitizeDockerVolumeName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return name;
+        }
+
+        var buffer = new System.Text.StringBuilder(name.Length);
+        foreach (var ch in name)
+        {
+            if ((ch >= 'a' && ch <= 'z') ||
+                (ch >= 'A' && ch <= 'Z') ||
+                (ch >= '0' && ch <= '9') ||
+                ch == '_' || ch == '.' || ch == '-')
+            {
+                buffer.Append(ch);
+            }
+            else
+            {
+                buffer.Append('_');
+            }
+        }
+
+        // First character must be alphanumeric.
+        var result = buffer.ToString();
+        if (result.Length > 0 && !char.IsLetterOrDigit(result[0]))
+        {
+            result = "v" + result;
+        }
+
+        // Docker enforces a 255-character maximum on volume names.
+        if (result.Length > 255)
+        {
+            result = result[..255];
+        }
+
+        return result;
     }
 
     private static string NormalizeLayout(string layout)

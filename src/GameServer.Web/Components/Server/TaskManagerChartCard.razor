@@ -1,0 +1,31 @@
+<RadzenCard class="p-3 h-100 border tm-chart-card">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="d-flex align-items-center gap-2">
+            <span style="width: 10px; height: 10px; border-radius: 2px; display: inline-block; background: @HeaderColor;"></span>
+            <strong class="small text-uppercase">@Title</strong>
+        </div>
+        @if (!string.IsNullOrEmpty(RightBadge))
+        {
+            <span class="badge @RightBadgeCss">@RightBadge</span>
+        }
+    </div>
+    <div class="d-flex justify-content-between text-muted small" style="line-height: 1;">
+        <span>&nbsp;</span>
+        <span>@MaxAxisLabel</span>
+    </div>
+    @ChildContent
+    <div class="d-flex justify-content-between text-muted small mt-1" style="line-height: 1;">
+        <span>@RangeLabel</span>
+        <span>0</span>
+    </div>
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string HeaderColor { get; set; } = "var(--rz-primary)";
+    [Parameter] public string RightBadge { get; set; } = string.Empty;
+    [Parameter] public string RightBadgeCss { get; set; } = "bg-primary-subtle text-primary";
+    [Parameter] public string MaxAxisLabel { get; set; } = string.Empty;
+    [Parameter] public string RangeLabel { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -304,7 +304,7 @@ namespace GameServer.Docker.Agent.Controllers
                 if (servicesList.Count > 0)
                 {
                     var first = servicesList[0];
-                    _logger.LogWarning("📤 [Agent-ListServices] First service from Docker: ID={Id}, Spec={HasSpec}, SpecName={Name}, Labels={LabelCount}", 
+                    _logger.LogDebug("📤 [Agent-ListServices] First service from Docker: ID={Id}, Spec={HasSpec}, SpecName={Name}, Labels={LabelCount}", 
                         first.ID, 
                         first.Spec != null, 
                         first.Spec?.Name ?? "NULL",
@@ -324,7 +324,7 @@ namespace GameServer.Docker.Agent.Controllers
 
                 // Log what we're about to send
                 var responseJson = JsonSerializer.Serialize(response);
-                _logger.LogWarning("📤 [Agent-ListServices] Sending response (first 500 chars): {Json}", 
+                _logger.LogDebug("📤 [Agent-ListServices] Sending response (first 500 chars): {Json}", 
                     responseJson.Length > 500 ? responseJson[..500] : responseJson);
 
                 return Ok(response);

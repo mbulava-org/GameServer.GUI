@@ -6,6 +6,7 @@ using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
+using Radzen.Blazor;
 
 namespace GameServer.Web.Tests.Components.Servers.V2;
 
@@ -22,10 +23,23 @@ public sealed class GameServerEditorV2Tests : BunitContext
     private readonly Mock<IGameServerV2ApiService> gameServerApi = new(MockBehavior.Strict);
     private readonly Mock<IGameTypeV2ApiService> gameTypeApi = new(MockBehavior.Strict);
     private readonly Mock<IMountTypeConfigApiService> mountTypeApi = new(MockBehavior.Strict);
+    private readonly Mock<GameServer.Web.Services.Auth.IAuthApiService> authApi = new(MockBehavior.Strict);
 
     public GameServerEditorV2Tests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+
+        authApi
+            .Setup(api => api.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServer.Web.Models.UserProfile(1, "testuser", "test@example.com", "Admin", [], DateTime.UtcNow, null));
+
+        authApi
+            .Setup(api => api.GetGroupsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        authApi
+            .Setup(api => api.GetUsersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         gameTypeApi
             .Setup(api => api.GetListAsync(true, It.IsAny<CancellationToken>()))
@@ -58,6 +72,7 @@ public sealed class GameServerEditorV2Tests : BunitContext
         Services.AddSingleton<IGameServerV2ApiService>(gameServerApi.Object);
         Services.AddSingleton<IGameTypeV2ApiService>(gameTypeApi.Object);
         Services.AddSingleton<IMountTypeConfigApiService>(mountTypeApi.Object);
+        Services.AddSingleton<GameServer.Web.Services.Auth.IAuthApiService>(authApi.Object);
     }
 
     [Fact]
@@ -156,6 +171,84 @@ public sealed class GameServerEditorV2Tests : BunitContext
             gameServerApi.Verify(
                 api => api.ValidateAsync(It.Is<SaveGameServerRequest>(req => req.Name == "My Renamed Server"), It.IsAny<CancellationToken>()),
                 Times.AtLeastOnce());
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_WhenCreatingServerAndAdvertisedPortUnavailable_ShouldAutoSuggestAvailablePorts()
+    {
+        // Arrange
+        // Port 25565 is unavailable, 25566 and its offset 25666 are available
+        gameServerApi
+            .Setup(api => api.CheckPortAvailabilityAsync(It.IsAny<GameServerPortAvailabilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((GameServerPortAvailabilityRequest request, CancellationToken _) => new GameServerPortAvailabilityResult
+            {
+                Ports = request.Ports
+                    .Select(port => new GameServerPortAvailability
+                    {
+                        PortId = port.PortId,
+                        Port = port.Port,
+                        Protocol = port.Protocol,
+                        IsAvailable = port.Port != 25565,
+                        Reason = port.Port == 25565 ? "Port '25565/tcp' is already in use by another managed server." : null
+                    })
+                    .ToList()
+            });
+
+        // Act: Render create editor (no ServerId)
+        var cut = Render<GameServerEditorV2>();
+        cut.WaitForAssertion(() => Assert.Contains("Select a game type...", cut.Markup));
+
+        var dropDown = cut.FindComponent<RadzenDropDown<string>>();
+        dropDown.InvokeAsync(() => dropDown.Instance.SelectItem("minecraft"));
+
+        // Assert: Advertised port should be suggested as 25566 and related offset as 25666
+        cut.WaitForAssertion(() =>
+        {
+            var portInputs = FindPortMappingInputs(cut);
+            Assert.Equal("25566", portInputs[0].GetAttribute("value"));
+            Assert.Equal((25566 + RelatedOffset).ToString(), portInputs[1].GetAttribute("value"));
+            Assert.Equal("25566", FindSettingPortInput(cut).GetAttribute("value"));
+            Assert.Contains("Port 25566/tcp is available.", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void GameServerEditorV2_WhenCreatingServerAndRelatedPortUnavailable_ShouldAutoSuggestBasePortWhereBothAvailable()
+    {
+        // Arrange
+        // Base port 25565 is free, but related port 25665 is unavailable (in use/reserved)
+        // Next candidate base 25566 + related 25666 are both free
+        gameServerApi
+            .Setup(api => api.CheckPortAvailabilityAsync(It.IsAny<GameServerPortAvailabilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((GameServerPortAvailabilityRequest request, CancellationToken _) => new GameServerPortAvailabilityResult
+            {
+                Ports = request.Ports
+                    .Select(port => new GameServerPortAvailability
+                    {
+                        PortId = port.PortId,
+                        Port = port.Port,
+                        Protocol = port.Protocol,
+                        IsAvailable = port.Port != 25665,
+                        Reason = port.Port == 25665 ? "Port '25665/tcp' is in the reserved ports range." : null
+                    })
+                    .ToList()
+            });
+
+        // Act
+        var cut = Render<GameServerEditorV2>();
+        cut.WaitForAssertion(() => Assert.Contains("Select a game type...", cut.Markup));
+
+        var dropDown = cut.FindComponent<RadzenDropDown<string>>();
+        dropDown.InvokeAsync(() => dropDown.Instance.SelectItem("minecraft"));
+
+        // Assert: Because 25665 was unavailable, base port 25565 was skipped and 25566 was chosen
+        cut.WaitForAssertion(() =>
+        {
+            var portInputs = FindPortMappingInputs(cut);
+            Assert.Equal("25566", portInputs[0].GetAttribute("value"));
+            Assert.Equal((25566 + RelatedOffset).ToString(), portInputs[1].GetAttribute("value"));
+            Assert.Equal("25566", FindSettingPortInput(cut).GetAttribute("value"));
         });
     }
 

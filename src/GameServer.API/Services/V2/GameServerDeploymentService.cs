@@ -317,6 +317,42 @@ public sealed class GameServerDeploymentService(
     }
 
     /// <summary>
+    /// Removes the Swarm service for a V2 GameServer if it exists. Missing services are treated
+    /// as already-removed and logged at debug level.
+    /// </summary>
+    public async Task RemoveAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var server = await gameServerRepository.GetByServerIdAsync(serverId).ConfigureAwait(false);
+        if (server is null || string.IsNullOrWhiteSpace(server.ServiceName))
+        {
+            logger.LogDebug("No Swarm service to remove for V2 GameServer {ServerId}", serverId);
+            return;
+        }
+
+        try
+        {
+            var existingServices = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var existing = existingServices.FirstOrDefault(s => string.Equals(s.Spec?.Name, server.ServiceName, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+            {
+                logger.LogDebug("Swarm service {ServiceName} for V2 GameServer {ServerId} was already removed", server.ServiceName, serverId);
+                return;
+            }
+
+            await serviceOperations.RemoveServiceAsync(existing.ID, cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Removed Swarm service {ServiceName} ({ServiceId}) for V2 GameServer {ServerId}", server.ServiceName, existing.ID, serverId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to remove Swarm service {ServiceName} for V2 GameServer {ServerId}", server.ServiceName, serverId);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Updates the Swarm service for a V2 GameServer, preserving existing volume snapshots
     /// and applying only newly introduced mounts.
     /// </summary>

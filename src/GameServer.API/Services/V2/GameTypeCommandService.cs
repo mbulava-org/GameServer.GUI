@@ -315,6 +315,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             ReadyLogPattern = revision.ReadyLogPattern,
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
+            UiExtensionsJson = revision.UiExtensionsJson,
             Ports = revision.Ports.Select(port => new GameTypePortDto
             {
                 ContainerPort = port.ContainerPort,
@@ -543,6 +544,7 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             ReadyLogPattern = request.ReadyLogPattern,
             Notes = request.Notes,
             IsPublished = request.IsPublished,
+            UiExtensionsJson = request.UiExtensionsJson,
             Ports = request.Ports.Select(x => new GameTypePort
             {
                 Id = x.Id,
@@ -649,6 +651,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             CreatedAt = revision.CreatedAt,
+            UiExtensionsJson = revision.UiExtensionsJson,
+            UiExtensions = GameTypeUiExtensionsSerializer.Parse(revision.UiExtensionsJson),
             Ports = revision.Ports.Select(x => new GameTypePortDto
             {
                 Id = x.Id,

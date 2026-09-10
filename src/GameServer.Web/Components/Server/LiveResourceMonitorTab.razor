@@ -6,6 +6,7 @@
 @using Radzen.Blazor
 @inject IOptions<GameServerDockerApi> ApiConfig
 @inject ILogger<LiveResourceMonitorTab> Logger
+@inject GameServer.Web.Services.IUserTimeZoneService TimeZoneService
 @implements IAsyncDisposable
 
 <div class="live-resource-monitor-container">
@@ -28,7 +29,7 @@
         <div class="d-flex gap-2 align-items-center">
             @if (latestUsage is not null)
             {
-                <span class="text-muted small">Last update: @latestUsage.Timestamp.ToLocalTime().ToString("T")</span>
+                <span class="text-muted small">Last update: @TimeZoneService.FormatLocalDateTime(latestUsage.Timestamp, "T")</span>
             }
             @if (!isConnected && !isConnecting)
             {
@@ -67,8 +68,8 @@
                         <h2 class="mb-0 fw-bold">@((latestUsage?.CpuUsagePercent ?? 0).ToString("F1"))</h2>
                         <span class="text-muted fs-5">%</span>
                     </div>
-                    <RadzenProgressBar Value="@(Math.Clamp(latestUsage?.CpuUsagePercent ?? 0, 0, 100))"
-                                       Max="100"
+                    <RadzenProgressBar Value="@(Math.Clamp(latestUsage?.CpuUsagePercent ?? 0, 0, GetLiveCpuMax()))"
+                                       Max="@GetLiveCpuMax()"
                                        ShowValue="false"
                                        ProgressBarStyle="@GetCpuProgressStyle(latestUsage?.CpuUsagePercent ?? 0)"
                                        Style="height: 8px;" />
@@ -100,41 +101,41 @@
                 </RadzenCard>
             </div>
 
-            <!-- Network I/O Card -->
+            <!-- Network Throughput Card -->
             <div class="col-lg-3 col-md-6">
                 <RadzenCard class="h-100 p-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted small text-uppercase fw-bold">Network I/O</span>
+                        <span class="text-muted small text-uppercase fw-bold">Network Throughput</span>
                         <RadzenIcon Icon="swap_vert" Style="color: var(--rz-success);" />
                     </div>
                     <div class="mt-2">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="text-muted small"><RadzenIcon Icon="arrow_downward" Style="font-size: 0.9rem; color: var(--rz-success);" /> Rx (In)</span>
-                            <strong>@FormatBytes(latestUsage?.NetworkRxBytes ?? 0)</strong>
+                            <strong>@FormatRate(networkRxRate)</strong>
                         </div>
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small"><RadzenIcon Icon="arrow_upward" Style="font-size: 0.9rem; color: var(--rz-info);" /> Tx (Out)</span>
-                            <strong>@FormatBytes(latestUsage?.NetworkTxBytes ?? 0)</strong>
+                            <strong>@FormatRate(networkTxRate)</strong>
                         </div>
                     </div>
                 </RadzenCard>
             </div>
 
-            <!-- Block I/O Card -->
+            <!-- Disk Throughput Card -->
             <div class="col-lg-3 col-md-6">
                 <RadzenCard class="h-100 p-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted small text-uppercase fw-bold">Disk I/O</span>
+                        <span class="text-muted small text-uppercase fw-bold">Disk Throughput</span>
                         <RadzenIcon Icon="storage" Style="color: var(--rz-warning);" />
                     </div>
                     <div class="mt-2">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="text-muted small">Read</span>
-                            <strong>@FormatBytes(latestUsage?.BlockReadBytes ?? 0)</strong>
+                            <strong>@FormatRate(diskReadRate)</strong>
                         </div>
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small">Write</span>
-                            <strong>@FormatBytes(latestUsage?.BlockWriteBytes ?? 0)</strong>
+                            <strong>@FormatRate(diskWriteRate)</strong>
                         </div>
                     </div>
                 </RadzenCard>
@@ -158,11 +159,29 @@
     private bool isConnected;
     private bool isConnecting;
 
+    private ServerResourceUsage? previousUsage;
+    private double networkRxRate;
+    private double networkTxRate;
+    private double diskReadRate;
+    private double diskWriteRate;
+
     protected override async Task OnParametersSetAsync()
     {
         if (AutoConnect)
         {
             await ConnectAndSubscribeAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var initialized = await TimeZoneService.InitializeAsync();
+            if (initialized)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -226,6 +245,19 @@
     {
         InvokeAsync(() =>
         {
+            if (previousUsage is not null)
+            {
+                var seconds = (usage.Timestamp - previousUsage.Timestamp).TotalSeconds;
+                if (seconds > 0)
+                {
+                    networkRxRate = Math.Max(0d, ((usage.NetworkRxBytes ?? 0) - (previousUsage.NetworkRxBytes ?? 0)) / seconds);
+                    networkTxRate = Math.Max(0d, ((usage.NetworkTxBytes ?? 0) - (previousUsage.NetworkTxBytes ?? 0)) / seconds);
+                    diskReadRate = Math.Max(0d, ((usage.BlockReadBytes ?? 0) - (previousUsage.BlockReadBytes ?? 0)) / seconds);
+                    diskWriteRate = Math.Max(0d, ((usage.BlockWriteBytes ?? 0) - (previousUsage.BlockWriteBytes ?? 0)) / seconds);
+                }
+            }
+
+            previousUsage = usage;
             latestUsage = usage;
             StateHasChanged();
         });
@@ -239,13 +271,24 @@
         });
     }
 
-    private static ProgressBarStyle GetCpuProgressStyle(double percent) =>
-        percent switch
+    private double GetLiveCpuMax()
+    {
+        var cpu = latestUsage?.CpuUsagePercent ?? 0;
+        if (cpu <= 100.0) return 100.0;
+        return Math.Ceiling(cpu / 100.0) * 100.0;
+    }
+
+    private ProgressBarStyle GetCpuProgressStyle(double percent)
+    {
+        var max = GetLiveCpuMax();
+        var relative = max > 0 ? (percent / max) * 100.0 : percent;
+        return relative switch
         {
             > 85 => ProgressBarStyle.Danger,
             > 65 => ProgressBarStyle.Warning,
             _ => ProgressBarStyle.Primary
         };
+    }
 
     private static ProgressBarStyle GetMemoryProgressStyle(double percent) =>
         percent switch
@@ -260,6 +303,20 @@
         if (bytes <= 0) return "0 B";
         string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private static string FormatRate(double bytesPerSecond)
+    {
+        if (bytesPerSecond <= 0) return "0 B/s";
+        string[] sizes = ["B/s", "KB/s", "MB/s", "GB/s"];
+        double len = bytesPerSecond;
         int order = 0;
         while (len >= 1024 && order < sizes.Length - 1)
         {

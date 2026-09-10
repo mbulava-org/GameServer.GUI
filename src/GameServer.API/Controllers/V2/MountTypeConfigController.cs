@@ -1,6 +1,7 @@
 using GameServer.API.Dtos.V2;
 using GameServer.API.Models.V2;
 using GameServer.API.Repositories.V2;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameServer.API.Controllers.V2;
@@ -10,6 +11,7 @@ namespace GameServer.API.Controllers.V2;
 /// </summary>
 [ApiController]
 [Route("api/v2/mounttypeconfigs")]
+[Authorize]
 public sealed class MountTypeConfigController : ControllerBase
 {
     private readonly IMountTypeConfigRepository repository;
@@ -46,6 +48,7 @@ public sealed class MountTypeConfigController : ControllerBase
     }
 
     [HttpPut("{key}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(200, Type = typeof(MountTypeConfigDto))]
     [ProducesResponseType(400)]
     public async Task<ActionResult<MountTypeConfigDto>> Save(
@@ -79,6 +82,7 @@ public sealed class MountTypeConfigController : ControllerBase
     }
 
     [HttpDelete("{key}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(204)]
     public async Task<IActionResult> Delete(string key, CancellationToken cancellationToken)
     {

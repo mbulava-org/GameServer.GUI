@@ -60,9 +60,9 @@ See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](testin
 ### Server Management
 | Feature | Status | Key Files / Notes |
 |---|---|---|
-| Server creation wizard (5 steps) | ✅ Done | `CreateServerWizard.razor` · route `/servers/new` |
-| Server list / dashboard | ✅ Done | `/servers` |
-| Server detail page (tabbed) | ✅ Done | `/servers/{id}` |
+| V2 GameServer editor | ✅ Done | `GameServerEditorV2.razor` · routes `/gameservers-v2/new`, `/gameservers-v2/{serverId}/edit` |
+| Server list / dashboard | ✅ Done | `GameServerManagerV2.razor` · `/gameservers-v2` |
+| Server detail page (tabbed) | ✅ Done | `GameServerDetailsV2.razor` · `/gameservers-v2/{serverId}` |
 | Start / Stop / Delete servers | ✅ Done | Quick actions on dashboard |
 | Real-time status updates (SignalR) | ✅ Done | Live container stats |
 | Live log streaming | ✅ Done | SignalR |
@@ -97,6 +97,17 @@ See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](testin
 | Network and load-balancer config | ✅ Done | Traefik on a Swarm manager, driven by service labels; see [Architecture](ARCHITECTURE.md) |
 | Overlay network (Swarm) | ✅ Done | [Why overlay?](architecture/Agent-Why-Overlay-Network.md) |
 
+### Security & Authentication
+| Feature | Status | Key Files / Notes |
+|---|---|---|
+| JWT Bearer authentication | ✅ Done | `/api/v2/auth/*`, `ITokenService`, `PasswordHasher` |
+| Role-based access control (RBAC) | ✅ Done | Roles: `Admin`, `GameManager`, `User` |
+| Group server access boundaries | ✅ Done | `/api/v2/groups/*`, `GroupMembersDialog`, `GroupServersDialog` |
+| User & role administration UI | ✅ Done | `UsersManager.razor` (`/admin/users`), `CreateUserDialog`, `EditUserDialog` |
+| Group administration UI | ✅ Done | `GroupsManager.razor` (`/admin/groups`), `CreateGroupDialog`, `EditGroupDialog` |
+| Password access scoping | ✅ Done | Group vs Individual access controls for password fields |
+| Creator auditing | ✅ Done | Server creation tracking (`CreatedByUserId`, `CreatedByUsername`) and permission retention |
+
 ### Settings & Configuration
 | Feature | Status | Key Files / Notes |
 |---|---|---|
@@ -112,8 +123,8 @@ See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](testin
 | Feature | Status | Notes |
 |---|---|---|
 | Mount type & volume configuration | ✅ Done | V2 volume setup: keyed `MountTypeConfigs`; per-server immutable `GameServerVolume` snapshots; agent update support; [config GUI](guides/Volume-Setup-Configuration.md) |
-| User authentication & RBAC | 🔲 Planned | No auth layer yet |
-| Multi-tenant / team support | 🔲 Planned | |
+| User authentication & RBAC | ✅ Done | JWT auth, roles (`Admin`, `GameManager`, `User`), group boundaries, password scoping, admin screens; see [Auth Guide](guides/Authentication-And-Authorization.md) |
+| Multi-tenant / team support | 🔲 Planned | Group boundaries implemented; multi-tenant isolation planned |
 | Automatic backups | 🔲 Planned | |
 | Server update / upgrade workflow | 🔲 Planned | |
 | Metrics / performance dashboard | 🔲 Planned | Real-time stats exist; historical graphs planned |
@@ -128,7 +139,6 @@ See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](testin
 | Issue | Severity | Reference |
 |---|---|---|
 | Mount type config editor UX refinements | Low | Core storage, deployment, and mount-type configuration GUI implemented |
-| No authentication / authorization | High | All endpoints are open; intended for private networks only |
 | Agent discovery requires pre-configured `PrimaryServiceUrl` and overlay network | Low | See [Quick Start](QUICK-START.md); multi-node Swarm manual test plan in `docs/testing/Manual-MultiNode-Swarm-Test-Plan.md` |
 | Historical development notes retained in `docs/archive/` | Low | Intentional — archived, not linked from active docs |
 | PostgreSQL provider exists but SQLite is the default | Low | Switch via connection string config |
@@ -160,6 +170,7 @@ See [Quick Start](QUICK-START.md) and [Manual Multi-Node Swarm Test Plan](testin
 ### Guides (`docs/guides/`)
 | File | Purpose |
 |---|---|
+| [Authentication-And-Authorization.md](guides/Authentication-And-Authorization.md) | JWT auth, roles, group boundaries, password scoping, admin screens |
 | [QUICK-START.md](QUICK-START.md) | Deploy all GameServer services in Docker Swarm |
 | [Agent-Registration-Flow.md](guides/Agent-Registration-Flow.md) | Push-based agent registration and heartbeats |
 | [DATABASE-INITIALIZATION.md](guides/DATABASE-INITIALIZATION.md) | Providers, configuration & EF Core migrations |

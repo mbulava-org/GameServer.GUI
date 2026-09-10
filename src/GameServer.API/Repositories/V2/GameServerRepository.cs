@@ -45,6 +45,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             GameTypeRevisionId = server.GameTypeRevisionId,
             ServiceName = server.ServiceName,
             Status = server.Status,
+            CreatedByUserId = server.CreatedByUserId,
             CreatedAt = server.CreatedAt == default ? DateTime.UtcNow : server.CreatedAt,
             UpdatedAt = server.UpdatedAt == default ? DateTime.UtcNow : server.UpdatedAt,
             LastDeployedAt = server.LastDeployedAt,
@@ -53,7 +54,11 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             Settings = server.Settings.Select(x => new DataV2.GameServerSettingEntity
             {
                 SettingKey = x.SettingKey,
-                Value = x.Value
+                Value = x.Value,
+                AccessPolicy = string.IsNullOrWhiteSpace(x.AccessPolicy) ? "Group" : x.AccessPolicy,
+                AllowedUserIdsJson = x.AllowedUserIds is not null && x.AllowedUserIds.Count > 0
+                    ? System.Text.Json.JsonSerializer.Serialize(x.AllowedUserIds)
+                    : null
             }).ToList(),
             Volumes = server.Volumes.Select(MapVolumeToEntity).ToList(),
             Ports = server.Ports.Select(x => new DataV2.GameServerPortEntity
@@ -76,7 +81,10 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
         Validate(server);
 
         var entity = await context.GameServers
+            .Include(x => x.CreatedByUser)
             .Include(x => x.Settings)
+            .Include(x => x.Ports)
+            .Include(x => x.Volumes)
             .FirstOrDefaultAsync(x => x.Id == server.Id || x.ServerId == server.ServerId);
 
         if (entity is null)
@@ -93,38 +101,103 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
         entity.LastSeenAt = server.LastSeenAt;
         entity.IsDeleted = server.IsDeleted;
 
-        entity.Settings.Clear();
+        // Reconcile Settings in-place to prevent unique index (GameServerId, SettingKey) collision
+        var incomingSettingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var setting in server.Settings)
         {
-            entity.Settings.Add(new DataV2.GameServerSettingEntity
+            incomingSettingKeys.Add(setting.SettingKey);
+            var existingSetting = entity.Settings.FirstOrDefault(s =>
+                string.Equals(s.SettingKey, setting.SettingKey, StringComparison.OrdinalIgnoreCase));
+
+            if (existingSetting is not null)
             {
-                GameServerId = entity.Id,
-                SettingKey = setting.SettingKey,
-                Value = setting.Value
-            });
+                existingSetting.Value = setting.Value;
+                if (!string.IsNullOrWhiteSpace(setting.AccessPolicy))
+                {
+                    existingSetting.AccessPolicy = setting.AccessPolicy;
+                }
+                if (setting.AllowedUserIds is not null)
+                {
+                    existingSetting.AllowedUserIdsJson = setting.AllowedUserIds.Count > 0
+                        ? System.Text.Json.JsonSerializer.Serialize(setting.AllowedUserIds)
+                        : null;
+                }
+            }
+            else
+            {
+                entity.Settings.Add(new DataV2.GameServerSettingEntity
+                {
+                    GameServerId = entity.Id,
+                    SettingKey = setting.SettingKey,
+                    Value = setting.Value,
+                    AccessPolicy = string.IsNullOrWhiteSpace(setting.AccessPolicy) ? "Group" : setting.AccessPolicy,
+                    AllowedUserIdsJson = setting.AllowedUserIds is not null && setting.AllowedUserIds.Count > 0
+                        ? System.Text.Json.JsonSerializer.Serialize(setting.AllowedUserIds)
+                        : null
+                });
+            }
         }
 
-        entity.Ports.Clear();
+        var settingsToRemove = entity.Settings
+            .Where(s => !incomingSettingKeys.Contains(s.SettingKey))
+            .ToList();
+        foreach (var setting in settingsToRemove)
+        {
+            entity.Settings.Remove(setting);
+        }
+
+        // Reconcile Ports in-place
+        var incomingPortKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var port in server.Ports)
         {
-            entity.Ports.Add(new DataV2.GameServerPortEntity
+            var portKey = $"{port.ContainerPort}/{port.Protocol}";
+            incomingPortKeys.Add(portKey);
+            var existingPort = entity.Ports.FirstOrDefault(p =>
+                p.ContainerPort == port.ContainerPort &&
+                string.Equals(p.Protocol, port.Protocol, StringComparison.OrdinalIgnoreCase));
+
+            if (existingPort is not null)
             {
-                GameServerId = entity.Id,
-                ContainerPort = port.ContainerPort,
-                Protocol = port.Protocol,
-                PublishedPort = port.PublishedPort
-            });
+                existingPort.PublishedPort = port.PublishedPort;
+            }
+            else
+            {
+                entity.Ports.Add(new DataV2.GameServerPortEntity
+                {
+                    GameServerId = entity.Id,
+                    ContainerPort = port.ContainerPort,
+                    Protocol = port.Protocol,
+                    PublishedPort = port.PublishedPort
+                });
+            }
         }
 
-        // Preserve existing volume snapshots; merge new ContainerPaths only.
-        var existingVolumes = entity.Volumes.ToList();
+        var portsToRemove = entity.Ports
+            .Where(p => !incomingPortKeys.Contains($"{p.ContainerPort}/{p.Protocol}"))
+            .ToList();
+        foreach (var port in portsToRemove)
+        {
+            entity.Ports.Remove(port);
+        }
+
+        // Reconcile Volumes in-place
         foreach (var incoming in server.Volumes)
         {
-            var existing = existingVolumes.FirstOrDefault(v =>
+            var existingVolume = entity.Volumes.FirstOrDefault(v =>
                 string.Equals(v.ContainerPath, incoming.ContainerPath, StringComparison.OrdinalIgnoreCase));
-            if (existing is null)
+
+            if (existingVolume is null)
             {
                 entity.Volumes.Add(MapVolumeToEntity(incoming, entity.Id));
+            }
+            else
+            {
+                existingVolume.Usage = incoming.Usage;
+                existingVolume.VolumeName = incoming.VolumeName;
+                existingVolume.MountType = incoming.MountType;
+                existingVolume.ReadOnly = incoming.ReadOnly;
+                existingVolume.DriverOptionsJson = incoming.DriverOptionsJson;
+                existingVolume.IsProvisioned = incoming.IsProvisioned;
             }
         }
 
@@ -132,6 +205,19 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
 
         logger.LogInformation("Updated V2 GameServer {ServerId}", entity.ServerId);
         return await GetByIdAsync(entity.Id) ?? throw new InvalidOperationException("Failed to reload updated V2 GameServer");
+    }
+
+    public async Task UpdateStatusAsync(string serverId, string status)
+    {
+        var entity = await context.GameServers.FirstOrDefaultAsync(x => x.ServerId == serverId);
+        if (entity is null)
+        {
+            throw new KeyNotFoundException($"V2 GameServer '{serverId}' was not found");
+        }
+
+        entity.Status = status;
+        await context.SaveChangesAsync();
+        logger.LogInformation("Updated status of V2 GameServer {ServerId} to {Status}", serverId, status);
     }
 
     public async Task DeleteAsync(string serverId, bool softDelete = true)
@@ -158,6 +244,7 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
     private IQueryable<DataV2.GameServerEntity> QueryServers()
     {
         return context.GameServers
+            .Include(x => x.CreatedByUser)
             .Include(x => x.Settings)
             .Include(x => x.Volumes)
             .Include(x => x.Ports)
@@ -232,6 +319,8 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             GameTypeRevisionId = entity.GameTypeRevisionId,
             ServiceName = entity.ServiceName,
             Status = entity.Status,
+            CreatedByUserId = entity.CreatedByUserId,
+            CreatedByUsername = entity.CreatedByUser?.Username,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
             LastDeployedAt = entity.LastDeployedAt,
@@ -241,7 +330,9 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
             {
                 Id = x.Id,
                 SettingKey = x.SettingKey,
-                Value = x.Value
+                Value = x.Value,
+                AccessPolicy = x.AccessPolicy ?? "Group",
+                AllowedUserIds = DeserializeUserIds(x.AllowedUserIdsJson)
             }).ToList(),
             Volumes = entity.Volumes.OrderBy(x => x.CreatedAt).Select(MapVolumeToModel).ToList(),
             Ports = entity.Ports.OrderBy(x => x.ContainerPort).Select(x => new GameServer.API.Models.V2.GameServerPort
@@ -252,5 +343,18 @@ public class GameServerRepository(DataV2.GameServerV2DbContext context, ILogger<
                 PublishedPort = x.PublishedPort
             }).ToList()
         };
+    }
+
+    private static List<int> DeserializeUserIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<int>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 }

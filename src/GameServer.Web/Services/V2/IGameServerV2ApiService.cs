@@ -71,4 +71,16 @@ public interface IGameServerV2ApiService
     /// Gets the historical resource utilization records for a V2 GameServer.
     /// </summary>
     Task<IReadOnlyList<GameServerResourceHistoryItem>> GetResourceHistoryAsync(string serverId, DateTime? from = null, DateTime? to = null, int limit = 5000, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets per-group access rows for a server, scoped to the groups the current user belongs to.
+    /// Only the server creator or an admin is allowed to invoke this.
+    /// </summary>
+    Task<IReadOnlyList<ServerGroupAccessRow>> GetServerGroupAccessAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets per-group access for a server, scoped to the groups the current user belongs to.
+    /// Only the server creator or an admin is allowed to invoke this.
+    /// </summary>
+    Task<IReadOnlyList<ServerGroupAccessRow>> SetServerGroupAccessAsync(string serverId, SetServerGroupAccessRequest request, CancellationToken cancellationToken = default);
 }

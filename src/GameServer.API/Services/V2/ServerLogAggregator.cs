@@ -194,7 +194,7 @@ public sealed class ServerLogAggregator : IServerLogAggregator, IAsyncDisposable
                     agent.InternalUrl,
                     targetId,
                     follow: true,
-                    tailLines: 100,
+                    tailLines: 1000,
                     timestamps: true,
                     cancellationToken).ConfigureAwait(false))
                 {

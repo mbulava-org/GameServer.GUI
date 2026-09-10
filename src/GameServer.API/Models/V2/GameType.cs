@@ -47,6 +47,13 @@ public sealed record GameTypeRevision
 
     public DateTime CreatedAt { get; init; }
 
+    /// <summary>
+    /// JSON-serialized list of <c>GameTypeUiExtensionDescriptor</c> declaring which
+    /// GUI-side Blazor components should be attached as extension tabs for servers
+    /// running this revision. Optional; null/empty means no custom extensions.
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
     public GameType? GameType { get; set; }
 
     public List<GameTypePort> Ports { get; init; } = [];

@@ -40,7 +40,7 @@
 
 ### 7. Settings Auto-Display  
 **What:** All DefaultSettings shown even without metadata  
-**Where:** CreateServerWizard ? Game Settings step  
+**Where:** V2 GameServer editor (`/gameservers-v2/new`, `/gameservers-v2/{id}/edit`) — Settings tab
 **Test:** Create any server, verify all settings visible in tabs
 
 ### 8. Docker.DotNet.Enhanced 4.3.3

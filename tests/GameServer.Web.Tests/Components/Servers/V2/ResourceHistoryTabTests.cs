@@ -3,6 +3,7 @@ using GameServer.API.Client.Interfaces;
 using GameServer.Web.Components.Server;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
+using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,7 @@ public class ResourceHistoryTabTests : BunitContext
 
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton<ILogger<ResourceHistoryTab>>(NullLogger<ResourceHistoryTab>.Instance);
         Services.AddSingleton(Options.Create(new GameServerDockerApi { BaseUri = "http://localhost:5164" }));
         _apiMock.Setup(a => a.GetResourceHistoryAsync(It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -73,11 +75,12 @@ public class ResourceHistoryTabTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("CPU Usage (%)", cut.Markup);
-            Assert.Contains("Memory Usage (%)", cut.Markup);
-            Assert.Contains("Network I/O (MB)", cut.Markup);
-            Assert.Contains("Disk I/O (MB)", cut.Markup);
-            Assert.Contains("25.5%", cut.Markup);
+            Assert.Contains("CPU Usage", cut.Markup);
+            Assert.Contains("Memory Usage", cut.Markup);
+            Assert.Contains("Network Throughput", cut.Markup);
+            Assert.Contains("Disk Throughput", cut.Markup);
+            Assert.Contains("Network Aggregate", cut.Markup);
+            Assert.Contains("Disk Aggregate", cut.Markup);
             Assert.Contains("512 MB", cut.Markup);
             Assert.Contains("1 records", cut.Markup);
         });
@@ -114,6 +117,39 @@ public class ResourceHistoryTabTests : BunitContext
         {
             Assert.Contains("768 MB", cut.Markup);
             Assert.Contains("2 records", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void ResourceHistoryTab_WhenCpuExceeds100Percent_ScalesAxisAccordingly()
+    {
+        _apiMock.Setup(a => a.GetResourceHistoryAsync("srv-multicore", It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<GameServerResourceHistoryItem>
+            {
+                new()
+                {
+                    Id = 2,
+                    ServerId = "srv-multicore",
+                    Timestamp = DateTime.UtcNow,
+                    CpuUsagePercent = 250.0,
+                    MemoryUsageBytes = 1024 * 1024 * 512,
+                    MemoryLimitBytes = 1024 * 1024 * 1024,
+                    MemoryUsagePercent = 50.0,
+                    NetworkRxBytes = 0,
+                    NetworkTxBytes = 0,
+                    BlockReadBytes = 0,
+                    BlockWriteBytes = 0
+                }
+            });
+
+        var cut = Render<ResourceHistoryTab>(parameters => parameters
+            .Add(p => p.ServerId, "srv-multicore")
+            .Add(p => p.AutoConnect, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("300%", cut.Markup);
+            Assert.Contains("250.0%", cut.Markup);
         });
     }
 }

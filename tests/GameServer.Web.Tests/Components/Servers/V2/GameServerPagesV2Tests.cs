@@ -2,11 +2,14 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Bunit;
+using Bunit.TestDoubles;
 using GameServer.Web.Components.Pages.Servers;
 using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
+using GameServer.Web.Tests.Helpers;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
@@ -53,7 +56,7 @@ public sealed class GameServerPagesV2Tests : BunitContext
         {
             Assert.Contains("Game Servers", cut.Markup);
             Assert.Contains("Minecraft Survival", cut.Markup);
-            Assert.Contains("25565/tcp", cut.Markup);
+            Assert.Contains("25565", cut.Markup);
         });
     }
 
@@ -262,9 +265,18 @@ public sealed class GameServerPagesV2Tests : BunitContext
 
     private void RegisterApis(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
+        Services.AddTestAuthServices("admin", "Admin");
+
+        var extensionResolver = new Mock<IGameTypeExtensionResolver>();
+        extensionResolver.Setup(r => r.Resolve(It.IsAny<IEnumerable<GameTypeUiExtensionDescriptor>?>())).Returns(Array.Empty<GameTypeExtensionResolution>());
+        Services.AddSingleton(extensionResolver.Object);
+
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<DialogService>();
+        Services.AddSingleton<TooltipService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IPublicIpService>(new StubPublicIpService());
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton(CreateGameServerApiService(handler));
         Services.AddSingleton(CreateGameTypeApiService(handler));
         Services.AddSingleton(CreateMountTypeConfigApiService(handler));

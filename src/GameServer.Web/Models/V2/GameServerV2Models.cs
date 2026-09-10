@@ -26,6 +26,10 @@ public sealed record GameServerListItem
 
     public bool IsDeleted { get; init; }
 
+    public int? CreatedByUserId { get; init; }
+
+    public string? CreatedByUsername { get; init; }
+
     public string? GameTypeKey { get; init; }
 
     public string? GameTypeDisplayName { get; init; }
@@ -79,6 +83,10 @@ public sealed record GameServerDetail
 
     public bool IsDeleted { get; init; }
 
+    public int? CreatedByUserId { get; init; }
+
+    public string? CreatedByUsername { get; init; }
+
     public string? GameTypeKey { get; init; }
 
     public string? GameTypeDisplayName { get; init; }
@@ -108,6 +116,18 @@ public sealed record GameServerDetail
     public List<GameServerValidationIssue> ConfigurationRules { get; init; } = [];
 
     /// <summary>
+    /// Raw JSON descriptor list from the server's active revision declaring which
+    /// GUI-side Blazor extension components should be attached as tabs. The
+    /// resolver still enforces the assembly whitelist before rendering.
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="UiExtensionsJson"/> as parsed by the API.
+    /// </summary>
+    public List<GameTypeUiExtensionDescriptor> UiExtensions { get; init; } = [];
+
+    /// <summary>
     /// Running containers for this server (when available).
     /// </summary>
     public List<GameServerContainer> Containers { get; init; } = [];
@@ -120,6 +140,12 @@ public sealed record GameServerSetting
     public string SettingKey { get; init; } = string.Empty;
 
     public string? Value { get; init; }
+
+    public string? AccessPolicy { get; init; } = "Group"; // Group, Individual
+
+    public List<int>? AllowedUserIds { get; init; } = [];
+
+    public bool IsMasked { get; init; } = false;
 }
 
 public sealed record GameServerResolvedPort
@@ -230,4 +256,19 @@ public sealed record GameServerResourceHistoryItem
     public int RunningReplicas { get; init; }
     public string? ContainerId { get; init; }
 }
+
+public sealed record ServerGroupAccessRow
+{
+    public int GroupId { get; init; }
+    public string GroupName { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public string AccessLevel { get; set; } = "None"; // None, View, Edit
+}
+
+public sealed record ServerGroupAccessAssignment(
+    int GroupId,
+    string AccessLevel);
+
+public sealed record SetServerGroupAccessRequest(
+    IReadOnlyList<ServerGroupAccessAssignment> Groups);
 

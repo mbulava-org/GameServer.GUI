@@ -1,5 +1,10 @@
+using GameServer.API.Interfaces;
 using GameServer.API.Models.V2;
+using GameServer.API.Repositories.V2;
 using GameServer.API.Services.V2;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace GameServer.API.Tests.Services.V2;
@@ -61,4 +66,74 @@ public class GameServerReadinessWatcherServiceTests
         var result = GameServerReadinessWatcherService.MatchesPattern(logLine, targetPattern);
         Assert.Equal(expectedMatch, result);
     }
+
+    [Fact]
+    public async Task EnsureWatchingAsync_WhenReadyPatternFoundInServiceLogs_MarksReadyImmediatelyAndTransitionsToAvailable()
+    {
+        var server = new Models.V2.GameServer
+        {
+            ServerId = "srv-valheim-1",
+            Name = "Valheim Survival",
+            ServiceName = "games_valheim_1",
+            Status = "Running",
+            GameTypeRevisionId = 10
+        };
+
+        var gameType = new GameType
+        {
+            Key = "valheim",
+            DisplayName = "Valheim",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    Id = 10,
+                    VersionTag = "0.217.46",
+                    ReadyLogPattern = "Game server connected"
+                }
+            ]
+        };
+
+        var serverRepo = new Mock<IGameServerRepository>();
+        serverRepo.Setup(r => r.GetByServerIdAsync("srv-valheim-1")).ReturnsAsync(server);
+
+        var gameTypeRepo = new Mock<IGameTypeRepository>();
+        gameTypeRepo.Setup(r => r.GetAllAsync(true)).ReturnsAsync([gameType]);
+
+        var discovery = new Mock<INodeAgentDiscovery>();
+        discovery.Setup(d => d.GetServiceLogsAsync("games_valheim_1", 0))
+            .ReturnsAsync(new List<string>
+            {
+                "[01:00:00] Loading configuration...",
+                "[01:00:05] World loaded.",
+                "[01:00:10] Game server connected",
+                "[01:00:12] Ready for connections."
+            });
+
+        var logAggregator = new Mock<IServerLogAggregator>();
+
+        var scopeMock = new Mock<IServiceScope>();
+        var scopeServiceProvider = new Mock<IServiceProvider>();
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(IGameServerRepository))).Returns(serverRepo.Object);
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(IGameTypeRepository))).Returns(gameTypeRepo.Object);
+        scopeServiceProvider.Setup(sp => sp.GetService(typeof(INodeAgentDiscovery))).Returns(discovery.Object);
+        scopeMock.Setup(s => s.ServiceProvider).Returns(scopeServiceProvider.Object);
+
+        var scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
+
+        var rootServiceProvider = new Mock<IServiceProvider>();
+        rootServiceProvider.Setup(sp => sp.GetService(typeof(IServiceScopeFactory))).Returns(scopeFactoryMock.Object);
+
+        var watcher = new GameServerReadinessWatcherService(
+            rootServiceProvider.Object,
+            logAggregator.Object,
+            NullLogger<GameServerReadinessWatcherService>.Instance);
+
+        await watcher.EnsureWatchingAsync("srv-valheim-1");
+
+        Assert.True(watcher.IsServerReady("srv-valheim-1"));
+        serverRepo.Verify(r => r.UpdateAsync(It.Is<Models.V2.GameServer>(s => s.Status == "Available")), Times.Once);
+    }
 }
+

@@ -135,7 +135,33 @@ public class MountTypeConfigApiServiceTests
         await Assert.ThrowsAsync<ArgumentNullException>(() => service.SaveAsync(null!, TestContext.Current.CancellationToken));
     }
 
-    private static MountTypeConfigApiService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+    [Fact]
+    public async Task GetAllAsync_WhenAuthenticated_ShouldSendBearerToken()
+    {
+        // Arrange
+        string? capturedAuthHeader = null;
+        var jsRuntimeMock = new Mock<Microsoft.JSInterop.IJSRuntime>();
+        jsRuntimeMock.Setup(j => j.InvokeAsync<string?>("localStorage.getItem", It.Is<object[]>(a => (string)a[0] == "gs_auth_token")))
+            .ReturnsAsync("test-jwt-token");
+
+        var authStateProvider = new GameServer.Web.Services.Auth.JwtAuthenticationStateProvider(jsRuntimeMock.Object);
+
+        var service = CreateService(request =>
+        {
+            capturedAuthHeader = request.Headers.Authorization?.ToString();
+            return CreateJsonResponse(new List<MountTypeConfig>());
+        }, authStateProvider);
+
+        // Act
+        await service.GetAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal("Bearer test-jwt-token", capturedAuthHeader);
+    }
+
+    private static MountTypeConfigApiService CreateService(
+        Func<HttpRequestMessage, HttpResponseMessage> handler,
+        GameServer.Web.Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null)
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
         httpClientFactory
@@ -145,7 +171,7 @@ public class MountTypeConfigApiServiceTests
                 BaseAddress = new Uri("http://localhost/")
             });
 
-        return new MountTypeConfigApiService(httpClientFactory.Object, new GameServerDockerApi { BaseUri = "http://localhost/" });
+        return new MountTypeConfigApiService(httpClientFactory.Object, new GameServerDockerApi { BaseUri = "http://localhost/" }, authStateProvider);
     }
 
     private static HttpResponseMessage CreateJsonResponse<T>(T payload)

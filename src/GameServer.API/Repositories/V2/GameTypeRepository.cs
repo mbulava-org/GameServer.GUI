@@ -26,6 +26,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             }
 
             await MigrateRelationalDatabaseAsync().ConfigureAwait(false);
+            await EnsureDefaultAdminPasswordAsync().ConfigureAwait(false);
 
             var hasGameTypes = await context.GameTypes.AnyAsync().ConfigureAwait(false);
             if (!hasGameTypes)
@@ -41,6 +42,24 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         {
             logger.LogError(ex, "Error initializing V2 database");
             throw;
+        }
+    }
+
+    private async Task EnsureDefaultAdminPasswordAsync()
+    {
+        try
+        {
+            var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Username == "admin").ConfigureAwait(false);
+            if (adminUser != null && adminUser.PasswordHash == "100000.AQIDBAUGBwgJCgsMDQ4PEA==.4xti9xpXRpEAp4FOPgwvpC3vDN0DTAOpbsXWezzugGM=")
+            {
+                adminUser.PasswordHash = "100000.AQIDBAUGBwgJCgsMDQ4PEA==.HcXuAK10SjWLJPp2fjPLGDZzYBUHjuLTj/VUPgmfEuE=";
+                await context.SaveChangesAsync().ConfigureAwait(false);
+                logger.LogInformation("Updated seed admin user password hash to match Admin123! default credentials.");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not verify/update default admin user password hash during database initialization.");
         }
     }
 
@@ -261,6 +280,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         entity.ReadyLogPattern = revision.ReadyLogPattern;
         entity.Notes = revision.Notes;
         entity.IsPublished = revision.IsPublished;
+        entity.UiExtensionsJson = revision.UiExtensionsJson;
 
         context.GameTypePorts.RemoveRange(entity.Ports);
         context.GameTypeVolumes.RemoveRange(entity.Volumes);
@@ -486,6 +506,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Notes = entity.Notes,
             IsPublished = entity.IsPublished,
             CreatedAt = entity.CreatedAt,
+            UiExtensionsJson = entity.UiExtensionsJson,
             GameType = gameType,
             Ports = entity.Ports.OrderBy(x => x.DisplayOrder).Select(x => new GameTypePort
             {
@@ -572,6 +593,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             ReadyLogPattern = model.ReadyLogPattern,
             Notes = model.Notes,
             IsPublished = model.IsPublished,
+            UiExtensionsJson = model.UiExtensionsJson,
             CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt,
             Ports = model.Ports.Select(x => new DataV2.GameTypePortEntity
             {

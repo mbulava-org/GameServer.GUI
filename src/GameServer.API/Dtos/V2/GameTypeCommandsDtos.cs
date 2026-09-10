@@ -33,6 +33,12 @@ public sealed record SaveGameTypeRevisionRequestDto
 
     public bool IsPublished { get; init; }
 
+    /// <summary>
+    /// Raw JSON descriptor list attached to the revision, declaring which GUI-side
+    /// Blazor extension components should be attached as extra tabs.
+    /// </summary>
+    public string? UiExtensionsJson { get; init; }
+
     public List<GameTypePortDto> Ports { get; init; } = [];
 
     public List<GameTypeVolumeDto> Volumes { get; init; } = [];

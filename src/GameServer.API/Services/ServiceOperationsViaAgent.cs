@@ -16,6 +16,16 @@ namespace GameServer.API.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<ServiceOperationsViaAgent> _logger;
 
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime CachedAt, IList<SwarmService> Services)> _servicesCache = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime CachedAt, IList<TaskResponse> Tasks)> _tasksCache = new();
+        private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(2);
+
+        private void InvalidateCache()
+        {
+            _servicesCache.Clear();
+            _tasksCache.Clear();
+        }
+
         public ServiceOperationsViaAgent(
             IAgentRegistry agentRegistry,
             IUdpAgentRegistry udpAgentRegistry,
@@ -83,6 +93,7 @@ namespace GameServer.API.Services
                 throw new InvalidOperationException($"Failed to create service: {message}");
             }
 
+            InvalidateCache();
             _logger.LogInformation("✅ [CreateService] Service created: {ServiceId}", result.ServiceId);
 
             return new ServiceCreateResponse
@@ -148,6 +159,7 @@ namespace GameServer.API.Services
                 throw new InvalidOperationException($"Failed to update service: {message}");
             }
 
+            InvalidateCache();
             _logger.LogInformation("✅ [UpdateService] Service updated: {ServiceId}", serviceId);
         }
 
@@ -186,6 +198,7 @@ namespace GameServer.API.Services
                 throw new InvalidOperationException($"Failed to delete service: {message}");
             }
 
+            InvalidateCache();
             _logger.LogInformation("✅ [RemoveService] Service deleted: {ServiceId}", serviceId);
         }
 
@@ -194,6 +207,12 @@ namespace GameServer.API.Services
             string? serviceName = null,
             CancellationToken cancellationToken = default)
         {
+            var cacheKey = $"{labelFilter ?? string.Empty}|{serviceName ?? string.Empty}";
+            if (_servicesCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.CachedAt) < CacheTtl)
+            {
+                return cached.Services;
+            }
+
             var managerAgent = GetManagerAgent();
 
             _logger.LogDebug("Listing services via agent on manager {NodeName}", managerAgent.NodeName);
@@ -213,7 +232,7 @@ namespace GameServer.API.Services
 
             // Read raw JSON for debugging
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
+            _logger.LogDebug("📥 Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
 
             // Deserialize using JsonElement to preserve type information
             var jsonDoc = JsonDocument.Parse(rawJson);
@@ -239,7 +258,7 @@ namespace GameServer.API.Services
                 throw new Exception("Response missing 'data.services' property");
             }
 
-            _logger.LogWarning("📦 Services JSON (first 500 chars): {Json}", 
+            _logger.LogDebug("📦 Services JSON (first 500 chars): {Json}", 
                 servicesProp.GetRawText().Length > 500 ? servicesProp.GetRawText()[..500] : servicesProp.GetRawText());
 
             // Deserialize services array directly from the JSON element (case-insensitive for camelCase from agent)
@@ -260,12 +279,13 @@ namespace GameServer.API.Services
             if (services.Count > 0)
             {
                 var first = services[0];
-                _logger.LogWarning("🔍 First service: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
+                _logger.LogDebug("🔍 First service: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
                     first.ID, 
                     first.Spec != null, 
                     first.Spec?.Name ?? "NULL");
             }
 
+            _servicesCache[cacheKey] = (DateTime.UtcNow, services);
             return services;
         }
 
@@ -300,7 +320,7 @@ namespace GameServer.API.Services
 
             // Read raw JSON for debugging
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [InspectService] Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
+            _logger.LogDebug("📥 [InspectService] Raw JSON from agent (first 500 chars): {Json}", rawJson.Length > 500 ? rawJson[..500] : rawJson);
 
             // Use JsonDocument to preserve type information (avoid double serialization)
             var jsonDoc = JsonDocument.Parse(rawJson);
@@ -325,7 +345,7 @@ namespace GameServer.API.Services
                 throw new Exception("Response missing 'data.service' property");
             }
 
-            _logger.LogWarning("📦 [InspectService] Service JSON (first 300 chars): {Json}", 
+            _logger.LogDebug("📦 [InspectService] Service JSON (first 300 chars): {Json}", 
                 serviceProp.GetRawText().Length > 300 ? serviceProp.GetRawText()[..300] : serviceProp.GetRawText());
 
             // Deserialize service directly from the JSON element (case-insensitive for camelCase from agent)
@@ -338,7 +358,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to deserialize service: {serviceId}");
             }
 
-            _logger.LogWarning("🔍 [InspectService] Result: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
+            _logger.LogDebug("🔍 [InspectService] Result: ID={Id}, Spec={HasSpec}, SpecName={Name}", 
                 service.ID, 
                 service.Spec != null,
                 service.Spec?.Name ?? "NULL");
@@ -350,6 +370,18 @@ namespace GameServer.API.Services
             TasksListParameters? parameters = null,
             CancellationToken cancellationToken = default)
         {
+            var serviceId = "";
+            if (parameters?.Filters?.TryGetValue("service", out var serviceFilter) == true && serviceFilter.Any())
+            {
+                serviceId = serviceFilter.First().Key;
+            }
+
+            var cacheKey = serviceId;
+            if (_tasksCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.CachedAt) < CacheTtl)
+            {
+                return cached.Tasks;
+            }
+
             var managerAgent = GetManagerAgent();
 
             _logger.LogDebug("Listing tasks via agent on manager {NodeName}", managerAgent.NodeName);
@@ -359,18 +391,15 @@ namespace GameServer.API.Services
             httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             // Build query string for service filter
-            var queryString = "";
-            if (parameters?.Filters?.TryGetValue("service", out var serviceFilter) == true && serviceFilter.Any())
-            {
-                var serviceId = serviceFilter.First().Key;
-                queryString = $"?serviceId={Uri.EscapeDataString(serviceId)}";
-            }
+            var queryString = string.IsNullOrWhiteSpace(serviceId)
+                ? string.Empty
+                : $"?serviceId={Uri.EscapeDataString(serviceId)}";
 
             var response = await httpClient.GetAsync($"/api/tasks{queryString}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [ListTasks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogDebug("📥 [ListTasks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             // Use camelCase options to match ASP.NET Core default
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -382,10 +411,11 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to list tasks: {result?.Message}");
             }
 
-            _logger.LogWarning("✅ [ListTasks] Found {Count} tasks, First task has Status: {HasStatus}", 
+            _logger.LogDebug("✅ [ListTasks] Found {Count} tasks, First task has Status: {HasStatus}", 
                 result.Tasks.Count, 
                 result.Tasks.Count > 0 ? result.Tasks[0].Status != null : false);
 
+            _tasksCache[cacheKey] = (DateTime.UtcNow, result.Tasks);
             return result.Tasks;
         }
 
@@ -413,7 +443,7 @@ namespace GameServer.API.Services
             response.EnsureSuccessStatusCode();
 
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [ListNetworks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogDebug("📥 [ListNetworks] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
@@ -424,7 +454,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to list networks: {result?.Message}");
             }
 
-            _logger.LogWarning("✅ [ListNetworks] Found {Count} networks", result.Networks.Count);
+            _logger.LogDebug("✅ [ListNetworks] Found {Count} networks", result.Networks.Count);
 
             return result.Networks;
         }
@@ -443,7 +473,7 @@ namespace GameServer.API.Services
             response.EnsureSuccessStatusCode();
 
             var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("📥 [InspectNetwork] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
+            _logger.LogDebug("📥 [InspectNetwork] Raw JSON from agent (first 300 chars): {Json}", rawJson.Length > 300 ? rawJson[..300] : rawJson);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var result = JsonSerializer.Deserialize<AgentApiResponse>(rawJson, options);
@@ -454,7 +484,7 @@ namespace GameServer.API.Services
                 throw new Exception($"Failed to inspect network: {result?.Message}");
             }
 
-            _logger.LogWarning("✅ [InspectNetwork] Network: ID={Id}, Name={Name}", result.Network.ID, result.Network.Name);
+            _logger.LogDebug("✅ [InspectNetwork] Network: ID={Id}, Name={Name}", result.Network.ID, result.Network.Name);
 
             return result.Network;
         }

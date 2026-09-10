@@ -6,14 +6,26 @@ using Microsoft.Extensions.Options;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFactory, IOptions<GameServerDockerApi> apiOptions)
-    : IGameServerFilesApiService
+public sealed class GameServerFilesApiService(
+    IHttpClientFactory httpClientFactory,
+    IOptions<GameServerDockerApi> apiOptions,
+    Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null) : IGameServerFilesApiService
 {
-    private HttpClient CreateClient()
+    private async Task<HttpClient> CreateClientAsync()
     {
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("GameServerApi");
         var baseUri = apiOptions.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
         client.BaseAddress = new Uri(baseUri + "/");
+
+        if (authStateProvider is not null)
+        {
+            var token = await authStateProvider.GetTokenAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
         return client;
     }
 
@@ -23,7 +35,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         string? subPath = null,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files?volumePath={Uri.EscapeDataString(volumePath)}";
         if (!string.IsNullOrWhiteSpace(subPath))
         {
@@ -41,7 +53,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         string subPath,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files/content?volumePath={Uri.EscapeDataString(volumePath)}&subPath={Uri.EscapeDataString(subPath)}";
 
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -56,7 +68,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         string content,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files/content?volumePath={Uri.EscapeDataString(volumePath)}&subPath={Uri.EscapeDataString(subPath)}";
 
         using var response = await client.PutAsJsonAsync(url, new { Content = content }, cancellationToken).ConfigureAwait(false);
@@ -69,7 +81,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         string subPath,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files/download?volumePath={Uri.EscapeDataString(volumePath)}&subPath={Uri.EscapeDataString(subPath)}";
 
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -85,7 +97,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         Stream contentStream,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files/upload?volumePath={Uri.EscapeDataString(volumePath)}";
         if (!string.IsNullOrWhiteSpace(subPath))
         {
@@ -107,7 +119,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         string subPath,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files/directory?volumePath={Uri.EscapeDataString(volumePath)}&subPath={Uri.EscapeDataString(subPath)}";
 
         using var response = await client.PostAsync(url, content: null, cancellationToken).ConfigureAwait(false);
@@ -121,7 +133,7 @@ public sealed class GameServerFilesApiService(IHttpClientFactory httpClientFacto
         bool recursive = false,
         CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync().ConfigureAwait(false);
         var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/files?volumePath={Uri.EscapeDataString(volumePath)}&subPath={Uri.EscapeDataString(subPath)}&recursive={recursive}";
 
         using var response = await client.DeleteAsync(url, cancellationToken).ConfigureAwait(false);

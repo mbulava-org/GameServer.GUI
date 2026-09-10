@@ -3,14 +3,17 @@ using GameServer.Web.Models.V2;
 
 namespace GameServer.Web.Services.V2;
 
-public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, Configurations.GameServerDockerApi apiOptions) : IGameTypeV2ApiService
+public sealed class GameTypeV2ApiService(
+    IHttpClientFactory httpClientFactory,
+    Configurations.GameServerDockerApi apiOptions,
+    Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null) : IGameTypeV2ApiService
 {
     /// <summary>
     /// Gets the V2 GameType list.
     /// </summary>
     public async Task<IReadOnlyList<GameTypeListItem>> GetListAsync(bool includeInactive, CancellationToken cancellationToken = default)
     {
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gametypes?includeInactive={includeInactive}", cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -28,7 +31,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
             throw new ArgumentException("A game type key is required.", nameof(key));
         }
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}", cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -46,7 +49,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gametypes", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -62,7 +65,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PutAsJsonAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -77,7 +80,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.DeleteAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}", cancellationToken);
         response.EnsureSuccessStatusCode();
     }
@@ -89,7 +92,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/export", cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -104,7 +107,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentNullException.ThrowIfNull(package);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gametypes/import", package, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -120,7 +123,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -136,7 +139,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(request);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PutAsJsonAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions/{revisionId}", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -151,7 +154,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions/{revisionId}/publish",
             new PublishRevisionRequest { SetAsCurrentRevision = setAsCurrentRevision },
@@ -169,7 +172,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions/{revisionId}/set-current", null, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
@@ -181,7 +184,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync(
             "api/v2/gametypes/detection/scan-tag",
             new DetectGameTypeSetupRequest { ImageReference = imageReference, VersionTag = versionTag },
@@ -200,7 +203,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/detection/scan-tag",
             new DetectGameTypeSetupRequest { ImageReference = imageReference, VersionTag = versionTag },
@@ -219,7 +222,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
 
-        using var client = CreateClient();
+        using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/detection/compare",
             new CompareGameTypeSetupRequest
@@ -235,7 +238,7 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
             ?? throw new InvalidOperationException("The V2 comparison response did not contain a payload.");
     }
 
-    private HttpClient CreateClient()
+    private async Task<HttpClient> CreateClientAsync()
     {
         var baseUri = apiOptions.BaseUri;
         if (string.IsNullOrWhiteSpace(baseUri))
@@ -243,8 +246,22 @@ public sealed class GameTypeV2ApiService(IHttpClientFactory httpClientFactory, C
             throw new InvalidOperationException("GameServerDockerApi:BaseUri must be configured.");
         }
 
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("GameServerApi");
+        if (!baseUri.EndsWith('/'))
+        {
+            baseUri += "/";
+        }
         client.BaseAddress = new Uri(baseUri);
+
+        if (authStateProvider is not null)
+        {
+            var token = await authStateProvider.GetTokenAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
         return client;
     }
 }

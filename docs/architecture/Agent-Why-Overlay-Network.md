@@ -127,7 +127,7 @@ Auditor: ? "Good design"
 ### Scenario 3: Multi-Tenant Environment
 ```
 Host Ports:
-- Tenant A's management service might access Tenant B's agent
+- Tenant A's primary service might access Tenant B's agent
 - Must implement API authentication
 - Network isolation is complex
 ? Security nightmare

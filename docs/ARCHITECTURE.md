@@ -168,13 +168,11 @@ public class MyHub : Hub
 - **Schema management is owned entirely by EF Core migrations.** There is no hand-rolled schema creation or repair at runtime; pending migrations are applied on startup and the operation is idempotent.
 - **SQLite is the default provider.** It requires no external server and is the best-tested local option.
 - **MySQL is supported** and selected via configuration.
-- **PostgreSQL is experimental.** Its schema is deployed out-of-band by the `GameServer.DB.PostgreSql` project and `pgpac` tooling rather than by EF migrations; startup verifies the schema exists and fails fast with deployment guidance if it does not.
-- Seed data (such as the built-in mount types) is declared with `HasData` in the model and delivered by the migrations.
-- The V2 schema is normalized around:
-  - `GameType` owning catalog identity (key, display name, type)
-  - `GameTypeRevision` owning the version-tagged deployable template, including its `ImageReference`
-  - `GameServer` storing only server-specific deployment intent via `GameTypeRevisionId`
-- `GameServerPorts` and resolved Web Host state are not persisted in V2; `GameServerVolumes` are persisted as immutable per-server snapshots resolved from `GameTypeVolume` templates plus `MountTypeConfig` entries.
+**Security, Authentication & Authorization:**
+- **JWT Bearer Authentication**: Centralized token issuing via `ITokenService` and `PasswordHasher` (PBKDF2/SHA256).
+- **User & Group Repositories**: `IUserRepository` and `IGroupRepository` manage persisted user identities, password hashes, roles (`Admin`, `GameManager`, `User`), and group memberships.
+- **Server Authorization Service (`IServerAuthorizationService`)**: Central gate evaluating whether a requesting user has `View` or `Edit` permissions for a given server based on their role, creator status, and group assignments.
+- **Blazor Integration**: `JwtAuthenticationStateProvider` maintains authenticated user claims and JWT in `GameServer.Web`. `AuthTokenHandler` automatically appends `Bearer` authorization headers to outgoing API requests.
 
 **✅ PHASE 5 COMPLETE:**
 - Primary Service runs **without any Docker daemon connection**

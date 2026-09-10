@@ -7,6 +7,8 @@ using GameServer.Web.Configurations;
 using GameServer.Web.Models.V2;
 using GameServer.Web.Services;
 using GameServer.Web.Services.V2;
+using GameServer.Web.Tests.Helpers;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
@@ -100,8 +102,10 @@ public sealed class GameTypeManagerV2Tests : BunitContext
     private void RegisterApi(Func<HttpRequestMessage, HashSet<string>, HttpResponseMessage> responder)
     {
         var deletedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Services.AddTestAuthServices("admin", "Admin");
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
+        Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton(CreateApiService(request => responder(request, deletedKeys)));
     }
 

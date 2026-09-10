@@ -1,0 +1,342 @@
+@using GameServer.Web.Models.V2
+@using GameServer.Web.Services.Extensions
+@using Radzen
+@using Radzen.Blazor
+@implements GameServer.Web.Components.Server.Extensions.IGameTypeExtensionComponent
+@inject IPalworldApiClient PalworldApi
+@inject NotificationService NotificationService
+
+@if (Server is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">
+        No server context provided to the Palworld extension.
+    </RadzenAlert>
+}
+else if (!IsRestApiEnabled)
+{
+    <RadzenCard Style="padding: 1.5rem;">
+        <RadzenStack Gap="0.75rem">
+            <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">Palworld REST API</RadzenText>
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" Icon="warning" AllowClose="false">
+                <RadzenText TextStyle="TextStyle.Body2" Style="margin: 0;">
+                    The Palworld REST API is disabled for this server. Set <code>REST_API_ENABLED=True</code>,
+                    <code>REST_API_PORT</code>, and <code>ADMIN_PASSWORD</code> in the server settings, then restart the server.
+                </RadzenText>
+            </RadzenAlert>
+        </RadzenStack>
+    </RadzenCard>
+}
+else if (RequestContext is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" AllowClose="false">
+        Palworld REST API is enabled but <code>REST_API_PORT</code> or <code>ADMIN_PASSWORD</code> is missing on the server.
+    </RadzenAlert>
+}
+else
+{
+    <RadzenStack Gap="1rem">
+        <RadzenCard>
+            <RadzenStack Gap="0.5rem">
+                <div class="d-flex justify-content-between align-items-center">
+                    <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">Server Info</RadzenText>
+                    <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  Click="@LoadInfoAsync" IsBusy="@_infoLoading" />
+                </div>
+                @if (_info is null && !_infoLoading)
+                {
+                    <RadzenText TextStyle="TextStyle.Body2">Click Refresh to query the server.</RadzenText>
+                }
+                else if (_info is not null)
+                {
+                    <div class="row g-2">
+                        <div class="col-md-6"><strong>Name:</strong> @(_info.ServerName ?? "-")</div>
+                        <div class="col-md-6"><strong>Version:</strong> @(_info.Version ?? "-")</div>
+                        <div class="col-md-6"><strong>World GUID:</strong> <code>@(_info.WorldGuid ?? "-")</code></div>
+                        <div class="col-md-12"><strong>Description:</strong> @(_info.Description ?? "-")</div>
+                    </div>
+                }
+            </RadzenStack>
+        </RadzenCard>
+
+        <RadzenCard>
+            <RadzenStack Gap="0.75rem">
+                <div class="d-flex justify-content-between align-items-center">
+                    <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">Players</RadzenText>
+                    <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  Click="@LoadPlayersAsync" IsBusy="@_playersLoading" />
+                </div>
+                @if (_players is null)
+                {
+                    <RadzenText TextStyle="TextStyle.Body2">No players loaded yet.</RadzenText>
+                }
+                else if (_players.Players.Count == 0)
+                {
+                    <RadzenText TextStyle="TextStyle.Body2">No players currently connected.</RadzenText>
+                }
+                else
+                {
+                    <RadzenDataGrid Data="@_players.Players" TItem="PalworldPlayer" AllowSorting="true" AllowFiltering="false" PageSize="20">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="PalworldPlayer" Property="Name" Title="Name" />
+                            <RadzenDataGridColumn TItem="PalworldPlayer" Property="Level" Title="Lvl" Width="80px" />
+                            <RadzenDataGridColumn TItem="PalworldPlayer" Property="Ping" Title="Ping" Width="90px" />
+                            <RadzenDataGridColumn TItem="PalworldPlayer" Property="UserId" Title="UserId" />
+                            <RadzenDataGridColumn TItem="PalworldPlayer" Title="Actions" Width="200px" Sortable="false">
+                                <Template Context="p">
+                                    <RadzenButton Icon="logout" Text="Kick" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Warning"
+                                                  Click="@(() => KickAsync(p.UserId))" Disabled="@string.IsNullOrWhiteSpace(p.UserId)" />
+                                    <RadzenButton Icon="block" Text="Ban" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" class="ms-1"
+                                                  Click="@(() => BanAsync(p.UserId))" Disabled="@string.IsNullOrWhiteSpace(p.UserId)" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            </RadzenStack>
+        </RadzenCard>
+
+        <RadzenCard>
+            <RadzenStack Gap="0.75rem">
+                <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">Server Actions</RadzenText>
+
+                <RadzenFormField Text="Broadcast message" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="_announceMessage" Placeholder="Server restarts in 5 minutes" />
+                </RadzenFormField>
+                <div>
+                    <RadzenButton Text="Announce" Icon="campaign" ButtonStyle="ButtonStyle.Primary"
+                                  Click="@AnnounceAsync" Disabled="@string.IsNullOrWhiteSpace(_announceMessage)" IsBusy="@_announceBusy" />
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <RadzenButton Text="Save World" Icon="save" ButtonStyle="ButtonStyle.Info" Click="@SaveAsync" IsBusy="@_saveBusy" />
+                </div>
+
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="margin: 0;">Shutdown</RadzenText>
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <RadzenFormField Text="Wait (s)" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric TValue="int" @bind-Value="_shutdownWait" Min="0" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-9">
+                        <RadzenFormField Text="Message" Variant="Variant.Outlined" class="w-100">
+                            <RadzenTextBox @bind-Value="_shutdownMessage" class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+                <div>
+                    <RadzenButton Text="Shutdown" Icon="power_settings_new" ButtonStyle="ButtonStyle.Danger"
+                                  Click="@ShutdownAsync" IsBusy="@_shutdownBusy" />
+                </div>
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenStack>
+}
+
+@code {
+    [Parameter] public GameServerDetail? Server { get; set; }
+
+    [Parameter] public IReadOnlyDictionary<string, string>? ExtensionParameters { get; set; }
+
+    private PalworldServerInfo? _info;
+    private PalworldPlayersResponse? _players;
+    private bool _infoLoading;
+    private bool _playersLoading;
+    private bool _announceBusy;
+    private bool _saveBusy;
+    private bool _shutdownBusy;
+
+    private string _announceMessage = string.Empty;
+    private int _shutdownWait = 30;
+    private string _shutdownMessage = "Server shutting down.";
+
+    private string? GetSetting(string key)
+        => Server?.Settings.FirstOrDefault(s => string.Equals(s.SettingKey, key, StringComparison.OrdinalIgnoreCase))?.Value;
+
+    private bool IsRestApiEnabled
+    {
+        get
+        {
+            var raw = GetSetting("REST_API_ENABLED");
+            return !string.IsNullOrWhiteSpace(raw)
+                && (raw.Equals("True", StringComparison.OrdinalIgnoreCase)
+                    || raw.Equals("1", StringComparison.OrdinalIgnoreCase)
+                    || raw.Equals("yes", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private PalworldRequestContext? RequestContext
+    {
+        get
+        {
+            if (Server is null)
+            {
+                return null;
+            }
+
+            var portText = GetSetting("REST_API_PORT");
+            var password = GetSetting("ADMIN_PASSWORD");
+
+            if (!int.TryParse(portText, out var port) || port <= 0 || port > 65535)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(Server.ServiceName))
+            {
+                return null;
+            }
+
+            return new PalworldRequestContext
+            {
+                ServiceName = Server.ServiceName,
+                Port = port,
+                AdminPassword = password
+            };
+        }
+    }
+
+    private async Task LoadInfoAsync()
+    {
+        if (RequestContext is null) return;
+        _infoLoading = true;
+        try
+        {
+            _info = await PalworldApi.GetInfoAsync(RequestContext);
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Failed to load server info", ex);
+        }
+        finally
+        {
+            _infoLoading = false;
+        }
+    }
+
+    private async Task LoadPlayersAsync()
+    {
+        if (RequestContext is null) return;
+        _playersLoading = true;
+        try
+        {
+            _players = await PalworldApi.GetPlayersAsync(RequestContext);
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Failed to load players", ex);
+        }
+        finally
+        {
+            _playersLoading = false;
+        }
+    }
+
+    private async Task AnnounceAsync()
+    {
+        if (RequestContext is null || string.IsNullOrWhiteSpace(_announceMessage)) return;
+        _announceBusy = true;
+        try
+        {
+            await PalworldApi.AnnounceAsync(RequestContext, _announceMessage);
+            NotifySuccess("Announcement sent");
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Announcement failed", ex);
+        }
+        finally
+        {
+            _announceBusy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (RequestContext is null) return;
+        _saveBusy = true;
+        try
+        {
+            await PalworldApi.SaveWorldAsync(RequestContext);
+            NotifySuccess("Save requested");
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Save failed", ex);
+        }
+        finally
+        {
+            _saveBusy = false;
+        }
+    }
+
+    private async Task ShutdownAsync()
+    {
+        if (RequestContext is null) return;
+        _shutdownBusy = true;
+        try
+        {
+            await PalworldApi.ShutdownAsync(RequestContext, _shutdownWait, _shutdownMessage);
+            NotifySuccess("Shutdown requested");
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Shutdown failed", ex);
+        }
+        finally
+        {
+            _shutdownBusy = false;
+        }
+    }
+
+    private async Task KickAsync(string? userId)
+    {
+        if (RequestContext is null || string.IsNullOrWhiteSpace(userId)) return;
+        try
+        {
+            await PalworldApi.KickPlayerAsync(RequestContext, userId!, null);
+            NotifySuccess("Kick requested");
+            await LoadPlayersAsync();
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Kick failed", ex);
+        }
+    }
+
+    private async Task BanAsync(string? userId)
+    {
+        if (RequestContext is null || string.IsNullOrWhiteSpace(userId)) return;
+        try
+        {
+            await PalworldApi.BanPlayerAsync(RequestContext, userId!, null);
+            NotifySuccess("Ban requested");
+            await LoadPlayersAsync();
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Ban failed", ex);
+        }
+    }
+
+    private void NotifyError(string summary, Exception ex)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Error,
+            Summary = summary,
+            Detail = ex.Message,
+            Duration = 6000
+        });
+    }
+
+    private void NotifySuccess(string summary)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Success,
+            Summary = summary,
+            Duration = 3000
+        });
+    }
+}

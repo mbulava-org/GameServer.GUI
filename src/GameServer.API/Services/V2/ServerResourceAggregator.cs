@@ -38,16 +38,23 @@ public sealed class ServerResourceAggregator : IServerResourceAggregator, IAsync
         var minInterval = TimeSpan.FromSeconds(Math.Clamp(intervalSeconds, 1, 60));
         DateTime lastEmit = DateTime.MinValue;
 
-        await foreach (var usage in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            var now = DateTime.UtcNow;
-            if (now - lastEmit < minInterval)
+            await foreach (var usage in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                continue;
-            }
+                var now = DateTime.UtcNow;
+                if (now - lastEmit < minInterval)
+                {
+                    continue;
+                }
 
-            lastEmit = now;
-            yield return usage;
+                lastEmit = now;
+                yield return usage;
+            }
+        }
+        finally
+        {
+            source.Unsubscribe(channel);
         }
     }
 
@@ -111,6 +118,18 @@ public sealed class ServerResourceAggregator : IServerResourceAggregator, IAsync
             }
         }
 
+        public void Unsubscribe(Channel<ServerResourceUsage> channel)
+        {
+            lock (_lock)
+            {
+                if (_subscribers.Remove(channel))
+                {
+                    _logger.LogDebug("Resource subscriber removed for server {ServerId}. Remaining: {Count}", _serverId, _subscribers.Count);
+                }
+            }
+            channel.Writer.TryComplete();
+        }
+
         public async ValueTask DisposeAsync()
         {
             CancellationTokenSource? cts;
@@ -164,8 +183,6 @@ public sealed class ServerResourceAggregator : IServerResourceAggregator, IAsync
                     List<Channel<ServerResourceUsage>> targets;
                     lock (_lock)
                     {
-                        // Remove completed channels lazily.
-                        _subscribers.RemoveAll(ch => ch.Writer.TryComplete() == false && false);
                         targets = new List<Channel<ServerResourceUsage>>(_subscribers);
                     }
 
