@@ -83,4 +83,15 @@ public interface IGameServerV2ApiService
     /// Only the server creator or an admin is allowed to invoke this.
     /// </summary>
     Task<IReadOnlyList<ServerGroupAccessRow>> SetServerGroupAccessAsync(string serverId, SetServerGroupAccessRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the list of Swarm task/container instances for a V2 GameServer.
+    /// </summary>
+    Task<IReadOnlyList<GameServerInstanceInfo>> GetInstancesAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets logs for a specific instance or the active instance of a V2 GameServer.
+    /// </summary>
+    Task<string> GetLogsAsync(string serverId, string? instanceId = null, int tail = 200, CancellationToken cancellationToken = default);
 }
+

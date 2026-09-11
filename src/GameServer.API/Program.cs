@@ -242,6 +242,8 @@ namespace GameServer.API
                 builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandler, ServicesV2.MountTypeHandlers.NfsMountTypeHandler>();
                 builder.Services.AddScoped<ServicesV2.MountTypeHandlers.IMountTypeHandlerFactory, ServicesV2.MountTypeHandlers.MountTypeHandlerFactory>();
                 builder.Services.AddScoped<ServicesV2.IGameServerFilesService, ServicesV2.GameServerFilesService>();
+                builder.Services.AddScoped<ServicesV2.IGameServerBackupService, ServicesV2.GameServerBackupService>();
+                builder.Services.AddHostedService<ServicesV2.BackupCleanupBackgroundService>();
                 builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
                     new ServicesV2Detection.GameTypeSetupDetectionService(
                         sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),

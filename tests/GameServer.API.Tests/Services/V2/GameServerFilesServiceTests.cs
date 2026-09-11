@@ -16,6 +16,7 @@ namespace GameServer.API.Tests.Services.V2;
 public class GameServerFilesServiceTests
 {
     private readonly Mock<IGameServerRepository> _gameServerRepoMock;
+    private readonly Mock<IMountTypeConfigRepository> _mountTypeConfigRepoMock;
     private readonly Mock<INodeAgentDiscovery> _nodeAgentDiscoveryMock;
     private readonly Mock<IServerResourceMonitor> _serverResourceMonitorMock;
     private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
@@ -25,6 +26,7 @@ public class GameServerFilesServiceTests
     public GameServerFilesServiceTests()
     {
         _gameServerRepoMock = new Mock<IGameServerRepository>();
+        _mountTypeConfigRepoMock = new Mock<IMountTypeConfigRepository>();
         _nodeAgentDiscoveryMock = new Mock<INodeAgentDiscovery>();
         _serverResourceMonitorMock = new Mock<IServerResourceMonitor>();
         _httpClientFactoryMock = new Mock<IHttpClientFactory>();
@@ -35,6 +37,7 @@ public class GameServerFilesServiceTests
 
         _service = new GameServerFilesService(
             _gameServerRepoMock.Object,
+            _mountTypeConfigRepoMock.Object,
             _nodeAgentDiscoveryMock.Object,
             _httpClientFactoryMock.Object,
             NullLogger<GameServerFilesService>.Instance,

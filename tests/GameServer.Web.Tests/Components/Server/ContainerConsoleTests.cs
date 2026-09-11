@@ -1,17 +1,26 @@
 using Bunit;
 using GameServer.Web.Components.Server;
 using GameServer.Web.Configurations;
+using GameServer.Web.Services.V2;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Moq;
 using Radzen;
 
 namespace GameServer.Web.Tests.Components.Server;
 
 public sealed class ContainerConsoleTests : BunitContext
 {
+    private readonly Mock<IGameServerV2ApiService> _gameServerApiMock;
+
     public ContainerConsoleTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        _gameServerApiMock = new Mock<IGameServerV2ApiService>();
+        _gameServerApiMock.Setup(x => x.GetInstancesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        Services.AddSingleton<IGameServerV2ApiService>(_gameServerApiMock.Object);
         Services.AddSingleton<DialogService>();
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<TooltipService>();

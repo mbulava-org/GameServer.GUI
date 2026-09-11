@@ -246,6 +246,41 @@ public sealed class GameServerV2ApiService(
         return await response.Content.ReadFromJsonAsync<List<ServerGroupAccessRow>>(cancellationToken) ?? [];
     }
 
+    /// <summary>
+    /// Gets the list of Swarm task/container instances for a V2 GameServer.
+    /// </summary>
+    public async Task<IReadOnlyList<GameServerInstanceInfo>> GetInstancesAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.GetAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/instances", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<GameServerInstanceInfo>>(cancellationToken) ?? [];
+    }
+
+    /// <summary>
+    /// Gets logs for a specific instance or the active instance of a V2 GameServer.
+    /// </summary>
+    public async Task<string> GetLogsAsync(string serverId, string? instanceId = null, int tail = 200, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/logs?tail={tail}";
+        if (!string.IsNullOrWhiteSpace(instanceId))
+        {
+            url += $"&instanceId={Uri.EscapeDataString(instanceId)}";
+        }
+
+        using var response = await client.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+
+
     private async Task<HttpClient> CreateClientAsync()
     {
         var baseUri = apiOptions.BaseUri;

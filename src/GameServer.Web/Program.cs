@@ -109,6 +109,7 @@ namespace GameServer.Web
                 builder.Services.AddScoped<Services.V2.IGameTypeV2ApiService, Services.V2.GameTypeV2ApiService>();
                 builder.Services.AddScoped<Services.V2.IMountTypeConfigApiService, Services.V2.MountTypeConfigApiService>();
                 builder.Services.AddScoped<Services.V2.IGameServerFilesApiService, Services.V2.GameServerFilesApiService>();
+                builder.Services.AddScoped<Services.V2.IBackupsApiService, Services.V2.BackupsApiService>();
 
                 // GameType UI extension framework: bind whitelist options and register the resolver.
                 builder.Services.Configure<Configurations.GameTypeExtensionsOptions>(

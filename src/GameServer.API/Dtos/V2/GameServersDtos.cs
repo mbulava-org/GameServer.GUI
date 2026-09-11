@@ -225,3 +225,18 @@ public sealed record GameServerValidationIssueDto
 
     public bool IsBlocking { get; init; }
 }
+
+public sealed record GameServerInstanceInfoDto
+{
+    public string InstanceId { get; init; } = string.Empty;
+    public string? TaskId { get; init; }
+    public string? ContainerId { get; init; }
+    public string? NodeId { get; init; }
+    public string State { get; init; } = string.Empty;
+    public string? DesiredState { get; init; }
+    public DateTime? CreatedAt { get; init; }
+    public DateTime? UpdatedAt { get; init; }
+    public bool IsCurrent { get; init; }
+    public int? Slot { get; init; }
+    public string? Error { get; init; }
+}

@@ -78,6 +78,8 @@ public class GameServerV2DbContext : DbContext
 
     public DbSet<GameServerGroupEntity> GameServerGroups { get; set; }
 
+    public DbSet<GameServerBackupEntity> Backups { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -449,6 +451,18 @@ public class GameServerV2DbContext : DbContext
                 .WithMany(e => e.ServerGroups)
                 .HasForeignKey(e => e.GroupId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GameServerBackupEntity>(entity =>
+        {
+            entity.ToTable("GameServerBackups");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.BackupId).IsUnique();
+            entity.HasIndex(e => e.ServerId);
+            entity.HasIndex(e => e.CreatedByUserId);
+            entity.HasIndex(e => e.ExpiresAt);
+            ConfigureTimestampProperty(entity.Property(e => e.CreatedAt), isMySql);
+            ConfigureTimestampProperty(entity.Property(e => e.ExpiresAt), isMySql);
         });
     }
 

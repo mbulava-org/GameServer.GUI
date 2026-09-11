@@ -4,6 +4,7 @@
 @using Radzen
 @using Radzen.Blazor
 @inject IGameServerFilesApiService FilesApi
+@inject IBackupsApiService BackupsApi
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IJSRuntime JSRuntime
@@ -84,6 +85,12 @@
                                   ButtonStyle="ButtonStyle.Primary"
                                   Size="ButtonSize.Small"
                                   Click="@ShowUploadDialogAsync"
+                                  Disabled="@(isLoading || string.IsNullOrEmpty(selectedVolumePath))" />
+                    <RadzenButton Icon="backup"
+                                  Text="Backup Volume"
+                                  ButtonStyle="ButtonStyle.Info"
+                                  Size="ButtonSize.Small"
+                                  Click="@(() => ShowBackupDialogAsync(null))"
                                   Disabled="@(isLoading || string.IsNullOrEmpty(selectedVolumePath))" />
                     <RadzenButton Icon="refresh"
                                   ButtonStyle="ButtonStyle.Light"
@@ -207,6 +214,11 @@
                                                       title="Edit file" />
                                     }
                                 }
+                                <RadzenButton Icon="backup"
+                                              ButtonStyle="ButtonStyle.Info"
+                                              Size="ButtonSize.ExtraSmall"
+                                              Click="@(() => ShowBackupDialogAsync(file))"
+                                              title="Backup this item" />
                                 <RadzenButton Icon="delete"
                                               ButtonStyle="ButtonStyle.Danger"
                                               Size="ButtonSize.ExtraSmall"
@@ -630,6 +642,59 @@
 
         await LoadFilesAsync();
     }
+
+    private async Task ShowBackupDialogAsync(FileItem? item)
+    {
+        if (string.IsNullOrWhiteSpace(ServerId) || string.IsNullOrWhiteSpace(selectedVolumePath))
+        {
+            return;
+        }
+
+        var targetSubPath = item != null ? item.Path.TrimStart('/') : (string.IsNullOrWhiteSpace(currentSubPath) ? null : currentSubPath);
+        var displayTarget = item != null
+            ? $"{selectedVolumePath}/{targetSubPath}"
+            : (string.IsNullOrWhiteSpace(currentSubPath) ? selectedVolumePath : $"{selectedVolumePath}/{currentSubPath}");
+
+        bool isSharedWithGroups = false;
+
+        var confirmed = await DialogService.OpenAsync("Create Backup", ds =>
+            @<div>
+                <p>Create a backup archive (.zip) for:</p>
+                <p class="p-2 bg-light rounded border"><code class="text-break">@displayTarget</code></p>
+                <div class="mb-3 form-check">
+                    <input class="form-check-input" type="checkbox" id="shareGroupsCheck" @bind="isSharedWithGroups" />
+                    <label class="form-check-label" for="shareGroupsCheck">
+                        Share this backup with members of my groups
+                    </label>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="() => ds.Close(false)" />
+                    <RadzenButton Text="Create Backup" ButtonStyle="ButtonStyle.Primary" Click="() => ds.Close(true)" />
+                </div>
+            </div>
+        , new DialogOptions { Width = "480px" });
+
+        if (confirmed is true)
+        {
+            try
+            {
+                NotificationService.NotifyTimed(NotificationSeverity.Info, "Creating Backup", "Starting backup compression...");
+                var backup = await BackupsApi.CreateBackupAsync(ServerId, new CreateBackupRequest
+                {
+                    VolumePath = selectedVolumePath,
+                    SubPath = targetSubPath,
+                    IsSharedWithGroups = isSharedWithGroups
+                });
+
+                NotificationService.NotifyTimed(NotificationSeverity.Success, "Backup Created", $"Created '{backup.FileName}' ({FormatFileSize(backup.FileSizeBytes)}).");
+            }
+            catch (Exception ex)
+            {
+                NotificationService.NotifyTimed(NotificationSeverity.Error, "Backup Failed", ex.Message);
+            }
+        }
+    }
+
 
     private static string GetFileIcon(FileItem file)
     {

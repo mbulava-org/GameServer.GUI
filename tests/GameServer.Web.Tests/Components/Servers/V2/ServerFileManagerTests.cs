@@ -13,15 +13,18 @@ namespace GameServer.Web.Tests.Components.Servers.V2;
 public class ServerFileManagerTests : BunitContext
 {
     private readonly Mock<IGameServerFilesApiService> _filesApiMock;
+    private readonly Mock<IBackupsApiService> _backupsApiMock;
 
     public ServerFileManagerTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         _filesApiMock = new Mock<IGameServerFilesApiService>();
+        _backupsApiMock = new Mock<IBackupsApiService>();
 
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<DialogService>();
         Services.AddSingleton<IGameServerFilesApiService>(_filesApiMock.Object);
+        Services.AddSingleton<IBackupsApiService>(_backupsApiMock.Object);
         Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
     }
 

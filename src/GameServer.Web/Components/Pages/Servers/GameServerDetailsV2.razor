@@ -20,6 +20,7 @@
 @inject Services.IUserTimeZoneService TimeZoneService
 @inject Services.Auth.IAuthApiService AuthApi
 @inject DialogService DialogService
+@implements IAsyncDisposable
 
 <PageTitle>@(server?.Name ?? "Game Server")</PageTitle>
 
@@ -271,13 +272,13 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Console / Logs" Icon="terminal" Disabled="@(!IsServerRunning)">
+                <RadzenTabsItem Text="Console / Logs" Icon="terminal">
                     <div class="p-3">
                         <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" AutoConnect="true" />
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Terminal" Icon="code" Disabled="@(!IsServerRunning)">
+                <RadzenTabsItem Text="Terminal" Icon="code" Disabled="@(!IsTerminalAvailable)">
                     <div class="p-3">
                         <ContainerTerminal ServerId="@ServerId" ContainerId="@RunningContainerId" />
                     </div>
@@ -551,6 +552,12 @@
 
     private bool IsServerRunning => server != null && (string.Equals(server.Status, "Running", StringComparison.OrdinalIgnoreCase) || string.Equals(server.Status, "Available", StringComparison.OrdinalIgnoreCase));
 
+    private bool IsTerminalAvailable => server != null && (
+        string.Equals(server.Status, "starting", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(server.Status, "started", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(server.Status, "running", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(server.Status, "available", StringComparison.OrdinalIgnoreCase));
+
     private IReadOnlyList<GameServerResolvedPort> CurrentAdvertisedPorts =>
         CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList().Count > 0
             ? CurrentResolvedPorts.Where(p => p.AdvertisedPort).ToList()
@@ -688,6 +695,7 @@
     {
         await LoadServerDataAsync();
         _ = RunValidationInBackgroundAsync();
+        StartStatusPolling();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1066,5 +1074,69 @@
             ["Server"] = server,
             ["ExtensionParameters"] = (IReadOnlyDictionary<string, string>?)extension.Descriptor.Parameters
         };
+    }
+
+    private CancellationTokenSource? statusPollingCts;
+
+    private void StartStatusPolling()
+    {
+        statusPollingCts?.Cancel();
+        statusPollingCts?.Dispose();
+        statusPollingCts = new CancellationTokenSource();
+        _ = PollStatusLoopAsync(statusPollingCts.Token);
+    }
+
+    private async Task PollStatusLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2.5));
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(ct))
+                {
+                    break;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            if (isOperating || isLoading || string.IsNullOrWhiteSpace(ServerId))
+            {
+                continue;
+            }
+
+            try
+            {
+                var updated = await GameServerApiV2.GetByServerIdAsync(ServerId, ct);
+                if (updated != null)
+                {
+                    server = updated;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // Silently ignore transient background polling errors
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (statusPollingCts != null)
+        {
+            statusPollingCts.Cancel();
+            statusPollingCts.Dispose();
+            statusPollingCts = null;
+        }
+
+        await Task.CompletedTask;
     }
 }

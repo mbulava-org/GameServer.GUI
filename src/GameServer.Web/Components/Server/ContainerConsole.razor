@@ -4,18 +4,22 @@
 @using GameServer.Web.Configurations
 @using GameServer.API.Client.Interfaces
 @using GameServer.API.Client.Services
+@using GameServer.Web.Models.V2
+@using GameServer.Web.Services.V2
 @using System.Text
 @using XtermBlazor
 @using Radzen
 @inject IOptions<GameServerDockerApi> ApiConfig
+@inject IGameServerV2ApiService GameServerApi
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-@* Shared container attach viewer. Multiple users of the same container see the same output.
-   The first user to type becomes the input controller; others see a read-only indicator. *@
+@* Shared container attach viewer & instance log viewer. Multiple users of the same container see the same output.
+   The first user to type becomes the input controller; others see a read-only indicator.
+   Users can also view logs of past instances. *@
 
-@if (!isConnected && !isConnecting && !string.IsNullOrEmpty(connectionErrorMessage))
+@if (!isConnected && !isConnecting && !string.IsNullOrEmpty(connectionErrorMessage) && isLiveMode)
 {
     <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Class="mb-3" Shade="Shade.Lighter" AllowClose="false">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -33,57 +37,95 @@
         <div class="console-title">
             <RadzenIcon Icon="terminal" Style="font-size: 1rem;" />
             <span class="ms-2">@(ServerId ?? "Console")</span>
+            @if (instances.Count > 0)
+            {
+                <div class="ms-3 d-inline-flex align-items-center gap-2">
+                    <span class="small text-muted">Instance:</span>
+                    <RadzenDropDown Data="@instances"
+                                    @bind-Value="@selectedInstanceId"
+                                    ValueProperty="InstanceId"
+                                    Change="@OnInstanceChangedAsync"
+                                    Style="min-width: 260px; font-size: 0.85rem;"
+                                    Dense="true">
+                        <Template Context="inst">
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <span>
+                                    @if (inst.IsCurrent)
+                                    {
+                                        <span class="badge bg-success me-1">Current</span>
+                                    }
+                                    <span class="fw-semibold">@(inst.State)</span> - @(inst.InstanceId.Length > 12 ? inst.InstanceId.Substring(0, 12) : inst.InstanceId)
+                                </span>
+                                <span class="text-muted small">@(inst.CreatedAt.HasValue ? inst.CreatedAt.Value.ToString("g") : "")</span>
+                            </div>
+                        </Template>
+                    </RadzenDropDown>
+                </div>
+            }
         </div>
         <div class="console-controls">
-            @if (isConnected)
+            @if (isLiveMode)
             {
-                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                @if (_inputControllerId != null && _inputControllerId != consoleClient?.ConnectionId)
+                @if (isConnected)
                 {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="View-only" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                }
-                else if (_inputControllerId == consoleClient?.ConnectionId)
-                {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Input Control" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                }
-                <RadzenButton Icon="refresh" 
-                             Size="ButtonSize.Small" 
-                             ButtonStyle="ButtonStyle.Light"
-                             Click="@ClearTerminal"
-                             title="Clear terminal" />
-                <RadzenButton Icon="close" 
-                             Size="ButtonSize.Small" 
-                             ButtonStyle="ButtonStyle.Danger"
-                             Click="@DisconnectAsync"
-                             title="Disconnect" />
-            }
-            else if (isConnecting)
-            {
-                <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" Style="width: 18px; height: 18px;" />
-                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" Size="BadgeSize.Small" />
-            }
-            else
-            {
-                @if (!string.IsNullOrEmpty(connectionErrorMessage))
-                {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Connection Failed" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Live Stream" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    @if (_inputControllerId != null && _inputControllerId != consoleClient?.ConnectionId)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="View-only" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    }
+                    else if (_inputControllerId == consoleClient?.ConnectionId)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Input Control" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                    }
                     <RadzenButton Icon="refresh" 
-                                 Text="Retry" 
                                  Size="ButtonSize.Small" 
-                                 ButtonStyle="ButtonStyle.Primary"
-                                 Click="@ConnectAsync"
-                                 title="Retry connection to console" />
+                                 ButtonStyle="ButtonStyle.Light"
+                                 Click="@ClearTerminal"
+                                 title="Clear terminal" />
+                    <RadzenButton Icon="close" 
+                                 Size="ButtonSize.Small" 
+                                 ButtonStyle="ButtonStyle.Danger"
+                                 Click="@DisconnectAsync"
+                                 title="Disconnect" />
+                }
+                else if (isConnecting)
+                {
+                    <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" Mode="ProgressBarMode.Indeterminate" Style="width: 18px; height: 18px;" />
+                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Connecting..." Variant="Variant.Flat" Size="BadgeSize.Small" />
                 }
                 else
                 {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
-                    <RadzenButton Icon="play_arrow" 
-                                 Text="Connect" 
-                                 Size="ButtonSize.Small" 
-                                 ButtonStyle="ButtonStyle.Success"
-                                 Click="@ConnectAsync"
-                                 title="Connect to console" />
+                    @if (!string.IsNullOrEmpty(connectionErrorMessage))
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Connection Failed" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                        <RadzenButton Icon="refresh" 
+                                     Text="Retry" 
+                                     Size="ButtonSize.Small" 
+                                     ButtonStyle="ButtonStyle.Primary"
+                                     Click="@ConnectAsync"
+                                     title="Retry connection to console" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Disconnected" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                        <RadzenButton Icon="play_arrow" 
+                                     Text="Connect" 
+                                     Size="ButtonSize.Small" 
+                                     ButtonStyle="ButtonStyle.Success"
+                                     Click="@ConnectAsync"
+                                     title="Connect to console" />
+                    }
                 }
+            }
+            else
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="Historical Log" Variant="Variant.Flat" Size="BadgeSize.Small" />
+                <RadzenButton Icon="refresh"
+                             Text="Reload Log"
+                             Size="ButtonSize.Small"
+                             ButtonStyle="ButtonStyle.Light"
+                             Click="@(() => LoadStaticLogsAsync(selectedInstanceId))"
+                             title="Reload logs for this instance" />
             }
         </div>
     </div>
@@ -259,6 +301,57 @@
     private CancellationTokenSource? connectionCts;
     private bool isJavaScriptAvailable = false;
 
+    private List<GameServerInstanceInfo> instances = [];
+    private string? selectedInstanceId;
+    private bool isLiveMode = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInstancesAsync();
+    }
+
+    private async Task LoadInstancesAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId))
+        {
+            return;
+        }
+
+        try
+        {
+            var list = await GameServerApi.GetInstancesAsync(ServerId);
+            instances = list.ToList();
+
+            // Find current running instance
+            var currentRunning = instances.FirstOrDefault(i => i.IsCurrent && IsObservableState(i.State));
+            if (currentRunning != null)
+            {
+                selectedInstanceId = currentRunning.InstanceId;
+                isLiveMode = true;
+            }
+            else if (instances.Count > 0)
+            {
+                selectedInstanceId = instances[0].InstanceId;
+                isLiveMode = false;
+            }
+        }
+        catch
+        {
+            // Ignore failure fetching instances gracefully
+        }
+    }
+
+    private static bool IsObservableState(string? state)
+    {
+        if (string.IsNullOrWhiteSpace(state)) return false;
+        return state.Equals("running", StringComparison.OrdinalIgnoreCase) ||
+               state.Equals("starting", StringComparison.OrdinalIgnoreCase) ||
+               state.Equals("started", StringComparison.OrdinalIgnoreCase) ||
+               state.Equals("available", StringComparison.OrdinalIgnoreCase) ||
+               state.Equals("ready", StringComparison.OrdinalIgnoreCase) ||
+               state.Equals("preparing", StringComparison.OrdinalIgnoreCase);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -289,10 +382,69 @@
             if (AutoConnect && !string.IsNullOrEmpty(ServerId))
             {
                 await Task.Delay(500); // Wait for terminal to initialize
-                await ConnectAsync();
+                if (isLiveMode)
+                {
+                    await ConnectAsync();
+                }
+                else if (!string.IsNullOrEmpty(selectedInstanceId))
+                {
+                    await LoadStaticLogsAsync(selectedInstanceId);
+                }
             }
         }
     }
+
+    private async Task OnInstanceChangedAsync(object value)
+    {
+        var targetInstanceId = value as string;
+        selectedInstanceId = targetInstanceId;
+
+        var inst = instances.FirstOrDefault(i => i.InstanceId == targetInstanceId);
+        if (inst != null && inst.IsCurrent && IsObservableState(inst.State))
+        {
+            isLiveMode = true;
+            await ClearTerminal();
+            await ConnectAsync();
+        }
+        else
+        {
+            isLiveMode = false;
+            await DisconnectAsync();
+            await LoadStaticLogsAsync(targetInstanceId);
+        }
+    }
+
+    private async Task LoadStaticLogsAsync(string? instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(ServerId) || terminal == null || !isJavaScriptAvailable || isDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await ClearTerminal();
+            await WriteSystemMessage($"Fetching logs for instance {(string.IsNullOrWhiteSpace(instanceId) ? "latest" : instanceId)}...");
+
+            var logs = await GameServerApi.GetLogsAsync(ServerId, instanceId, tail: 500);
+            if (string.IsNullOrWhiteSpace(logs))
+            {
+                await WriteSystemMessage("No log entries found for this instance.");
+            }
+            else
+            {
+                var normalized = System.Text.RegularExpressions.Regex.Replace(logs, @"(?<!\r)\n", "\r\n");
+                await terminal.Write(normalized);
+                await FitTerminalAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            await WriteSystemMessage($"Error loading logs: {ex.Message}", isError: true);
+        }
+        StateHasChanged();
+    }
+
 
     private async Task FitTerminalAsync()
     {
