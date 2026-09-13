@@ -89,10 +89,16 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="GameServerListItem" Property="Status" Title="State" Width="120px">
+                        <RadzenDataGridColumn TItem="GameServerListItem" Property="Status" Title="State" Width="140px">
                             <Template Context="server">
-                                <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status, server.IsDeleted)"
-                                             Text="@GetStatusText(server.Status, server.IsDeleted)" />
+                                <div class="d-flex flex-column gap-1 align-items-start">
+                                    <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status, server.IsDeleted)"
+                                                 Text="@GetStatusText(server.Status, server.IsDeleted)" />
+                                    @if (server.IsUpdateAvailable)
+                                    {
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Update" Icon="upgrade" Size="BadgeSize.Small" title="A newer container image release is available from the source" />
+                                    }
+                                </div>
                             </Template>
                         </RadzenDataGridColumn>
 

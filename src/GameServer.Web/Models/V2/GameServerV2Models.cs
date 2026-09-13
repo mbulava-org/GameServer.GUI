@@ -40,6 +40,12 @@ public sealed record GameServerListItem
 
     public string? RevisionImageReference { get; init; }
 
+    public bool IsUpdateAvailable { get; init; }
+
+    public string? ImageDigest { get; init; }
+
+    public string? LatestImageDigest { get; init; }
+
     public List<GameServerResolvedPort> ResolvedPorts { get; init; } = [];
 
     public List<GameServerPort> Ports { get; init; } = [];
@@ -48,6 +54,23 @@ public sealed record GameServerListItem
     /// Running containers for this server (when available).
     /// </summary>
     public List<GameServerContainer> Containers { get; init; } = [];
+}
+
+public sealed record ContainerImageUpdateStatus
+{
+    public string ServerId { get; init; } = string.Empty;
+
+    public string ImageReference { get; init; } = string.Empty;
+
+    public string VersionTag { get; init; } = string.Empty;
+
+    public string? CurrentDigest { get; init; }
+
+    public string? LatestDigest { get; init; }
+
+    public bool IsUpdateAvailable { get; init; }
+
+    public DateTime LastCheckedAt { get; init; } = DateTime.UtcNow;
 }
 
 public sealed record GameServerContainer
@@ -98,6 +121,14 @@ public sealed record GameServerDetail
     public string? RevisionVersionTag { get; init; }
 
     public string? RevisionImageReference { get; init; }
+
+    public bool IsUpdateAvailable { get; init; }
+
+    public string? ImageDigest { get; init; }
+
+    public string? LatestImageDigest { get; init; }
+
+    public ContainerImageUpdateStatus? ImageUpdateStatus { get; init; }
 
     public List<GameServerSetting> Settings { get; init; } = [];
 

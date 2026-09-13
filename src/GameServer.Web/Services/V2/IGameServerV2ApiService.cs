@@ -93,5 +93,15 @@ public interface IGameServerV2ApiService
     /// Gets logs for a specific instance or the active instance of a V2 GameServer.
     /// </summary>
     Task<string> GetLogsAsync(string serverId, string? instanceId = null, int tail = 200, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks whether a new release/digest of the container image tag is available at the source registry.
+    /// </summary>
+    Task<ContainerImageUpdateStatus> CheckImageUpdateAsync(string serverId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the container to the latest image tag release and redeploys the service.
+    /// </summary>
+    Task<GameServerDetail> UpdateContainerImageAsync(string serverId, CancellationToken cancellationToken = default);
 }
 

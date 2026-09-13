@@ -43,6 +43,9 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         thumbnailCache
             .Setup(t => t.GetCachedThumbnailUrlAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string? url, CancellationToken _) => url);
+        serverApi
+            .Setup(a => a.CheckImageUpdateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerImageUpdateStatus());
     }
 
     [Fact]
@@ -311,6 +314,39 @@ public sealed class GameServerDetailsV2ComponentTests : BunitContext
         {
             Assert.Contains("SuperSecret123", cut.Markup);
             Assert.NotNull(cut.Find("button[title='Hide Password']"));
+        });
+    }
+
+    [Fact]
+    public void GameServerDetailsV2_WhenUpdateAvailable_ShouldRenderUpdateAvailableBadgeAndButton()
+    {
+        // Arrange
+        var server = new GameServerDetail
+        {
+            ServerId = "srv-update",
+            Name = "Server with Update",
+            GameTypeDisplayName = "7 Days to Die",
+            Status = "Running",
+            IsUpdateAvailable = true,
+            RevisionImageReference = "vinanrra/7dtd-server",
+            RevisionVersionTag = "latest"
+        };
+
+        serverApi.Setup(a => a.GetByServerIdAsync("srv-update", It.IsAny<CancellationToken>())).ReturnsAsync(server);
+        serverApi.Setup(a => a.CheckImageUpdateAsync("srv-update", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ContainerImageUpdateStatus { ServerId = "srv-update", IsUpdateAvailable = true });
+        serverApi.Setup(a => a.ValidateAsync(It.IsAny<SaveGameServerRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerValidationResult { IsValid = true, Issues = [] });
+
+        // Act
+        var cut = Render<GameServerDetailsV2>(parameters => parameters.Add(p => p.ServerId, "srv-update"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Update Available", cut.Markup);
+            Assert.Contains("Update Container", cut.Markup);
+            Assert.Contains("New Container Release Available", cut.Markup);
         });
     }
 }

@@ -256,6 +256,62 @@ public class GameServerV2ApiServiceTests
         Assert.Equal("Bearer test-jwt-token", capturedAuthHeader);
     }
 
+    [Fact]
+    public async Task GetInstancesAsync_WhenApiReturnsPayload_ShouldDeserializeInstances()
+    {
+        // Arrange
+        var service = CreateService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/instances")
+            {
+                return CreateJsonResponse(new List<GameServerInstanceInfo>
+                {
+                    new()
+                    {
+                        InstanceId = "cnt-1",
+                        State = "running",
+                        IsCurrent = true
+                    }
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await service.GetInstancesAsync("srv-1");
+
+        // Assert
+        var instance = Assert.Single(result);
+        Assert.Equal("cnt-1", instance.InstanceId);
+        Assert.Equal("running", instance.State);
+        Assert.True(instance.IsCurrent);
+    }
+
+    [Fact]
+    public async Task GetLogsAsync_WhenApiReturnsLogs_ShouldReturnString()
+    {
+        // Arrange
+        var service = CreateService(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/v2/gameservers/srv-1/logs")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("Server started successfully.\nReady for connections.", Encoding.UTF8, "text/plain")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await service.GetLogsAsync("srv-1", tail: 100);
+
+        // Assert
+        Assert.Contains("Server started successfully", result);
+    }
+
     private static GameServerV2ApiService CreateService(
         Func<HttpRequestMessage, HttpResponseMessage> handler,
         GameServer.Web.Services.Auth.JwtAuthenticationStateProvider? authStateProvider = null)

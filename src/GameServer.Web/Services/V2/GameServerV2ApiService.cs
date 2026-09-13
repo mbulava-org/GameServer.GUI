@@ -280,6 +280,36 @@ public sealed class GameServerV2ApiService(
         return await response.Content.ReadAsStringAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Checks whether a new release/digest of the container image tag is available at the source registry.
+    /// </summary>
+    public async Task<ContainerImageUpdateStatus> CheckImageUpdateAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.GetAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/image-update", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<ContainerImageUpdateStatus>(cancellationToken)
+            ?? new ContainerImageUpdateStatus { ServerId = serverId };
+    }
+
+    /// <summary>
+    /// Updates the container to the latest image tag release and redeploys the service.
+    /// </summary>
+    public async Task<GameServerDetail> UpdateContainerImageAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
+
+        using var client = await CreateClientAsync();
+        using var response = await client.PostAsync($"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/update-image", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<GameServerDetail>(cancellationToken)
+            ?? throw new InvalidOperationException($"Empty response returned from update-image for server '{serverId}'.");
+    }
+
 
     private async Task<HttpClient> CreateClientAsync()
     {

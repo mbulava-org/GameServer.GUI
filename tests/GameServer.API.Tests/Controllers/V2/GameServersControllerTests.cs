@@ -242,6 +242,36 @@ public class GameServersControllerTests
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
+    [Fact]
+    public async Task GetInstances_WhenServerDoesNotExist_ShouldReturnNotFound()
+    {
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository.Setup(x => x.GetByServerIdAsync("missing")).ReturnsAsync((GameServerModel?)null);
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+        var validationService = CreateValidationService(gameTypeRepository);
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, queryService, validationService);
+        var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
+
+        var result = await controller.GetInstances("missing");
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task GetLogs_WhenServerDoesNotExist_ShouldReturnNotFound()
+    {
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository.Setup(x => x.GetByServerIdAsync("missing")).ReturnsAsync((GameServerModel?)null);
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+        var validationService = CreateValidationService(gameTypeRepository);
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, queryService, validationService);
+        var controller = new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
+
+        var result = await controller.GetLogs("missing");
+        Assert.IsType<NotFoundResult>(result);
+    }
+
     private static GameServerValidationService CreateValidationService(Mock<IGameTypeRepository> gameTypeRepository)
     {
         var serviceOperations = new Mock<IServiceOperations>();

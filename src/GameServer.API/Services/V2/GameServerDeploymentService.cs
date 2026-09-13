@@ -263,6 +263,7 @@ public sealed class GameServerDeploymentService(
         string serverId,
         string? imageReference = null,
         string? volumeBindingLayout = null,
+        bool forceUpdate = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
@@ -304,7 +305,7 @@ public sealed class GameServerDeploymentService(
 
         if (existingService != null)
         {
-            if (HasSpecChanged(existingService.Spec, desiredServiceSpec))
+            if (forceUpdate || HasSpecChanged(existingService.Spec, desiredServiceSpec))
             {
                 var updateParams = new ServiceUpdateParameters
                 {
@@ -315,7 +316,7 @@ public sealed class GameServerDeploymentService(
                     updateParams.Service.TaskTemplate.ForceUpdate = (ulong)DateTime.UtcNow.Ticks;
                 }
                 await serviceOperations.UpdateServiceAsync(server.ServiceName, updateParams, cancellationToken).ConfigureAwait(false);
-                logger.LogInformation("Updated V2 GameServer {ServerId} service deployment with new spec", serverId);
+                logger.LogInformation("Updated V2 GameServer {ServerId} service deployment with new spec (ForceUpdate={Force})", serverId, forceUpdate);
             }
             else
             {

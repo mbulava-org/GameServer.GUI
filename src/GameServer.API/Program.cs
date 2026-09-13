@@ -244,6 +244,8 @@ namespace GameServer.API
                 builder.Services.AddScoped<ServicesV2.IGameServerFilesService, ServicesV2.GameServerFilesService>();
                 builder.Services.AddScoped<ServicesV2.IGameServerBackupService, ServicesV2.GameServerBackupService>();
                 builder.Services.AddHostedService<ServicesV2.BackupCleanupBackgroundService>();
+                builder.Services.AddSingleton<ServicesV2.IDockerRegistryService, ServicesV2.DockerRegistryService>();
+                builder.Services.AddSingleton<ServicesV2.IContainerImageUpdateService, ServicesV2.ContainerImageUpdateService>();
                 builder.Services.AddScoped<ServicesV2Detection.GameTypeSetupDetectionService>(sp =>
                     new ServicesV2Detection.GameTypeSetupDetectionService(
                         sp.GetRequiredService<RepositoriesV2.IGameTypeRepository>(),

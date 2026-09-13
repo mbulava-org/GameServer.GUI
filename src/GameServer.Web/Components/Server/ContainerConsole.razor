@@ -13,11 +13,12 @@
 @inject IGameServerV2ApiService GameServerApi
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
+@inject ILogger<ContainerConsole> Logger
 @implements IAsyncDisposable
 
-@* Shared container attach viewer & instance log viewer. Multiple users of the same container see the same output.
-   The first user to type becomes the input controller; others see a read-only indicator.
-   Users can also view logs of past instances. *@
+@* Shared container attach viewer & instance log viewer.
+   Allows viewing real-time attach stream for the current running instance,
+   or selecting and viewing historical logs from prior service instances. *@
 
 @if (!isConnected && !isConnecting && !string.IsNullOrEmpty(connectionErrorMessage) && isLiveMode)
 {
@@ -25,45 +26,67 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div class="d-flex align-items-center gap-2">
                 <RadzenIcon Icon="error_outline" Style="font-size: 1.25rem;" />
-                <span><strong>Connection to Swarm manager agent failed:</strong> @connectionErrorMessage</span>
+                <span><strong>Connection to container console stream failed:</strong> @connectionErrorMessage</span>
             </div>
             <RadzenButton Icon="refresh" Text="Retry Connection" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@ConnectAsync" />
         </div>
     </RadzenAlert>
 }
 
-<div class="console-container">
-    <div class="console-header">
-        <div class="console-title">
-            <RadzenIcon Icon="terminal" Style="font-size: 1rem;" />
-            <span class="ms-2">@(ServerId ?? "Console")</span>
-            @if (instances.Count > 0)
+<div class="console-container" data-server-id="@ServerId">
+    <!-- Log Source Toolbar positioned directly above the terminal control -->
+    <div class="console-toolbar p-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div class="d-flex align-items-center gap-1 text-light small fw-bold">
+                <RadzenIcon Icon="view_list" Style="font-size: 1.1rem; color: var(--rz-primary);" />
+                <span>Log Instance:</span>
+            </div>
+            <RadzenDropDown Data="@instanceOptions"
+                            @bind-Value="@selectedInstanceId"
+                            ValueProperty="Id"
+                            TextProperty="DisplayTitle"
+                            Change="@OnInstanceSelectionChangedAsync"
+                            Style="min-width: 320px; max-width: 480px; font-size: 0.85rem;"
+                            Dense="true">
+                <Template Context="opt">
+                    <div class="d-flex align-items-center justify-content-between gap-2 py-1">
+                        <div>
+                            @if (opt.IsLiveCapable)
+                            {
+                                <span class="badge bg-success me-1">LIVE</span>
+                            }
+                            else if (opt.IsCurrent)
+                            {
+                                <span class="badge bg-primary me-1">CURRENT</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary me-1">LOG</span>
+                            }
+                            <span class="fw-semibold">@opt.DisplayTitle</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(opt.Subtitle))
+                        {
+                            <span class="text-muted small ms-2">@opt.Subtitle</span>
+                        }
+                    </div>
+                </Template>
+            </RadzenDropDown>
+
+            @if (!isLiveMode)
             {
-                <div class="ms-3 d-inline-flex align-items-center gap-2">
-                    <span class="small text-muted">Instance:</span>
-                    <RadzenDropDown Data="@instances"
-                                    @bind-Value="@selectedInstanceId"
-                                    ValueProperty="InstanceId"
-                                    Change="@OnInstanceChangedAsync"
-                                    Style="min-width: 260px; font-size: 0.85rem;"
-                                    Dense="true">
-                        <Template Context="inst">
-                            <div class="d-flex align-items-center justify-content-between gap-2">
-                                <span>
-                                    @if (inst.IsCurrent)
-                                    {
-                                        <span class="badge bg-success me-1">Current</span>
-                                    }
-                                    <span class="fw-semibold">@(inst.State)</span> - @(inst.InstanceId.Length > 12 ? inst.InstanceId.Substring(0, 12) : inst.InstanceId)
-                                </span>
-                                <span class="text-muted small">@(inst.CreatedAt.HasValue ? inst.CreatedAt.Value.ToString("g") : "")</span>
-                            </div>
-                        </Template>
-                    </RadzenDropDown>
+                <div class="d-flex align-items-center gap-1 ms-2">
+                    <span class="small text-muted">Lines:</span>
+                    <RadzenDropDown Data="@(new[] { 100, 250, 500, 1000, 2500, 5000 })"
+                                    @bind-Value="@selectedTailLines"
+                                    Change="@(async (object v) => await LoadStaticLogsAsync(selectedInstanceId))"
+                                    Style="width: 100px; font-size: 0.85rem;"
+                                    Dense="true" />
                 </div>
             }
         </div>
-        <div class="console-controls">
+
+        <div class="console-controls d-flex align-items-center gap-2 flex-wrap">
             @if (isLiveMode)
             {
                 @if (isConnected)
@@ -83,10 +106,11 @@
                                  Click="@ClearTerminal"
                                  title="Clear terminal" />
                     <RadzenButton Icon="close" 
+                                 Text="Disconnect"
                                  Size="ButtonSize.Small" 
                                  ButtonStyle="ButtonStyle.Danger"
                                  Click="@DisconnectAsync"
-                                 title="Disconnect" />
+                                 title="Disconnect from live attach" />
                 }
                 else if (isConnecting)
                 {
@@ -103,7 +127,7 @@
                                      Size="ButtonSize.Small" 
                                      ButtonStyle="ButtonStyle.Primary"
                                      Click="@ConnectAsync"
-                                     title="Retry connection to console" />
+                                     title="Retry live connection" />
                     }
                     else
                     {
@@ -113,7 +137,7 @@
                                      Size="ButtonSize.Small" 
                                      ButtonStyle="ButtonStyle.Success"
                                      Click="@ConnectAsync"
-                                     title="Connect to console" />
+                                     title="Connect to live console stream" />
                     }
                 }
             }
@@ -125,17 +149,26 @@
                              Size="ButtonSize.Small"
                              ButtonStyle="ButtonStyle.Light"
                              Click="@(() => LoadStaticLogsAsync(selectedInstanceId))"
+                             Disabled="@isLoadingLogs"
                              title="Reload logs for this instance" />
+                <RadzenButton Icon="download"
+                             Text="Download"
+                             Size="ButtonSize.Small"
+                             ButtonStyle="ButtonStyle.Secondary"
+                             Click="@DownloadLogsAsync"
+                             Disabled="@string.IsNullOrEmpty(currentLogText)"
+                             title="Download current log text" />
             }
         </div>
     </div>
 
+    <!-- Terminal Body -->
     <div class="terminal-wrapper" @ref="_terminalWrapperRef" @onclick="FocusTerminalAsync">
-        @if (isConnecting)
+        @if (isConnecting || isLoadingLogs)
         {
             <div class="terminal-overlay">
                 <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
-                <span class="mt-2 text-light small">Connecting to container console stream...</span>
+                <span class="mt-2 text-light small">@(isConnecting ? "Connecting to container console stream..." : "Loading instance logs...")</span>
             </div>
         }
         <Xterm @ref="terminal" 
@@ -152,7 +185,7 @@
     .console-container {
         display: flex;
         flex-direction: column;
-        height: 600px;
+        height: 620px;
         background: #1e1e1e;
         border: 1px solid #3a3a3a;
         border-radius: 8px;
@@ -160,28 +193,11 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
 
-    .console-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        background: #2d2d2d;
+    .console-toolbar {
+        background: #252526;
         border-bottom: 1px solid #3a3a3a;
         color: #d4d4d4;
         flex-shrink: 0;
-    }
-
-    .console-title {
-        display: flex;
-        align-items: center;
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-
-    .console-controls {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
     }
 
     .terminal-wrapper {
@@ -245,7 +261,7 @@
 
     @@media (max-width: 768px) {
         .console-container {
-            height: 400px;
+            height: 450px;
         }
     }
 </style>
@@ -253,7 +269,18 @@
 @code {
     [Parameter] public string? ServerId { get; set; }
     [Parameter] public bool AutoConnect { get; set; } = true;
-    [Parameter] public string? ContainerId { get; set; } // Optional explicit container ID; otherwise resolved from ServerId
+    [Parameter] public string? ContainerId { get; set; }
+    [Parameter] public string? ServerStatus { get; set; }
+
+    public sealed class LogInstanceOption
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayTitle { get; set; } = string.Empty;
+        public string? Subtitle { get; set; }
+        public bool IsLiveCapable { get; set; }
+        public bool IsCurrent { get; set; }
+        public string State { get; set; } = string.Empty;
+    }
 
     private Xterm? terminal;
     private ElementReference _terminalWrapperRef;
@@ -262,7 +289,7 @@
     {
         CursorBlink = true,
         CursorStyle = CursorStyle.Block,
-        DisableStdin = false, // Ensure stdin is enabled
+        DisableStdin = false,
         Theme = new XtermBlazor.Theme
         {
             Background = "#000000",
@@ -289,21 +316,26 @@
         },
         FontSize = 14,
         FontFamily = "'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace",
-        Scrollback = 2000,
+        Scrollback = 5000,
         AllowTransparency = false
     };
 
     private bool isConnected = false;
     private bool isConnecting = false;
+    private bool isLoadingLogs = false;
     private string? connectionErrorMessage;
     private bool isDisposed = false;
     private IContainerConsoleClient? consoleClient;
     private CancellationTokenSource? connectionCts;
     private bool isJavaScriptAvailable = false;
 
-    private List<GameServerInstanceInfo> instances = [];
-    private string? selectedInstanceId;
+    private List<LogInstanceOption> instanceOptions = [];
+    private string selectedInstanceId = "current";
+    private int selectedTailLines = 500;
     private bool isLiveMode = true;
+    private string currentLogText = string.Empty;
+
+    private bool IsServerActive => ServerStatus is null || IsObservableState(ServerStatus);
 
     protected override async Task OnInitializedAsync()
     {
@@ -320,24 +352,98 @@
         try
         {
             var list = await GameServerApi.GetInstancesAsync(ServerId);
-            instances = list.ToList();
-
-            // Find current running instance
-            var currentRunning = instances.FirstOrDefault(i => i.IsCurrent && IsObservableState(i.State));
-            if (currentRunning != null)
-            {
-                selectedInstanceId = currentRunning.InstanceId;
-                isLiveMode = true;
-            }
-            else if (instances.Count > 0)
-            {
-                selectedInstanceId = instances[0].InstanceId;
-                isLiveMode = false;
-            }
+            BuildInstanceOptions(list);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore failure fetching instances gracefully
+            Logger.LogDebug(ex, "Could not fetch instances from API for server {ServerId}", ServerId);
+            BuildInstanceOptions([]);
+        }
+    }
+
+    private void BuildInstanceOptions(IReadOnlyList<GameServerInstanceInfo> list)
+    {
+        var options = new List<LogInstanceOption>();
+        var serverActive = IsServerActive;
+
+        // Top item: Current Instance if server is running / observable
+        if (serverActive)
+        {
+            options.Add(new LogInstanceOption
+            {
+                Id = "current",
+                DisplayTitle = "Current Instance (Live Console)",
+                Subtitle = "Active Session",
+                IsLiveCapable = true,
+                IsCurrent = true,
+                State = "running"
+            });
+        }
+        else
+        {
+            options.Add(new LogInstanceOption
+            {
+                Id = "latest",
+                DisplayTitle = "Latest Instance (Logs)",
+                Subtitle = "Last Run",
+                IsLiveCapable = false,
+                IsCurrent = false,
+                State = "stopped"
+            });
+        }
+
+        // Add each discovered task/instance from newest to oldest
+        var instanceIndex = 1;
+        foreach (var inst in list.OrderByDescending(i => i.UpdatedAt ?? i.CreatedAt))
+        {
+            var shortId = !string.IsNullOrWhiteSpace(inst.InstanceId) 
+                ? (inst.InstanceId.Length > 12 ? inst.InstanceId[..12] : inst.InstanceId)
+                : $"Task #{instanceIndex}";
+
+            var timeStr = inst.CreatedAt.HasValue ? inst.CreatedAt.Value.ToString("g") : string.Empty;
+            var isCurrentTask = inst.IsCurrent && serverActive;
+
+            // Don't duplicate the top 'current' option if it represents the active container
+            if (isCurrentTask && options.Any(o => o.Id == "current"))
+            {
+                continue;
+            }
+
+            options.Add(new LogInstanceOption
+            {
+                Id = inst.InstanceId,
+                DisplayTitle = $"Instance: {shortId} ({inst.State})",
+                Subtitle = timeStr,
+                IsLiveCapable = isCurrentTask,
+                IsCurrent = inst.IsCurrent,
+                State = inst.State
+            });
+
+            instanceIndex++;
+        }
+
+        // Always include a Service-wide log option
+        options.Add(new LogInstanceOption
+        {
+            Id = "service",
+            DisplayTitle = "Full Service Logs (All Tasks)",
+            Subtitle = "Swarm Aggregated",
+            IsLiveCapable = false,
+            IsCurrent = false,
+            State = "service"
+        });
+
+        instanceOptions = options;
+
+        if (serverActive)
+        {
+            selectedInstanceId = "current";
+            isLiveMode = true;
+        }
+        else
+        {
+            selectedInstanceId = options.Count > 1 && options[1].Id != "service" ? options[1].Id : options[0].Id;
+            isLiveMode = false;
         }
     }
 
@@ -356,16 +462,14 @@
     {
         if (firstRender)
         {
-            // Mark that JavaScript is now available
             isJavaScriptAvailable = true;
-            
+
             try
             {
                 await JSRuntime.InvokeVoidAsync("TerminalHelpers.ensureAddons");
             }
             catch
             {
-                // Fallback gracefully
             }
 
             try
@@ -374,33 +478,46 @@
             }
             catch
             {
-                // Fallback gracefully if JS not initialized
             }
 
-            await FitTerminalAsync();
+            await Task.Delay(250);
 
-            if (AutoConnect && !string.IsNullOrEmpty(ServerId))
+            try
             {
-                await Task.Delay(500); // Wait for terminal to initialize
-                if (isLiveMode)
+                await FitTerminalAsync();
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                if (AutoConnect && !string.IsNullOrEmpty(ServerId))
                 {
-                    await ConnectAsync();
+                    if (isLiveMode && IsServerActive)
+                    {
+                        await ConnectAsync();
+                    }
+                    else
+                    {
+                        await LoadStaticLogsAsync(selectedInstanceId);
+                    }
                 }
-                else if (!string.IsNullOrEmpty(selectedInstanceId))
-                {
-                    await LoadStaticLogsAsync(selectedInstanceId);
-                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error during initial console load for server {ServerId}", ServerId);
             }
         }
     }
 
-    private async Task OnInstanceChangedAsync(object value)
+    private async Task OnInstanceSelectionChangedAsync(object value)
     {
-        var targetInstanceId = value as string;
-        selectedInstanceId = targetInstanceId;
+        var targetId = value as string ?? "current";
+        selectedInstanceId = targetId;
 
-        var inst = instances.FirstOrDefault(i => i.InstanceId == targetInstanceId);
-        if (inst != null && inst.IsCurrent && IsObservableState(inst.State))
+        var selectedOpt = instanceOptions.FirstOrDefault(o => o.Id == targetId);
+        if (selectedOpt != null && selectedOpt.IsLiveCapable && IsServerActive)
         {
             isLiveMode = true;
             await ClearTerminal();
@@ -410,56 +527,81 @@
         {
             isLiveMode = false;
             await DisconnectAsync();
-            await LoadStaticLogsAsync(targetInstanceId);
+            await LoadStaticLogsAsync(targetId);
         }
     }
 
     private async Task LoadStaticLogsAsync(string? instanceId)
     {
-        if (string.IsNullOrWhiteSpace(ServerId) || terminal == null || !isJavaScriptAvailable || isDisposed)
+        if (string.IsNullOrWhiteSpace(ServerId) || isDisposed)
         {
             return;
         }
 
+        isLoadingLogs = true;
+        StateHasChanged();
+
         try
         {
             await ClearTerminal();
-            await WriteSystemMessage($"Fetching logs for instance {(string.IsNullOrWhiteSpace(instanceId) ? "latest" : instanceId)}...");
+            await WriteSystemMessage($"Fetching logs for {(instanceId == "service" ? "full service" : (string.IsNullOrWhiteSpace(instanceId) || instanceId == "current" || instanceId == "latest" ? "latest instance" : $"instance {instanceId}"))} (tail: {selectedTailLines})...");
 
-            var logs = await GameServerApi.GetLogsAsync(ServerId, instanceId, tail: 500);
+            var targetParam = (instanceId == "current" || instanceId == "latest" || instanceId == "service") ? null : instanceId;
+            var logs = await GameServerApi.GetLogsAsync(ServerId, targetParam, tail: selectedTailLines);
+            currentLogText = logs ?? string.Empty;
+
             if (string.IsNullOrWhiteSpace(logs))
             {
-                await WriteSystemMessage("No log entries found for this instance.");
+                await WriteSystemMessage("No log entries found for this instance / service.");
             }
             else
             {
-                var normalized = System.Text.RegularExpressions.Regex.Replace(logs, @"(?<!\r)\n", "\r\n");
-                await terminal.Write(normalized);
-                await FitTerminalAsync();
+                if (terminal != null && isJavaScriptAvailable)
+                {
+                    var normalized = System.Text.RegularExpressions.Regex.Replace(logs, @"(?<!\r)\n", "\r\n");
+                    await terminal.Write(normalized);
+                    await FitTerminalAsync();
+                }
             }
         }
         catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Error fetching logs for instance {InstanceId}", instanceId);
             await WriteSystemMessage($"Error loading logs: {ex.Message}", isError: true);
         }
-        StateHasChanged();
+        finally
+        {
+            isLoadingLogs = false;
+            StateHasChanged();
+        }
     }
 
+    private async Task DownloadLogsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentLogText) || !isJavaScriptAvailable || isDisposed) return;
+        try
+        {
+            var fileName = $"{ServerId ?? "server"}_{selectedInstanceId}_{DateTime.UtcNow:yyyyMMddHHmmss}.log";
+            var bytes = Encoding.UTF8.GetBytes(currentLogText);
+            var base64 = Convert.ToBase64String(bytes);
+            await JSRuntime.InvokeVoidAsync("eval", $"const a = document.createElement('a'); a.href = 'data:text/plain;base64,{base64}'; a.download = '{fileName}'; document.body.appendChild(a); a.click(); document.body.removeChild(a);");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to download log text");
+        }
+    }
 
     private async Task FitTerminalAsync()
     {
-        if (isJavaScriptAvailable && !isDisposed)
+        if (isJavaScriptAvailable && !isDisposed && terminal != null)
         {
             try
             {
-                if (terminal is not null)
-                {
-                    await terminal.Addon("addon-fit").InvokeVoidAsync("fit");
-                }
+                await terminal.Addon("addon-fit").InvokeVoidAsync("fit");
             }
             catch
             {
-                // Fallback to JS helper
             }
 
             try
@@ -468,7 +610,6 @@
             }
             catch
             {
-                // Ignore if terminal DOM element is not yet attached or rendered
             }
         }
     }
@@ -480,33 +621,31 @@
             try
             {
                 await FitTerminalAsync();
-                await terminal.WriteLine("Terminal initialized. Click 'Connect' to attach to container console.");
+                await terminal.WriteLine("\x1b[1;36m=== Game Server Console & Logs Viewer ===\x1b[0m");
+                await terminal.WriteLine($"\x1b[90mTarget: {ServerId ?? "Unknown"}\x1b[0m");
                 await terminal.WriteLine("");
-                await terminal.WriteLine("Click anywhere in the terminal to focus and start typing.");
                 await FitTerminalAsync();
             }
             catch
             {
-                // Ignore JS errors during terminal init
             }
         }
     }
 
-    private StringBuilder stringBuilder = new StringBuilder();
+    private StringBuilder stringBuilder = new();
 
     private async Task OnTerminalData(string data)
     {
-        if (!isConnected || consoleClient == null || isDisposed)
+        if (!isConnected || consoleClient == null || isDisposed || !isLiveMode)
             return;
 
         try
         {
-            // Send the input to the container
             await consoleClient.SendInputAsync(data, connectionCts?.Token ?? CancellationToken.None);
         }
         catch (Exception ex)
         {
-            await WriteSystemMessage($"Error sending input: {ex.Message}", isError: true);
+            Logger.LogDebug(ex, "Error sending terminal input");
         }
     }
 
@@ -523,72 +662,57 @@
 
         isConnecting = true;
         connectionErrorMessage = null;
-        await WriteSystemMessage($"Connecting to {ServerId}...");
+        await WriteSystemMessage($"Connecting to {ServerId} console stream...");
         StateHasChanged();
 
         try
         {
-            // Clean up any prior client before connecting
             if (consoleClient != null)
             {
                 await SafeCleanupClientAsync();
             }
 
-            // Build hub URL from configuration
             var baseUri = ApiConfig.Value.BaseUri?.TrimEnd('/') ?? "http://localhost:5164";
             var hubUrl = $"{baseUri}/hubs/attach";
 
-            await WriteSystemMessage($"Hub URL: {hubUrl}");
-
-            // Create the console client using the shared attach client
             consoleClient = new ContainerConsoleClient(hubUrl);
 
-            // Subscribe to events
             consoleClient.OutputReceived += OnOutputReceived;
             consoleClient.ErrorReceived += OnErrorReceived;
             consoleClient.Connected += OnConsoleConnected;
             consoleClient.Disconnected += OnConsoleDisconnected;
             consoleClient.InputControlChanged += OnInputControlChanged;
 
-            // Connect to the SignalR hub
             connectionCts?.Dispose();
             connectionCts = new CancellationTokenSource();
             await consoleClient.ConnectAsync(connectionCts.Token);
 
-            // Subscribe to the shared attach stream for this server/container
             await consoleClient.AttachToContainerAsync(ServerId, ContainerId, connectionCts.Token);
 
             isConnected = true;
             isConnecting = false;
             connectionErrorMessage = null;
 
-            await WriteSystemMessage($"Connected to {ServerId} console (shared attach)");
+            await WriteSystemMessage($"Connected to {ServerId} console (shared live attach)");
             await WriteSystemMessage("Click the terminal and start typing. Output is shared with other viewers.");
 
             NotificationService.NotifyTimed(new NotificationMessage
             {
                 Severity = NotificationSeverity.Success,
                 Summary = "Console Connected",
-                Detail = $"Connected to {ServerId} console. Click the terminal to focus and type.",
-                Duration = 4000
+                Detail = $"Connected to {ServerId} live console stream.",
+                Duration = 3000
             });
 
             StateHasChanged();
         }
         catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Failed to connect to console stream for server {ServerId}", ServerId);
             isConnecting = false;
             isConnected = false;
             connectionErrorMessage = ex.Message;
             await WriteSystemMessage($"Connection failed: {ex.Message}", isError: true);
-
-            NotificationService.NotifyTimed(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Connection Failed",
-                Detail = ex.Message,
-                Duration = 5000
-            });
 
             StateHasChanged();
         }
@@ -602,7 +726,7 @@
         isConnecting = false;
         connectionErrorMessage = null;
 
-        await WriteSystemMessage("Disconnected");
+        await WriteSystemMessage("Disconnected from live stream");
         StateHasChanged();
     }
 
@@ -631,7 +755,6 @@
             }
             catch
             {
-                // Non-critical during cleanup
             }
 
             consoleClient = null;
@@ -653,7 +776,6 @@
             }
             catch
             {
-                // Ignore JS interop failure
             }
         }
     }
@@ -663,12 +785,11 @@
         await Task.CompletedTask;
     }
 
-    // Event handlers for ContainerConsoleClient events
     private void OnOutputReceived(object? sender, string data)
     {
         InvokeAsync(async () =>
         {
-            if (isDisposed) return;
+            if (isDisposed || !isLiveMode) return;
             try
             {
                 if (terminal != null && isJavaScriptAvailable)
@@ -680,7 +801,6 @@
             }
             catch
             {
-                // Suppress JS interop errors during rendering to prevent circuit crash
             }
         });
     }
@@ -697,7 +817,6 @@
             }
             catch
             {
-                // Suppress JS error
             }
             StateHasChanged();
         });
@@ -715,7 +834,6 @@
             }
             catch
             {
-                // Suppress JS error
             }
             StateHasChanged();
         });
@@ -738,7 +856,6 @@
             }
             catch
             {
-                // Suppress JS error
             }
             StateHasChanged();
         });
@@ -763,7 +880,7 @@
 
                 if (!isController && !string.IsNullOrWhiteSpace(controllerId))
                 {
-                    await WriteSystemMessage($"Another user has input control ({controllerId.Substring(0, Math.Min(controllerId.Length, 8))}...). View-only mode.");
+                    await WriteSystemMessage($"Another user has input control ({controllerId[..Math.Min(controllerId.Length, 8)]}...). View-only mode.");
                 }
                 else if (isController)
                 {
@@ -772,7 +889,6 @@
             }
             catch
             {
-                // Suppress JS error
             }
 
             StateHasChanged();
@@ -785,13 +901,12 @@
         {
             try
             {
-                var color = isError ? "\x1b[31m" : "\x1b[32m"; // Red or Green
+                var color = isError ? "\x1b[31m" : "\x1b[32m";
                 var reset = "\x1b[0m";
                 await terminal.WriteLine($"{color}[SYSTEM]{reset} {message}");
             }
             catch
             {
-                // Silently ignore JS interop errors during disposal or prerendering
             }
         }
     }
@@ -805,7 +920,7 @@
 
     private async Task OnLineFeed()
     {
-        if (isDisposed) return;
+        if (isDisposed || !isLiveMode) return;
         try
         {
             var test = stringBuilder.ToString();
@@ -818,7 +933,6 @@
         }
         catch
         {
-            // Suppress unhandled input exceptions
         }
     }
 }

@@ -74,10 +74,23 @@
                     <h2 class="mb-1">@server.Name</h2>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <RadzenBadge BadgeStyle="@GetStatusBadgeStyle(server.Status)" Text="@GetStatusText(server.Status)" />
+                        @if (server.IsUpdateAvailable || imageUpdateStatus?.IsUpdateAvailable == true)
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="Update Available" Icon="upgrade" title="A newer container image release/digest is available from the source repository." />
+                        }
                     </div>
                 </div>
             </div>
             <div class="d-flex gap-2 flex-wrap align-items-center">
+                @if (server.IsUpdateAvailable || imageUpdateStatus?.IsUpdateAvailable == true)
+                {
+                    <RadzenButton Text="Update Container"
+                                  Icon="upgrade"
+                                  ButtonStyle="ButtonStyle.Warning"
+                                  Disabled="@isOperating"
+                                  Click="@UpdateContainerImageAsync"
+                                  title="Pull latest container image tag and redeploy" />
+                }
                 <RadzenButton Text="Start"
                               Icon="play_arrow"
                               ButtonStyle="ButtonStyle.Success"
@@ -142,6 +155,28 @@
                     @if (!string.IsNullOrWhiteSpace(server.GameTypeKey))
                     {
                         <div><strong>Key:</strong> <code>@server.GameTypeKey</code></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(server.RevisionImageReference))
+                    {
+                        <div><strong>Image:</strong> <code>@server.RevisionImageReference:@(!string.IsNullOrWhiteSpace(server.RevisionVersionTag) ? server.RevisionVersionTag : "latest")</code></div>
+                    }
+                    @if (server.IsUpdateAvailable || imageUpdateStatus?.IsUpdateAvailable == true)
+                    {
+                        <div class="mt-2 p-2 rounded" style="background: rgba(var(--rz-warning-rgb, 255, 193, 7), 0.15); border: 1px solid var(--rz-warning);">
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div>
+                                    <RadzenIcon Icon="upgrade" Style="color: var(--rz-warning); vertical-align: middle;" />
+                                    <strong class="text-warning-emphasis ms-1">New Container Release Available</strong>
+                                    <div class="small text-muted">A newer SHA tag/digest was detected at the source registry.</div>
+                                </div>
+                                <RadzenButton Text="Update Now"
+                                              Icon="upgrade"
+                                              Size="ButtonSize.ExtraSmall"
+                                              ButtonStyle="ButtonStyle.Warning"
+                                              Disabled="@isOperating"
+                                              Click="@UpdateContainerImageAsync" />
+                            </div>
+                        </div>
                     }
                     <div><strong>Created By:</strong> @(string.IsNullOrWhiteSpace(server.CreatedByUsername) ? "System / Unknown" : server.CreatedByUsername)</div>
                     <div><strong>Service:</strong> @(string.IsNullOrWhiteSpace(server.ServiceName) ? "Not assigned" : server.ServiceName)</div>
@@ -272,9 +307,9 @@
                     </div>
                 </RadzenTabsItem>
 
-                <RadzenTabsItem Text="Console / Logs" Icon="terminal">
+                <RadzenTabsItem Text="Logs" Icon="terminal">
                     <div class="p-3">
-                        <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" AutoConnect="true" />
+                        <ContainerConsole ServerId="@ServerId" ContainerId="@RunningContainerId" ServerStatus="@server.Status" AutoConnect="true" />
                     </div>
                 </RadzenTabsItem>
 
@@ -695,6 +730,7 @@
     {
         await LoadServerDataAsync();
         _ = RunValidationInBackgroundAsync();
+        _ = CheckImageUpdateInBackgroundAsync();
         StartStatusPolling();
     }
 
@@ -921,6 +957,45 @@
         }
     }
 
+    private async Task UpdateContainerImageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+
+        var confirmed = await DialogService.Confirm(
+            $"Are you sure you want to update the container image for '{server?.Name ?? ServerId}'? This will pull the latest release tag from the source registry and restart the service.",
+            "Update Container Image",
+            new ConfirmOptions { OkButtonText = "Update Now", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        try
+        {
+            isOperating = true;
+            operationTitle = "Updating Container Image...";
+            operationSubtitle = "Pulling latest image release and redeploying service in Docker Swarm...";
+            var updated = await GameServerApiV2.UpdateContainerImageAsync(ServerId);
+            server = updated;
+            imageUpdateStatus = new ContainerImageUpdateStatus
+            {
+                ServerId = ServerId,
+                IsUpdateAvailable = false,
+                CurrentDigest = updated.ImageDigest ?? updated.LatestImageDigest,
+                LatestDigest = updated.LatestImageDigest,
+                LastCheckedAt = DateTime.UtcNow
+            };
+            NotificationService.NotifyTimed(NotificationSeverity.Success, "Container Updated", $"Server '{server.Name}' container image has been updated to the latest release.");
+        }
+        catch (HttpRequestException ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Update failed", ex.Message);
+        }
+        finally
+        {
+            isOperating = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private async Task DeleteServerAsync()
     {
         if (string.IsNullOrWhiteSpace(ServerId))
@@ -1125,6 +1200,22 @@
             {
                 // Silently ignore transient background polling errors
             }
+        }
+    }
+
+    private ContainerImageUpdateStatus? imageUpdateStatus;
+
+    private async Task CheckImageUpdateInBackgroundAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerId)) return;
+        try
+        {
+            imageUpdateStatus = await GameServerApiV2.CheckImageUpdateAsync(ServerId);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Silently ignore background check errors
         }
     }
 

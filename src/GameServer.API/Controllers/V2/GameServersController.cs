@@ -19,7 +19,8 @@ public sealed class GameServersController(
     Repositories.V2.IGroupRepository? groupRepository = null,
     Interfaces.IServiceOperations? serviceOperations = null,
     Services.NodeAgentClient? nodeAgentClient = null,
-    Interfaces.INodeAgentDiscovery? nodeAgentDiscovery = null) : ControllerBase
+    Interfaces.INodeAgentDiscovery? nodeAgentDiscovery = null,
+    IContainerImageUpdateService? imageUpdateService = null) : ControllerBase
 {
     /// <summary>
     /// Gets the V2 GameServer list.
@@ -38,6 +39,22 @@ public sealed class GameServersController(
                 var accessibleSet = accessibleServerIds.ToHashSet();
                 servers = servers.Where(s => accessibleSet.Contains(s.ServerId)).ToList();
             }
+        }
+
+        if (imageUpdateService is not null)
+        {
+            servers = servers.Select(s =>
+            {
+                var cached = imageUpdateService.GetCachedUpdateStatus(s.ServerId);
+                return cached is not null
+                    ? s with
+                    {
+                        IsUpdateAvailable = cached.IsUpdateAvailable,
+                        ImageDigest = cached.CurrentDigest,
+                        LatestImageDigest = cached.LatestDigest
+                    }
+                    : s;
+            }).ToList();
         }
 
         return Ok(servers);
@@ -62,6 +79,21 @@ public sealed class GameServersController(
         {
             logger.LogDebug("V2 game server '{ServerId}' was not found", serverId);
             return NotFound();
+        }
+
+        if (imageUpdateService is not null)
+        {
+            var cached = imageUpdateService.GetCachedUpdateStatus(serverId);
+            if (cached is not null)
+            {
+                server = server with
+                {
+                    IsUpdateAvailable = cached.IsUpdateAvailable,
+                    ImageDigest = cached.CurrentDigest,
+                    LatestImageDigest = cached.LatestDigest,
+                    ImageUpdateStatus = cached
+                };
+            }
         }
 
         return Ok(server);
@@ -563,118 +595,90 @@ public sealed class GameServersController(
     }
 
     /// <summary>
-    /// Gets all current and historical instances/tasks for a game server.
+    /// Checks for a new release of the container image tag at the source registry.
     /// </summary>
-    [HttpGet("{serverId}/instances")]
-    [ProducesResponseType(200, Type = typeof(IReadOnlyList<GameServerInstanceInfoDto>))]
+    [HttpGet("{serverId}/image-update")]
+    [ProducesResponseType(200, Type = typeof(ContainerImageUpdateStatusDto))]
     [ProducesResponseType(403)]
     [ProducesResponseType(404)]
-    public async Task<ActionResult<IReadOnlyList<GameServerInstanceInfoDto>>> GetInstances(
-        string serverId,
-        CancellationToken cancellationToken = default)
+    public async Task<ActionResult<ContainerImageUpdateStatusDto>> CheckImageUpdate(string serverId, CancellationToken cancellationToken = default)
     {
         if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
         {
             return Forbid();
         }
 
-        var server = await queryService.GetByServerIdAsync(serverId, cancellationToken);
-        if (server is null)
+        if (imageUpdateService is null)
         {
             return NotFound();
         }
 
-        if (serviceOperations is null)
-        {
-            return Ok(Array.Empty<GameServerInstanceInfoDto>());
-        }
-
         try
         {
-            var services = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken);
-            var service = services.FirstOrDefault();
-            if (service == null)
-            {
-                return Ok(Array.Empty<GameServerInstanceInfoDto>());
-            }
-
-            var tasks = await serviceOperations.ListTasksAsync(
-                new Docker.DotNet.Models.TasksListParameters
-                {
-                    Filters = new Dictionary<string, IDictionary<string, bool>>
-                    {
-                        ["service"] = new Dictionary<string, bool> { [service.ID] = true }
-                    }
-                },
-                cancellationToken);
-
-            var list = tasks.Select(t =>
-            {
-                var containerId = t.Status?.ContainerStatus?.ContainerID;
-                var isRunning = t.Status?.State == Docker.DotNet.Models.TaskState.Running;
-                return new GameServerInstanceInfoDto
-                {
-                    InstanceId = !string.IsNullOrWhiteSpace(containerId) ? containerId : t.ID,
-                    TaskId = t.ID,
-                    ContainerId = containerId,
-                    NodeId = t.NodeID,
-                    State = t.Status?.State.ToString() ?? "Unknown",
-                    DesiredState = t.DesiredState.ToString(),
-                    CreatedAt = t.CreatedAt,
-                    UpdatedAt = t.UpdatedAt,
-                    IsCurrent = isRunning,
-                    Slot = (int?)t.Slot,
-                    Error = t.Status?.Err
-                };
-            })
-            .OrderByDescending(i => i.IsCurrent)
-            .ThenByDescending(i => i.UpdatedAt ?? i.CreatedAt)
-            .ToList();
-
-            return Ok(list);
+            var status = await imageUpdateService.CheckImageUpdateAsync(serverId, cancellationToken);
+            return Ok(status);
         }
-        catch (Exception ex)
+        catch (KeyNotFoundException)
         {
-            logger.LogWarning(ex, "Failed to retrieve instances for server {ServerId}", serverId);
-            return Ok(Array.Empty<GameServerInstanceInfoDto>());
+            return NotFound();
         }
     }
 
     /// <summary>
-    /// Gets static logs for a game server instance (current or past).
+    /// Updates the container to the latest image tag release and redeploys the service.
     /// </summary>
-    [HttpGet("{serverId}/logs")]
-    [ProducesResponseType(200, Type = typeof(IReadOnlyList<string>))]
+    [HttpPost("{serverId}/update-image")]
+    [ProducesResponseType(200, Type = typeof(GameServerDetailDto))]
     [ProducesResponseType(403)]
     [ProducesResponseType(404)]
-    public async Task<ActionResult<IReadOnlyList<string>>> GetLogs(
-        string serverId,
-        [FromQuery] string? instanceId = null,
-        [FromQuery] int tail = 2000,
-        CancellationToken cancellationToken = default)
+    public async Task<ActionResult<GameServerDetailDto>> UpdateContainerImage(string serverId, CancellationToken cancellationToken = default)
+    {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanEditServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        if (imageUpdateService is null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var updated = await imageUpdateService.UpdateContainerImageAsync(serverId, User, cancellationToken);
+            return Ok(updated);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Gets the list of Swarm task/container instances for a V2 GameServer.
+    /// </summary>
+    [HttpGet("{serverId}/instances")]
+    [ProducesResponseType(200, Type = typeof(IEnumerable<GameServerInstanceInfoDto>))]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<IReadOnlyList<GameServerInstanceInfoDto>>> GetInstances(string serverId, CancellationToken cancellationToken = default)
     {
         if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
         {
             return Forbid();
         }
 
-        var server = await queryService.GetByServerIdAsync(serverId, cancellationToken);
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
         if (server is null)
         {
             return NotFound();
         }
 
-        if (nodeAgentDiscovery is null || nodeAgentClient is null)
-        {
-            return Ok(Array.Empty<string>());
-        }
+        var result = new List<GameServerInstanceInfoDto>();
 
-        try
+        if (serviceOperations is not null && !string.IsNullOrWhiteSpace(server.ServiceName))
         {
-            var targetContainerId = instanceId;
-
-            // If instanceId is a task ID or null, resolve to container ID
-            if (string.IsNullOrWhiteSpace(targetContainerId) && serviceOperations != null)
+            try
             {
                 var services = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken);
                 var service = services.FirstOrDefault();
@@ -687,63 +691,153 @@ public sealed class GameServersController(
                             {
                                 ["service"] = new Dictionary<string, bool> { [service.ID] = true }
                             }
-                        },
-                        cancellationToken);
+                        }, cancellationToken);
 
-                    var activeOrLast = tasks.OrderByDescending(t => t.Status?.State == Docker.DotNet.Models.TaskState.Running)
-                        .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-                        .FirstOrDefault();
-
-                    targetContainerId = activeOrLast?.Status?.ContainerStatus?.ContainerID ?? activeOrLast?.ID;
-                }
-            }
-            else if (serviceOperations != null && targetContainerId != null && targetContainerId.Length > 20 && !targetContainerId.All(char.IsLetterOrDigit))
-            {
-                // Likely a task ID with hyphens or non-hex
-                var tasks = await serviceOperations.ListTasksAsync(
-                    new Docker.DotNet.Models.TasksListParameters
+                    var hasActive = false;
+                    foreach (var task in tasks.OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt))
                     {
-                        Filters = new Dictionary<string, IDictionary<string, bool>>
+                        var containerId = task.Status?.ContainerStatus?.ContainerID;
+                        var instanceId = !string.IsNullOrWhiteSpace(containerId) ? containerId : task.ID;
+                        var state = task.Status?.State.ToString().ToLowerInvariant() ?? "unknown";
+                        var isCurrent = !hasActive && (state is "running" or "starting" or "ready" or "preparing");
+                        if (isCurrent)
                         {
-                            ["id"] = new Dictionary<string, bool> { [targetContainerId] = true }
+                            hasActive = true;
                         }
-                    },
-                    cancellationToken);
 
-                var task = tasks.FirstOrDefault();
-                if (task?.Status?.ContainerStatus?.ContainerID != null)
+                        result.Add(new GameServerInstanceInfoDto
+                        {
+                            InstanceId = instanceId,
+                            TaskId = task.ID,
+                            ContainerId = containerId,
+                            NodeId = task.NodeID,
+                            State = state,
+                            DesiredState = task.DesiredState.ToString().ToLowerInvariant(),
+                            CreatedAt = task.CreatedAt,
+                            UpdatedAt = task.UpdatedAt,
+                            IsCurrent = isCurrent,
+                            Slot = (int?)task.Slot,
+                            Error = task.Status?.Err
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to retrieve swarm tasks for server {ServerId}", serverId);
+            }
+        }
+
+        // Fallback if no tasks retrieved
+        if (result.Count == 0 && resourceMonitor is not null)
+        {
+            try
+            {
+                var usage = await resourceMonitor.GetSnapshotAsync(serverId, cancellationToken);
+                if (usage?.ContainerIds.Count > 0)
                 {
-                    targetContainerId = task.Status.ContainerStatus.ContainerID;
+                    for (var i = 0; i < usage.ContainerIds.Count; i++)
+                    {
+                        var cid = usage.ContainerIds[i];
+                        result.Add(new GameServerInstanceInfoDto
+                        {
+                            InstanceId = cid,
+                            ContainerId = cid,
+                            State = "running",
+                            IsCurrent = i == 0,
+                            CreatedAt = usage.Timestamp,
+                            UpdatedAt = usage.Timestamp
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to retrieve resource snapshot for server {ServerId}", serverId);
+            }
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Gets logs for a specific instance or the active instance of a V2 GameServer.
+    /// </summary>
+    [HttpGet("{serverId}/logs")]
+    [ProducesResponseType(200, Type = typeof(string))]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetLogs(string serverId, [FromQuery] string? instanceId = null, [FromQuery] int tail = 500, CancellationToken cancellationToken = default)
+    {
+        if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var server = await queryService.GetByServerIdAsync(serverId, User, cancellationToken);
+        if (server is null)
+        {
+            return NotFound();
+        }
+
+        if (nodeAgentDiscovery is null)
+        {
+            return Content(string.Empty, "text/plain");
+        }
+
+        try
+        {
+            List<string>? logs = null;
+
+            if (!string.IsNullOrWhiteSpace(instanceId))
+            {
+                // Try fetching directly as a container ID
+                logs = await nodeAgentDiscovery.GetContainerLogsAsync(instanceId, tail);
+
+                // If not found and serviceOperations is available, check if instanceId was a task ID
+                if (logs is null && serviceOperations is not null && !string.IsNullOrWhiteSpace(server.ServiceName))
+                {
+                    var services = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken);
+                    var service = services.FirstOrDefault();
+                    if (service != null)
+                    {
+                        var tasks = await serviceOperations.ListTasksAsync(
+                            new Docker.DotNet.Models.TasksListParameters
+                            {
+                                Filters = new Dictionary<string, IDictionary<string, bool>>
+                                {
+                                    ["service"] = new Dictionary<string, bool> { [service.ID] = true }
+                                }
+                            }, cancellationToken);
+
+                        var matchingTask = tasks.FirstOrDefault(t => t.ID == instanceId);
+                        var containerId = matchingTask?.Status?.ContainerStatus?.ContainerID;
+                        if (!string.IsNullOrWhiteSpace(containerId))
+                        {
+                            logs = await nodeAgentDiscovery.GetContainerLogsAsync(containerId, tail);
+                        }
+                    }
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(targetContainerId))
+            // Fallback: If no instance specified or container logs failed, attempt service logs or latest container logs
+            if (logs is null && serviceOperations is not null && !string.IsNullOrWhiteSpace(server.ServiceName))
             {
-                // Fallback to resource monitor or agent lookup
-                var agentForServer = await nodeAgentDiscovery.GetAgentForServerAsync(serverId);
-                if (agentForServer != null)
+                var services = await serviceOperations.ListServicesAsync(serviceName: server.ServiceName, cancellationToken: cancellationToken);
+                var service = services.FirstOrDefault();
+                if (service != null)
                 {
-                    targetContainerId = await Hubs.ServerLogsHub.ResolveContainerIdAsync(agentForServer, serverId, cancellationToken);
+                    logs = await nodeAgentDiscovery.GetServiceLogsAsync(service.ID, tail);
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(targetContainerId))
-            {
-                return Ok(new[] { "No container or task instance found for this server." });
-            }
-
-            var logs = await nodeAgentDiscovery.GetContainerLogsAsync(targetContainerId, tail);
-            if (logs == null || logs.Count == 0)
-            {
-                return Ok("No log entries available for this container instance.");
-            }
-
-            return Ok(string.Join("\n", logs));
+            var text = logs != null && logs.Count > 0 ? string.Join("\n", logs) : string.Empty;
+            return Content(text, "text/plain; charset=utf-8");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error getting logs for server {ServerId}, instance {InstanceId}", serverId, instanceId);
-            return StatusCode(500, $"Error retrieving logs: {ex.Message}");
+            logger.LogError(ex, "Failed to retrieve logs for server {ServerId}", serverId);
+            return Content($"Error loading logs: {ex.Message}", "text/plain; charset=utf-8");
         }
     }
 }
