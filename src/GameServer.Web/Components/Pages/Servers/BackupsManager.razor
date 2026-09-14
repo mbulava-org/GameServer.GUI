@@ -8,6 +8,7 @@
 @inject IBackupsApiService BackupsApi
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject IOperationDialogService OperationDialog
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject GameServer.Web.Services.IUserTimeZoneService TimeZoneService
@@ -24,6 +25,11 @@
             <RadzenButton Text="Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadAsync" />
         </div>
     </div>
+
+    <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" class="mb-4">
+        <RadzenIcon Icon="info" Style="vertical-align: middle; margin-right: 0.5rem;" />
+        Backup functionality is currently disabled.
+    </RadzenAlert>
 
     @if (isLoading)
     {
@@ -227,32 +233,29 @@
 
         if (confirmed is true)
         {
-            try
-            {
-                var updated = await BackupsApi.ExtendBackupAsync(backup.BackupId, new ExtendBackupRequest { AdditionalDays = 30 });
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Retention Extended", $"Expires on {TimeZoneService.FormatLocalDateTime(updated.ExpiresAt)}.");
-                await LoadAsync();
-            }
-            catch (Exception ex)
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Error, "Extension Failed", ex.Message);
-            }
+            await OperationDialog.ExecuteAsync(
+                "Extending Retention...",
+                async () =>
+                {
+                    await BackupsApi.ExtendBackupAsync(backup.BackupId, new ExtendBackupRequest { AdditionalDays = 30 });
+                    await LoadAsync();
+                },
+                subtitle: $"Extending retention for '{backup.FileName}' by 30 days...",
+                errorTitle: "Extension Failed");
         }
     }
 
     private async Task ToggleSharingAsync(GameServerBackup backup, bool isShared)
     {
-        try
-        {
-            await BackupsApi.UpdateSharingAsync(backup.BackupId, new UpdateBackupSharingRequest { IsSharedWithGroups = isShared });
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Sharing Updated", isShared ? "Backup shared with group members." : "Backup is now private.");
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Sharing Update Failed", ex.Message);
-            await LoadAsync();
-        }
+        await OperationDialog.ExecuteAsync(
+            "Updating Sharing...",
+            async () =>
+            {
+                await BackupsApi.UpdateSharingAsync(backup.BackupId, new UpdateBackupSharingRequest { IsSharedWithGroups = isShared });
+                await LoadAsync();
+            },
+            subtitle: isShared ? "Sharing backup with group members..." : "Making backup private...",
+            errorTitle: "Sharing Update Failed");
     }
 
     private async Task DeleteBackupAsync(GameServerBackup backup)
@@ -264,16 +267,15 @@
 
         if (confirmed is true)
         {
-            try
-            {
-                await BackupsApi.DeleteBackupAsync(backup.BackupId);
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Backup Deleted", $"Deleted '{backup.FileName}'.");
-                await LoadAsync();
-            }
-            catch (Exception ex)
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete Failed", ex.Message);
-            }
+            await OperationDialog.ExecuteAsync(
+                "Deleting Backup...",
+                async () =>
+                {
+                    await BackupsApi.DeleteBackupAsync(backup.BackupId);
+                    await LoadAsync();
+                },
+                subtitle: $"Permanently removing '{backup.FileName}'...",
+                errorTitle: "Delete Failed");
         }
     }
 

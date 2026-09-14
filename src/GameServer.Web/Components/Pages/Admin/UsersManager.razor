@@ -3,6 +3,7 @@
 @inject IAuthApiService AuthService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject IOperationDialogService OperationDialog
 @inject Services.IUserTimeZoneService TimeZoneService
 
 <PageTitle>User Management - Game Server Manager</PageTitle>
@@ -200,15 +201,15 @@
 
         if (confirmed == true)
         {
-            var (success, error) = await AuthService.DeleteUserAsync(user.Id);
-            if (success)
+            var res = await OperationDialog.ExecuteAsync("Deleting User...", $"Deleting user '{user.Username}'", async () =>
             {
-                NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"User '{user.Username}' deleted.");
+                var (success, error) = await AuthService.DeleteUserAsync(user.Id);
+                return success ? OperationResult.Ok() : OperationResult.Fail(error ?? "Could not delete user.");
+            });
+
+            if (res.Success)
+            {
                 await LoadUsers();
-            }
-            else
-            {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not delete user.");
             }
         }
     }

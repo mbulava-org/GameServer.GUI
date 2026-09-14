@@ -13,6 +13,8 @@
 @inject IJSRuntime JS
 @inject Services.IThumbnailCacheService ThumbnailCacheService
 @inject Services.IUserTimeZoneService TimeZoneService
+@inject DialogService DialogService
+@inject IOperationDialogService OperationDialog
 
 <PageTitle>Game Types</PageTitle>
 
@@ -313,16 +315,22 @@
     {
         ArgumentNullException.ThrowIfNull(gameType);
 
-        try
-        {
-            await GameTypeApiV2.DeleteAsync(gameType.Key);
-            await LoadAsync();
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"Game type '{gameType.DisplayName}' was deleted.");
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
-        }
+        var confirmed = await DialogService.Confirm(
+            $"Are you sure you want to delete game type '{gameType.DisplayName}'?",
+            "Delete Game Type",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        var result = await OperationDialog.ExecuteAsync(
+            "Deleting Game Type...",
+            async () =>
+            {
+                await GameTypeApiV2.DeleteAsync(gameType.Key);
+                await LoadAsync();
+            },
+            subtitle: $"Removing '{gameType.DisplayName}'...",
+            errorTitle: "Delete Failed");
     }
 
     private async Task ImportGameTypeAsync(InputFileChangeEventArgs args)
@@ -333,32 +341,37 @@
             return;
         }
 
+        PortableGameTypePackage? package = null;
         try
         {
             await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
-            var package = await JsonSerializer.DeserializeAsync<PortableGameTypePackage>(stream, jsonSerializerOptions);
+            package = await JsonSerializer.DeserializeAsync<PortableGameTypePackage>(stream, jsonSerializerOptions);
             if (package is null)
             {
                 NotificationService.NotifyTimed(NotificationSeverity.Warning, "Import failed", "The selected GameType package was empty.");
                 return;
             }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
+            return;
+        }
 
-            var imported = await GameTypeApiV2.ImportAsync(package);
-            await LoadAsync();
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Imported", $"Game type '{imported.DisplayName}' was imported successfully.");
-            Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(imported.Key)}");
-        }
-        catch (JsonException ex)
+        var result = await OperationDialog.ExecuteAsync(
+            "Importing Game Type...",
+            async () =>
+            {
+                var imported = await GameTypeApiV2.ImportAsync(package);
+                await LoadAsync();
+                return imported;
+            },
+            subtitle: "Importing GameType definition and revisions...",
+            errorTitle: "Import Failed");
+
+        if (result.Success && result.Data is not null)
         {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
-        }
-        catch (InvalidOperationException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Import failed", ex.Message);
+            Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(result.Data.Key)}");
         }
     }
 

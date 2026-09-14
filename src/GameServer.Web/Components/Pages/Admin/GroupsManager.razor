@@ -4,6 +4,7 @@
 @inject Services.V2.IGameServerV2ApiService ServerService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject IOperationDialogService OperationDialog
 @inject Services.IUserTimeZoneService TimeZoneService
 
 <PageTitle>Group Management - Game Server Manager</PageTitle>
@@ -182,15 +183,15 @@
 
         if (confirmed == true)
         {
-            var (success, error) = await AuthService.DeleteGroupAsync(group.Id);
-            if (success)
+            var res = await OperationDialog.ExecuteAsync("Deleting Group...", $"Deleting group '{group.Name}'", async () =>
             {
-                NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"Group '{group.Name}' deleted.");
+                var (success, error) = await AuthService.DeleteGroupAsync(group.Id);
+                return success ? OperationResult.Ok() : OperationResult.Fail(error ?? "Could not delete group.");
+            });
+
+            if (res.Success)
+            {
                 await LoadGroups();
-            }
-            else
-            {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", error ?? "Could not delete group.");
             }
         }
     }

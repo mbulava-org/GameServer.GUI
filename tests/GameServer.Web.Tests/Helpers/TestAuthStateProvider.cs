@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GameServer.Web.Models;
+using GameServer.Web.Services;
 using GameServer.Web.Services.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -47,6 +48,8 @@ public static class TestAuthExtensions
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider>(_ => new TestAuthStateProvider(username, role));
         services.AddSingleton<IAuthorizationService, AlwaysAuthorizedService>();
+        services.AddSingleton<Radzen.DialogService>();
+        services.AddScoped<IOperationDialogService, OperationDialogService>();
 
         var mockAuthApi = new Mock<IAuthApiService>();
         mockAuthApi

@@ -15,6 +15,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject Services.IUserTimeZoneService TimeZoneService
+@inject IOperationDialogService OperationDialog
 
 <PageTitle>@(isNew ? "Create Game Type V2" : gameType?.DisplayName ?? "Game Type V2")</PageTitle>
 
@@ -38,12 +39,11 @@
                               Icon="download"
                               ButtonStyle="ButtonStyle.Light"
                               Click="@ExportGameTypeAsync"
-                              Disabled="@(isSaving || isNew || gameType is null)" />
+                              Disabled="@(isNew || gameType is null)" />
                 <RadzenButton Text="Save"
                               Icon="save"
                               ButtonStyle="ButtonStyle.Primary"
-                              Click="@SavePageAsync"
-                              Disabled="@isSaving" />
+                              Click="@SavePageAsync" />
             </div>
         </div>
     </div>
@@ -169,7 +169,6 @@
                                                    @bind-ReadyLogPattern="revisionReadyLogPattern"
                                                    @bind-Notes="revisionNotes"
                                                    @bind-IsPublished="revisionIsPublished"
-                                                   IsSavingRevision="isSavingRevision"
                                                    CanSetCurrentRevision="@(editingRevisionId is not null && GetRevisionSaveValidationIssues().Count == 0)"
                                                    OnCreateNewDraft="@CreateNewRevisionDraft"
                                                    OnSetCurrentRevision="@SetCurrentRevisionAsync"
@@ -258,8 +257,6 @@
 
     private GameTypeDetail? gameType;
     private bool isLoading = true;
-    private bool isSaving;
-    private bool isSavingRevision;
     private bool isDetecting;
     private bool isNew => string.IsNullOrWhiteSpace(Key) && string.IsNullOrWhiteSpace(createdGameTypeKey);
     private static readonly JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -432,61 +429,47 @@
             return;
         }
 
-        try
-        {
-            isSaving = true;
-            var wasNewGameType = isNew;
-            var shouldSaveRevision = ShouldSaveRevisionWithPageSave();
-            var revisionSaved = false;
+        var wasNewGameType = isNew;
+        var shouldSaveRevision = ShouldSaveRevisionWithPageSave();
+        var revisionSaved = false;
 
-            var request = new SaveGameTypeRequest
+        var result = await OperationDialog.ExecuteAsync(
+            isNew ? "Creating Game Type..." : "Saving Game Type...",
+            async () =>
             {
-                Key = keyValue,
-                DisplayName = displayName,
-                Description = description,
-                Type = gameTypeType,
-                ThumbnailUrl = thumbnailUrl,
-                DocumentationUrl = documentationUrl,
-                IsActive = isActive
-            };
-
-            gameType = isNew
-                ? await GameTypeApiV2.CreateAsync(request)
-                : await GameTypeApiV2.UpdateAsync(keyValue, request);
-            createdGameTypeKey = gameType.Key;
-
-            PopulateForm(gameType);
-            if (!shouldSaveRevision)
-            {
-                selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
-                LoadRevisionDraft(CurrentRevision);
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Saved", "V2 GameType saved successfully.");
-            }
-            else
-            {
-                revisionSaved = await SaveRevisionInternalAsync(notifySuccess: false);
-                if (revisionSaved)
+                var request = new SaveGameTypeRequest
                 {
-                    NotificationService.NotifyTimed(NotificationSeverity.Success, "Saved", "V2 GameType and selected revision saved successfully.");
+                    Key = keyValue,
+                    DisplayName = displayName,
+                    Description = description,
+                    Type = gameTypeType,
+                    ThumbnailUrl = thumbnailUrl,
+                    DocumentationUrl = documentationUrl,
+                    IsActive = isActive
+                };
+
+                gameType = isNew
+                    ? await GameTypeApiV2.CreateAsync(request)
+                    : await GameTypeApiV2.UpdateAsync(keyValue, request);
+                createdGameTypeKey = gameType.Key;
+
+                PopulateForm(gameType);
+                if (!shouldSaveRevision)
+                {
+                    selectedRevisionId = gameType.CurrentRevisionId ?? gameType.Revisions.FirstOrDefault()?.Id;
+                    LoadRevisionDraft(CurrentRevision);
                 }
                 else
                 {
-                    NotificationService.NotifyTimed(NotificationSeverity.Warning, "Partially saved", "V2 GameType changes were saved, but the selected revision changes were not saved.");
+                    revisionSaved = await SaveRevisionInternalCoreAsync();
                 }
-            }
+            },
+            subtitle: isNew ? "Registering GameType definition..." : "Updating GameType details...",
+            errorTitle: "Save Failed");
 
-            if (wasNewGameType && (!shouldSaveRevision || revisionSaved))
-            {
-                Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
-            }
-        }
-        catch (HttpRequestException ex)
+        if (result.Success && wasNewGameType && (!shouldSaveRevision || revisionSaved) && gameType is not null)
         {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save failed", ex.Message);
-        }
-        finally
-        {
-            isSaving = false;
+            Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
         }
     }
 
@@ -526,135 +509,123 @@
 
     private async Task SaveRevisionAsync()
     {
-        await SaveRevisionInternalAsync(notifySuccess: true);
-    }
-
-    private async Task<bool> SaveRevisionInternalAsync(bool notifySuccess)
-    {
         if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
         {
             NotificationService.NotifyTimed(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
-            return false;
+            return;
         }
 
         var saveIssues = GetRevisionSaveValidationIssues();
         if (saveIssues.Count > 0)
         {
             NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation", saveIssues[0]);
-            return false;
+            return;
         }
 
-        try
-        {
-            isSavingRevision = true;
-
-            var request = new SaveGameTypeRevisionRequest
+        await OperationDialog.ExecuteAsync(
+            "Saving Revision...",
+            async () =>
             {
-                ImageReference = revisionImageReference,
-                VersionTag = revisionVersionTag,
-                ImageDigest = revisionImageDigest,
-                EnableTTY = revisionEnableTTY,
-                ReadyLogPattern = revisionReadyLogPattern,
-                Notes = revisionNotes,
-                IsPublished = revisionIsPublished,
-                UiExtensionsJson = SerializeUiExtensions(revisionUiExtensions),
-                Ports = revisionPorts.Select((port, index) => new GameTypePort
+                await SaveRevisionInternalCoreAsync();
+            },
+            subtitle: "Updating revision definition...",
+            errorTitle: "Save Revision Failed");
+    }
+
+    private async Task<bool> SaveRevisionInternalCoreAsync()
+    {
+        var request = new SaveGameTypeRevisionRequest
+        {
+            ImageReference = revisionImageReference,
+            VersionTag = revisionVersionTag,
+            ImageDigest = revisionImageDigest,
+            EnableTTY = revisionEnableTTY,
+            ReadyLogPattern = revisionReadyLogPattern,
+            Notes = revisionNotes,
+            IsPublished = revisionIsPublished,
+            UiExtensionsJson = SerializeUiExtensions(revisionUiExtensions),
+            Ports = revisionPorts.Select((port, index) => new GameTypePort
+            {
+                ContainerPort = port.ContainerPort,
+                Protocol = port.Protocol,
+                AdvertisedPort = port.AdvertisedPort,
+                Description = port.Description,
+                DisplayOrder = index
+            }).ToList(),
+            Volumes = revisionVolumes.Select((volume, index) => new GameTypeVolume
+            {
+                Source = volume.Source,
+                Description = volume.Description,
+                DisplayOrder = index,
+                Usage = volume.Usage,
+                MountType = volume.MountType,
+                ReadOnly = volume.ReadOnly,
+                OwnerUid = volume.OwnerUid,
+                OwnerGid = volume.OwnerGid,
+                OwnerUidVariable = volume.OwnerUidVariable,
+                OwnerGidVariable = volume.OwnerGidVariable,
+                Permissions = volume.Permissions,
+                EnsureNfsPathExists = volume.EnsureNfsPathExists,
+                Required = volume.Required
+            }).ToList(),
+            SettingDefinitions = revisionSettingDefinitions.Select((setting, index) => new GameTypeSettingDefinition
+            {
+                SettingKey = setting.SettingKey,
+                DefaultValue = setting.DefaultValue,
+                Description = setting.Description,
+                DisplayOrder = index,
+                Metadata = new GameTypeSettingMetadata
                 {
-                    ContainerPort = port.ContainerPort,
-                    Protocol = port.Protocol,
-                    AdvertisedPort = port.AdvertisedPort,
-                    Description = port.Description,
-                    DisplayOrder = index
-                }).ToList(),
-                Volumes = revisionVolumes.Select((volume, index) => new GameTypeVolume
-                {
-                    Source = volume.Source,
-                    Description = volume.Description,
-                    DisplayOrder = index,
-                    Usage = volume.Usage,
-                    MountType = volume.MountType,
-                    ReadOnly = volume.ReadOnly,
-                    OwnerUid = volume.OwnerUid,
-                    OwnerGid = volume.OwnerGid,
-                    OwnerUidVariable = volume.OwnerUidVariable,
-                    OwnerGidVariable = volume.OwnerGidVariable,
-                    Permissions = volume.Permissions,
-                    EnsureNfsPathExists = volume.EnsureNfsPathExists,
-                    Required = volume.Required
-                }).ToList(),
-                SettingDefinitions = revisionSettingDefinitions.Select((setting, index) => new GameTypeSettingDefinition
-                {
-                    SettingKey = setting.SettingKey,
-                    DefaultValue = setting.DefaultValue,
-                    Description = setting.Description,
-                    DisplayOrder = index,
-                    Metadata = new GameTypeSettingMetadata
+                    DataType = setting.Metadata.DataType,
+                    Category = setting.Metadata.Category,
+                    IsRequired = setting.Metadata.IsRequired,
+                    CannotBeEmpty = setting.Metadata.CannotBeEmpty,
+                    Placeholder = setting.Metadata.Placeholder,
+                    ValidationPattern = setting.Metadata.ValidationPattern,
+                    ValidationMessage = setting.Metadata.ValidationMessage,
+                    AutoAllocatePort = setting.Metadata.AutoAllocatePort,
+                    ValidateRelatedPortsAvailability = setting.Metadata.ValidateRelatedPortsAvailability,
+                    AllowedValuesJson = setting.Metadata.AllowedValuesJson,
+                    ValueMappingsJson = setting.Metadata.ValueMappingsJson,
+                    PortMappings = setting.Metadata.PortMappings.Select((mapping, mappingIndex) => new GameTypeSettingPortMapping
                     {
-                        DataType = setting.Metadata.DataType,
-                        Category = setting.Metadata.Category,
-                        IsRequired = setting.Metadata.IsRequired,
-                        CannotBeEmpty = setting.Metadata.CannotBeEmpty,
-                        Placeholder = setting.Metadata.Placeholder,
-                        ValidationPattern = setting.Metadata.ValidationPattern,
-                        ValidationMessage = setting.Metadata.ValidationMessage,
-                        AutoAllocatePort = setting.Metadata.AutoAllocatePort,
-                        ValidateRelatedPortsAvailability = setting.Metadata.ValidateRelatedPortsAvailability,
-                        AllowedValuesJson = setting.Metadata.AllowedValuesJson,
-                        ValueMappingsJson = setting.Metadata.ValueMappingsJson,
-                        PortMappings = setting.Metadata.PortMappings.Select((mapping, mappingIndex) => new GameTypeSettingPortMapping
-                        {
-                            MappingRole = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortMappingRole>(mapping.MappingRole, true, out var role)
-                                ? role.ToString()
-                                : GameServer.Web.Models.V2.GameTypeSettingPortMappingRole.Primary.ToString(),
-                            RelationType = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortRelationType>(mapping.RelationType, true, out var relationType)
-                                ? relationType.ToString()
-                                : GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
-                            TargetContainerPort = ResolveTargetContainerPort(setting, mapping).GetValueOrDefault(mapping.TargetContainerPort),
-                            TargetProtocol = mapping.TargetProtocol,
-                            CalculationValue = mapping.CalculationValue,
-                            IsRequired = mapping.IsRequired,
-                            DisplayOrder = mappingIndex
-                        }).ToList()
-                    }
-                }).ToList(),
-                WebHosts = revisionWebHosts.Select((host, index) => new GameTypeWebHost
-                {
-                    Name = host.Name,
-                    Description = host.Description,
-                    PathSegment = host.PathSegment,
-                    ContainerPort = host.ContainerPort,
-                    ContainerPortVariable = host.ContainerPortVariable,
-                    EnabledWhen = host.EnabledWhen,
-                    DisplayOrder = index
-                }).ToList()
-            };
-
-            var revision = editingRevisionId is null
-                ? await GameTypeApiV2.AddRevisionAsync(gameType.Key, request)
-                : await GameTypeApiV2.UpdateRevisionAsync(gameType.Key, editingRevisionId.Value, request);
-
-            if (editingRevisionId is null && gameType.CurrentRevisionId is null)
+                        MappingRole = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortMappingRole>(mapping.MappingRole, true, out var role)
+                            ? role.ToString()
+                            : GameServer.Web.Models.V2.GameTypeSettingPortMappingRole.Primary.ToString(),
+                        RelationType = Enum.TryParse<GameServer.Web.Models.V2.GameTypeSettingPortRelationType>(mapping.RelationType, true, out var relationType)
+                            ? relationType.ToString()
+                            : GameServer.Web.Models.V2.GameTypeSettingPortRelationType.Direct.ToString(),
+                        TargetContainerPort = ResolveTargetContainerPort(setting, mapping).GetValueOrDefault(mapping.TargetContainerPort),
+                        TargetProtocol = mapping.TargetProtocol,
+                        CalculationValue = mapping.CalculationValue,
+                        IsRequired = mapping.IsRequired,
+                        DisplayOrder = mappingIndex
+                    }).ToList()
+                }
+            }).ToList(),
+            WebHosts = revisionWebHosts.Select((host, index) => new GameTypeWebHost
             {
-                await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, revision.Id);
-            }
+                Name = host.Name,
+                Description = host.Description,
+                PathSegment = host.PathSegment,
+                ContainerPort = host.ContainerPort,
+                ContainerPortVariable = host.ContainerPortVariable,
+                EnabledWhen = host.EnabledWhen,
+                DisplayOrder = index
+            }).ToList()
+        };
 
-            await ReloadGameTypeAsync(gameType.Key, revision.Id);
-            if (notifySuccess)
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Revision saved", $"Revision '{revision.VersionTag}' saved successfully.");
-            }
+        var revision = editingRevisionId is null
+            ? await GameTypeApiV2.AddRevisionAsync(gameType!.Key, request)
+            : await GameTypeApiV2.UpdateRevisionAsync(gameType!.Key, editingRevisionId.Value, request);
 
-            return true;
-        }
-        catch (HttpRequestException ex)
+        if (editingRevisionId is null && gameType.CurrentRevisionId is null)
         {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save revision failed", ex.Message);
-            return false;
+            await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, revision.Id);
         }
-        finally
-        {
-            isSavingRevision = false;
-        }
+
+        await ReloadGameTypeAsync(gameType.Key, revision.Id);
+        return true;
     }
 
     private bool ShouldSaveRevisionWithPageSave()
@@ -675,16 +646,15 @@
             return;
         }
 
-        try
-        {
-            await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, editingRevisionId.Value);
-            await ReloadGameTypeAsync(gameType.Key, editingRevisionId.Value);
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Current revision updated", "The selected revision is now the active revision.");
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Set current failed", ex.Message);
-        }
+        await OperationDialog.ExecuteAsync(
+            "Setting Active Revision...",
+            async () =>
+            {
+                await GameTypeApiV2.SetCurrentRevisionAsync(gameType.Key, editingRevisionId.Value);
+                await ReloadGameTypeAsync(gameType.Key, editingRevisionId.Value);
+            },
+            subtitle: "Updating active revision for GameType...",
+            errorTitle: "Update Failed");
     }
 
     private async Task PublishRevisionAsync(bool setAsCurrentRevision)
@@ -694,21 +664,15 @@
             return;
         }
 
-        try
-        {
-            isSavingRevision = true;
-            var revision = await GameTypeApiV2.PublishRevisionAsync(gameType.Key, editingRevisionId.Value, setAsCurrentRevision);
-            await ReloadGameTypeAsync(gameType.Key, revision.Id);
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Revision published", $"Revision '{revision.VersionTag}' published successfully.");
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Publish failed", ex.Message);
-        }
-        finally
-        {
-            isSavingRevision = false;
-        }
+        await OperationDialog.ExecuteAsync(
+            "Publishing Revision...",
+            async () =>
+            {
+                var revision = await GameTypeApiV2.PublishRevisionAsync(gameType.Key, editingRevisionId.Value, setAsCurrentRevision);
+                await ReloadGameTypeAsync(gameType.Key, revision.Id);
+            },
+            subtitle: "Publishing GameType revision...",
+            errorTitle: "Publish Failed");
     }
 
     private async Task RunDetectionAsync()

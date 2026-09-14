@@ -1,0 +1,88 @@
+@using Radzen
+@using Radzen.Blazor
+@using GameServer.Web.Models
+@inject DialogService DialogService
+
+@if (!_hasError)
+{
+    <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1.25rem" class="py-4 px-3 text-center">
+        <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" ShowValue="false" />
+        <div>
+            <RadzenText TextStyle="TextStyle.H6" class="mb-1" Style="font-weight: 600;">@Title</RadzenText>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <RadzenText TextStyle="TextStyle.Body2" class="text-muted mb-0">@Subtitle</RadzenText>
+            }
+        </div>
+    </RadzenStack>
+}
+else
+{
+    <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1.25rem" class="py-3 px-3 text-center">
+        <RadzenIcon Icon="error" Style="font-size: 3.5rem; color: var(--rz-danger);" />
+        <div>
+            <RadzenText TextStyle="TextStyle.H6" class="mb-2 text-danger" Style="font-weight: 600;">
+                @(string.IsNullOrWhiteSpace(ErrorTitle) ? "Operation Failed" : ErrorTitle)
+            </RadzenText>
+            <RadzenText TextStyle="TextStyle.Body2" class="text-muted mb-0" Style="word-break: break-word; max-height: 200px; overflow-y: auto;">
+                @_errorMessage
+            </RadzenText>
+        </div>
+        <RadzenButton Text="OK" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" Click="@CloseWithError" Style="min-width: 100px;" />
+    </RadzenStack>
+}
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Processing...";
+
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    [Parameter]
+    public string? ErrorTitle { get; set; }
+
+    [Parameter]
+    public Func<Task<OperationResult>>? Operation { get; set; }
+
+    private bool _hasError;
+    private string _errorMessage = string.Empty;
+    private OperationResult? _result;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Operation is not null)
+        {
+            await RunOperationAsync();
+        }
+    }
+
+    private async Task RunOperationAsync()
+    {
+        try
+        {
+            _result = await Operation!();
+            if (_result != null && !_result.Success)
+            {
+                _hasError = true;
+                _errorMessage = _result.ErrorMessage ?? "An unknown error occurred.";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            DialogService.Close(_result ?? OperationResult.Ok());
+        }
+        catch (Exception ex)
+        {
+            _hasError = true;
+            _errorMessage = ex.Message;
+            _result = OperationResult.Fail(ex.Message, ex);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void CloseWithError()
+    {
+        DialogService.Close(_result ?? OperationResult.Fail(_errorMessage));
+    }
+}

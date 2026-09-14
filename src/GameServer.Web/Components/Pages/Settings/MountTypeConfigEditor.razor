@@ -6,6 +6,8 @@
 @using Radzen.Blazor
 @inject Services.V2.IMountTypeConfigApiService MountTypeConfigApi
 @inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject IOperationDialogService OperationDialog
 @inject NavigationManager Navigation
 
 <PageTitle>Volume Setup Configuration</PageTitle>
@@ -28,8 +30,7 @@
             <RadzenButton Text="Save Changes"
                           Icon="save"
                           ButtonStyle="ButtonStyle.Primary"
-                          Click="@SaveAsync"
-                          Disabled="@isSaving" />
+                          Click="@SaveAsync" />
         </div>
     </div>
 
@@ -181,7 +182,6 @@
 
 @code {
     private bool isLoading = true;
-    private bool isSaving;
     private List<MountTypeConfig> configs = [];
     private MountTypeConfig? selectedConfig;
     private List<OptionRow> optionRows = [];
@@ -287,49 +287,49 @@
             return;
         }
 
-        try
-        {
-            isSaving = true;
-            SyncOptionsToSelectedConfig();
-            var saved = await MountTypeConfigApi.SaveAsync(selectedConfig);
-            var index = configs.FindIndex(c => string.Equals(c.Key, saved.Key, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0)
+        await OperationDialog.ExecuteAsync(
+            "Saving Mount Type...",
+            async () =>
             {
-                configs[index] = saved;
-            }
-            else
-            {
-                configs.Add(saved);
-            }
+                SyncOptionsToSelectedConfig();
+                var saved = await MountTypeConfigApi.SaveAsync(selectedConfig);
+                var index = configs.FindIndex(c => string.Equals(c.Key, saved.Key, StringComparison.OrdinalIgnoreCase));
+                if (index >= 0)
+                {
+                    configs[index] = saved;
+                }
+                else
+                {
+                    configs.Add(saved);
+                }
 
-            selectedConfig = saved;
-            RefreshOptionRows();
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Configuration saved", $"Mount type '{saved.Key}' has been persisted.");
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save failed", ex.Message);
-        }
-        finally
-        {
-            isSaving = false;
-        }
+                selectedConfig = saved;
+                RefreshOptionRows();
+            },
+            subtitle: $"Persisting mount type '{selectedConfig.Key}'...",
+            errorTitle: "Save Failed");
     }
 
     private async Task DeleteAsync(MountTypeConfig config)
     {
-        try
-        {
-            await MountTypeConfigApi.DeleteAsync(config.Key);
-            configs.Remove(config);
-            selectedConfig = configs.FirstOrDefault();
-            RefreshOptionRows();
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "Configuration deleted", $"Mount type '{config.Key}' has been removed.");
-        }
-        catch (HttpRequestException ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete failed", ex.Message);
-        }
+        var confirmed = await DialogService.Confirm(
+            $"Are you sure you want to delete mount type '{config.DisplayName}'?",
+            "Delete Mount Type",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        await OperationDialog.ExecuteAsync(
+            "Deleting Mount Type...",
+            async () =>
+            {
+                await MountTypeConfigApi.DeleteAsync(config.Key);
+                configs.Remove(config);
+                selectedConfig = configs.FirstOrDefault();
+                RefreshOptionRows();
+            },
+            subtitle: $"Removing mount type '{config.Key}'...",
+            errorTitle: "Delete Failed");
     }
 
     private string ResolvePreviewPath(MountTypeConfig config, bool useLocal)

@@ -7,6 +7,7 @@
 @inject IBackupsApiService BackupsApi
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject IOperationDialogService OperationDialog
 @inject IJSRuntime JSRuntime
 @inject GameServer.Web.Services.IUserTimeZoneService TimeZoneService
 @implements IAsyncDisposable
@@ -85,12 +86,6 @@
                                   ButtonStyle="ButtonStyle.Primary"
                                   Size="ButtonSize.Small"
                                   Click="@ShowUploadDialogAsync"
-                                  Disabled="@(isLoading || string.IsNullOrEmpty(selectedVolumePath))" />
-                    <RadzenButton Icon="backup"
-                                  Text="Backup Volume"
-                                  ButtonStyle="ButtonStyle.Info"
-                                  Size="ButtonSize.Small"
-                                  Click="@(() => ShowBackupDialogAsync(null))"
                                   Disabled="@(isLoading || string.IsNullOrEmpty(selectedVolumePath))" />
                     <RadzenButton Icon="refresh"
                                   ButtonStyle="ButtonStyle.Light"
@@ -214,11 +209,6 @@
                                                       title="Edit file" />
                                     }
                                 }
-                                <RadzenButton Icon="backup"
-                                              ButtonStyle="ButtonStyle.Info"
-                                              Size="ButtonSize.ExtraSmall"
-                                              Click="@(() => ShowBackupDialogAsync(file))"
-                                              title="Backup this item" />
                                 <RadzenButton Icon="delete"
                                               ButtonStyle="ButtonStyle.Danger"
                                               Size="ButtonSize.ExtraSmall"
@@ -533,15 +523,14 @@
 
         if (confirmed == true)
         {
-            try
+            var res = await OperationDialog.ExecuteAsync(
+                "Deleting Item...",
+                $"Deleting '{file.Name}'",
+                () => FilesApi.DeleteAsync(ServerId, selectedVolumePath, file.Path, recursive: file.IsDirectory));
+
+            if (res.Success)
             {
-                await FilesApi.DeleteAsync(ServerId, selectedVolumePath, file.Path, recursive: file.IsDirectory);
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Deleted", $"{file.Name} was deleted.");
                 await LoadFilesAsync();
-            }
-            catch (Exception ex)
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Error, "Delete Failed", ex.Message);
             }
         }
     }
@@ -568,16 +557,15 @@
 
         if (result is true && !string.IsNullOrWhiteSpace(folderName))
         {
-            try
+            var targetPath = string.IsNullOrEmpty(currentSubPath) ? folderName : $"{currentSubPath}/{folderName}";
+            var res = await OperationDialog.ExecuteAsync(
+                "Creating Folder...",
+                $"Creating folder '{folderName}'",
+                () => FilesApi.CreateDirectoryAsync(ServerId, selectedVolumePath, targetPath));
+
+            if (res.Success)
             {
-                var targetPath = string.IsNullOrEmpty(currentSubPath) ? folderName : $"{currentSubPath}/{folderName}";
-                await FilesApi.CreateDirectoryAsync(ServerId, selectedVolumePath, targetPath);
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Created", $"Folder '{folderName}' created.");
                 await LoadFilesAsync();
-            }
-            catch (Exception ex)
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Error, "Create Failed", ex.Message);
             }
         }
     }
@@ -676,22 +664,15 @@
 
         if (confirmed is true)
         {
-            try
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Info, "Creating Backup", "Starting backup compression...");
-                var backup = await BackupsApi.CreateBackupAsync(ServerId, new CreateBackupRequest
+            await OperationDialog.ExecuteAsync(
+                "Creating Backup...",
+                $"Backing up {displayTarget}",
+                () => BackupsApi.CreateBackupAsync(ServerId, new CreateBackupRequest
                 {
                     VolumePath = selectedVolumePath,
                     SubPath = targetSubPath,
                     IsSharedWithGroups = isSharedWithGroups
-                });
-
-                NotificationService.NotifyTimed(NotificationSeverity.Success, "Backup Created", $"Created '{backup.FileName}' ({FormatFileSize(backup.FileSizeBytes)}).");
-            }
-            catch (Exception ex)
-            {
-                NotificationService.NotifyTimed(NotificationSeverity.Error, "Backup Failed", ex.Message);
-            }
+                }));
         }
     }
 

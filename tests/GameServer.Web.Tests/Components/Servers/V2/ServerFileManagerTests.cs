@@ -23,6 +23,7 @@ public class ServerFileManagerTests : BunitContext
 
         Services.AddSingleton<NotificationService>();
         Services.AddSingleton<DialogService>();
+        Services.AddScoped<IOperationDialogService, OperationDialogService>();
         Services.AddSingleton<IGameServerFilesApiService>(_filesApiMock.Object);
         Services.AddSingleton<IBackupsApiService>(_backupsApiMock.Object);
         Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();

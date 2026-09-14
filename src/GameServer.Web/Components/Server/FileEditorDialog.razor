@@ -4,6 +4,7 @@
 @inject IGameServerFilesApiService FilesApi
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject IOperationDialogService OperationDialog
 
 <div class="p-2 d-flex flex-column h-100">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,7 +14,7 @@
         </div>
         <div class="d-flex gap-2">
             <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton Text="Save" Icon="save" ButtonStyle="ButtonStyle.Primary" Click="@SaveFileAsync" Disabled="@isSaving" />
+            <RadzenButton Text="Save" Icon="save" ButtonStyle="ButtonStyle.Primary" Click="@SaveFileAsync" />
         </div>
     </div>
 
@@ -42,7 +43,6 @@
 
     private string fileContent = string.Empty;
     private bool isLoading = true;
-    private bool isSaving;
 
     protected override async Task OnInitializedAsync()
     {
@@ -69,20 +69,18 @@
 
     private async Task SaveFileAsync()
     {
-        try
+        var result = await OperationDialog.ExecuteAsync(
+            "Saving File...",
+            async () =>
+            {
+                await FilesApi.SaveContentAsync(ServerId, VolumePath, FilePath, fileContent);
+            },
+            subtitle: $"Saving '{FileName}'...",
+            errorTitle: "Save Failed");
+
+        if (result.Success)
         {
-            isSaving = true;
-            await FilesApi.SaveContentAsync(ServerId, VolumePath, FilePath, fileContent);
-            NotificationService.NotifyTimed(NotificationSeverity.Success, "File Saved", $"{FileName} was saved successfully.");
             DialogService.Close(true);
-        }
-        catch (Exception ex)
-        {
-            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save Failed", ex.Message);
-        }
-        finally
-        {
-            isSaving = false;
         }
     }
 }
