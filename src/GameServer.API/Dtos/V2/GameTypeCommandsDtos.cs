@@ -39,6 +39,14 @@ public sealed record SaveGameTypeRevisionRequestDto
     /// </summary>
     public string? UiExtensionsJson { get; init; }
 
+    /// <summary>
+    /// Raw JSON representation of CPU, memory reservations/limits, pids limits,
+    /// and placement constraints attached to this revision.
+    /// </summary>
+    public string? ResourcesJson { get; init; }
+
+    public GameTypeRevisionResourcesDto? Resources { get; init; }
+
     public List<GameTypePortDto> Ports { get; init; } = [];
 
     public List<GameTypeVolumeDto> Volumes { get; init; } = [];

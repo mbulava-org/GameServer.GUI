@@ -20,6 +20,27 @@
             <div>@SettingCount setting(s)</div>
             <div>@WebHostCount web host(s)</div>
             <div>@PortMappingCount primary direct / default related port mapping rule(s)</div>
+            @if (ResourcesDraft is not null && (ResourcesDraft.CpuLimitCores.HasValue || ResourcesDraft.CpuReservationCores.HasValue || ResourcesDraft.MemoryLimitValue.HasValue || ResourcesDraft.MemoryReservationValue.HasValue || ResourcesDraft.Constraints.Count > 0))
+            {
+                <hr class="my-2" />
+                <div class="fw-semibold small mb-1">Resources & Placement:</div>
+                @if (ResourcesDraft.CpuReservationCores.HasValue || ResourcesDraft.CpuLimitCores.HasValue)
+                {
+                    <div class="small"><strong>CPU:</strong> @(ResourcesDraft.CpuReservationCores.HasValue ? $"{ResourcesDraft.CpuReservationCores:0.##} res" : "no res") / @(ResourcesDraft.CpuLimitCores.HasValue ? $"{ResourcesDraft.CpuLimitCores:0.##} max" : "no max") (cores)</div>
+                }
+                @if (ResourcesDraft.MemoryReservationValue.HasValue || ResourcesDraft.MemoryLimitValue.HasValue)
+                {
+                    <div class="small"><strong>RAM:</strong> @(ResourcesDraft.MemoryReservationValue.HasValue ? $"{ResourcesDraft.MemoryReservationValue} {ResourcesDraft.MemoryReservationUnit} res" : "no res") / @(ResourcesDraft.MemoryLimitValue.HasValue ? $"{ResourcesDraft.MemoryLimitValue} {ResourcesDraft.MemoryLimitUnit} max" : "no max")</div>
+                }
+                @if (ResourcesDraft.PidsLimit.HasValue)
+                {
+                    <div class="small"><strong>PIDs Limit:</strong> @ResourcesDraft.PidsLimit</div>
+                }
+                @if (ResourcesDraft.Constraints.Count > 0)
+                {
+                    <div class="small"><strong>Constraints:</strong> @ResourcesDraft.Constraints.Count rule(s)</div>
+                }
+            }
             <div class="small text-muted mt-2">Primary mappings point directly at declared GameType ports. Related mappings store the default related port/protocol plus the offset or multiplier that derives it.</div>
         </RadzenCard>
     </div>
@@ -146,4 +167,7 @@
 
     [Parameter]
     public IReadOnlyList<string> DetailedDraftDifferences { get; set; } = [];
+
+    [Parameter]
+    public GameTypeRevisionResourcesDraft? ResourcesDraft { get; set; }
 }

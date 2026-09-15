@@ -216,6 +216,13 @@
                         </div>
                     </RadzenTabsItem>
 
+                    <RadzenTabsItem Text="Resources">
+                        <div class="p-4">
+                            <GameTypeRevisionResourcesEditor Resources="revisionResources"
+                                                             OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
                     <RadzenTabsItem Text="UI Extensions">
                         <div class="p-4">
                             <GameTypeRevisionUiExtensionsEditor Extensions="revisionUiExtensions"
@@ -226,20 +233,21 @@
                     <RadzenTabsItem Text="Review">
                         <div class="p-4">
                             <GameTypeRevisionReviewEditor RevisionImageReference="revisionImageReference"
-                                                         RevisionVersionTag="revisionVersionTag"
-                                                         RevisionEnableTTY="revisionEnableTTY"
-                                                         RevisionIsPublished="revisionIsPublished"
-                                                         PortCount="revisionPorts.Count"
-                                                         VolumeCount="revisionVolumes.Count"
-                                                         SettingCount="revisionSettingDefinitions.Count"
-                                                         WebHostCount="revisionWebHosts.Count"
-                                                         PortMappingCount="revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count)"
-                                                         DetectionResult="detectionResult"
-                                                         DetectionComparison="detectionComparison"
-                                                         ValidationIssues="Array.Empty<string>()"
-                                                         Warnings="@GetRevisionWarnings()"
-                                                         DraftDifferences="@GetDraftDifferences()"
-                                                         DetailedDraftDifferences="@GetDetailedDraftDifferences()" />
+                                                          RevisionVersionTag="revisionVersionTag"
+                                                          RevisionEnableTTY="revisionEnableTTY"
+                                                          RevisionIsPublished="revisionIsPublished"
+                                                          PortCount="revisionPorts.Count"
+                                                          VolumeCount="revisionVolumes.Count"
+                                                          SettingCount="revisionSettingDefinitions.Count"
+                                                          WebHostCount="revisionWebHosts.Count"
+                                                          PortMappingCount="revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count)"
+                                                          ResourcesDraft="@revisionResources"
+                                                          DetectionResult="detectionResult"
+                                                          DetectionComparison="detectionComparison"
+                                                          ValidationIssues="Array.Empty<string>()"
+                                                          Warnings="@GetRevisionWarnings()"
+                                                          DraftDifferences="@GetDraftDifferences()"
+                                                          DetailedDraftDifferences="@GetDetailedDraftDifferences()" />
                         </div>
                     </RadzenTabsItem>
                 </Tabs>
@@ -281,6 +289,7 @@
     private List<GameTypeRevisionSettingDraft> revisionSettingDefinitions = [];
     private List<GameTypeRevisionWebHostDraft> revisionWebHosts = [];
     private List<GameTypeRevisionUiExtensionDraft> revisionUiExtensions = [];
+    private GameTypeRevisionResourcesDraft revisionResources = new();
     private List<VolumeMountTypeOption> mountTypeOptions = [];
     private string detectionImageReference = string.Empty;
     private string detectionVersionTag = string.Empty;
@@ -612,7 +621,33 @@
                 ContainerPortVariable = host.ContainerPortVariable,
                 EnabledWhen = host.EnabledWhen,
                 DisplayOrder = index
-            }).ToList()
+            }).ToList(),
+            Resources = new GameTypeRevisionResources
+            {
+                CpuReservationCores = revisionResources.CpuReservationCores,
+                CpuLimitCores = revisionResources.CpuLimitCores,
+                MemoryReservationBytes = revisionResources.GetMemoryReservationBytes(),
+                MemoryLimitBytes = revisionResources.GetMemoryLimitBytes(),
+                MemoryReservationVariable = revisionResources.MemoryReservationVariable,
+                MemoryLimitVariable = revisionResources.MemoryLimitVariable,
+                PidsLimit = revisionResources.PidsLimit,
+                MaxReplicasPerNode = revisionResources.MaxReplicasPerNode,
+                Constraints = revisionResources.Constraints
+                    .Where(c => !string.IsNullOrWhiteSpace(c.GetComputedTarget()) && !string.IsNullOrWhiteSpace(c.Value))
+                    .Select(c => new PlacementConstraint
+                    {
+                        Target = c.GetComputedTarget(),
+                        Operator = c.Operator,
+                        Value = c.Value
+                    }).ToList(),
+                Preferences = revisionResources.Preferences
+                    .Where(p => !string.IsNullOrWhiteSpace(p.LabelKey))
+                    .Select(p => new PlacementPreference
+                    {
+                        Strategy = p.Strategy,
+                        Descriptor = p.LabelKey
+                    }).ToList()
+            }
         };
 
         var revision = editingRevisionId is null
@@ -1030,6 +1065,48 @@
                 Value = kvp.Value
             }).ToList() ?? []
         }).ToList() ?? [];
+
+        if (revision?.Resources is not null)
+        {
+            var res = revision.Resources;
+            var (resMemVal, resMemUnit) = res.MemoryReservationBytes.HasValue
+                ? GameTypeRevisionResourcesDraftRules.ConvertFromBytes(res.MemoryReservationBytes.Value)
+                : (default(decimal?), "MB");
+            var (limMemVal, limMemUnit) = res.MemoryLimitBytes.HasValue
+                ? GameTypeRevisionResourcesDraftRules.ConvertFromBytes(res.MemoryLimitBytes.Value)
+                : (default(decimal?), "MB");
+
+            revisionResources = new GameTypeRevisionResourcesDraft
+            {
+                CpuReservationCores = res.CpuReservationCores,
+                CpuLimitCores = res.CpuLimitCores,
+                MemoryReservationValue = resMemVal,
+                MemoryReservationUnit = resMemUnit,
+                MemoryReservationVariable = res.MemoryReservationVariable,
+                MemoryLimitValue = limMemVal,
+                MemoryLimitUnit = limMemUnit,
+                MemoryLimitVariable = res.MemoryLimitVariable,
+                PidsLimit = res.PidsLimit,
+                MaxReplicasPerNode = res.MaxReplicasPerNode,
+                Constraints = res.Constraints.Select(c => new PlacementConstraintDraft
+                {
+                    TargetType = GameTypeRevisionResourcesDraftRules.CommonConstraintTargets.Contains(c.Target) ? c.Target : "custom",
+                    CustomTarget = GameTypeRevisionResourcesDraftRules.CommonConstraintTargets.Contains(c.Target) ? string.Empty : c.Target,
+                    Operator = c.Operator,
+                    Value = c.Value
+                }).ToList(),
+                Preferences = res.Preferences.Select(p => new PlacementPreferenceDraft
+                {
+                    Strategy = p.Strategy,
+                    LabelKey = p.Descriptor
+                }).ToList()
+            };
+        }
+        else
+        {
+            revisionResources = new GameTypeRevisionResourcesDraft();
+        }
+
         detectionImageReference = string.IsNullOrWhiteSpace(revisionImageReference) ? detectionImageReference : revisionImageReference;
         detectionVersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? detectionVersionTag : revisionVersionTag;
         detectionComparison = null;
@@ -1088,7 +1165,14 @@
             || revisionPorts.Count > 0
             || revisionVolumes.Count > 0
             || revisionSettingDefinitions.Count > 0
-            || revisionWebHosts.Count > 0;
+            || revisionWebHosts.Count > 0
+            || revisionResources.CpuReservationCores.HasValue
+            || revisionResources.CpuLimitCores.HasValue
+            || revisionResources.MemoryReservationValue.HasValue
+            || revisionResources.MemoryLimitValue.HasValue
+            || revisionResources.PidsLimit.HasValue
+            || revisionResources.Constraints.Count > 0
+            || revisionResources.Preferences.Count > 0;
     }
 
     private static string InferDataType(string key, string? value)
@@ -1662,6 +1746,8 @@
         {
             issues.AddRange(GetWebHostValidationIssues(host, webHostPortVariables));
         }
+
+        issues.AddRange(GameTypeRevisionResourcesDraftRules.ValidateResources(revisionResources));
 
         return issues.Distinct(StringComparer.Ordinal).ToList();
     }

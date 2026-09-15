@@ -128,7 +128,9 @@ public sealed class GameServerSpecBuilder
                     },
                     Networks = networks
                         .Select(network => new NetworkAttachmentConfig { Target = network.Name })
-                        .ToList()
+                        .ToList(),
+                    Resources = BuildResources(revision),
+                    Placement = BuildPlacement(revision)
                 },
                 EndpointSpec = new EndpointSpec
                 {
@@ -503,5 +505,83 @@ public sealed class GameServerSpecBuilder
         }
 
         return mount;
+    }
+
+    private static ResourceRequirements? BuildResources(GameTypeRevision revision)
+    {
+        var resources = revision.Resources ?? GameTypeResourcesSerializer.ParseModel(revision.ResourcesJson);
+        if (resources is null)
+        {
+            return null;
+        }
+
+        SwarmLimit? limits = null;
+        if (resources.CpuLimitCores.HasValue || resources.MemoryLimitBytes.HasValue || resources.PidsLimit.HasValue)
+        {
+            limits = new SwarmLimit
+            {
+                NanoCPUs = resources.CpuLimitCores.HasValue ? (long)(resources.CpuLimitCores.Value * 1_000_000_000m) : 0,
+                MemoryBytes = resources.MemoryLimitBytes.GetValueOrDefault(),
+                Pids = resources.PidsLimit.GetValueOrDefault()
+            };
+        }
+
+        SwarmResources? reservations = null;
+        if (resources.CpuReservationCores.HasValue || resources.MemoryReservationBytes.HasValue)
+        {
+            reservations = new SwarmResources
+            {
+                NanoCPUs = resources.CpuReservationCores.HasValue ? (long)(resources.CpuReservationCores.Value * 1_000_000_000m) : 0,
+                MemoryBytes = resources.MemoryReservationBytes.GetValueOrDefault()
+            };
+        }
+
+        if (limits is null && reservations is null)
+        {
+            return null;
+        }
+
+        return new ResourceRequirements
+        {
+            Limits = limits,
+            Reservations = reservations
+        };
+    }
+
+    private static Placement? BuildPlacement(GameTypeRevision revision)
+    {
+        var resources = revision.Resources ?? GameTypeResourcesSerializer.ParseModel(revision.ResourcesJson);
+        if (resources is null)
+        {
+            return null;
+        }
+
+        var constraints = resources.Constraints
+            .Where(c => !string.IsNullOrWhiteSpace(c.Target) && !string.IsNullOrWhiteSpace(c.Value))
+            .Select(c => $"{c.Target} {c.Operator} {c.Value}".Trim())
+            .ToList();
+
+        var preferences = resources.Preferences
+            .Where(p => !string.IsNullOrWhiteSpace(p.Descriptor))
+            .Select(p => new Docker.DotNet.Models.PlacementPreference
+            {
+                Spread = new SpreadOver
+                {
+                    SpreadDescriptor = p.Descriptor
+                }
+            })
+            .ToList();
+
+        if (constraints.Count == 0 && preferences.Count == 0 && !resources.MaxReplicasPerNode.HasValue)
+        {
+            return null;
+        }
+
+        return new Placement
+        {
+            Constraints = constraints.Count > 0 ? constraints : null,
+            Preferences = preferences.Count > 0 ? preferences : null,
+            MaxReplicas = resources.MaxReplicasPerNode.GetValueOrDefault()
+        };
     }
 }

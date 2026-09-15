@@ -87,6 +87,17 @@ public sealed record GameTypeRevision
     /// </summary>
     public List<GameTypeUiExtensionDescriptor> UiExtensions { get; init; } = [];
 
+    /// <summary>
+    /// Raw JSON representation of CPU, memory reservations/limits, pids limits,
+    /// and placement constraints attached to this revision.
+    /// </summary>
+    public string? ResourcesJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="ResourcesJson"/> as parsed by the API.
+    /// </summary>
+    public GameTypeRevisionResources? Resources { get; init; }
+
     public List<GameTypePort> Ports { get; init; } = [];
 
     public List<GameTypeVolume> Volumes { get; init; } = [];
@@ -253,4 +264,43 @@ public sealed record SaveGameTypeRequest
     public string? DocumentationUrl { get; init; }
 
     public bool IsActive { get; init; } = true;
+}
+
+public sealed record GameTypeRevisionResources
+{
+    public decimal? CpuReservationCores { get; init; }
+
+    public decimal? CpuLimitCores { get; init; }
+
+    public long? MemoryReservationBytes { get; init; }
+
+    public long? MemoryLimitBytes { get; init; }
+
+    public string? MemoryReservationVariable { get; init; }
+
+    public string? MemoryLimitVariable { get; init; }
+
+    public long? PidsLimit { get; init; }
+
+    public ulong? MaxReplicasPerNode { get; init; }
+
+    public List<PlacementConstraint> Constraints { get; init; } = [];
+
+    public List<PlacementPreference> Preferences { get; init; } = [];
+}
+
+public sealed record PlacementConstraint
+{
+    public string Target { get; init; } = string.Empty;
+
+    public string Operator { get; init; } = "==";
+
+    public string Value { get; init; } = string.Empty;
+}
+
+public sealed record PlacementPreference
+{
+    public string Strategy { get; init; } = "spread";
+
+    public string Descriptor { get; init; } = string.Empty;
 }

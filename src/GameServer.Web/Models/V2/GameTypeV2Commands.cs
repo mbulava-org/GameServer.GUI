@@ -19,6 +19,11 @@ public sealed record SaveGameTypeRevisionRequest
     /// <summary>Raw JSON descriptor list for GUI-side extension tabs.</summary>
     public string? UiExtensionsJson { get; init; }
 
+    /// <summary>Raw JSON representation of CPU, memory reservations/limits, pids limits, and placement constraints.</summary>
+    public string? ResourcesJson { get; init; }
+
+    public GameTypeRevisionResources? Resources { get; init; }
+
     public List<GameTypePort> Ports { get; init; } = [];
 
     public List<GameTypeVolume> Volumes { get; init; } = [];
@@ -79,6 +84,9 @@ public sealed record PortableGameTypeRevision
 
     /// <summary>Raw JSON descriptor list for GUI-side extension tabs.</summary>
     public string? UiExtensionsJson { get; init; }
+
+    /// <summary>Raw JSON representation of CPU, memory reservations/limits, pids limits, and placement constraints.</summary>
+    public string? ResourcesJson { get; init; }
 
     public List<PortableGameTypePort> Ports { get; init; } = [];
 

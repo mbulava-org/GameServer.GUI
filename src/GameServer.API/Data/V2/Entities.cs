@@ -74,6 +74,12 @@ public class GameTypeRevisionEntity
     /// </summary>
     public string? UiExtensionsJson { get; set; }
 
+    /// <summary>
+    /// JSON-serialized GameTypeRevisionResources declaring CPU, memory reservations/limits,
+    /// pids limits, and placement constraints for servers running this revision.
+    /// </summary>
+    public string? ResourcesJson { get; set; }
+
     [ForeignKey(nameof(GameTypeId))]
     public virtual GameTypeEntity GameType { get; set; } = null!;
 

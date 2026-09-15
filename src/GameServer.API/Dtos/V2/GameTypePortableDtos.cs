@@ -49,6 +49,12 @@ public sealed record PortableGameTypeRevisionDto
     /// </summary>
     public string? UiExtensionsJson { get; init; }
 
+    /// <summary>
+    /// Raw JSON representation of CPU, memory reservations/limits, pids limits,
+    /// and placement constraints attached to this revision.
+    /// </summary>
+    public string? ResourcesJson { get; init; }
+
     public List<PortableGameTypePortDto> Ports { get; init; } = [];
 
     public List<PortableGameTypeVolumeDto> Volumes { get; init; } = [];

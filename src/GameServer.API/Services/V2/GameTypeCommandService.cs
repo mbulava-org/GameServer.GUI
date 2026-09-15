@@ -545,6 +545,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             Notes = request.Notes,
             IsPublished = request.IsPublished,
             UiExtensionsJson = request.UiExtensionsJson,
+            ResourcesJson = request.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(request.Resources),
+            Resources = request.Resources is not null ? GameTypeResourcesSerializer.MapToModel(request.Resources) : GameTypeResourcesSerializer.ParseModel(request.ResourcesJson),
             Ports = request.Ports.Select(x => new GameTypePort
             {
                 Id = x.Id,
@@ -653,6 +655,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             CreatedAt = revision.CreatedAt,
             UiExtensionsJson = revision.UiExtensionsJson,
             UiExtensions = GameTypeUiExtensionsSerializer.Parse(revision.UiExtensionsJson),
+            ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources),
+            Resources = revision.Resources is not null ? GameTypeResourcesSerializer.MapToDto(revision.Resources) : GameTypeResourcesSerializer.ParseDto(revision.ResourcesJson),
             Ports = revision.Ports.Select(x => new GameTypePortDto
             {
                 Id = x.Id,

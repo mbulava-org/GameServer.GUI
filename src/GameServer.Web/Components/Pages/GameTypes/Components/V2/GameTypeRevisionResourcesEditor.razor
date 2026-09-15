@@ -1,0 +1,477 @@
+@using System.Globalization
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="mb-1">Resources & Placement Constraints</h5>
+        <small class="text-muted">Configure CPU/Memory reservations and limits for Docker containers, along with Swarm node placement constraints and preferences.</small>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <RadzenDropDown TValue="ResourcePresetOption"
+                        Data="@GameTypeRevisionResourcesDraftRules.Presets"
+                        TextProperty="Name"
+                        Placeholder="Apply Preset Profile..."
+                        Change="@(args => ApplyPreset((ResourcePresetOption)args))"
+                        Style="width: 260px;" />
+        <RadzenButton Text="Clear"
+                      Icon="clear_all"
+                      ButtonStyle="ButtonStyle.Light"
+                      Size="ButtonSize.Small"
+                      Click="@ClearResources"
+                      title="Clear all resource limits and reservations" />
+    </div>
+</div>
+
+@if (ValidationIssues.Count > 0)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Shade="Shade.Light" class="mb-3" AllowClose="false">
+        <div class="fw-semibold mb-1">Resource & Placement Validation Issues</div>
+        <ul class="mb-0 ps-3">
+            @foreach (var issue in ValidationIssues)
+            {
+                <li>@issue</li>
+            }
+        </ul>
+    </RadzenAlert>
+}
+
+<div class="row g-3 mb-4">
+    <!-- CPU Limits & Reservations -->
+    <div class="col-lg-6">
+        <RadzenCard class="h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <RadzenIcon Icon="memory" Style="color: var(--rz-primary);" />
+                <h6 class="mb-0 fw-semibold">CPU Allocation</h6>
+            </div>
+            <p class="small text-muted mb-3">
+                <strong>Reservation</strong> guarantees minimum CPU cores on the scheduled node. <strong>Limit</strong> caps maximum CPU core consumption (throttled beyond this).
+            </p>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <RadzenFormField Text="CPU Reservation (Cores)" Variant="Variant.Outlined" class="w-100">
+                        <RadzenNumeric TValue="decimal?"
+                                       Value="@Resources.CpuReservationCores"
+                                       ValueChanged="@(val => { Resources.CpuReservationCores = val; NotifyChangedAsync(); })"
+                                       Min="0.1m"
+                                       Max="128m"
+                                       Step="0.25m"
+                                       Placeholder="e.g. 1.0"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">Guaranteed minimum cores.</small>
+                </div>
+                <div class="col-md-6">
+                    <RadzenFormField Text="CPU Limit (Cores)" Variant="Variant.Outlined" class="w-100">
+                        <RadzenNumeric TValue="decimal?"
+                                       Value="@Resources.CpuLimitCores"
+                                       ValueChanged="@(val => { Resources.CpuLimitCores = val; NotifyChangedAsync(); })"
+                                       Min="0.1m"
+                                       Max="128m"
+                                       Step="0.25m"
+                                       Placeholder="e.g. 2.0"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">Maximum hard cap.</small>
+                </div>
+            </div>
+
+            @if (Resources.CpuReservationCores.HasValue || Resources.CpuLimitCores.HasValue)
+            {
+                <div class="p-2 bg-light border rounded small">
+                    <div class="d-flex justify-content-between">
+                        <span>NanoCPUs Reservation:</span>
+                        <code>@(Resources.CpuReservationCores.HasValue ? $"{(long)(Resources.CpuReservationCores.Value * 1_000_000_000m):N0}" : "Unset")</code>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <span>NanoCPUs Limit:</span>
+                        <code>@(Resources.CpuLimitCores.HasValue ? $"{(long)(Resources.CpuLimitCores.Value * 1_000_000_000m):N0}" : "Unset")</code>
+                    </div>
+                </div>
+            }
+        </RadzenCard>
+    </div>
+
+    <!-- Memory Limits & Reservations -->
+    <div class="col-lg-6">
+        <RadzenCard class="h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <RadzenIcon Icon="storage" Style="color: var(--rz-primary);" />
+                <h6 class="mb-0 fw-semibold">Memory Allocation</h6>
+            </div>
+            <p class="small text-muted mb-3">
+                <strong>Reservation</strong> guarantees available memory before node placement. <strong>Limit</strong> is the hard memory ceiling (OOM-killed if exceeded).
+            </p>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <div class="d-flex gap-1">
+                        <RadzenFormField Text="Memory Reservation" Variant="Variant.Outlined" class="flex-grow-1">
+                            <RadzenNumeric TValue="decimal?"
+                                           Value="@Resources.MemoryReservationValue"
+                                           ValueChanged="@(val => { Resources.MemoryReservationValue = val; NotifyChangedAsync(); })"
+                                           Min="1m"
+                                           Step="128m"
+                                           Placeholder="e.g. 2048"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <RadzenFormField Text="Unit" Variant="Variant.Outlined" Style="width: 80px;">
+                            <RadzenDropDown TValue="string"
+                                            Value="@Resources.MemoryReservationUnit"
+                                            ValueChanged="@(val => { Resources.MemoryReservationUnit = val ?? "MB"; NotifyChangedAsync(); })"
+                                            Data="@GameTypeRevisionResourcesDraftRules.MemoryUnits"
+                                            class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <small class="text-muted d-block mt-1">Soft request threshold.</small>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex gap-1">
+                        <RadzenFormField Text="Memory Limit" Variant="Variant.Outlined" class="flex-grow-1">
+                            <RadzenNumeric TValue="decimal?"
+                                           Value="@Resources.MemoryLimitValue"
+                                           ValueChanged="@(val => { Resources.MemoryLimitValue = val; NotifyChangedAsync(); })"
+                                           Min="1m"
+                                           Step="128m"
+                                           Placeholder="e.g. 4096"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <RadzenFormField Text="Unit" Variant="Variant.Outlined" Style="width: 80px;">
+                            <RadzenDropDown TValue="string"
+                                            Value="@Resources.MemoryLimitUnit"
+                                            ValueChanged="@(val => { Resources.MemoryLimitUnit = val ?? "MB"; NotifyChangedAsync(); })"
+                                            Data="@GameTypeRevisionResourcesDraftRules.MemoryUnits"
+                                            class="w-100" />
+                        </RadzenFormField>
+                    </div>
+                    <small class="text-muted d-block mt-1">Hard cap (OOM limit).</small>
+                </div>
+            </div>
+
+            @if (Resources.GetMemoryReservationBytes().HasValue || Resources.GetMemoryLimitBytes().HasValue)
+            {
+                <div class="p-2 bg-light border rounded small">
+                    <div class="d-flex justify-content-between">
+                        <span>Reservation Bytes:</span>
+                        <code>@(Resources.GetMemoryReservationBytes().HasValue ? $"{Resources.GetMemoryReservationBytes()!.Value:N0} bytes" : "Unset")</code>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <span>Limit Bytes:</span>
+                        <code>@(Resources.GetMemoryLimitBytes().HasValue ? $"{Resources.GetMemoryLimitBytes()!.Value:N0} bytes" : "Unset")</code>
+                    </div>
+                </div>
+            }
+        </RadzenCard>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <!-- PIDs & Scheduling Limits -->
+    <div class="col-lg-6">
+        <RadzenCard class="h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <RadzenIcon Icon="tune" Style="color: var(--rz-primary);" />
+                <h6 class="mb-0 fw-semibold">Process & Scheduling Limits</h6>
+            </div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <RadzenFormField Text="PIDs Limit (Process Count)" Variant="Variant.Outlined" class="w-100">
+                        <RadzenNumeric TValue="long?"
+                                       Value="@Resources.PidsLimit"
+                                       ValueChanged="@(val => { Resources.PidsLimit = val; NotifyChangedAsync(); })"
+                                       Min="10"
+                                       Max="100000"
+                                       Placeholder="e.g. 500"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">Max concurrent processes/threads (prevents fork-bombs).</small>
+                </div>
+                <div class="col-md-6">
+                    <RadzenFormField Text="Max Replicas Per Node" Variant="Variant.Outlined" class="w-100">
+                        <RadzenNumeric TValue="ulong?"
+                                       Value="@Resources.MaxReplicasPerNode"
+                                       ValueChanged="@(val => { Resources.MaxReplicasPerNode = val; NotifyChangedAsync(); })"
+                                       Min="1"
+                                       Max="100"
+                                       Placeholder="e.g. 1"
+                                       class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">Caps container count per Swarm node (default unlimited).</small>
+                </div>
+            </div>
+        </RadzenCard>
+    </div>
+
+    <!-- Placement Preferences (Spread) -->
+    <div class="col-lg-6">
+        <RadzenCard class="h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <RadzenIcon Icon="scatter_plot" Style="color: var(--rz-primary);" />
+                    <h6 class="mb-0 fw-semibold">Placement Preferences (Spread)</h6>
+                </div>
+                <RadzenButton Icon="add"
+                              Text="Add Preference"
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@AddPreferenceDraft" />
+            </div>
+            <p class="small text-muted mb-2">Spread tasks evenly across nodes using node label descriptors (e.g. zone, datacenter).</p>
+
+            @if (!Resources.Preferences.Any())
+            {
+                <div class="text-muted small py-2">No placement spread preferences defined.</div>
+            }
+            else
+            {
+                @foreach (var pref in Resources.Preferences)
+                {
+                    <div class="d-flex align-items-center gap-2 mb-2 p-2 border rounded bg-light">
+                        <span class="small fw-semibold">spread:</span>
+                        <RadzenTextBox @bind-Value="pref.LabelKey"
+                                       @bind-Value:after="NotifyChangedAsync"
+                                       Placeholder="node.labels.zone"
+                                       class="flex-grow-1" />
+                        <RadzenButton Icon="delete"
+                                      ButtonStyle="ButtonStyle.Danger"
+                                      Size="ButtonSize.Small"
+                                      Variant="Variant.Outlined"
+                                      Click="@(() => RemovePreferenceDraft(pref))" />
+                    </div>
+                }
+            }
+        </RadzenCard>
+    </div>
+</div>
+
+<!-- Swarm Node Placement Constraints -->
+<RadzenCard class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <RadzenIcon Icon="hub" Style="color: var(--rz-primary);" />
+            <div>
+                <h6 class="mb-0 fw-semibold">Swarm Node Placement Constraints</h6>
+                <small class="text-muted">Define hard constraints to enforce which Docker Swarm nodes are eligible to host servers of this revision.</small>
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <RadzenButton Text="+ Worker Nodes Only"
+                          Icon="dns"
+                          Size="ButtonSize.Small"
+                          ButtonStyle="ButtonStyle.Light"
+                          Click="@AddWorkerConstraint" />
+            <RadzenButton Text="+ Manager Nodes Only"
+                          Icon="admin_panel_settings"
+                          Size="ButtonSize.Small"
+                          ButtonStyle="ButtonStyle.Light"
+                          Click="@AddManagerConstraint" />
+            <RadzenButton Text="Add Constraint"
+                          Icon="add"
+                          Size="ButtonSize.Small"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@AddConstraintDraft" />
+        </div>
+    </div>
+
+    @if (!Resources.Constraints.Any())
+    {
+        <div class="text-muted small py-3 text-center border rounded bg-light">
+            No placement constraints configured. The service can be scheduled on any active node in the Swarm cluster.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 250px;">Target Type</th>
+                        <th style="width: 120px;">Operator</th>
+                        <th>Value</th>
+                        <th style="width: 240px;">Expression Preview</th>
+                        <th style="width: 60px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var constraint in Resources.Constraints)
+                    {
+                        <tr>
+                            <td>
+                                <RadzenDropDown TValue="string"
+                                                Data="@GameTypeRevisionResourcesDraftRules.CommonConstraintTargets"
+                                                Value="@constraint.TargetType"
+                                                ValueChanged="@(val => { constraint.TargetType = val ?? "node.role"; NotifyChangedAsync(); })"
+                                                class="w-100" />
+                                @if (constraint.TargetType == "custom")
+                                {
+                                    <RadzenTextBox @bind-Value="constraint.CustomTarget"
+                                                   @bind-Value:after="NotifyChangedAsync"
+                                                   Placeholder="e.g. node.labels.region"
+                                                   class="w-100 mt-1" />
+                                }
+                            </td>
+                            <td>
+                                <RadzenDropDown TValue="string"
+                                                Data="@GameTypeRevisionResourcesDraftRules.ConstraintOperators"
+                                                Value="@constraint.Operator"
+                                                ValueChanged="@(val => { constraint.Operator = val ?? "=="; NotifyChangedAsync(); })"
+                                                class="w-100" />
+                            </td>
+                            <td>
+                                <RadzenTextBox @bind-Value="constraint.Value"
+                                               @bind-Value:after="NotifyChangedAsync"
+                                               Placeholder="e.g. worker, us-east-1, high-perf"
+                                               class="w-100" />
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(constraint.GetComputedExpression()))
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Primary"
+                                                 Text="@constraint.GetComputedExpression()"
+                                                 Variant="Variant.Outlined" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">Incomplete</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <RadzenButton Icon="delete"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Size="ButtonSize.Small"
+                                              Variant="Variant.Outlined"
+                                              Click="@(() => RemoveConstraintDraft(constraint))" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</RadzenCard>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameTypeRevisionResourcesDraft Resources { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
+    public IReadOnlyList<string> ValidationIssues => GameTypeRevisionResourcesDraftRules.ValidateResources(Resources);
+
+    private async Task NotifyChangedAsync()
+    {
+        await OnDraftChanged.InvokeAsync();
+    }
+
+    private async Task ApplyPreset(ResourcePresetOption preset)
+    {
+        if (preset is null)
+        {
+            return;
+        }
+
+        Resources.CpuReservationCores = preset.CpuReservation;
+        Resources.CpuLimitCores = preset.CpuLimit;
+        Resources.MemoryReservationValue = preset.MemoryReservationValue;
+        Resources.MemoryReservationUnit = preset.MemoryReservationUnit;
+        Resources.MemoryLimitValue = preset.MemoryLimitValue;
+        Resources.MemoryLimitUnit = preset.MemoryLimitUnit;
+        Resources.PidsLimit = preset.PidsLimit;
+
+        if (!string.IsNullOrWhiteSpace(preset.SuggestedConstraint))
+        {
+            var parts = preset.SuggestedConstraint.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 3)
+            {
+                var existing = Resources.Constraints.FirstOrDefault(c => c.GetComputedTarget() == parts[0]);
+                if (existing is null)
+                {
+                    Resources.Constraints.Add(new PlacementConstraintDraft
+                    {
+                        TargetType = parts[0],
+                        Operator = parts[1],
+                        Value = parts[2]
+                    });
+                }
+            }
+        }
+
+        await NotifyChangedAsync();
+    }
+
+    private async Task ClearResources()
+    {
+        Resources.CpuReservationCores = null;
+        Resources.CpuLimitCores = null;
+        Resources.MemoryReservationValue = null;
+        Resources.MemoryLimitValue = null;
+        Resources.PidsLimit = null;
+        Resources.MaxReplicasPerNode = null;
+        Resources.Constraints.Clear();
+        Resources.Preferences.Clear();
+        await NotifyChangedAsync();
+    }
+
+    private async Task AddConstraintDraft()
+    {
+        Resources.Constraints.Add(new PlacementConstraintDraft
+        {
+            TargetType = "node.role",
+            Operator = "==",
+            Value = "worker"
+        });
+        await NotifyChangedAsync();
+    }
+
+    private async Task AddWorkerConstraint()
+    {
+        if (!Resources.Constraints.Any(c => c.TargetType == "node.role" && c.Value == "worker" && c.Operator == "=="))
+        {
+            Resources.Constraints.Add(new PlacementConstraintDraft
+            {
+                TargetType = "node.role",
+                Operator = "==",
+                Value = "worker"
+            });
+            await NotifyChangedAsync();
+        }
+    }
+
+    private async Task AddManagerConstraint()
+    {
+        if (!Resources.Constraints.Any(c => c.TargetType == "node.role" && c.Value == "manager" && c.Operator == "=="))
+        {
+            Resources.Constraints.Add(new PlacementConstraintDraft
+            {
+                TargetType = "node.role",
+                Operator = "==",
+                Value = "manager"
+            });
+            await NotifyChangedAsync();
+        }
+    }
+
+    private async Task RemoveConstraintDraft(PlacementConstraintDraft constraint)
+    {
+        Resources.Constraints.Remove(constraint);
+        await NotifyChangedAsync();
+    }
+
+    private async Task AddPreferenceDraft()
+    {
+        Resources.Preferences.Add(new PlacementPreferenceDraft
+        {
+            Strategy = "spread",
+            LabelKey = "node.labels.zone"
+        });
+        await NotifyChangedAsync();
+    }
+
+    private async Task RemovePreferenceDraft(PlacementPreferenceDraft preference)
+    {
+        Resources.Preferences.Remove(preference);
+        await NotifyChangedAsync();
+    }
+}

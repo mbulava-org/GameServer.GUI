@@ -293,3 +293,314 @@ public sealed class GameTypeRevisionUiExtensionParameterDraft
 
     public string Value { get; set; } = string.Empty;
 }
+
+public sealed class GameTypeRevisionResourcesDraft
+{
+    public decimal? CpuReservationCores { get; set; }
+
+    public decimal? CpuLimitCores { get; set; }
+
+    public decimal? MemoryReservationValue { get; set; }
+
+    public string MemoryReservationUnit { get; set; } = "MB";
+
+    public string? MemoryReservationVariable { get; set; }
+
+    public decimal? MemoryLimitValue { get; set; }
+
+    public string MemoryLimitUnit { get; set; } = "MB";
+
+    public string? MemoryLimitVariable { get; set; }
+
+    public long? PidsLimit { get; set; }
+
+    public ulong? MaxReplicasPerNode { get; set; }
+
+    public List<PlacementConstraintDraft> Constraints { get; set; } = [];
+
+    public List<PlacementPreferenceDraft> Preferences { get; set; } = [];
+
+    public long? GetMemoryReservationBytes() => GameTypeRevisionResourcesDraftRules.ConvertToBytes(MemoryReservationValue, MemoryReservationUnit);
+
+    public long? GetMemoryLimitBytes() => GameTypeRevisionResourcesDraftRules.ConvertToBytes(MemoryLimitValue, MemoryLimitUnit);
+
+    public GameTypeRevisionResourcesDraft Clone()
+    {
+        return new GameTypeRevisionResourcesDraft
+        {
+            CpuReservationCores = CpuReservationCores,
+            CpuLimitCores = CpuLimitCores,
+            MemoryReservationValue = MemoryReservationValue,
+            MemoryReservationUnit = MemoryReservationUnit,
+            MemoryReservationVariable = MemoryReservationVariable,
+            MemoryLimitValue = MemoryLimitValue,
+            MemoryLimitUnit = MemoryLimitUnit,
+            MemoryLimitVariable = MemoryLimitVariable,
+            PidsLimit = PidsLimit,
+            MaxReplicasPerNode = MaxReplicasPerNode,
+            Constraints = Constraints.Select(c => c.Clone()).ToList(),
+            Preferences = Preferences.Select(p => p.Clone()).ToList()
+        };
+    }
+}
+
+public sealed class PlacementConstraintDraft
+{
+    public string TargetType { get; set; } = "node.role";
+
+    public string CustomTarget { get; set; } = string.Empty;
+
+    public string Operator { get; set; } = "==";
+
+    public string Value { get; set; } = "worker";
+
+    public string GetComputedTarget()
+    {
+        return TargetType switch
+        {
+            "custom" => CustomTarget.Trim(),
+            _ => TargetType
+        };
+    }
+
+    public string GetComputedExpression()
+    {
+        var target = GetComputedTarget();
+        if (string.IsNullOrWhiteSpace(target) && string.IsNullOrWhiteSpace(Value))
+        {
+            return string.Empty;
+        }
+
+        return $"{target} {Operator} {Value}".Trim();
+    }
+
+    public PlacementConstraintDraft Clone()
+    {
+        return new PlacementConstraintDraft
+        {
+            TargetType = TargetType,
+            CustomTarget = CustomTarget,
+            Operator = Operator,
+            Value = Value
+        };
+    }
+}
+
+public sealed class PlacementPreferenceDraft
+{
+    public string Strategy { get; set; } = "spread";
+
+    public string LabelKey { get; set; } = "node.labels.zone";
+
+    public PlacementPreferenceDraft Clone()
+    {
+        return new PlacementPreferenceDraft
+        {
+            Strategy = Strategy,
+            LabelKey = LabelKey
+        };
+    }
+}
+
+public sealed class ResourcePresetOption
+{
+    public string Name { get; init; } = string.Empty;
+
+    public string Description { get; init; } = string.Empty;
+
+    public string Icon { get; init; } = "memory";
+
+    public decimal? CpuReservation { get; init; }
+
+    public decimal? CpuLimit { get; init; }
+
+    public decimal? MemoryReservationValue { get; init; }
+
+    public string MemoryReservationUnit { get; init; } = "MB";
+
+    public decimal? MemoryLimitValue { get; init; }
+
+    public string MemoryLimitUnit { get; init; } = "MB";
+
+    public long? PidsLimit { get; init; }
+
+    public string? SuggestedConstraint { get; init; }
+}
+
+public static class GameTypeRevisionResourcesDraftRules
+{
+    public static readonly IReadOnlyList<string> MemoryUnits = ["MB", "GB"];
+
+    public static readonly IReadOnlyList<string> ConstraintOperators = ["==", "!="];
+
+    public static readonly IReadOnlyList<string> CommonConstraintTargets =
+    [
+        "node.role",
+        "node.hostname",
+        "node.id",
+        "node.labels.environment",
+        "node.labels.zone",
+        "node.labels.datacenter",
+        "node.labels.hardware",
+        "engine.labels.operatingsystem",
+        "custom"
+    ];
+
+    public static readonly IReadOnlyList<ResourcePresetOption> Presets =
+    [
+        new()
+        {
+            Name = "Light (1 Core, 2 GB)",
+            Description = "Basic lightweight server (e.g. Terraria, small Minecraft)",
+            Icon = "eco",
+            CpuReservation = 0.5m,
+            CpuLimit = 1.0m,
+            MemoryReservationValue = 1024,
+            MemoryReservationUnit = "MB",
+            MemoryLimitValue = 2048,
+            MemoryLimitUnit = "MB",
+            PidsLimit = 200
+        },
+        new()
+        {
+            Name = "Standard (2 Cores, 4 GB)",
+            Description = "Standard multiplayer game server (e.g. Valheim, 7 Days to Die)",
+            Icon = "sports_esports",
+            CpuReservation = 1.0m,
+            CpuLimit = 2.0m,
+            MemoryReservationValue = 2048,
+            MemoryReservationUnit = "MB",
+            MemoryLimitValue = 4096,
+            MemoryLimitUnit = "MB",
+            PidsLimit = 500
+        },
+        new()
+        {
+            Name = "High Performance (4 Cores, 8 GB)",
+            Description = "Demanding game server (e.g. Palworld, Ark, heavy modpacks)",
+            Icon = "bolt",
+            CpuReservation = 2.0m,
+            CpuLimit = 4.0m,
+            MemoryReservationValue = 4096,
+            MemoryReservationUnit = "MB",
+            MemoryLimitValue = 8192,
+            MemoryLimitUnit = "MB",
+            PidsLimit = 1000
+        },
+        new()
+        {
+            Name = "Dedicated Node (8 Cores, 16 GB)",
+            Description = "Full node dedicated instance with worker node constraint",
+            Icon = "dns",
+            CpuReservation = 4.0m,
+            CpuLimit = 8.0m,
+            MemoryReservationValue = 8192,
+            MemoryReservationUnit = "MB",
+            MemoryLimitValue = 16384,
+            MemoryLimitUnit = "MB",
+            PidsLimit = 2000,
+            SuggestedConstraint = "node.role == worker"
+        }
+    ];
+
+    public static long? ConvertToBytes(decimal? value, string unit)
+    {
+        if (value is null or <= 0)
+        {
+            return null;
+        }
+
+        const long oneMb = 1024L * 1024L;
+        const long oneGb = 1024L * 1024L * 1024L;
+
+        return string.Equals(unit, "GB", StringComparison.OrdinalIgnoreCase)
+            ? (long)Math.Round(value.Value * oneGb)
+            : (long)Math.Round(value.Value * oneMb);
+    }
+
+    public static (decimal Value, string Unit) ConvertFromBytes(long bytes)
+    {
+        const long oneGb = 1024L * 1024L * 1024L;
+        const long oneMb = 1024L * 1024L;
+
+        if (bytes >= oneGb && bytes % oneGb == 0)
+        {
+            return (bytes / (decimal)oneGb, "GB");
+        }
+
+        return (bytes / (decimal)oneMb, "MB");
+    }
+
+    public static List<string> ValidateResources(GameTypeRevisionResourcesDraft? draft)
+    {
+        var issues = new List<string>();
+        if (draft is null)
+        {
+            return issues;
+        }
+
+        if (draft.CpuReservationCores is < 0)
+        {
+            issues.Add("CPU reservation cannot be negative.");
+        }
+
+        if (draft.CpuLimitCores is < 0)
+        {
+            issues.Add("CPU limit cannot be negative.");
+        }
+
+        if (draft.CpuReservationCores.HasValue && draft.CpuLimitCores.HasValue
+            && draft.CpuReservationCores.Value > draft.CpuLimitCores.Value)
+        {
+            issues.Add($"CPU reservation ({draft.CpuReservationCores.Value:0.##} cores) cannot exceed CPU limit ({draft.CpuLimitCores.Value:0.##} cores).");
+        }
+
+        var memoryReservationBytes = draft.GetMemoryReservationBytes();
+        var memoryLimitBytes = draft.GetMemoryLimitBytes();
+
+        if (draft.MemoryReservationValue is < 0)
+        {
+            issues.Add("Memory reservation cannot be negative.");
+        }
+
+        if (draft.MemoryLimitValue is < 0)
+        {
+            issues.Add("Memory limit cannot be negative.");
+        }
+
+        if (memoryReservationBytes.HasValue && memoryLimitBytes.HasValue
+            && memoryReservationBytes.Value > memoryLimitBytes.Value)
+        {
+            issues.Add($"Memory reservation ({draft.MemoryReservationValue} {draft.MemoryReservationUnit}) cannot exceed Memory limit ({draft.MemoryLimitValue} {draft.MemoryLimitUnit}).");
+        }
+
+        if (draft.PidsLimit is < 0)
+        {
+            issues.Add("PIDs limit cannot be negative.");
+        }
+
+        foreach (var (constraint, index) in draft.Constraints.Select((c, i) => (c, i + 1)))
+        {
+            var target = constraint.GetComputedTarget();
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                issues.Add($"Constraint #{index}: Target is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(constraint.Value))
+            {
+                issues.Add($"Constraint #{index}: Value is required.");
+            }
+        }
+
+        foreach (var (pref, index) in draft.Preferences.Select((p, i) => (p, i + 1)))
+        {
+            if (string.IsNullOrWhiteSpace(pref.LabelKey))
+            {
+                issues.Add($"Placement preference #{index}: Label key is required.");
+            }
+        }
+
+        return issues;
+    }
+}

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GameServer.API.Models.V2;
+using GameServer.API.Services.V2;
 using Microsoft.EntityFrameworkCore;
 using DataV2 = GameServer.API.Data.V2;
 
@@ -281,6 +282,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
         entity.Notes = revision.Notes;
         entity.IsPublished = revision.IsPublished;
         entity.UiExtensionsJson = revision.UiExtensionsJson;
+        entity.ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources);
 
         context.GameTypePorts.RemoveRange(entity.Ports);
         context.GameTypeVolumes.RemoveRange(entity.Volumes);
@@ -507,6 +509,8 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             IsPublished = entity.IsPublished,
             CreatedAt = entity.CreatedAt,
             UiExtensionsJson = entity.UiExtensionsJson,
+            ResourcesJson = entity.ResourcesJson,
+            Resources = GameTypeResourcesSerializer.ParseModel(entity.ResourcesJson),
             GameType = gameType,
             Ports = entity.Ports.OrderBy(x => x.DisplayOrder).Select(x => new GameTypePort
             {
@@ -594,6 +598,7 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
             Notes = model.Notes,
             IsPublished = model.IsPublished,
             UiExtensionsJson = model.UiExtensionsJson,
+            ResourcesJson = model.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(model.Resources),
             CreatedAt = model.CreatedAt == default ? DateTime.UtcNow : model.CreatedAt,
             Ports = model.Ports.Select(x => new DataV2.GameTypePortEntity
             {

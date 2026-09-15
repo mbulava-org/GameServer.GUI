@@ -97,6 +97,56 @@ public sealed record GameTypeRevisionDto
     /// a convenience for callers. May be empty if the JSON is null or malformed.
     /// </summary>
     public List<GameTypeUiExtensionDescriptorDto> UiExtensions { get; init; } = [];
+
+    /// <summary>
+    /// Raw JSON representation of CPU, memory reservations/limits, pids limits,
+    /// and placement constraints attached to this revision.
+    /// </summary>
+    public string? ResourcesJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="ResourcesJson"/> parsed server-side.
+    /// </summary>
+    public GameTypeRevisionResourcesDto? Resources { get; init; }
+}
+
+public sealed record GameTypeRevisionResourcesDto
+{
+    public decimal? CpuReservationCores { get; init; }
+
+    public decimal? CpuLimitCores { get; init; }
+
+    public long? MemoryReservationBytes { get; init; }
+
+    public long? MemoryLimitBytes { get; init; }
+
+    public string? MemoryReservationVariable { get; init; }
+
+    public string? MemoryLimitVariable { get; init; }
+
+    public long? PidsLimit { get; init; }
+
+    public ulong? MaxReplicasPerNode { get; init; }
+
+    public List<PlacementConstraintDto> Constraints { get; init; } = [];
+
+    public List<PlacementPreferenceDto> Preferences { get; init; } = [];
+}
+
+public sealed record PlacementConstraintDto
+{
+    public string Target { get; init; } = string.Empty;
+
+    public string Operator { get; init; } = "==";
+
+    public string Value { get; init; } = string.Empty;
+}
+
+public sealed record PlacementPreferenceDto
+{
+    public string Strategy { get; init; } = "spread";
+
+    public string Descriptor { get; init; } = string.Empty;
 }
 
 public sealed record GameTypeUiExtensionDescriptorDto
