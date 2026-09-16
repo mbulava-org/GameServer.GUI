@@ -68,6 +68,8 @@ public sealed class GameServerEditorV2Tests : BunitContext
         SetupAvailability(isAvailable: true);
 
         Services.AddSingleton<NotificationService>();
+        Services.AddSingleton<DialogService>();
+        Services.AddScoped<IOperationDialogService, OperationDialogService>();
         Services.AddSingleton<IThumbnailCacheService>(new PassthroughThumbnailCacheService());
         Services.AddSingleton<IGameServerV2ApiService>(gameServerApi.Object);
         Services.AddSingleton<IGameTypeV2ApiService>(gameTypeApi.Object);

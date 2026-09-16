@@ -40,6 +40,21 @@ public sealed class AlwaysAuthorizedService : IAuthorizationService
     }
 }
 
+public sealed class TestDialogService : Radzen.DialogService
+{
+    public TestDialogService(
+        Microsoft.AspNetCore.Components.NavigationManager uriHelper,
+        Microsoft.JSInterop.IJSRuntime jsRuntime)
+        : base(uriHelper, jsRuntime)
+    {
+    }
+
+    public override Task<bool?> Confirm(string message = "", string title = "Confirm", Radzen.ConfirmOptions? options = null, CancellationToken? cancellationToken = null)
+    {
+        return Task.FromResult<bool?>(true);
+    }
+}
+
 public static class TestAuthExtensions
 {
     public static IServiceCollection AddTestAuthServices(this IServiceCollection services, string username = "admin", string role = "Admin")
@@ -48,7 +63,7 @@ public static class TestAuthExtensions
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider>(_ => new TestAuthStateProvider(username, role));
         services.AddSingleton<IAuthorizationService, AlwaysAuthorizedService>();
-        services.AddSingleton<Radzen.DialogService>();
+        services.AddScoped<Radzen.DialogService, TestDialogService>();
         services.AddScoped<IOperationDialogService, OperationDialogService>();
 
         var mockAuthApi = new Mock<IAuthApiService>();

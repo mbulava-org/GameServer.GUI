@@ -90,6 +90,18 @@ namespace GameServer.Web.Services
         {
             ArgumentNullException.ThrowIfNull(operation);
 
+            if (!HasDialogListeners())
+            {
+                try
+                {
+                    return await operation().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    return OperationResult.Fail(ex.Message, ex);
+                }
+            }
+
             OperationResult? finalResult = null;
 
             var dialogParams = new Dictionary<string, object?>
@@ -156,6 +168,18 @@ namespace GameServer.Web.Services
         {
             ArgumentNullException.ThrowIfNull(operation);
 
+            if (!HasDialogListeners())
+            {
+                try
+                {
+                    return await operation().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    return OperationResult<T>.Fail(ex.Message, ex);
+                }
+            }
+
             OperationResult<T>? finalResult = null;
 
             var dialogParams = new Dictionary<string, object?>
@@ -203,6 +227,27 @@ namespace GameServer.Web.Services
             }
 
             return finalResult ?? OperationResult<T>.Fail("Dialog closed without a result.");
+        }
+
+        private bool HasDialogListeners()
+        {
+            try
+            {
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+                foreach (var field in typeof(DialogService).GetFields(flags))
+                {
+                    if (field.Name.Contains("OnOpen", StringComparison.OrdinalIgnoreCase) &&
+                        field.GetValue(_dialogService) is Delegate del)
+                    {
+                        return del.GetInvocationList().Length > 0;
+                    }
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }
