@@ -224,8 +224,13 @@
                                                     Data="@mountTypeOptions"
                                                     TextProperty="DisplayName"
                                                     ValueProperty="Key"
-                                                    class="w-100" />
+                                                    class="w-100"
+                                                    Disabled="@IsMountTypeSelectionLocked(volume)" />
                                 </RadzenFormField>
+                                @if (IsMountTypeSelectionLocked(volume))
+                                {
+                                    <div class="small text-muted">Mount type is locked because this GameType volume already has default mount configuration.</div>
+                                }
                             </div>
                         }
                     }
@@ -1529,8 +1534,32 @@
         return volumeMountTypeSelections.TryGetValue(volume.Id, out var selected) ? selected : volume.MountType;
     }
 
+    private bool IsMountTypeSelectionLocked(GameTypeVolume volume)
+    {
+        if (isEditMode || string.IsNullOrWhiteSpace(volume.MountType))
+        {
+            return false;
+        }
+
+        var config = mountTypeOptions.FirstOrDefault(candidate =>
+            string.Equals(candidate.Key, volume.MountType, StringComparison.OrdinalIgnoreCase));
+        if (config is null)
+        {
+            return false;
+        }
+
+        var hasDefaultConfiguration = !string.IsNullOrWhiteSpace(config.VolumeNameFormat);
+        var hasOptionsConfiguration = config.Options is { Count: > 0 };
+        return hasDefaultConfiguration || hasOptionsConfiguration;
+    }
+
     private void SetVolumeMountType(GameTypeVolume volume, string? value)
     {
+        if (IsMountTypeSelectionLocked(volume))
+        {
+            return;
+        }
+
         volumeMountTypeSelections[volume.Id] = value ?? volume.MountType;
         TriggerLiveValidation();
     }
