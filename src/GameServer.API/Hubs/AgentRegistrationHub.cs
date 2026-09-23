@@ -12,14 +12,31 @@ namespace GameServer.API.Hubs
     public class AgentRegistrationHub : Hub
     {
         private readonly IAgentRegistry _agentRegistry;
+        private readonly IAgentDistributedConfigurationService _agentDistributedConfigurationService;
         private readonly ILogger<AgentRegistrationHub> _logger;
 
         public AgentRegistrationHub(
             IAgentRegistry agentRegistry,
+            IAgentDistributedConfigurationService agentDistributedConfigurationService,
             ILogger<AgentRegistrationHub> logger)
         {
             _agentRegistry = agentRegistry;
+            _agentDistributedConfigurationService = agentDistributedConfigurationService;
             _logger = logger;
+        }
+
+        public Task<Dictionary<string, string?>> GetDistributedConfiguration()
+        {
+            var snapshot = new Dictionary<string, string?>(
+                _agentDistributedConfigurationService.GetConfigurationSnapshot(),
+                StringComparer.OrdinalIgnoreCase);
+
+            _logger.LogDebug(
+                "Providing {Count} distributed configuration value(s) to agent connection {ConnectionId}",
+                snapshot.Count,
+                Context.ConnectionId);
+
+            return Task.FromResult(snapshot);
         }
 
         /// <summary>

@@ -11,6 +11,9 @@ var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVers
 
 var builder = WebApplication.CreateBuilder(args);
 
+var runtimeConfigurationSource = new AgentRuntimeConfigurationSource();
+((IConfigurationBuilder)builder.Configuration).Add(runtimeConfigurationSource);
+
 // Configure Serilog with environment-based log level
 var logLevelEnv = Environment.GetEnvironmentVariable("LOG_LEVEL") ?? "Information";
 var logLevel = Enum.TryParse<Serilog.Events.LogEventLevel>(logLevelEnv, true, out var parsedLevel) 
@@ -74,9 +77,11 @@ builder.Services.AddSingleton<IDockerClient>(sp =>
 
 // Configure Agent Registration options
 builder.Services.Configure<AgentRegistrationOptions>(builder.Configuration.GetSection("AgentRegistration"));
+builder.Services.AddSingleton(runtimeConfigurationSource.Provider);
 
 // Register services
 builder.Services.AddSingleton<IContainerService, ContainerService>();
+builder.Services.AddSingleton<AgentDistributedConfigurationApplier>();
 
 // Register Agent Registration background service (new architecture)
 // This service connects to the Primary Service and pushes agent state
