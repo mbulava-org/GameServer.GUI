@@ -8,6 +8,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       NodeAgentOptions__EnableBackgroundDiscovery: "false"
       ConnectionStrings__GameServerV2Db: Data Source=/data/gameserver-v2.db
+      V2Database__Provider: Sqlite
+      V2Database__ConnectionStringName: GameServerV2Db
       PortAllocation__StartPort: "25565"
       PortAllocation__EndPort: "35565"
     volumes:
@@ -24,7 +26,7 @@ services:
       - "5102:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      GameServerApiUrl: http://gameserver-api:8080
+      GameServerDockerApi__BaseUri: http://gameserver-api:8080/
     networks:
       - gameserver-network
 

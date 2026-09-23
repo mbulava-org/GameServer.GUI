@@ -111,12 +111,22 @@ public class GameServerResourceUtilizationRepository(
             query = query.Where(r => r.Timestamp <= toUtc.Value);
         }
 
-        var records = await query
-            .OrderBy(r => r.Timestamp)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var rawSampleCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+        if (rawSampleCount == 0)
+        {
+            return new GameServerCalculatedResourceHistoryResult
+            {
+                ServerId = serverId,
+                MaxDataPoints = maxDataPoints,
+                Calculation = calculation,
+                RawSampleCount = rawSampleCount,
+                Points = []
+            };
+        }
 
-        if (records.Count == 0)
+        var first = await query.MinAsync(r => (DateTime?)r.Timestamp, cancellationToken).ConfigureAwait(false);
+        var last = await query.MaxAsync(r => (DateTime?)r.Timestamp, cancellationToken).ConfigureAwait(false);
+        if (!first.HasValue || !last.HasValue)
         {
             return new GameServerCalculatedResourceHistoryResult
             {
@@ -128,70 +138,92 @@ public class GameServerResourceUtilizationRepository(
             };
         }
 
-        var first = records[0].Timestamp;
-        var last = records[^1].Timestamp;
-
         long? effectiveBucketWidthMs = null;
-        List<GameServerCalculatedResourceHistoryPointResult> points;
-        if (records.Count <= maxDataPoints)
+        if (rawSampleCount > maxDataPoints)
         {
-            points = BuildRawPoints(records, calculation);
-        }
-        else
-        {
-            var durationMsInclusive = Math.Max(1d, (last - first).TotalMilliseconds + 1d);
+            var durationMsInclusive = Math.Max(1d, (last.Value - first.Value).TotalMilliseconds + 1d);
             var widthMs = Math.Max(1L, (long)Math.Ceiling(durationMsInclusive / maxDataPoints));
             effectiveBucketWidthMs = widthMs;
-            points = BuildBucketedPoints(records, widthMs, calculation);
         }
+
+        var points = await BuildHistoryPointsAsync(
+                query,
+                first.Value,
+                effectiveBucketWidthMs,
+                calculation,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         return new GameServerCalculatedResourceHistoryResult
         {
             ServerId = serverId,
-            ActualFromUtc = first,
-            ActualToUtc = last,
+            ActualFromUtc = first.Value,
+            ActualToUtc = last.Value,
             EffectiveBucketWidthMs = effectiveBucketWidthMs,
             MaxDataPoints = maxDataPoints,
             Calculation = calculation,
-            RawSampleCount = records.Count,
+            RawSampleCount = rawSampleCount,
             RatesIncomplete = points.Any(p => p.NetworkRxKBps is null || p.NetworkTxKBps is null || p.BlockReadKBps is null || p.BlockWriteKBps is null),
             TotalsIncomplete = points.Any(p => p.NetworkRxTotalBytes is null || p.NetworkTxTotalBytes is null || p.BlockReadTotalBytes is null || p.BlockWriteTotalBytes is null),
             Points = points
         };
     }
 
-    private static List<GameServerCalculatedResourceHistoryPointResult> BuildRawPoints(
-        List<GameServerResourceUtilizationEntity> records,
-        ResourceHistoryCalculation calculation)
+    private static async Task<List<GameServerCalculatedResourceHistoryPointResult>> BuildHistoryPointsAsync(
+        IQueryable<GameServerResourceUtilizationEntity> query,
+        DateTime firstTimestamp,
+        long? bucketWidthMs,
+        ResourceHistoryCalculation calculation,
+        CancellationToken cancellationToken)
     {
-        var computed = ComputeSeries(records);
-        var points = new List<GameServerCalculatedResourceHistoryPointResult>(records.Count);
+        var results = new List<GameServerCalculatedResourceHistoryPointResult>();
+        var previousByContainer = new Dictionary<string, GameServerResourceUtilizationEntity>(StringComparer.Ordinal);
+        long? networkRxTotal = 0;
+        long? networkTxTotal = 0;
+        long? blockReadTotal = 0;
+        long? blockWriteTotal = 0;
+        long? activeBucketKey = null;
+        var activeBucketSamples = new List<ComputedSample>();
 
-        for (var i = 0; i < records.Count; i++)
+        await foreach (var record in query
+            .OrderBy(r => r.Timestamp)
+            .AsAsyncEnumerable()
+            .WithCancellation(cancellationToken))
         {
-            points.Add(BuildPoint([computed[i]], calculation, computed[i].Record.Timestamp));
+            var computed = ComputeSample(
+                record,
+                previousByContainer,
+                ref networkRxTotal,
+                ref networkTxTotal,
+                ref blockReadTotal,
+                ref blockWriteTotal);
+
+            if (!bucketWidthMs.HasValue)
+            {
+                results.Add(BuildPoint([computed], calculation, record.Timestamp));
+                continue;
+            }
+
+            var bucketKey = (long)Math.Floor((record.Timestamp - firstTimestamp).TotalMilliseconds / bucketWidthMs.Value);
+            if (activeBucketKey.HasValue && bucketKey != activeBucketKey.Value)
+            {
+                results.Add(BuildPoint(
+                    activeBucketSamples,
+                    calculation,
+                    firstTimestamp.AddMilliseconds(activeBucketKey.Value * bucketWidthMs.Value)));
+                activeBucketSamples = [];
+            }
+
+            activeBucketKey = bucketKey;
+            activeBucketSamples.Add(computed);
         }
 
-        return points;
-    }
-
-    private static List<GameServerCalculatedResourceHistoryPointResult> BuildBucketedPoints(
-        List<GameServerResourceUtilizationEntity> records,
-        long bucketWidthMs,
-        ResourceHistoryCalculation calculation)
-    {
-        var computed = ComputeSeries(records);
-        var first = records[0].Timestamp;
-        var buckets = computed
-            .GroupBy(c => (long)Math.Floor((c.Record.Timestamp - first).TotalMilliseconds / bucketWidthMs))
-            .OrderBy(g => g.Key)
-            .ToList();
-
-        var results = new List<GameServerCalculatedResourceHistoryPointResult>(buckets.Count);
-        foreach (var bucket in buckets)
+        if (activeBucketSamples.Count > 0 && activeBucketKey.HasValue && bucketWidthMs.HasValue)
         {
-            var bucketStart = first.AddMilliseconds(bucket.Key * bucketWidthMs);
-            results.Add(BuildPoint(bucket.ToList(), calculation, bucketStart));
+            results.Add(BuildPoint(
+                activeBucketSamples,
+                calculation,
+                firstTimestamp.AddMilliseconds(activeBucketKey.Value * bucketWidthMs.Value)));
         }
 
         return results;
@@ -222,68 +254,62 @@ public class GameServerResourceUtilizationRepository(
         };
     }
 
-    private static List<ComputedSample> ComputeSeries(List<GameServerResourceUtilizationEntity> records)
+    private static ComputedSample ComputeSample(
+        GameServerResourceUtilizationEntity record,
+        Dictionary<string, GameServerResourceUtilizationEntity> previousByContainer,
+        ref long? networkRxTotal,
+        ref long? networkTxTotal,
+        ref long? blockReadTotal,
+        ref long? blockWriteTotal)
     {
-        var computed = new List<ComputedSample>(records.Count);
-        var previousByContainer = new Dictionary<string, GameServerResourceUtilizationEntity>(StringComparer.Ordinal);
-        long? networkRxTotal = 0;
-        long? networkTxTotal = 0;
-        long? blockReadTotal = 0;
-        long? blockWriteTotal = 0;
+        double? networkRxRate = null;
+        double? networkTxRate = null;
+        double? blockReadRate = null;
+        double? blockWriteRate = null;
 
-        foreach (var record in records)
+        var containerKey = string.IsNullOrWhiteSpace(record.ContainerId) ? null : record.ContainerId;
+        if (!string.IsNullOrWhiteSpace(containerKey)
+            && previousByContainer.TryGetValue(containerKey, out var previous))
         {
-            double? networkRxRate = null;
-            double? networkTxRate = null;
-            double? blockReadRate = null;
-            double? blockWriteRate = null;
-
-            var containerKey = string.IsNullOrWhiteSpace(record.ContainerId) ? null : record.ContainerId;
-            if (!string.IsNullOrWhiteSpace(containerKey)
-                && previousByContainer.TryGetValue(containerKey, out var previous))
+            var elapsedSeconds = (record.Timestamp - previous.Timestamp).TotalSeconds;
+            if (elapsedSeconds > 0)
             {
-                var elapsedSeconds = (record.Timestamp - previous.Timestamp).TotalSeconds;
-                if (elapsedSeconds > 0)
-                {
-                    (networkRxRate, networkRxTotal) = CalculateRateAndTotal(previous.NetworkRxBytes, record.NetworkRxBytes, elapsedSeconds, networkRxTotal);
-                    (networkTxRate, networkTxTotal) = CalculateRateAndTotal(previous.NetworkTxBytes, record.NetworkTxBytes, elapsedSeconds, networkTxTotal);
-                    (blockReadRate, blockReadTotal) = CalculateRateAndTotal(previous.BlockReadBytes, record.BlockReadBytes, elapsedSeconds, blockReadTotal);
-                    (blockWriteRate, blockWriteTotal) = CalculateRateAndTotal(previous.BlockWriteBytes, record.BlockWriteBytes, elapsedSeconds, blockWriteTotal);
-                }
-                else
-                {
-                    networkRxTotal = null;
-                    networkTxTotal = null;
-                    blockReadTotal = null;
-                    blockWriteTotal = null;
-                }
+                (networkRxRate, networkRxTotal) = CalculateRateAndTotal(previous.NetworkRxBytes, record.NetworkRxBytes, elapsedSeconds, networkRxTotal);
+                (networkTxRate, networkTxTotal) = CalculateRateAndTotal(previous.NetworkTxBytes, record.NetworkTxBytes, elapsedSeconds, networkTxTotal);
+                (blockReadRate, blockReadTotal) = CalculateRateAndTotal(previous.BlockReadBytes, record.BlockReadBytes, elapsedSeconds, blockReadTotal);
+                (blockWriteRate, blockWriteTotal) = CalculateRateAndTotal(previous.BlockWriteBytes, record.BlockWriteBytes, elapsedSeconds, blockWriteTotal);
             }
-            else if (string.IsNullOrWhiteSpace(containerKey))
+            else
             {
                 networkRxTotal = null;
                 networkTxTotal = null;
                 blockReadTotal = null;
                 blockWriteTotal = null;
             }
-
-            if (!string.IsNullOrWhiteSpace(containerKey))
-            {
-                previousByContainer[containerKey] = record;
-            }
-
-            computed.Add(new ComputedSample(
-                record,
-                networkRxRate,
-                networkTxRate,
-                blockReadRate,
-                blockWriteRate,
-                networkRxTotal,
-                networkTxTotal,
-                blockReadTotal,
-                blockWriteTotal));
+        }
+        else if (string.IsNullOrWhiteSpace(containerKey))
+        {
+            networkRxTotal = null;
+            networkTxTotal = null;
+            blockReadTotal = null;
+            blockWriteTotal = null;
         }
 
-        return computed;
+        if (!string.IsNullOrWhiteSpace(containerKey))
+        {
+            previousByContainer[containerKey] = record;
+        }
+
+        return new ComputedSample(
+            record,
+            networkRxRate,
+            networkTxRate,
+            blockReadRate,
+            blockWriteRate,
+            networkRxTotal,
+            networkTxTotal,
+            blockReadTotal,
+            blockWriteTotal);
     }
 
     private static (double? RateKbPerSecond, long? TotalBytes) CalculateRateAndTotal(

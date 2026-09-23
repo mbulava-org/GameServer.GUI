@@ -121,6 +121,47 @@ public class ResourceHistoryTabTests : BunitContext
         {
             Assert.Contains("768 MB", cut.Markup);
             Assert.Contains("2 points", cut.Markup);
+            Assert.Contains("Rx 50.0 / Tx 25.0 KB/s", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void ResourceHistoryTab_WhenCalculatedValuesAreMissing_ShouldPreserveUnavailableState()
+    {
+        _apiMock.Setup(a => a.GetResourceHistoryAsync("srv-missing", It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerCalculatedResourceHistory
+            {
+                ServerId = "srv-missing",
+                Points =
+                [
+                    new GameServerCalculatedResourceHistoryPoint
+                    {
+                        Timestamp = DateTime.UtcNow,
+                        CpuUsagePercent = null,
+                        MemoryUsageBytes = null,
+                        MemoryLimitBytes = null,
+                        MemoryUsagePercent = null,
+                        NetworkRxKBps = null,
+                        NetworkTxKBps = null,
+                        BlockReadKBps = null,
+                        BlockWriteKBps = null,
+                        NetworkRxTotalBytes = null,
+                        NetworkTxTotalBytes = null,
+                        BlockReadTotalBytes = null,
+                        BlockWriteTotalBytes = null
+                    }
+                ]
+            });
+
+        var cut = Render<ResourceHistoryTab>(parameters => parameters
+            .Add(p => p.ServerId, "srv-missing")
+            .Add(p => p.AutoConnect, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("n/a", cut.Markup);
+            Assert.DoesNotContain("0.0% CPU", cut.Markup);
+            Assert.DoesNotContain("0.0 MB", cut.Markup);
         });
     }
 
