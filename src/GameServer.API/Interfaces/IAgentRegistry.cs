@@ -14,9 +14,9 @@ namespace GameServer.API.Interfaces
         void RegisterAgent(AgentRegistrationInfo info, string connectionId);
 
         /// <summary>
-        /// Update the list of containers on a specific agent
+        /// Update heartbeat metadata for a connected agent
         /// </summary>
-        void UpdateAgentContainers(string connectionId, List<string> containerIds);
+        void UpdateAgentHeartbeat(string connectionId, string health);
 
         /// <summary>
         /// Mark an agent as disconnected

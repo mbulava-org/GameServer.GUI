@@ -20,7 +20,7 @@
                 <h5 class="mb-0">Resource Usage History</h5>
                 @if (chartPoints.Any())
                 {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{chartPoints.Count} records")" Variant="Variant.Flat" />
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{chartPoints.Count} points")" Variant="Variant.Flat" />
                 }
                 @if (isConnected)
                 {
@@ -41,6 +41,24 @@
                                     @bind-Value="@selectedRangeKey"
                                     Change="@(args => OnRangeOptionChanged((string)args))"
                                     Style="min-width: 160px;"
+                                    Disabled="@isHistoryLoading" />
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="text-muted small">Point Cap:</span>
+                    <RadzenDropDown TValue="int"
+                                    Data="@PointCapOptions"
+                                    @bind-Value="@selectedPointCap"
+                                    Change="@(async _ => await LoadHistoryAsync())"
+                                    Style="min-width: 110px;"
+                                    Disabled="@isHistoryLoading" />
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="text-muted small">Calc:</span>
+                    <RadzenDropDown TValue="string"
+                                    Data="@CalculationOptions"
+                                    @bind-Value="@selectedCalculation"
+                                    Change="@(async _ => await LoadHistoryAsync())"
+                                    Style="min-width: 110px;"
                                     Disabled="@isHistoryLoading" />
                 </div>
 
@@ -82,14 +100,14 @@
         {
             <div class="text-center py-4">
                 <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
-                <p class="mt-2 text-muted small">Loading historical resource records...</p>
+                <p class="mt-2 text-muted small">Loading historical resource points...</p>
             </div>
         }
         else if (!chartPoints.Any())
         {
             <div class="text-center py-4 border rounded bg-light">
                 <RadzenIcon Icon="analytics" Style="font-size: 2.5rem; color: var(--rz-text-disabled-color);" />
-                <p class="text-muted mt-2 mb-0">No historical resource records have been saved yet for this game server in the selected time range.</p>
+                <p class="text-muted mt-2 mb-0">No historical resource points are available for this game server in the selected time range.</p>
             </div>
         }
         else
@@ -184,7 +202,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-success small">Rx In: @data.NetworkRxKBps.ToString("F2") KB/s</div>
+                                        <div class="text-success small">Rx In: @(data.NetworkRxKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -198,7 +216,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-info small">Tx Out: @data.NetworkTxKBps.ToString("F2") KB/s</div>
+                                        <div class="text-info small">Tx Out: @(data.NetworkTxKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -232,7 +250,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-warning small">Read: @data.BlockReadKBps.ToString("F2") KB/s</div>
+                                        <div class="text-warning small">Read: @(data.BlockReadKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -246,7 +264,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-danger small">Write: @data.BlockWriteKBps.ToString("F2") KB/s</div>
+                                        <div class="text-danger small">Write: @(data.BlockWriteKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -414,6 +432,10 @@
     private bool isConnecting;
     private List<ResourceHistoryChartPoint> chartPoints = [];
     private bool isHistoryLoading;
+    private int selectedPointCap = 5000;
+    private string selectedCalculation = "avg";
+    private static readonly IReadOnlyList<int> PointCapOptions = [5000, 10000];
+    private static readonly IReadOnlyList<string> CalculationOptions = ["min", "max", "avg", "median"];
 
     public sealed record TimeRangeOption(string Value, string Text, TimeSpan? Duration);
 
@@ -459,10 +481,10 @@
         public double BlockWriteMB => Math.Round(BlockWriteBytesRaw / 1024.0 / 1024.0, 2);
 
         // Computed instantaneous throughput between this and the previous sample (KB/s)
-        public double NetworkRxKBps { get; set; }
-        public double NetworkTxKBps { get; set; }
-        public double BlockReadKBps { get; set; }
-        public double BlockWriteKBps { get; set; }
+        public double? NetworkRxKBps { get; set; }
+        public double? NetworkTxKBps { get; set; }
+        public double? BlockReadKBps { get; set; }
+        public double? BlockWriteKBps { get; set; }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -539,21 +561,29 @@
                 }
             }
 
-            var result = await GameServerApiV2.GetResourceHistoryAsync(ServerId, from: fromUtc, to: toUtc, limit: 5000);
-            chartPoints = result.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
+            var result = await GameServerApiV2.GetResourceHistoryAsync(
+                ServerId,
+                from: fromUtc,
+                to: toUtc,
+                maxDataPoints: selectedPointCap,
+                calculation: selectedCalculation);
+
+            chartPoints = result.Points.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
             {
                 Timestamp = r.Timestamp,
                 FullTimestamp = TimeZoneService.FormatLocalDateTime(r.Timestamp, "yyyy-MM-dd HH:mm:ss"),
                 CpuPercent = Math.Round(r.CpuUsagePercent ?? 0, 1),
                 MemoryPercent = Math.Round(r.MemoryUsagePercent ?? 0, 1),
                 MemoryMB = Math.Round((r.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
-                NetworkRxBytesRaw = r.NetworkRxBytes ?? 0,
-                NetworkTxBytesRaw = r.NetworkTxBytes ?? 0,
-                BlockReadBytesRaw = r.BlockReadBytes ?? 0,
-                BlockWriteBytesRaw = r.BlockWriteBytes ?? 0
+                NetworkRxBytesRaw = r.NetworkRxTotalBytes ?? 0,
+                NetworkTxBytesRaw = r.NetworkTxTotalBytes ?? 0,
+                BlockReadBytesRaw = r.BlockReadTotalBytes ?? 0,
+                BlockWriteBytesRaw = r.BlockWriteTotalBytes ?? 0,
+                NetworkRxKBps = r.NetworkRxKBps,
+                NetworkTxKBps = r.NetworkTxKBps,
+                BlockReadKBps = r.BlockReadKBps,
+                BlockWriteKBps = r.BlockWriteKBps
             }).ToList();
-
-            ComputeThroughput(chartPoints);
             ComputeAxisLabels(chartPoints);
         }
         catch (Exception ex)
@@ -644,10 +674,10 @@
 
     private string GetCpuMaxAxisLabel() => $"{GetCpuAxisMax():0}%";
 
-    private string GetLatestNetRxKBps() => chartPoints.LastOrDefault()?.NetworkRxKBps.ToString("F1") ?? "0";
-    private string GetLatestNetTxKBps() => chartPoints.LastOrDefault()?.NetworkTxKBps.ToString("F1") ?? "0";
-    private string GetLatestDiskReadKBps() => chartPoints.LastOrDefault()?.BlockReadKBps.ToString("F1") ?? "0";
-    private string GetLatestDiskWriteKBps() => chartPoints.LastOrDefault()?.BlockWriteKBps.ToString("F1") ?? "0";
+    private string GetLatestNetRxKBps() => chartPoints.LastOrDefault()?.NetworkRxKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestNetTxKBps() => chartPoints.LastOrDefault()?.NetworkTxKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestDiskReadKBps() => chartPoints.LastOrDefault()?.BlockReadKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestDiskWriteKBps() => chartPoints.LastOrDefault()?.BlockWriteKBps?.ToString("F1") ?? "n/a";
     private string GetLatestNetRxMB() => chartPoints.LastOrDefault()?.NetworkRxMB.ToString("F1") ?? "0";
     private string GetLatestNetTxMB() => chartPoints.LastOrDefault()?.NetworkTxMB.ToString("F1") ?? "0";
     private string GetLatestDiskReadMB() => chartPoints.LastOrDefault()?.BlockReadMB.ToString("F1") ?? "0";
@@ -751,7 +781,6 @@
             chartPoints.RemoveAll(p => p.Timestamp < cutoff);
         }
 
-        ComputeThroughput(chartPoints);
         ComputeAxisLabels(chartPoints);
         return true;
     }

@@ -53,7 +53,6 @@ namespace GameServer.API.Models
     public class AgentHeartbeatInfo
     {
         public string NodeId { get; set; } = string.Empty;
-        public List<string> ContainerIds { get; set; } = new();
         public string Health { get; set; } = "healthy";
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }

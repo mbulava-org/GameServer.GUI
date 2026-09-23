@@ -146,4 +146,81 @@ public class GameServerResourceUtilizationRepositoryTests : IDisposable
         var latest = await _repository.GetLatestAsync("non-existent");
         Assert.Null(latest);
     }
+
+    [Fact]
+    public async Task GetCalculatedHistoryAsync_WhenRecordsExceedCap_ShouldBucketAndRespectMaxDataPoints()
+    {
+        var baseTime = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+        var records = Enumerable.Range(0, 25).Select(i => new GameServerResourceUtilizationEntity
+        {
+            ServerId = "srv-calc",
+            Timestamp = baseTime.AddSeconds(i * 2),
+            CpuUsagePercent = i,
+            MemoryUsageBytes = 1024 * 1024 * (100 + i),
+            NetworkRxBytes = i * 1024,
+            NetworkTxBytes = i * 2048,
+            BlockReadBytes = i * 512,
+            BlockWriteBytes = i * 256,
+            ContainerId = "container-a",
+            DesiredReplicas = 1,
+            RunningReplicas = 1
+        }).ToList();
+
+        await _repository.BatchInsertAsync(records);
+        var result = await _repository.GetCalculatedHistoryAsync(
+            "srv-calc",
+            fromUtc: baseTime,
+            toUtc: baseTime.AddMinutes(2),
+            maxDataPoints: 5,
+            calculation: ResourceHistoryCalculation.Avg);
+
+        Assert.Equal("srv-calc", result.ServerId);
+        Assert.True(result.Points.Count <= 5);
+        Assert.NotNull(result.EffectiveBucketWidthMs);
+        Assert.Equal(25, result.RawSampleCount);
+    }
+
+    [Fact]
+    public async Task GetCalculatedHistoryAsync_WhenCounterResets_ShouldEmitNullRate()
+    {
+        var baseTime = new DateTime(2026, 9, 1, 2, 0, 0, DateTimeKind.Utc);
+        await _repository.BatchInsertAsync(new List<GameServerResourceUtilizationEntity>
+        {
+            new()
+            {
+                ServerId = "srv-reset",
+                Timestamp = baseTime,
+                NetworkRxBytes = 10_000,
+                NetworkTxBytes = 20_000,
+                BlockReadBytes = 30_000,
+                BlockWriteBytes = 40_000,
+                ContainerId = "container-a",
+                DesiredReplicas = 1,
+                RunningReplicas = 1
+            },
+            new()
+            {
+                ServerId = "srv-reset",
+                Timestamp = baseTime.AddSeconds(2),
+                NetworkRxBytes = 1_000,
+                NetworkTxBytes = 2_000,
+                BlockReadBytes = 3_000,
+                BlockWriteBytes = 4_000,
+                ContainerId = "container-a",
+                DesiredReplicas = 1,
+                RunningReplicas = 1
+            }
+        });
+
+        var result = await _repository.GetCalculatedHistoryAsync(
+            "srv-reset",
+            fromUtc: baseTime,
+            toUtc: baseTime.AddMinutes(1),
+            maxDataPoints: 5000,
+            calculation: ResourceHistoryCalculation.Avg);
+
+        Assert.Equal(2, result.Points.Count);
+        Assert.Null(result.Points[1].NetworkRxKBps);
+        Assert.Null(result.Points[1].NetworkTxKBps);
+    }
 }

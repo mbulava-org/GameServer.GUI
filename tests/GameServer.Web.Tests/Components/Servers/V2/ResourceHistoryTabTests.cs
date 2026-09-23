@@ -31,25 +31,29 @@ public class ResourceHistoryTabTests : BunitContext
         Services.AddScoped<IUserTimeZoneService, UserTimeZoneService>();
         Services.AddSingleton<ILogger<ResourceHistoryTab>>(NullLogger<ResourceHistoryTab>.Instance);
         Services.AddSingleton(Options.Create(new GameServerDockerApi { BaseUri = "http://localhost:5164" }));
-        _apiMock.Setup(a => a.GetResourceHistoryAsync(It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<GameServerResourceHistoryItem>
+        _apiMock.Setup(a => a.GetResourceHistoryAsync(It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerCalculatedResourceHistory
             {
-                new()
-                {
-                    Id = 1,
-                    ServerId = "srv-1",
-                    Timestamp = DateTime.UtcNow,
-                    CpuUsagePercent = 25.5,
-                    MemoryUsageBytes = 1024 * 1024 * 512,
-                    MemoryLimitBytes = 1024 * 1024 * 1024,
-                    MemoryUsagePercent = 50.0,
-                    NetworkRxBytes = 1024 * 50,
-                    NetworkTxBytes = 1024 * 25,
-                    BlockReadBytes = 1024 * 10,
-                    BlockWriteBytes = 1024 * 5,
-                    RunningReplicas = 1,
-                    DesiredReplicas = 1
-                }
+                ServerId = "srv-1",
+                Points =
+                [
+                    new GameServerCalculatedResourceHistoryPoint
+                    {
+                        Timestamp = DateTime.UtcNow,
+                        CpuUsagePercent = 25.5,
+                        MemoryUsageBytes = 1024 * 1024 * 512,
+                        MemoryLimitBytes = 1024 * 1024 * 1024,
+                        MemoryUsagePercent = 50.0,
+                        NetworkRxKBps = 50,
+                        NetworkTxKBps = 25,
+                        BlockReadKBps = 10,
+                        BlockWriteKBps = 5,
+                        NetworkRxTotalBytes = 1024 * 50,
+                        NetworkTxTotalBytes = 1024 * 25,
+                        BlockReadTotalBytes = 1024 * 10,
+                        BlockWriteTotalBytes = 1024 * 5
+                    }
+                ]
             });
         Services.AddSingleton<IGameServerV2ApiService>(_apiMock.Object);
     }
@@ -82,7 +86,7 @@ public class ResourceHistoryTabTests : BunitContext
             Assert.Contains("Network Aggregate", cut.Markup);
             Assert.Contains("Disk Aggregate", cut.Markup);
             Assert.Contains("512 MB", cut.Markup);
-            Assert.Contains("1 records", cut.Markup);
+            Assert.Contains("1 points", cut.Markup);
         });
     }
 
@@ -116,30 +120,28 @@ public class ResourceHistoryTabTests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("768 MB", cut.Markup);
-            Assert.Contains("2 records", cut.Markup);
+            Assert.Contains("2 points", cut.Markup);
         });
     }
 
     [Fact]
     public void ResourceHistoryTab_WhenCpuExceeds100Percent_ScalesAxisAccordingly()
     {
-        _apiMock.Setup(a => a.GetResourceHistoryAsync("srv-multicore", It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<GameServerResourceHistoryItem>
+        _apiMock.Setup(a => a.GetResourceHistoryAsync("srv-multicore", It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GameServerCalculatedResourceHistory
             {
-                new()
-                {
-                    Id = 2,
-                    ServerId = "srv-multicore",
-                    Timestamp = DateTime.UtcNow,
-                    CpuUsagePercent = 250.0,
-                    MemoryUsageBytes = 1024 * 1024 * 512,
-                    MemoryLimitBytes = 1024 * 1024 * 1024,
-                    MemoryUsagePercent = 50.0,
-                    NetworkRxBytes = 0,
-                    NetworkTxBytes = 0,
-                    BlockReadBytes = 0,
-                    BlockWriteBytes = 0
-                }
+                ServerId = "srv-multicore",
+                Points =
+                [
+                    new GameServerCalculatedResourceHistoryPoint
+                    {
+                        Timestamp = DateTime.UtcNow,
+                        CpuUsagePercent = 250.0,
+                        MemoryUsageBytes = 1024 * 1024 * 512,
+                        MemoryLimitBytes = 1024 * 1024 * 1024,
+                        MemoryUsagePercent = 50.0
+                    }
+                ]
             });
 
         var cut = Render<ResourceHistoryTab>(parameters => parameters

@@ -103,7 +103,7 @@ jobs:
           echo "Comparing $BASE_REF...$HEAD_REF"
           
           # Check if API-related files changed (Controllers, Models, DTOs, Interfaces that define contracts)
-          API_FILES_CHANGED=$(git diff --name-only $BASE_REF $HEAD_REF | grep -E '(Controllers/|Models/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
+          API_FILES_CHANGED=$(git diff --name-only $BASE_REF $HEAD_REF | grep -E '^src/GameServer\.API/(Controllers/|Models/|Dtos/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
           
           if [ -n "$API_FILES_CHANGED" ]; then
             echo "::warning::?? API signature changes detected - Client package will be published! HOPE YOU DIDN'T BREAK COMPATIBILITY!!!"
@@ -209,6 +209,7 @@ jobs:
           WEB_CHANGED="${{ steps.detect-project-changes.outputs.web_changed }}"
           CLIENT_CHANGED="${{ steps.detect-project-changes.outputs.client_changed }}"
           TESTS_CHANGED="${{ steps.detect-project-changes.outputs.tests_changed }}"
+          API_CHANGED="${{ steps.detect-api-changes.outputs.push_client_output }}"
 
           echo "🔍 Push Decision Calculation:"
           echo "  - Force Publish: $FORCE_PUBLISH"
@@ -239,9 +240,9 @@ jobs:
             echo "  ⏭️  Web push skipped (no changes, not forced)"
           fi
 
-          if [ "$CLIENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$CLIENT_CHANGED" = "true" ] || [ "$API_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
             echo "push_client=true" >> $GITHUB_OUTPUT
-            echo "  ✅ Client will be pushed (changed=$CLIENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
+            echo "  ✅ Client will be pushed (client=$CLIENT_CHANGED, api=$API_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_client=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Client push skipped (no changes, not forced)"

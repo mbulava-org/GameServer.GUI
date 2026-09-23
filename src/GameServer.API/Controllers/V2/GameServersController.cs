@@ -359,16 +359,17 @@ public sealed class GameServersController(
     }
 
     /// <summary>
-    /// Gets the historical resource utilization records for a V2 GameServer.
+    /// Gets calculated historical resource utilization points for a V2 GameServer.
     /// </summary>
     [HttpGet("{serverId}/resources/history")]
-    [ProducesResponseType(200, Type = typeof(IEnumerable<GameServerResourceHistoryDto>))]
+    [ProducesResponseType(200, Type = typeof(GameServerCalculatedResourceHistoryDto))]
     [ProducesResponseType(403)]
-    public async Task<ActionResult<IReadOnlyList<GameServerResourceHistoryDto>>> GetResourceHistory(
+    public async Task<ActionResult<GameServerCalculatedResourceHistoryDto>> GetResourceHistory(
         string serverId,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 5000,
+        [FromQuery] int maxDataPoints = 5000,
+        [FromQuery] string calculation = "avg",
         CancellationToken cancellationToken = default)
     {
         if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
@@ -378,29 +379,67 @@ public sealed class GameServersController(
 
         if (resourceUtilizationRepository is null)
         {
-            return Ok(Array.Empty<GameServerResourceHistoryDto>());
+            return Ok(new GameServerCalculatedResourceHistoryDto
+            {
+                ServerId = serverId,
+                MaxDataPoints = maxDataPoints,
+                Calculation = calculation,
+                Points = []
+            });
         }
 
-        var records = await resourceUtilizationRepository.GetHistoryAsync(serverId, from, to, limit, cancellationToken);
-        var dtos = records.Select(r => new GameServerResourceHistoryDto
+        if (to.HasValue && from.HasValue && to.Value < from.Value)
         {
-            Id = r.Id,
-            ServerId = r.ServerId,
-            Timestamp = r.Timestamp,
-            CpuUsagePercent = r.CpuUsagePercent,
-            MemoryUsageBytes = r.MemoryUsageBytes,
-            MemoryLimitBytes = r.MemoryLimitBytes,
-            MemoryUsagePercent = r.MemoryUsagePercent,
-            NetworkRxBytes = r.NetworkRxBytes,
-            NetworkTxBytes = r.NetworkTxBytes,
-            BlockReadBytes = r.BlockReadBytes,
-            BlockWriteBytes = r.BlockWriteBytes,
-            DesiredReplicas = r.DesiredReplicas,
-            RunningReplicas = r.RunningReplicas,
-            ContainerId = r.ContainerId
-        }).ToList();
+            return BadRequest("The 'to' timestamp must be greater than or equal to 'from'.");
+        }
 
-        return Ok(dtos);
+        const int maxAllowed = 10000;
+        maxDataPoints = Math.Clamp(maxDataPoints, 1, maxAllowed);
+
+        if (!Enum.TryParse<Repositories.V2.ResourceHistoryCalculation>(calculation, ignoreCase: true, out var parsedCalculation))
+        {
+            parsedCalculation = Repositories.V2.ResourceHistoryCalculation.Avg;
+        }
+
+        var result = await resourceUtilizationRepository.GetCalculatedHistoryAsync(
+            serverId,
+            from,
+            to,
+            maxDataPoints,
+            parsedCalculation,
+            cancellationToken);
+
+        var dto = new GameServerCalculatedResourceHistoryDto
+        {
+            ServerId = result.ServerId,
+            ActualFromUtc = result.ActualFromUtc,
+            ActualToUtc = result.ActualToUtc,
+            EffectiveBucketWidthMs = result.EffectiveBucketWidthMs,
+            MaxDataPoints = result.MaxDataPoints,
+            Calculation = parsedCalculation.ToString().ToLowerInvariant(),
+            RawSampleCount = result.RawSampleCount,
+            RatesIncomplete = result.RatesIncomplete,
+            TotalsIncomplete = result.TotalsIncomplete,
+            Points = result.Points.Select(p => new GameServerCalculatedResourceHistoryPointDto
+            {
+                Timestamp = p.Timestamp,
+                SampleCount = p.SampleCount,
+                CpuUsagePercent = p.CpuUsagePercent,
+                MemoryUsageBytes = p.MemoryUsageBytes,
+                MemoryLimitBytes = p.MemoryLimitBytes,
+                MemoryUsagePercent = p.MemoryUsagePercent,
+                NetworkRxKBps = p.NetworkRxKBps,
+                NetworkTxKBps = p.NetworkTxKBps,
+                BlockReadKBps = p.BlockReadKBps,
+                BlockWriteKBps = p.BlockWriteKBps,
+                NetworkRxTotalBytes = p.NetworkRxTotalBytes,
+                NetworkTxTotalBytes = p.NetworkTxTotalBytes,
+                BlockReadTotalBytes = p.BlockReadTotalBytes,
+                BlockWriteTotalBytes = p.BlockWriteTotalBytes
+            }).ToList()
+        };
+
+        return Ok(dto);
     }
 
     /// <summary>

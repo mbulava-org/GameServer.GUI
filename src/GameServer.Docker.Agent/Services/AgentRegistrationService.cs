@@ -415,20 +415,9 @@ namespace GameServer.Docker.Agent.Services
                     return;
                 }
 
-                // Get current containers from local Docker
-                var containers = await _dockerClient.Containers.ListContainersAsync(
-                    new global::Docker.DotNet.Models.ContainersListParameters
-                    {
-                        All = false // Only running containers
-                    },
-                    cancellationToken);
-
-                var containerIds = containers.Select(c => c.ID).ToList();
-
                 var heartbeat = new
                 {
                     NodeId = _nodeId,
-                    ContainerIds = containerIds,
                     Health = "healthy",
                     Timestamp = DateTime.UtcNow
                 };
@@ -436,9 +425,8 @@ namespace GameServer.Docker.Agent.Services
                 await _hubConnection.InvokeAsync("SendHeartbeat", heartbeat, cancellationToken);
 
                 _logger.LogTrace(
-                    "Heartbeat sent: Node={NodeName}, Containers={ContainerCount}",
-                    _nodeName,
-                    containerIds.Count);
+                    "Heartbeat sent: Node={NodeName}",
+                    _nodeName);
             }
             catch (Exception ex)
             {

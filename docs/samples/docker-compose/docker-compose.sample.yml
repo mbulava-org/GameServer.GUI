@@ -1,0 +1,50 @@
+services:
+  gameserver-api:
+    image: ghcr.io/mbulava-org/gameserver-api:latest
+    container_name: gameserver-api
+    ports:
+      - "5164:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      NodeAgentOptions__EnableBackgroundDiscovery: "false"
+      ConnectionStrings__GameServerV2Db: Data Source=/data/gameserver-v2.db
+      PortAllocation__StartPort: "25565"
+      PortAllocation__EndPort: "35565"
+    volumes:
+      - gameserver-data:/data
+    networks:
+      - gameserver-network
+
+  gameserver-web:
+    image: ghcr.io/mbulava-org/gameserver-web:latest
+    container_name: gameserver-web
+    depends_on:
+      - gameserver-api
+    ports:
+      - "5102:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      GameServerApiUrl: http://gameserver-api:8080
+    networks:
+      - gameserver-network
+
+  gameserver-agent:
+    image: ghcr.io/mbulava-org/gameserver-docker-agent:latest
+    container_name: gameserver-agent
+    depends_on:
+      - gameserver-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      AgentRegistration__Enabled: "true"
+      AgentRegistration__PrimaryServiceUrl: http://gameserver-api:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - gameserver-network
+
+volumes:
+  gameserver-data:
+
+networks:
+  gameserver-network:
+    driver: bridge

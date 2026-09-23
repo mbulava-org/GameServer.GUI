@@ -190,17 +190,18 @@ public sealed class GameServerV2ApiService(
     /// <summary>
     /// Gets the historical resource utilization records for a V2 GameServer.
     /// </summary>
-    public async Task<IReadOnlyList<GameServerResourceHistoryItem>> GetResourceHistoryAsync(
+    public async Task<GameServerCalculatedResourceHistory> GetResourceHistoryAsync(
         string serverId,
         DateTime? from = null,
         DateTime? to = null,
-        int limit = 5000,
+        int maxDataPoints = 5000,
+        string calculation = "avg",
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serverId);
 
         using var client = await CreateClientAsync();
-        var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/resources/history?limit={limit}";
+        var url = $"api/v2/gameservers/{Uri.EscapeDataString(serverId)}/resources/history?maxDataPoints={maxDataPoints}&calculation={Uri.EscapeDataString(calculation)}";
         if (from.HasValue)
         {
             url += $"&from={Uri.EscapeDataString(from.Value.ToString("o"))}";
@@ -213,8 +214,8 @@ public sealed class GameServerV2ApiService(
         using var response = await client.GetAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<List<GameServerResourceHistoryItem>>(cancellationToken)
-            ?? [];
+        return await response.Content.ReadFromJsonAsync<GameServerCalculatedResourceHistory>(cancellationToken)
+            ?? new GameServerCalculatedResourceHistory { ServerId = serverId };
     }
 
     /// <summary>

@@ -100,6 +100,19 @@ Navigate to `/login` if not automatically redirected. Once logged in as `Admin`,
 > [!TIP]
 > For details on JWT configuration, roles (`Admin`, `GameManager`, `User`), and group access boundaries, see [guides/Authentication-And-Authorization.md](guides/Authentication-And-Authorization.md).
 
+### Optional: Sample Docker Compose Setup
+
+If you want a quick non-swarm local container setup, use:
+
+```bash
+docker compose -f docs/samples/docker-compose/docker-compose.sample.yml up -d
+```
+
+Then verify:
+
+- Web UI: `http://localhost:5102`
+- API: `http://localhost:5164/swagger`
+
 ---
 
 ## ðŸ³ Docker Swarm Deployment

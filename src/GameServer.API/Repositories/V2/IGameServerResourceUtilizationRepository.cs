@@ -13,6 +13,14 @@ public interface IGameServerResourceUtilizationRepository
         int limit = 5000,
         CancellationToken cancellationToken = default);
 
+    Task<GameServerCalculatedResourceHistoryResult> GetCalculatedHistoryAsync(
+        string serverId,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        int maxDataPoints,
+        ResourceHistoryCalculation calculation,
+        CancellationToken cancellationToken = default);
+
     Task<GameServerResourceUtilizationEntity?> GetLatestAsync(
         string serverId,
         CancellationToken cancellationToken = default);

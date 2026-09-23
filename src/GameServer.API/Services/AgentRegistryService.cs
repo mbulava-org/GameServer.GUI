@@ -56,7 +56,7 @@ namespace GameServer.API.Services
                 info.IsManagerNode);
         }
 
-        public void UpdateAgentContainers(string connectionId, List<string> containerIds)
+        public void UpdateAgentHeartbeat(string connectionId, string health)
         {
             if (!_agentsByConnection.TryGetValue(connectionId, out var agent))
             {
@@ -66,31 +66,13 @@ namespace GameServer.API.Services
 
             // Update last heartbeat time
             agent.LastHeartbeat = DateTime.UtcNow;
-            agent.IsHealthy = true;
-
-            // Remove old container mappings for this agent
-            var oldContainers = _containerToConnection
-                .Where(kvp => kvp.Value == connectionId)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var oldId in oldContainers)
-            {
-                _containerToConnection.TryRemove(oldId, out _);
-            }
-
-            // Add new container mappings
-            foreach (var containerId in containerIds)
-            {
-                _containerToConnection[containerId] = connectionId;
-            }
+            agent.IsHealthy = string.Equals(health, "healthy", StringComparison.OrdinalIgnoreCase);
 
             _logger.LogDebug(
-                "Agent heartbeat: Node={NodeName} ({NodeId}), Containers={ContainerCount} [{ContainerIds}]",
+                "Agent heartbeat: Node={NodeName} ({NodeId}), Health={Health}",
                 agent.NodeName,
                 agent.NodeId,
-                containerIds.Count,
-                string.Join(", ", containerIds.Select(id => id.Substring(0, Math.Min(12, id.Length)))));
+                health);
         }
 
         public void MarkAgentDisconnected(string connectionId)

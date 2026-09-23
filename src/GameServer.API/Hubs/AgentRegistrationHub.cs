@@ -49,13 +49,12 @@ namespace GameServer.API.Hubs
             var connectionId = Context.ConnectionId;
 
             _logger.LogTrace(
-                "Agent heartbeat: Node={NodeId}, ConnectionId={ConnectionId}, Containers={ContainerCount}, Health={Health}",
+                "Agent heartbeat: Node={NodeId}, ConnectionId={ConnectionId}, Health={Health}",
                 heartbeat.NodeId,
                 connectionId,
-                heartbeat.ContainerIds.Count,
                 heartbeat.Health);
 
-            _agentRegistry.UpdateAgentContainers(connectionId, heartbeat.ContainerIds);
+            _agentRegistry.UpdateAgentHeartbeat(connectionId, heartbeat.Health);
 
             await Task.CompletedTask;
         }
