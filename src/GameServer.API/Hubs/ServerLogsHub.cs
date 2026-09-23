@@ -87,7 +87,7 @@ namespace GameServer.API.Hubs
             // Use the Node Agent's container listing endpoint with a label filter.
             // The agent mirrors Docker's list endpoint and returns containers whose labels match.
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            var url = $"{agent.InternalUrl}/containers?label={Uri.EscapeDataString($"{GameServer.API.Constants.ServiceLabels.ServerId}={serverId}")}";
+            var url = $"{agent.InternalUrl}/containers?label={Uri.EscapeDataString($"{GameServer.Docker.Constants.ServiceLabels.ServerId}={serverId}")}";
 
             var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
@@ -135,5 +135,4 @@ namespace GameServer.API.Hubs
         }
     }
 }
-
 

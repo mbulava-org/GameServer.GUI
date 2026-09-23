@@ -1,4 +1,4 @@
-using GameServer.API.Constants;
+using GameServer.Docker.Constants;
 using GameServer.API.Interfaces;
 using GameServer.API.Models;
 using System.Collections.Concurrent;

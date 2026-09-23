@@ -350,7 +350,7 @@ namespace GameServer.API.Services
                 try
                 {
                     var httpClient = GetOrCreateHttpClientForAgent(agent.InternalUrl);
-                    var response = await httpClient.GetAsync($"/containers?label={Uri.EscapeDataString($"{GameServer.API.Constants.ServiceLabels.ServerId}={serverId}")}").ConfigureAwait(false);
+                    var response = await httpClient.GetAsync($"/containers?label={Uri.EscapeDataString($"{GameServer.Docker.Constants.ServiceLabels.ServerId}={serverId}")}").ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
                         return null;

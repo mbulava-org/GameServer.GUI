@@ -398,7 +398,11 @@ public sealed class GameServersController(
 
         if (!Enum.TryParse<Repositories.V2.ResourceHistoryCalculation>(calculation, ignoreCase: true, out var parsedCalculation))
         {
-            parsedCalculation = Repositories.V2.ResourceHistoryCalculation.Avg;
+            var supportedValues = string.Join(
+                ", ",
+                Enum.GetNames<Repositories.V2.ResourceHistoryCalculation>()
+                    .Select(v => v.ToLowerInvariant()));
+            return BadRequest($"Invalid calculation '{calculation}'. Supported values: {supportedValues}.");
         }
 
         var result = await resourceUtilizationRepository.GetCalculatedHistoryAsync(
@@ -724,7 +728,7 @@ public sealed class GameServersController(
                 if (service != null)
                 {
                     var tasks = await serviceOperations.ListTasksAsync(
-                        new Docker.DotNet.Models.TasksListParameters
+                        new global::Docker.DotNet.Models.TasksListParameters
                         {
                             Filters = new Dictionary<string, IDictionary<string, bool>>
                             {
@@ -841,7 +845,7 @@ public sealed class GameServersController(
                     if (service != null)
                     {
                         var tasks = await serviceOperations.ListTasksAsync(
-                            new Docker.DotNet.Models.TasksListParameters
+                            new global::Docker.DotNet.Models.TasksListParameters
                             {
                                 Filters = new Dictionary<string, IDictionary<string, bool>>
                                 {

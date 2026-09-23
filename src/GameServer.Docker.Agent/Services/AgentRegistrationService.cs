@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Configurations;
+using GameServer.Docker.Constants;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Options;
 
@@ -12,10 +13,6 @@ namespace GameServer.Docker.Agent.Services
     /// </summary>
     public class AgentRegistrationService : BackgroundService
     {
-        private const string ManagedLabelKey = "gameserver.docker.managed";
-        private const string ManagedLabelValue = "true";
-        private const string ServerIdLabelKey = "gameserver.docker.Id";
-
         private readonly IDockerClient _dockerClient;
         private readonly AgentDistributedConfigurationApplier _distributedConfigurationApplier;
         private readonly ILogger<AgentRegistrationService> _logger;
@@ -427,13 +424,12 @@ namespace GameServer.Docker.Agent.Services
 
         private async Task ManagedContainerReconciliationLoopAsync(CancellationToken stoppingToken)
         {
-            var intervalSeconds = Math.Clamp(_options.ManagedContainerReconciliationIntervalSeconds, 5, 300);
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
-
             try
             {
-                while (await timer.WaitForNextTickAsync(stoppingToken))
+                while (!stoppingToken.IsCancellationRequested)
                 {
+                    var intervalSeconds = Math.Clamp(_optionsMonitor.CurrentValue.ManagedContainerReconciliationIntervalSeconds, 5, 300);
+                    await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
                     await PublishManagedContainerSnapshotAsync(stoppingToken);
                 }
             }
@@ -627,7 +623,7 @@ namespace GameServer.Docker.Agent.Services
                     return;
                 }
 
-                var filterValue = $"{ManagedLabelKey}={ManagedLabelValue}";
+                var filterValue = $"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}";
                 var containers = await _dockerClient.Containers.ListContainersAsync(
                     new ContainersListParameters
                     {
@@ -650,15 +646,15 @@ namespace GameServer.Docker.Agent.Services
                     })
                     .Where(c =>
                         !string.IsNullOrWhiteSpace(c.ContainerId) &&
-                        c.Labels.TryGetValue(ManagedLabelKey, out var managedValue) &&
-                        string.Equals(managedValue, ManagedLabelValue, StringComparison.OrdinalIgnoreCase) &&
-                        c.Labels.TryGetValue(ServerIdLabelKey, out var serverId) &&
+                        c.Labels.TryGetValue(ServiceLabels.Managed, out var managedValue) &&
+                        string.Equals(managedValue, ServiceLabels.ManagedValue, StringComparison.OrdinalIgnoreCase) &&
+                        c.Labels.TryGetValue(ServiceLabels.ServerId, out var serverId) &&
                         !string.IsNullOrWhiteSpace(serverId))
                     .Select(c => new
                     {
                         ContainerId = c.ContainerId,
-                        ServerId = c.Labels[ServerIdLabelKey],
-                        ManagedLabelValue = c.Labels[ManagedLabelKey]
+                        ServerId = c.Labels[ServiceLabels.ServerId],
+                        ManagedLabelValue = c.Labels[ServiceLabels.Managed]
                     })
                     .ToList();
 

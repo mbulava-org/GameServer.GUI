@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Docker.DotNet.Models;
 using GameServer.API.Configurations;
-using GameServer.API.Constants;
+using GameServer.Docker.Constants;
 using GameServer.API.Dtos.V2;
 using GameServer.API.Models.V2;
 
@@ -564,7 +564,7 @@ public sealed class GameServerSpecBuilder
 
         var preferences = resources.Preferences
             .Where(p => !string.IsNullOrWhiteSpace(p.Descriptor))
-            .Select(p => new Docker.DotNet.Models.PlacementPreference
+            .Select(p => new global::Docker.DotNet.Models.PlacementPreference
             {
                 Spread = new SpreadOver
                 {

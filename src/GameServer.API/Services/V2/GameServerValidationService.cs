@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using GameServer.API.Configurations;
-using GameServer.API.Constants;
+using GameServer.Docker.Constants;
 using GameServer.API.Dtos.V2;
 using GameServer.API.Interfaces;
 using GameServer.API.Repositories.V2;
