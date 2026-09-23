@@ -178,10 +178,10 @@ public class GameServerResourceUtilizationRepository(
     {
         var results = new List<GameServerCalculatedResourceHistoryPointResult>();
         var previousByContainer = new Dictionary<string, GameServerResourceUtilizationEntity>(StringComparer.Ordinal);
-        long? networkRxTotal = 0;
-        long? networkTxTotal = 0;
-        long? blockReadTotal = 0;
-        long? blockWriteTotal = 0;
+        long? networkRxTotal = null;
+        long? networkTxTotal = null;
+        long? blockReadTotal = null;
+        long? blockWriteTotal = null;
         long? activeBucketKey = null;
         var activeBucketSamples = new List<ComputedSample>();
 

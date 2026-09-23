@@ -27,6 +27,14 @@ namespace GameServer.API.Hubs
 
         public Task<Dictionary<string, string?>> GetDistributedConfiguration()
         {
+            if (_agentRegistry.GetAgentByConnectionId(Context.ConnectionId) is null)
+            {
+                _logger.LogWarning(
+                    "Rejected distributed configuration request from unregistered connection {ConnectionId}",
+                    Context.ConnectionId);
+                throw new HubException("Agent must register before requesting distributed configuration.");
+            }
+
             var snapshot = new Dictionary<string, string?>(
                 _agentDistributedConfigurationService.GetConfigurationSnapshot(),
                 StringComparer.OrdinalIgnoreCase);

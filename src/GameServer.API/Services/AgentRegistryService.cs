@@ -1,6 +1,7 @@
 using GameServer.Docker.Constants;
 using GameServer.API.Interfaces;
 using GameServer.API.Models;
+using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
 
 namespace GameServer.API.Services
@@ -12,7 +13,7 @@ namespace GameServer.API.Services
     /// </summary>
     public class AgentRegistryService : IAgentRegistry
     {
-        private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(90);
+        private readonly TimeSpan _heartbeatTimeout;
         private readonly ILogger<AgentRegistryService> _logger;
 
         // connectionId → NodeAgentEndpoint
@@ -24,9 +25,10 @@ namespace GameServer.API.Services
         // containerId → connectionId (for quick container-to-agent lookup)
         private readonly ConcurrentDictionary<string, string> _containerToConnection = new();
 
-        public AgentRegistryService(ILogger<AgentRegistryService> logger)
+        public AgentRegistryService(ILogger<AgentRegistryService> logger, IConfiguration? configuration = null)
         {
             _logger = logger;
+            _heartbeatTimeout = ResolveHeartbeatTimeout(configuration);
         }
 
         public void RegisterAgent(AgentRegistrationInfo info, string connectionId)
@@ -257,14 +259,23 @@ namespace GameServer.API.Services
             return managerAgent;
         }
 
-        private static bool IsAgentHealthy(NodeAgentEndpoint agent)
+        private bool IsAgentHealthy(NodeAgentEndpoint agent)
         {
             if (!agent.IsHealthy)
             {
                 return false;
             }
 
-            return DateTime.UtcNow - agent.LastHeartbeat <= HeartbeatTimeout;
+            return DateTime.UtcNow - agent.LastHeartbeat <= _heartbeatTimeout;
+        }
+
+        private static TimeSpan ResolveHeartbeatTimeout(IConfiguration? configuration)
+        {
+            var heartbeatIntervalSeconds = configuration?.GetValue<int?>(
+                $"{AgentDistributedConfigurationService.SectionName}:AgentRegistration:HeartbeatIntervalSeconds");
+            var effectiveHeartbeatIntervalSeconds = Math.Max(1, heartbeatIntervalSeconds ?? 30);
+
+            return TimeSpan.FromSeconds(Math.Max(90, effectiveHeartbeatIntervalSeconds * 2));
         }
     }
 }

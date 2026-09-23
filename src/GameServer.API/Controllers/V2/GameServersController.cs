@@ -377,17 +377,6 @@ public sealed class GameServersController(
             return Forbid();
         }
 
-        if (resourceUtilizationRepository is null)
-        {
-            return Ok(new GameServerCalculatedResourceHistoryDto
-            {
-                ServerId = serverId,
-                MaxDataPoints = maxDataPoints,
-                Calculation = calculation,
-                Points = []
-            });
-        }
-
         if (to.HasValue && from.HasValue && to.Value < from.Value)
         {
             return BadRequest("The 'to' timestamp must be greater than or equal to 'from'.");
@@ -396,13 +385,29 @@ public sealed class GameServersController(
         const int maxAllowed = 10000;
         maxDataPoints = Math.Clamp(maxDataPoints, 1, maxAllowed);
 
-        if (!Enum.TryParse<Repositories.V2.ResourceHistoryCalculation>(calculation, ignoreCase: true, out var parsedCalculation))
+        var normalizedCalculation = calculation?.Trim() ?? string.Empty;
+        var supportedCalculations = Enum.GetNames<Repositories.V2.ResourceHistoryCalculation>();
+        if (string.IsNullOrWhiteSpace(normalizedCalculation) ||
+            int.TryParse(normalizedCalculation, out _) ||
+            !supportedCalculations.Any(name => name.Equals(normalizedCalculation, StringComparison.OrdinalIgnoreCase)))
         {
             var supportedValues = string.Join(
                 ", ",
-                Enum.GetNames<Repositories.V2.ResourceHistoryCalculation>()
-                    .Select(v => v.ToLowerInvariant()));
+                supportedCalculations.Select(v => v.ToLowerInvariant()));
             return BadRequest($"Invalid calculation '{calculation}'. Supported values: {supportedValues}.");
+        }
+
+        var parsedCalculation = Enum.Parse<Repositories.V2.ResourceHistoryCalculation>(normalizedCalculation, ignoreCase: true);
+
+        if (resourceUtilizationRepository is null)
+        {
+            return Ok(new GameServerCalculatedResourceHistoryDto
+            {
+                ServerId = serverId,
+                MaxDataPoints = maxDataPoints,
+                Calculation = parsedCalculation.ToString().ToLowerInvariant(),
+                Points = []
+            });
         }
 
         var result = await resourceUtilizationRepository.GetCalculatedHistoryAsync(

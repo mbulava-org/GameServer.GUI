@@ -61,11 +61,11 @@ public class GameServerCommandServiceTests
         var mountTypeHandlerFactory = new Mock<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandlerFactory>();
         var mountTypeHandler = new Mock<GameServer.API.Services.V2.MountTypeHandlers.IMountTypeHandler>();
         mountTypeHandlerFactory.Setup(x => x.GetHandler(It.IsAny<string>())).Returns(mountTypeHandler.Object);
-        mountTypeHandler.Setup(x => x.BuildMount(It.IsAny<GameServer.API.Models.V2.GameServerVolume>())).Returns(new Docker.DotNet.Models.Mount());
+        mountTypeHandler.Setup(x => x.BuildMount(It.IsAny<GameServer.API.Models.V2.GameServerVolume>())).Returns(new global::Docker.DotNet.Models.Mount());
 
         serviceOperations
-            .Setup(x => x.CreateServiceAsync(It.IsAny<Docker.DotNet.Models.ServiceCreateParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Docker.DotNet.Models.ServiceCreateResponse { ID = "srv-service-123" });
+            .Setup(x => x.CreateServiceAsync(It.IsAny<global::Docker.DotNet.Models.ServiceCreateParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new global::Docker.DotNet.Models.ServiceCreateResponse { ID = "srv-service-123" });
 
         var volumeResolver = new VolumeSetupResolver(mountTypeConfigRepo, mountTypeHandlerFactory.Object, NullLogger<VolumeSetupResolver>.Instance);
         var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
@@ -103,7 +103,7 @@ public class GameServerCommandServiceTests
         // Assert
         Assert.Equal("Minecraft Survival", result.Name);
         Assert.StartsWith("gameserver-", result.ServiceName, StringComparison.Ordinal);
-        serviceOperations.Verify(x => x.CreateServiceAsync(It.IsAny<Docker.DotNet.Models.ServiceCreateParameters>(), It.IsAny<CancellationToken>()), Times.Once);
+        serviceOperations.Verify(x => x.CreateServiceAsync(It.IsAny<global::Docker.DotNet.Models.ServiceCreateParameters>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -204,4 +204,3 @@ public class GameServerCommandServiceTests
         };
     }
 }
-

@@ -318,9 +318,8 @@ namespace GameServer.Docker.Agent.Services
                 await _hubConnection!.StartAsync(linkedCts.Token);
                 _logger.LogInformation("Connected to Primary Service SignalR hub");
 
+                await RegisterAsync();
                 await SyncDistributedConfigurationAsync(linkedCts.Token);
-
-                // Send initial registration
                 await RegisterAsync();
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -330,11 +329,13 @@ namespace GameServer.Docker.Agent.Services
             }
             catch (OperationCanceledException)
             {
+                await ResetHubConnectionAfterInitializationFailureAsync();
                 _logger.LogError("Connection to Primary Service timed out after {Timeout}s", _optionsMonitor.CurrentValue.ConnectionTimeoutSeconds);
                 throw;
             }
             catch (Exception ex)
             {
+                await ResetHubConnectionAfterInitializationFailureAsync();
                 _logger.LogError(ex, "Failed to connect to Primary Service at {Url}", _optionsMonitor.CurrentValue.PrimaryServiceUrl);
                 throw;
             }
@@ -374,6 +375,23 @@ namespace GameServer.Docker.Agent.Services
                 .InvokeAsync<Dictionary<string, string?>?>("GetDistributedConfiguration", cancellationToken);
 
             _distributedConfigurationApplier.Apply(settings ?? new Dictionary<string, string?>());
+        }
+
+        private async Task ResetHubConnectionAfterInitializationFailureAsync()
+        {
+            if (_hubConnection?.State != HubConnectionState.Connected)
+            {
+                return;
+            }
+
+            try
+            {
+                await _hubConnection.StopAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to reset SignalR connection after initialization failure");
+            }
         }
 
         private static List<string> FilterCapabilitiesByNodeRole(List<string> configuredCapabilities, bool isManagerNode)

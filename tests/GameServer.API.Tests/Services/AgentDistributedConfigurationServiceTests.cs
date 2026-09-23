@@ -30,6 +30,27 @@ public class AgentDistributedConfigurationServiceTests
     }
 
     [Fact]
+    public void GetConfigurationSnapshot_FiltersUnexpectedKeys()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DistributedAgentConfiguration:AgentRegistration:HeartbeatIntervalSeconds"] = "15",
+                ["DistributedAgentConfiguration:AgentRegistration:PrimaryServiceUrl"] = "http://other-service:8080",
+                ["DistributedAgentConfiguration:Secrets:ApiKey"] = "super-secret"
+            })
+            .Build();
+
+        IAgentDistributedConfigurationService service = new AgentDistributedConfigurationService(configuration);
+
+        var snapshot = service.GetConfigurationSnapshot();
+
+        Assert.Equal("15", snapshot["AgentRegistration:HeartbeatIntervalSeconds"]);
+        Assert.DoesNotContain("AgentRegistration:PrimaryServiceUrl", snapshot.Keys);
+        Assert.DoesNotContain("Secrets:ApiKey", snapshot.Keys);
+    }
+
+    [Fact]
     public void GetConfigurationSnapshot_ReturnsEmptyWhenSectionMissing()
     {
         var configuration = new ConfigurationBuilder()

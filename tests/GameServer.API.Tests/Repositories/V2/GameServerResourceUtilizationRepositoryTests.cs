@@ -223,4 +223,51 @@ public class GameServerResourceUtilizationRepositoryTests : IDisposable
         Assert.Null(result.Points[1].NetworkRxKBps);
         Assert.Null(result.Points[1].NetworkTxKBps);
     }
+
+    [Fact]
+    public async Task GetCalculatedHistoryAsync_WhenFirstSampleHasNoPredecessor_TotalsStayUnknownUntilDeltaExists()
+    {
+        var baseTime = new DateTime(2026, 9, 1, 3, 0, 0, DateTimeKind.Utc);
+        await _repository.BatchInsertAsync(new List<GameServerResourceUtilizationEntity>
+        {
+            new()
+            {
+                ServerId = "srv-totals",
+                Timestamp = baseTime,
+                NetworkRxBytes = 10_000,
+                NetworkTxBytes = 20_000,
+                BlockReadBytes = 30_000,
+                BlockWriteBytes = 40_000,
+                ContainerId = "container-a",
+                DesiredReplicas = 1,
+                RunningReplicas = 1
+            },
+            new()
+            {
+                ServerId = "srv-totals",
+                Timestamp = baseTime.AddSeconds(2),
+                NetworkRxBytes = 14_000,
+                NetworkTxBytes = 28_000,
+                BlockReadBytes = 35_000,
+                BlockWriteBytes = 45_000,
+                ContainerId = "container-a",
+                DesiredReplicas = 1,
+                RunningReplicas = 1
+            }
+        });
+
+        var result = await _repository.GetCalculatedHistoryAsync(
+            "srv-totals",
+            fromUtc: baseTime,
+            toUtc: baseTime.AddMinutes(1),
+            maxDataPoints: 5000,
+            calculation: ResourceHistoryCalculation.Avg);
+
+        Assert.True(result.TotalsIncomplete);
+        Assert.Equal(2, result.Points.Count);
+        Assert.Null(result.Points[0].NetworkRxTotalBytes);
+        Assert.Null(result.Points[0].NetworkTxTotalBytes);
+        Assert.Equal(4_000, result.Points[1].NetworkRxTotalBytes);
+        Assert.Equal(8_000, result.Points[1].NetworkTxTotalBytes);
+    }
 }

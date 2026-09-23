@@ -1,5 +1,6 @@
 using GameServer.API.Models;
 using GameServer.API.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -352,6 +353,27 @@ public class AgentRegistryServiceTests
         var healthy = _service.GetHealthyAgents();
 
         Assert.Empty(healthy);
+    }
+
+    [Fact]
+    public void GetHealthyAgents_UsesConfiguredHeartbeatPolicy()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DistributedAgentConfiguration:AgentRegistration:HeartbeatIntervalSeconds"] = "120"
+            })
+            .Build();
+        var service = new AgentRegistryService(_mockLogger.Object, configuration);
+
+        service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+        var agent = service.GetAgentByConnectionId("conn-1");
+        Assert.NotNull(agent);
+        agent!.LastHeartbeat = DateTime.UtcNow.AddSeconds(-100);
+
+        var healthy = service.GetHealthyAgents();
+
+        Assert.Single(healthy);
     }
 
     // -----------------------------------------------------------------------

@@ -6,6 +6,18 @@ public sealed class AgentDistributedConfigurationService(IConfiguration configur
 {
     public const string SectionName = "DistributedAgentConfiguration";
 
+    private static readonly string[] AllowedExactKeys =
+    [
+        "AgentRegistration:HeartbeatIntervalSeconds",
+        "AgentRegistration:ManagedContainerReconciliationIntervalSeconds"
+    ];
+
+    private static readonly string[] AllowedPrefixes =
+    [
+        "AgentRegistration:Capabilities:",
+        "ContainerStats:"
+    ];
+
     public IReadOnlyDictionary<string, string?> GetConfigurationSnapshot()
     {
         var section = configuration.GetSection(SectionName);
@@ -14,9 +26,18 @@ public sealed class AgentDistributedConfigurationService(IConfiguration configur
             return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var snapshot = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        Flatten(section, prefix: string.Empty, snapshot);
-        return snapshot;
+        var flattened = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        Flatten(section, prefix: string.Empty, flattened);
+
+        return flattened
+            .Where(kvp => IsAllowedDistributedSetting(kvp.Key))
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAllowedDistributedSetting(string key)
+    {
+        return AllowedExactKeys.Contains(key, StringComparer.OrdinalIgnoreCase) ||
+               AllowedPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void Flatten(IConfigurationSection section, string prefix, IDictionary<string, string?> values)
