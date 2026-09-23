@@ -19,6 +19,11 @@ namespace GameServer.API.Interfaces
         void UpdateAgentHeartbeat(string connectionId, string health);
 
         /// <summary>
+        /// Replace managed container mappings for a connected agent using a validated snapshot.
+        /// </summary>
+        void UpdateManagedContainers(string connectionId, AgentManagedContainerSnapshot snapshot);
+
+        /// <summary>
         /// Mark an agent as disconnected
         /// </summary>
         void MarkAgentDisconnected(string connectionId);

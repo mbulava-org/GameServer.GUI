@@ -1,4 +1,5 @@
 using Docker.DotNet;
+using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Configurations;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Options;
@@ -11,6 +12,10 @@ namespace GameServer.Docker.Agent.Services
     /// </summary>
     public class AgentRegistrationService : BackgroundService
     {
+        private const string ManagedLabelKey = "gameserver.docker.managed";
+        private const string ManagedLabelValue = "true";
+        private const string ServerIdLabelKey = "gameserver.docker.Id";
+
         private readonly IDockerClient _dockerClient;
         private readonly ILogger<AgentRegistrationService> _logger;
         private readonly AgentRegistrationOptions _options;
@@ -99,8 +104,12 @@ namespace GameServer.Docker.Agent.Services
             // Connect and register with retry logic
             await ConnectAndRegisterWithRetryAsync(stoppingToken);
 
-            // Start heartbeat loop
-            await HeartbeatLoopAsync(stoppingToken);
+            await PublishManagedContainerSnapshotAsync(stoppingToken);
+
+            // Start heartbeat and reconciliation loops
+            await Task.WhenAll(
+                HeartbeatLoopAsync(stoppingToken),
+                ManagedContainerReconciliationLoopAsync(stoppingToken));
         }
 
         private async Task ConnectAndRegisterWithRetryAsync(CancellationToken cancellationToken)
@@ -391,6 +400,24 @@ namespace GameServer.Docker.Agent.Services
                     await SendHeartbeatAsync(stoppingToken);
                 }
             }
+
+            private async Task ManagedContainerReconciliationLoopAsync(CancellationToken stoppingToken)
+            {
+                var intervalSeconds = Math.Clamp(_options.ManagedContainerReconciliationIntervalSeconds, 5, 300);
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+
+                try
+                {
+                    while (await timer.WaitForNextTickAsync(stoppingToken))
+                    {
+                        await PublishManagedContainerSnapshotAsync(stoppingToken);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation("Managed container reconciliation loop stopped");
+                }
+            }
             catch (OperationCanceledException)
             {
                 _logger.LogInformation("Agent heartbeat loop stopped");
@@ -479,6 +506,7 @@ namespace GameServer.Docker.Agent.Services
             try
             {
                 await RegisterAsync();
+                await PublishManagedContainerSnapshotAsync(CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -535,6 +563,7 @@ namespace GameServer.Docker.Agent.Services
             {
                 await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.HeartbeatIntervalSeconds)), stoppingToken);
                 await ConnectAndRegisterWithRetryAsync(stoppingToken);
+                await PublishManagedContainerSnapshotAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -567,6 +596,73 @@ namespace GameServer.Docker.Agent.Services
             }
 
             await base.StopAsync(cancellationToken);
+        }
+
+        private async Task PublishManagedContainerSnapshotAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (_hubConnection?.State != HubConnectionState.Connected || string.IsNullOrWhiteSpace(_nodeId))
+                {
+                    return;
+                }
+
+                var filterValue = $"{ManagedLabelKey}={ManagedLabelValue}";
+                var containers = await _dockerClient.Containers.ListContainersAsync(
+                    new ContainersListParameters
+                    {
+                        All = false,
+                        Filters = new Dictionary<string, IDictionary<string, bool>>
+                        {
+                            ["label"] = new Dictionary<string, bool>
+                            {
+                                [filterValue] = true
+                            }
+                        }
+                    },
+                    cancellationToken);
+
+                var managedContainers = containers
+                    .Select(c => new
+                    {
+                        ContainerId = c.ID ?? string.Empty,
+                        Labels = c.Labels ?? new Dictionary<string, string>(StringComparer.Ordinal)
+                    })
+                    .Where(c =>
+                        !string.IsNullOrWhiteSpace(c.ContainerId) &&
+                        c.Labels.TryGetValue(ManagedLabelKey, out var managedValue) &&
+                        string.Equals(managedValue, ManagedLabelValue, StringComparison.OrdinalIgnoreCase) &&
+                        c.Labels.TryGetValue(ServerIdLabelKey, out var serverId) &&
+                        !string.IsNullOrWhiteSpace(serverId))
+                    .Select(c => new
+                    {
+                        ContainerId = c.ContainerId,
+                        ServerId = c.Labels[ServerIdLabelKey],
+                        ManagedLabelValue = c.Labels[ManagedLabelKey]
+                    })
+                    .ToList();
+
+                var payload = new
+                {
+                    NodeId = _nodeId,
+                    Containers = managedContainers,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                await _hubConnection.InvokeAsync("UpdateManagedContainers", payload, cancellationToken);
+
+                _logger.LogTrace(
+                    "Published managed-container snapshot for node {NodeId}. Accepted containers: {Count}",
+                    _nodeId,
+                    managedContainers.Count);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish managed-container snapshot");
+            }
         }
     }
 }

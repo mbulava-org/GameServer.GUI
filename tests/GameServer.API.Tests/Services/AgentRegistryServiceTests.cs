@@ -162,6 +162,95 @@ public class AgentRegistryServiceTests
         Assert.True(agent.LastHeartbeat >= before);
     }
 
+    [Fact]
+    public void UpdateManagedContainers_ValidSnapshot_MapsContainersToAgent()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+
+        _service.UpdateManagedContainers("conn-1", new AgentManagedContainerSnapshot
+        {
+            NodeId = "node-1",
+            Containers =
+            [
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-managed-1",
+                    ServerId = "server-1",
+                    ManagedLabelValue = "true"
+                },
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-managed-2",
+                    ServerId = "server-2",
+                    ManagedLabelValue = "true"
+                }
+            ]
+        });
+
+        Assert.NotNull(_service.GetAgentForContainer("container-managed-1"));
+        Assert.NotNull(_service.GetAgentForContainer("container-managed-2"));
+    }
+
+    [Fact]
+    public void UpdateManagedContainers_InvalidIdentityEntries_AreIgnored()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+
+        _service.UpdateManagedContainers("conn-1", new AgentManagedContainerSnapshot
+        {
+            NodeId = "node-1",
+            Containers =
+            [
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-invalid-managed",
+                    ServerId = "server-1",
+                    ManagedLabelValue = "false"
+                },
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-invalid-serverid",
+                    ServerId = "",
+                    ManagedLabelValue = "true"
+                },
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-valid",
+                    ServerId = "server-valid",
+                    ManagedLabelValue = "true"
+                }
+            ]
+        });
+
+        Assert.Null(_service.GetAgentForContainer("container-invalid-managed"));
+        Assert.Null(_service.GetAgentForContainer("container-invalid-serverid"));
+        Assert.NotNull(_service.GetAgentForContainer("container-valid"));
+    }
+
+    [Fact]
+    public void UpdateManagedContainers_NodeMismatch_Ignored()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+        _service.UpdateAgentContainers("conn-1", ["container-existing"]);
+
+        _service.UpdateManagedContainers("conn-1", new AgentManagedContainerSnapshot
+        {
+            NodeId = "node-2",
+            Containers =
+            [
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-mismatch",
+                    ServerId = "server-mismatch",
+                    ManagedLabelValue = "true"
+                }
+            ]
+        });
+
+        Assert.NotNull(_service.GetAgentForContainer("container-existing"));
+        Assert.Null(_service.GetAgentForContainer("container-mismatch"));
+    }
+
     // -----------------------------------------------------------------------
     // MarkAgentDisconnected
     // -----------------------------------------------------------------------

@@ -60,6 +60,24 @@ namespace GameServer.API.Hubs
         }
 
         /// <summary>
+        /// Called by agents to publish their validated managed-container snapshot.
+        /// </summary>
+        public async Task UpdateManagedContainers(AgentManagedContainerSnapshot snapshot)
+        {
+            var connectionId = Context.ConnectionId;
+
+            _logger.LogTrace(
+                "Managed container snapshot: Node={NodeId}, ConnectionId={ConnectionId}, Count={Count}",
+                snapshot.NodeId,
+                connectionId,
+                snapshot.Containers.Count);
+
+            _agentRegistry.UpdateManagedContainers(connectionId, snapshot);
+
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
         /// Called automatically by SignalR when an agent disconnects
         /// </summary>
         public override async Task OnDisconnectedAsync(Exception? exception)

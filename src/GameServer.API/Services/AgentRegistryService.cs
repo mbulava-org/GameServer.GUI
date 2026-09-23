@@ -1,3 +1,4 @@
+using GameServer.API.Constants;
 using GameServer.API.Interfaces;
 using GameServer.API.Models;
 using System.Collections.Concurrent;
@@ -73,6 +74,58 @@ namespace GameServer.API.Services
                 agent.NodeName,
                 agent.NodeId,
                 health);
+        }
+
+        public void UpdateManagedContainers(string connectionId, AgentManagedContainerSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            if (!_agentsByConnection.TryGetValue(connectionId, out var agent))
+            {
+                _logger.LogWarning("Received managed-container snapshot from unknown agent: ConnectionId={ConnectionId}", connectionId);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.NodeId) &&
+                !string.Equals(snapshot.NodeId, agent.NodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Ignoring managed-container snapshot with mismatched node id. ConnectionNode={ConnectionNodeId}, SnapshotNode={SnapshotNodeId}",
+                    agent.NodeId,
+                    snapshot.NodeId);
+                return;
+            }
+
+            var validContainerIds = snapshot.Containers
+                .Where(c =>
+                    !string.IsNullOrWhiteSpace(c.ContainerId) &&
+                    !string.IsNullOrWhiteSpace(c.ServerId) &&
+                    string.Equals(c.ManagedLabelValue, ServiceLabels.ManagedValue, StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.ContainerId)
+                .Distinct(StringComparer.Ordinal)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var oldContainers = _containerToConnection
+                .Where(kvp => kvp.Value == connectionId)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var oldId in oldContainers)
+            {
+                _containerToConnection.TryRemove(oldId, out _);
+            }
+
+            foreach (var containerId in validContainerIds)
+            {
+                _containerToConnection[containerId] = connectionId;
+            }
+
+            _logger.LogDebug(
+                "Updated managed containers for node {NodeName} ({NodeId}). Accepted={AcceptedCount}, Reported={ReportedCount}",
+                agent.NodeName,
+                agent.NodeId,
+                validContainerIds.Count,
+                snapshot.Containers.Count);
         }
 
         // Backward-compatible path used by tests and legacy callers that still publish container maps.
