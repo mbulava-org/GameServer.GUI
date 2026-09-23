@@ -396,6 +396,8 @@ environment:
 |----------|-------------|---------|
 | `GameServerDockerApi__BaseUri` | Base URL of `GameServer.Docker` API | `http://localhost:5164/` |
 
+The Primary Service can also distribute agent/background-service overrides from its own configuration by setting `DistributedAgentConfiguration__...` keys (for example `DistributedAgentConfiguration__AgentRegistration__HeartbeatIntervalSeconds=15`). Agents fetch those values over the registration hub at startup and again after reconnecting to a restarted API.
+
 **Point both `GameServer.Web` and the node agents at the same in-network API service (`gameserver-api` in the samples).** The Web UI should only call that API directly, while agents register back through `AgentRegistration__PrimaryServiceUrl`.
 
 ### Scaling

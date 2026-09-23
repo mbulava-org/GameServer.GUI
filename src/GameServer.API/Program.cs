@@ -74,6 +74,7 @@ namespace GameServer.API
                 // Agents connect to the Primary Service and push their state
                 // This will eventually replace NodeAgentDiscoveryService
                 builder.Services.AddSingleton<IAgentRegistry, AgentRegistryService>();
+                builder.Services.AddSingleton<IAgentDistributedConfigurationService, AgentDistributedConfigurationService>();
                 builder.Services.AddSingleton<IUdpAgentRegistry, UdpAgentRegistryService>();
                 builder.Services.AddHostedService<UdpAgentAnnouncementListenerService>();
 

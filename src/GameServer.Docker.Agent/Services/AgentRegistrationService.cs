@@ -12,8 +12,9 @@ namespace GameServer.Docker.Agent.Services
     public class AgentRegistrationService : BackgroundService
     {
         private readonly IDockerClient _dockerClient;
+        private readonly AgentDistributedConfigurationApplier _distributedConfigurationApplier;
         private readonly ILogger<AgentRegistrationService> _logger;
-        private readonly AgentRegistrationOptions _options;
+        private readonly IOptionsMonitor<AgentRegistrationOptions> _optionsMonitor;
         private HubConnection? _hubConnection;
         private string? _nodeId;
         private string? _nodeName;
@@ -23,23 +24,27 @@ namespace GameServer.Docker.Agent.Services
 
         public AgentRegistrationService(
             IDockerClient dockerClient,
+            AgentDistributedConfigurationApplier distributedConfigurationApplier,
             ILogger<AgentRegistrationService> logger,
-            IOptions<AgentRegistrationOptions> options)
+            IOptionsMonitor<AgentRegistrationOptions> optionsMonitor)
         {
             _dockerClient = dockerClient;
+            _distributedConfigurationApplier = distributedConfigurationApplier;
             _logger = logger;
-            _options = options.Value;
+            _optionsMonitor = optionsMonitor;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (!_options.Enabled)
+            var bootstrapOptions = _optionsMonitor.CurrentValue;
+
+            if (!bootstrapOptions.Enabled)
             {
                 _logger.LogInformation("Agent registration is disabled in configuration");
                 return;
             }
 
-            if (string.IsNullOrEmpty(_options.PrimaryServiceUrl))
+            if (string.IsNullOrEmpty(bootstrapOptions.PrimaryServiceUrl))
             {
                 _logger.LogError("PrimaryServiceUrl is not configured. Agent registration cannot proceed");
                 return;
@@ -47,13 +52,13 @@ namespace GameServer.Docker.Agent.Services
 
             _logger.LogInformation(
                 "Agent Registration Service starting (Primary URL: {PrimaryUrl}, Heartbeat interval: {Interval}s)",
-                _options.PrimaryServiceUrl,
-                _options.HeartbeatIntervalSeconds);
+                bootstrapOptions.PrimaryServiceUrl,
+                bootstrapOptions.HeartbeatIntervalSeconds);
 
             // Diagnostic: Log network connectivity details
             try
             {
-                var primaryUri = new Uri(_options.PrimaryServiceUrl);
+                var primaryUri = new Uri(bootstrapOptions.PrimaryServiceUrl);
                 _logger.LogDebug(
                     "Primary Service connectivity check: Host={Host}, Port={Port}, Scheme={Scheme}",
                     primaryUri.Host,
@@ -81,12 +86,12 @@ namespace GameServer.Docker.Agent.Services
             }
 
             // Build SignalR connection to Primary Service
-            var hubUrl = $"{_options.PrimaryServiceUrl.TrimEnd('/')}/hubs/agentregistration";
+            var hubUrl = $"{bootstrapOptions.PrimaryServiceUrl.TrimEnd('/')}/hubs/agentregistration";
             _logger.LogInformation("Connecting to Primary Service at {HubUrl}", hubUrl);
 
             _hubConnection = new HubConnectionBuilder()
                 .WithUrl(hubUrl)
-                .WithAutomaticReconnect(_options.ReconnectDelaySeconds.Select(s => TimeSpan.FromSeconds(s)).ToArray())
+                .WithAutomaticReconnect(bootstrapOptions.ReconnectDelaySeconds.Select(s => TimeSpan.FromSeconds(s)).ToArray())
                 .Build();
 
             _hubConnection.On<string>("PrimaryServiceShuttingDown", message => HandlePrimaryServiceShutdownAsync(message, stoppingToken));
@@ -105,9 +110,10 @@ namespace GameServer.Docker.Agent.Services
 
         private async Task ConnectAndRegisterWithRetryAsync(CancellationToken cancellationToken)
         {
-            var maxRetries = _options.MaxStartupRetries > 0 ? _options.MaxStartupRetries : 30;
+            var bootstrapOptions = _optionsMonitor.CurrentValue;
+            var maxRetries = bootstrapOptions.MaxStartupRetries > 0 ? bootstrapOptions.MaxStartupRetries : 30;
             var currentRetry = 0;
-            var baseDelay = TimeSpan.FromSeconds(_options.StartupRetryDelaySeconds > 0 ? _options.StartupRetryDelaySeconds : 5);
+            var baseDelay = TimeSpan.FromSeconds(bootstrapOptions.StartupRetryDelaySeconds > 0 ? bootstrapOptions.StartupRetryDelaySeconds : 5);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -299,11 +305,14 @@ namespace GameServer.Docker.Agent.Services
         {
             try
             {
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.ConnectionTimeoutSeconds));
+                var currentOptions = _optionsMonitor.CurrentValue;
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(currentOptions.ConnectionTimeoutSeconds));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
                 await _hubConnection!.StartAsync(linkedCts.Token);
                 _logger.LogInformation("Connected to Primary Service SignalR hub");
+
+                await SyncDistributedConfigurationAsync(linkedCts.Token);
 
                 // Send initial registration
                 await RegisterAsync();
@@ -315,21 +324,23 @@ namespace GameServer.Docker.Agent.Services
             }
             catch (OperationCanceledException)
             {
-                _logger.LogError("Connection to Primary Service timed out after {Timeout}s", _options.ConnectionTimeoutSeconds);
+                _logger.LogError("Connection to Primary Service timed out after {Timeout}s", _optionsMonitor.CurrentValue.ConnectionTimeoutSeconds);
                 throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to connect to Primary Service at {Url}", _options.PrimaryServiceUrl);
+                _logger.LogError(ex, "Failed to connect to Primary Service at {Url}", _optionsMonitor.CurrentValue.PrimaryServiceUrl);
                 throw;
             }
         }
 
         private async Task RegisterAsync()
         {
+            var currentOptions = _optionsMonitor.CurrentValue;
+
             // Filter capabilities based on node role
             // Only manager nodes can perform service/swarm operations
-            var capabilities = FilterCapabilitiesByNodeRole(_options.Capabilities, _isManagerNode);
+            var capabilities = FilterCapabilitiesByNodeRole(currentOptions.Capabilities, _isManagerNode);
 
             var registration = new
             {
@@ -349,6 +360,14 @@ namespace GameServer.Docker.Agent.Services
                 _nodeId,
                 string.Join(", ", capabilities),
                 _isManagerNode);
+        }
+
+        private async Task SyncDistributedConfigurationAsync(CancellationToken cancellationToken)
+        {
+            var settings = await _hubConnection!
+                .InvokeAsync<Dictionary<string, string?>?>("GetDistributedConfiguration", cancellationToken);
+
+            _distributedConfigurationApplier.Apply(settings ?? new Dictionary<string, string?>());
         }
 
         private static List<string> FilterCapabilitiesByNodeRole(List<string> configuredCapabilities, bool isManagerNode)
@@ -382,12 +401,12 @@ namespace GameServer.Docker.Agent.Services
 
         private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.HeartbeatIntervalSeconds));
-
             try
             {
-                while (await timer.WaitForNextTickAsync(stoppingToken))
+                while (!stoppingToken.IsCancellationRequested)
                 {
+                    var heartbeatIntervalSeconds = Math.Max(1, _optionsMonitor.CurrentValue.HeartbeatIntervalSeconds);
+                    await Task.Delay(TimeSpan.FromSeconds(heartbeatIntervalSeconds), stoppingToken);
                     await SendHeartbeatAsync(stoppingToken);
                 }
             }
@@ -475,9 +494,10 @@ namespace GameServer.Docker.Agent.Services
             _primaryServiceShutdownInProgress = false;
             _logger.LogInformation("Reconnected to Primary Service with ConnectionId={ConnectionId}", connectionId);
 
-            // Re-register after reconnection
+            // Refresh distributed configuration and re-register after reconnection
             try
             {
+                await SyncDistributedConfigurationAsync(CancellationToken.None);
                 await RegisterAsync();
             }
             catch (Exception ex)
@@ -533,7 +553,7 @@ namespace GameServer.Docker.Agent.Services
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.HeartbeatIntervalSeconds)), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _optionsMonitor.CurrentValue.HeartbeatIntervalSeconds)), stoppingToken);
                 await ConnectAndRegisterWithRetryAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
