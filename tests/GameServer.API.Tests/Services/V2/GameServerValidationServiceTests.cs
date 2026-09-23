@@ -1,6 +1,6 @@
 using Docker.DotNet.Models;
 using GameServer.API.Configurations;
-using GameServer.API.Constants;
+using GameServer.Docker.Constants;
 using GameServer.API.Dtos.V2;
 using GameServer.API.Interfaces;
 using GameServer.API.Models.V2;

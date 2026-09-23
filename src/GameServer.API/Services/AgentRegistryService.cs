@@ -1,5 +1,7 @@
+using GameServer.Docker.Constants;
 using GameServer.API.Interfaces;
 using GameServer.API.Models;
+using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
 
 namespace GameServer.API.Services
@@ -11,6 +13,7 @@ namespace GameServer.API.Services
     /// </summary>
     public class AgentRegistryService : IAgentRegistry
     {
+        private readonly TimeSpan _heartbeatTimeout;
         private readonly ILogger<AgentRegistryService> _logger;
 
         // connectionId → NodeAgentEndpoint
@@ -22,9 +25,10 @@ namespace GameServer.API.Services
         // containerId → connectionId (for quick container-to-agent lookup)
         private readonly ConcurrentDictionary<string, string> _containerToConnection = new();
 
-        public AgentRegistryService(ILogger<AgentRegistryService> logger)
+        public AgentRegistryService(ILogger<AgentRegistryService> logger, IConfiguration? configuration = null)
         {
             _logger = logger;
+            _heartbeatTimeout = ResolveHeartbeatTimeout(configuration);
         }
 
         public void RegisterAgent(AgentRegistrationInfo info, string connectionId)
@@ -56,7 +60,7 @@ namespace GameServer.API.Services
                 info.IsManagerNode);
         }
 
-        public void UpdateAgentContainers(string connectionId, List<string> containerIds)
+        public void UpdateAgentHeartbeat(string connectionId, string health)
         {
             if (!_agentsByConnection.TryGetValue(connectionId, out var agent))
             {
@@ -66,7 +70,71 @@ namespace GameServer.API.Services
 
             // Update last heartbeat time
             agent.LastHeartbeat = DateTime.UtcNow;
-            agent.IsHealthy = true;
+            agent.IsHealthy = string.Equals(health, "healthy", StringComparison.OrdinalIgnoreCase);
+
+            _logger.LogDebug(
+                "Agent heartbeat: Node={NodeName} ({NodeId}), Health={Health}",
+                agent.NodeName,
+                agent.NodeId,
+                health);
+        }
+
+        public void UpdateManagedContainers(string connectionId, AgentManagedContainerSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            if (!_agentsByConnection.TryGetValue(connectionId, out var agent))
+            {
+                _logger.LogWarning("Received managed-container snapshot from unknown agent: ConnectionId={ConnectionId}", connectionId);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.NodeId) &&
+                !string.Equals(snapshot.NodeId, agent.NodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Ignoring managed-container snapshot with mismatched node id. ConnectionNode={ConnectionNodeId}, SnapshotNode={SnapshotNodeId}",
+                    agent.NodeId,
+                    snapshot.NodeId);
+                return;
+            }
+
+            var validContainerIds = snapshot.Containers
+                .Where(c =>
+                    !string.IsNullOrWhiteSpace(c.ContainerId) &&
+                    !string.IsNullOrWhiteSpace(c.ServerId) &&
+                    string.Equals(c.ManagedLabelValue, ServiceLabels.ManagedValue, StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.ContainerId)
+                .Distinct(StringComparer.Ordinal)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var oldContainers = _containerToConnection
+                .Where(kvp => kvp.Value == connectionId)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var oldId in oldContainers)
+            {
+                _containerToConnection.TryRemove(oldId, out _);
+            }
+
+            foreach (var containerId in validContainerIds)
+            {
+                _containerToConnection[containerId] = connectionId;
+            }
+
+            _logger.LogDebug(
+                "Updated managed containers for node {NodeName} ({NodeId}). Accepted={AcceptedCount}, Reported={ReportedCount}",
+                agent.NodeName,
+                agent.NodeId,
+                validContainerIds.Count,
+                snapshot.Containers.Count);
+        }
+
+        // Backward-compatible path used by tests and legacy callers that still publish container maps.
+        public void UpdateAgentContainers(string connectionId, List<string> containerIds)
+        {
+            UpdateAgentHeartbeat(connectionId, "healthy");
 
             // Remove old container mappings for this agent
             var oldContainers = _containerToConnection
@@ -84,13 +152,6 @@ namespace GameServer.API.Services
             {
                 _containerToConnection[containerId] = connectionId;
             }
-
-            _logger.LogDebug(
-                "Agent heartbeat: Node={NodeName} ({NodeId}), Containers={ContainerCount} [{ContainerIds}]",
-                agent.NodeName,
-                agent.NodeId,
-                containerIds.Count,
-                string.Join(", ", containerIds.Select(id => id.Substring(0, Math.Min(12, id.Length)))));
         }
 
         public void MarkAgentDisconnected(string connectionId)
@@ -128,6 +189,15 @@ namespace GameServer.API.Services
             if (_containerToConnection.TryGetValue(containerId, out var connectionId) &&
                 _agentsByConnection.TryGetValue(connectionId, out var agent))
             {
+                if (!IsAgentHealthy(agent))
+                {
+                    _logger.LogDebug(
+                        "Mapped agent for requested container is unhealthy or stale: Node={NodeName} ({NodeId})",
+                        agent.NodeName,
+                        agent.NodeId);
+                    return null;
+                }
+
                 _logger.LogTrace(
                     "Found agent for container {ContainerId}: Node={NodeName} ({NodeId})",
                     containerId.Substring(0, Math.Min(12, containerId.Length)),
@@ -152,7 +222,7 @@ namespace GameServer.API.Services
         public List<NodeAgentEndpoint> GetHealthyAgents()
         {
             return _agentsByConnection.Values
-                .Where(a => a.IsHealthy)
+                .Where(IsAgentHealthy)
                 .ToList();
         }
 
@@ -181,18 +251,40 @@ namespace GameServer.API.Services
         public NodeAgentEndpoint? GetHealthyManagerAgent()
         {
             var managerAgent = _agentsByConnection.Values
-                .FirstOrDefault(a => a.IsManagerNode && a.IsHealthy);
+                .FirstOrDefault(a => a.IsManagerNode && IsAgentHealthy(a));
 
             if (managerAgent == null)
             {
+                var healthyManagers = _agentsByConnection.Values
+                    .Count(a => a.IsManagerNode && IsAgentHealthy(a));
+
                 _logger.LogWarning(
                     "No healthy manager agent found. Total agents: {Total}, Manager agents: {Managers}, Healthy managers: {HealthyManagers}",
                     _agentsByConnection.Count,
                     _agentsByConnection.Values.Count(a => a.IsManagerNode),
-                    _agentsByConnection.Values.Count(a => a.IsManagerNode && a.IsHealthy));
+                    healthyManagers);
             }
 
             return managerAgent;
+        }
+
+        private bool IsAgentHealthy(NodeAgentEndpoint agent)
+        {
+            if (!agent.IsHealthy)
+            {
+                return false;
+            }
+
+            return DateTime.UtcNow - agent.LastHeartbeat <= _heartbeatTimeout;
+        }
+
+        private static TimeSpan ResolveHeartbeatTimeout(IConfiguration? configuration)
+        {
+            var heartbeatIntervalSeconds = configuration?.GetValue<int?>(
+                $"{AgentDistributedConfigurationService.SectionName}:AgentRegistration:HeartbeatIntervalSeconds");
+            var effectiveHeartbeatIntervalSeconds = Math.Max(1, heartbeatIntervalSeconds ?? 30);
+
+            return TimeSpan.FromSeconds(Math.Max(90, effectiveHeartbeatIntervalSeconds * 2));
         }
     }
 }

@@ -70,7 +70,13 @@ public interface IGameServerV2ApiService
     /// <summary>
     /// Gets the historical resource utilization records for a V2 GameServer.
     /// </summary>
-    Task<IReadOnlyList<GameServerResourceHistoryItem>> GetResourceHistoryAsync(string serverId, DateTime? from = null, DateTime? to = null, int limit = 5000, CancellationToken cancellationToken = default);
+    Task<GameServerCalculatedResourceHistory> GetResourceHistoryAsync(
+        string serverId,
+        DateTime? from = null,
+        DateTime? to = null,
+        int maxDataPoints = 5000,
+        string calculation = "avg",
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets per-group access rows for a server, scoped to the groups the current user belongs to.
@@ -104,4 +110,3 @@ public interface IGameServerV2ApiService
     /// </summary>
     Task<GameServerDetail> UpdateContainerImageAsync(string serverId, CancellationToken cancellationToken = default);
 }
-

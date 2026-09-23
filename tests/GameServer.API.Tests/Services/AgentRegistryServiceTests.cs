@@ -1,5 +1,6 @@
 using GameServer.API.Models;
 using GameServer.API.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -162,6 +163,95 @@ public class AgentRegistryServiceTests
         Assert.True(agent.LastHeartbeat >= before);
     }
 
+    [Fact]
+    public void UpdateManagedContainers_ValidSnapshot_MapsContainersToAgent()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+
+        _service.UpdateManagedContainers("conn-1", new AgentManagedContainerSnapshot
+        {
+            NodeId = "node-1",
+            Containers =
+            [
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-managed-1",
+                    ServerId = "server-1",
+                    ManagedLabelValue = "true"
+                },
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-managed-2",
+                    ServerId = "server-2",
+                    ManagedLabelValue = "true"
+                }
+            ]
+        });
+
+        Assert.NotNull(_service.GetAgentForContainer("container-managed-1"));
+        Assert.NotNull(_service.GetAgentForContainer("container-managed-2"));
+    }
+
+    [Fact]
+    public void UpdateManagedContainers_InvalidIdentityEntries_AreIgnored()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+
+        _service.UpdateManagedContainers("conn-1", new AgentManagedContainerSnapshot
+        {
+            NodeId = "node-1",
+            Containers =
+            [
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-invalid-managed",
+                    ServerId = "server-1",
+                    ManagedLabelValue = "false"
+                },
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-invalid-serverid",
+                    ServerId = "",
+                    ManagedLabelValue = "true"
+                },
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-valid",
+                    ServerId = "server-valid",
+                    ManagedLabelValue = "true"
+                }
+            ]
+        });
+
+        Assert.Null(_service.GetAgentForContainer("container-invalid-managed"));
+        Assert.Null(_service.GetAgentForContainer("container-invalid-serverid"));
+        Assert.NotNull(_service.GetAgentForContainer("container-valid"));
+    }
+
+    [Fact]
+    public void UpdateManagedContainers_NodeMismatch_Ignored()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+        _service.UpdateAgentContainers("conn-1", ["container-existing"]);
+
+        _service.UpdateManagedContainers("conn-1", new AgentManagedContainerSnapshot
+        {
+            NodeId = "node-2",
+            Containers =
+            [
+                new AgentManagedContainerInfo
+                {
+                    ContainerId = "container-mismatch",
+                    ServerId = "server-mismatch",
+                    ManagedLabelValue = "true"
+                }
+            ]
+        });
+
+        Assert.NotNull(_service.GetAgentForContainer("container-existing"));
+        Assert.Null(_service.GetAgentForContainer("container-mismatch"));
+    }
+
     // -----------------------------------------------------------------------
     // MarkAgentDisconnected
     // -----------------------------------------------------------------------
@@ -252,6 +342,40 @@ public class AgentRegistryServiceTests
         Assert.Equal(2, healthy.Count);
     }
 
+    [Fact]
+    public void GetHealthyAgents_StaleHeartbeat_IsExcluded()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+        var agent = _service.GetAgentByConnectionId("conn-1");
+        Assert.NotNull(agent);
+        agent!.LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        var healthy = _service.GetHealthyAgents();
+
+        Assert.Empty(healthy);
+    }
+
+    [Fact]
+    public void GetHealthyAgents_UsesConfiguredHeartbeatPolicy()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DistributedAgentConfiguration:AgentRegistration:HeartbeatIntervalSeconds"] = "120"
+            })
+            .Build();
+        var service = new AgentRegistryService(_mockLogger.Object, configuration);
+
+        service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+        var agent = service.GetAgentByConnectionId("conn-1");
+        Assert.NotNull(agent);
+        agent!.LastHeartbeat = DateTime.UtcNow.AddSeconds(-100);
+
+        var healthy = service.GetHealthyAgents();
+
+        Assert.Single(healthy);
+    }
+
     // -----------------------------------------------------------------------
     // GetManagerAgents / GetHealthyManagerAgent
     // -----------------------------------------------------------------------
@@ -277,6 +401,19 @@ public class AgentRegistryServiceTests
 
         Assert.NotNull(manager);
         Assert.Equal("manager-1", manager.NodeId);
+    }
+
+    [Fact]
+    public void GetHealthyManagerAgent_StaleHeartbeat_ReturnsNull()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("manager-1", "mgr", "http://10.0.1.5:8080", isManager: true), "conn-mgr");
+        var agent = _service.GetAgentByConnectionId("conn-mgr");
+        Assert.NotNull(agent);
+        agent!.LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        var manager = _service.GetHealthyManagerAgent();
+
+        Assert.Null(manager);
     }
 
     [Fact]

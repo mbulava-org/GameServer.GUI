@@ -13,15 +13,18 @@ Game Server Manager uses a push-based agent registration model. Each Docker node
 
 ## Registration Flow
 
-1. The agent starts and reads `AgentRegistration:PrimaryServiceUrl` from configuration (defaulting to the Primary Service URL).
+1. The agent starts and reads its local bootstrap `AgentRegistration:PrimaryServiceUrl`.
 2. `AgentRegistrationService` opens a SignalR connection to `{PrimaryServiceUrl}/hubs/agentregistration`.
-3. The agent sends its metadata:
+3. The agent sends its bootstrap metadata:
    - Node name
    - Capabilities (e.g., `docker`, `logs`, `exec`)
    - Internal URL used for direct API calls
-4. Every 30 seconds the agent sends a heartbeat.
-5. The Primary Service marks agents unhealthy if a heartbeat is missed.
-6. The Primary Service stores a container-to-agent mapping so logs, terminal, and stats requests can be routed to the correct node.
+4. After registration, the agent pulls curated distributed overrides from the Primary Service's `DistributedAgentConfiguration` section and overlays them onto its in-memory configuration.
+5. The agent re-registers so any distributed capability or heartbeat changes take effect immediately.
+6. Every 30 seconds the agent sends a heartbeat.
+7. If the Primary Service disconnects or restarts, the agent reconnects, refreshes the distributed configuration, and re-registers.
+8. The Primary Service marks agents unhealthy if a heartbeat is missed.
+9. The Primary Service stores a container-to-agent mapping so logs, terminal, and stats requests can be routed to the correct node.
 
 ## Why This Matters
 
@@ -43,11 +46,26 @@ Game Server Manager uses a push-based agent registration model. Each Docker node
 
 ### Primary Service
 
-No explicit configuration is required. The hub is registered automatically:
+The hub is registered automatically:
 
 ```csharp
 app.MapHub<Hubs.AgentRegistrationHub>("/hubs/agentregistration");
 ```
+
+Optional distributed agent overrides can be supplied from the Primary Service under `DistributedAgentConfiguration`. Supported keys are flattened and sent back to the agent relative to that section:
+
+```json
+{
+  "DistributedAgentConfiguration": {
+    "AgentRegistration": {
+      "HeartbeatIntervalSeconds": 15,
+      "Capabilities": [ "logs", "exec", "stats", "attach", "services" ]
+    }
+  }
+}
+```
+
+> The bootstrap `AgentRegistration:PrimaryServiceUrl` remains local to the agent so it can find the Primary Service before any distributed overrides are fetched.
 
 ## Troubleshooting
 

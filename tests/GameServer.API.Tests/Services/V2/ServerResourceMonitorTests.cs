@@ -85,7 +85,7 @@ public class ServerResourceMonitorTests
                 new TaskResponse
                 {
                     ID = "task-prep-1",
-                    Status = new Docker.DotNet.Models.TaskStatus
+                    Status = new global::Docker.DotNet.Models.TaskStatus
                     {
                         State = TaskState.Preparing,
                         Message = "pulling image..."

@@ -12,14 +12,39 @@ namespace GameServer.API.Hubs
     public class AgentRegistrationHub : Hub
     {
         private readonly IAgentRegistry _agentRegistry;
+        private readonly IAgentDistributedConfigurationService _agentDistributedConfigurationService;
         private readonly ILogger<AgentRegistrationHub> _logger;
 
         public AgentRegistrationHub(
             IAgentRegistry agentRegistry,
+            IAgentDistributedConfigurationService agentDistributedConfigurationService,
             ILogger<AgentRegistrationHub> logger)
         {
             _agentRegistry = agentRegistry;
+            _agentDistributedConfigurationService = agentDistributedConfigurationService;
             _logger = logger;
+        }
+
+        public Task<Dictionary<string, string?>> GetDistributedConfiguration()
+        {
+            if (_agentRegistry.GetAgentByConnectionId(Context.ConnectionId) is null)
+            {
+                _logger.LogWarning(
+                    "Rejected distributed configuration request from unregistered connection {ConnectionId}",
+                    Context.ConnectionId);
+                throw new HubException("Agent must register before requesting distributed configuration.");
+            }
+
+            var snapshot = new Dictionary<string, string?>(
+                _agentDistributedConfigurationService.GetConfigurationSnapshot(),
+                StringComparer.OrdinalIgnoreCase);
+
+            _logger.LogDebug(
+                "Providing {Count} distributed configuration value(s) to agent connection {ConnectionId}",
+                snapshot.Count,
+                Context.ConnectionId);
+
+            return Task.FromResult(snapshot);
         }
 
         /// <summary>
@@ -49,13 +74,30 @@ namespace GameServer.API.Hubs
             var connectionId = Context.ConnectionId;
 
             _logger.LogTrace(
-                "Agent heartbeat: Node={NodeId}, ConnectionId={ConnectionId}, Containers={ContainerCount}, Health={Health}",
+                "Agent heartbeat: Node={NodeId}, ConnectionId={ConnectionId}, Health={Health}",
                 heartbeat.NodeId,
                 connectionId,
-                heartbeat.ContainerIds.Count,
                 heartbeat.Health);
 
-            _agentRegistry.UpdateAgentContainers(connectionId, heartbeat.ContainerIds);
+            _agentRegistry.UpdateAgentHeartbeat(connectionId, heartbeat.Health);
+
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Called by agents to publish their validated managed-container snapshot.
+        /// </summary>
+        public async Task UpdateManagedContainers(AgentManagedContainerSnapshot snapshot)
+        {
+            var connectionId = Context.ConnectionId;
+
+            _logger.LogTrace(
+                "Managed container snapshot: Node={NodeId}, ConnectionId={ConnectionId}, Count={Count}",
+                snapshot.NodeId,
+                connectionId,
+                snapshot.Containers.Count);
+
+            _agentRegistry.UpdateManagedContainers(connectionId, snapshot);
 
             await Task.CompletedTask;
         }

@@ -20,7 +20,7 @@
                 <h5 class="mb-0">Resource Usage History</h5>
                 @if (chartPoints.Any())
                 {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{chartPoints.Count} records")" Variant="Variant.Flat" />
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@($"{chartPoints.Count} points")" Variant="Variant.Flat" />
                 }
                 @if (isConnected)
                 {
@@ -41,6 +41,24 @@
                                     @bind-Value="@selectedRangeKey"
                                     Change="@(args => OnRangeOptionChanged((string)args))"
                                     Style="min-width: 160px;"
+                                    Disabled="@isHistoryLoading" />
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="text-muted small">Point Cap:</span>
+                    <RadzenDropDown TValue="int"
+                                    Data="@PointCapOptions"
+                                    @bind-Value="@selectedPointCap"
+                                    Change="@(async _ => await LoadHistoryAsync())"
+                                    Style="min-width: 110px;"
+                                    Disabled="@isHistoryLoading" />
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="text-muted small">Calc:</span>
+                    <RadzenDropDown TValue="string"
+                                    Data="@CalculationOptions"
+                                    @bind-Value="@selectedCalculation"
+                                    Change="@(async _ => await LoadHistoryAsync())"
+                                    Style="min-width: 110px;"
                                     Disabled="@isHistoryLoading" />
                 </div>
 
@@ -82,14 +100,14 @@
         {
             <div class="text-center py-4">
                 <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
-                <p class="mt-2 text-muted small">Loading historical resource records...</p>
+                <p class="mt-2 text-muted small">Loading historical resource points...</p>
             </div>
         }
         else if (!chartPoints.Any())
         {
             <div class="text-center py-4 border rounded bg-light">
                 <RadzenIcon Icon="analytics" Style="font-size: 2.5rem; color: var(--rz-text-disabled-color);" />
-                <p class="text-muted mt-2 mb-0">No historical resource records have been saved yet for this game server in the selected time range.</p>
+                <p class="text-muted mt-2 mb-0">No historical resource points are available for this game server in the selected time range.</p>
             </div>
         }
         else
@@ -101,7 +119,7 @@
                 <div class="col-lg-6">
                     <TaskManagerChartCard Title="CPU Usage"
                                           HeaderColor="var(--rz-primary)"
-                                          RightBadge="@(GetLatestCpu() + "%")"
+                                          RightBadge="@GetLatestCpuBadge()"
                                           RightBadgeCss="bg-primary-subtle text-primary"
                                           MaxAxisLabel="@GetCpuMaxAxisLabel()"
                                           RangeLabel="@GetRangeLabel()">
@@ -116,7 +134,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="fw-bold text-primary">@data.CpuPercent.ToString("F1")% CPU</div>
+                                        <div class="fw-bold text-primary">@(data.CpuPercent is double cpu ? $"{cpu:F1}% CPU" : "CPU unavailable")</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -135,7 +153,7 @@
                 <div class="col-lg-6">
                     <TaskManagerChartCard Title="Memory Usage"
                                           HeaderColor="var(--rz-info)"
-                                          RightBadge="@(GetLatestMemoryMB() + " MB")"
+                                          RightBadge="@GetLatestMemoryBadge()"
                                           RightBadgeCss="bg-info-subtle text-info"
                                           MaxAxisLabel="100%"
                                           RangeLabel="@GetRangeLabel()">
@@ -150,7 +168,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="fw-bold text-info">@data.MemoryPercent.ToString("F1")% (@data.MemoryMB.ToString("F1") MB)</div>
+                                        <div class="fw-bold text-info">@(data.MemoryPercent is double memoryPercent && data.MemoryMB is double memoryMb ? $"{memoryPercent:F1}% ({memoryMb:F1} MB)" : "Memory unavailable")</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -184,7 +202,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-success small">Rx In: @data.NetworkRxKBps.ToString("F2") KB/s</div>
+                                        <div class="text-success small">Rx In: @(data.NetworkRxKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -198,7 +216,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-info small">Tx Out: @data.NetworkTxKBps.ToString("F2") KB/s</div>
+                                        <div class="text-info small">Tx Out: @(data.NetworkTxKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -232,7 +250,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-warning small">Read: @data.BlockReadKBps.ToString("F2") KB/s</div>
+                                        <div class="text-warning small">Read: @(data.BlockReadKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -246,7 +264,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-danger small">Write: @data.BlockWriteKBps.ToString("F2") KB/s</div>
+                                        <div class="text-danger small">Write: @(data.BlockWriteKBps?.ToString("F2") ?? "n/a") KB/s</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -280,7 +298,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-success small">Rx In total: @data.NetworkRxMB.ToString("F2") MB</div>
+                                        <div class="text-success small">Rx In total: @(data.NetworkRxMB is double value ? $"{value:F2} MB" : "n/a")</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -294,7 +312,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-info small">Tx Out total: @data.NetworkTxMB.ToString("F2") MB</div>
+                                        <div class="text-info small">Tx Out total: @(data.NetworkTxMB is double value ? $"{value:F2} MB" : "n/a")</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -328,7 +346,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-warning small">Read total: @data.BlockReadMB.ToString("F2") MB</div>
+                                        <div class="text-warning small">Read total: @(data.BlockReadMB is double value ? $"{value:F2} MB" : "n/a")</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -342,7 +360,7 @@
                                 <TooltipTemplate Context="data">
                                     <div class="p-1">
                                         <div class="text-muted small">@data.FullTimestamp</div>
-                                        <div class="text-danger small">Write total: @data.BlockWriteMB.ToString("F2") MB</div>
+                                        <div class="text-danger small">Write total: @(data.BlockWriteMB is double value ? $"{value:F2} MB" : "n/a")</div>
                                     </div>
                                 </TooltipTemplate>
                             </RadzenLineSeries>
@@ -414,6 +432,10 @@
     private bool isConnecting;
     private List<ResourceHistoryChartPoint> chartPoints = [];
     private bool isHistoryLoading;
+    private int selectedPointCap = 5000;
+    private string selectedCalculation = "avg";
+    private static readonly IReadOnlyList<int> PointCapOptions = [5000, 10000];
+    private static readonly IReadOnlyList<string> CalculationOptions = ["min", "max", "avg", "median"];
 
     public sealed record TimeRangeOption(string Value, string Text, TimeSpan? Duration);
 
@@ -442,27 +464,33 @@
         public DateTime Timestamp { get; init; }
         public string AxisLabel { get; set; } = string.Empty;
         public string FullTimestamp { get; set; } = string.Empty;
-        public double CpuPercent { get; init; }
-        public double MemoryPercent { get; init; }
-        public double MemoryMB { get; init; }
+        public double? CpuPercent { get; init; }
+        public double? MemoryPercent { get; init; }
+        public double? MemoryMB { get; init; }
 
         // Raw cumulative counter values (bytes) used to compute per-second throughput
-        public long NetworkRxBytesRaw { get; init; }
-        public long NetworkTxBytesRaw { get; init; }
-        public long BlockReadBytesRaw { get; init; }
-        public long BlockWriteBytesRaw { get; init; }
+        public long? NetworkRxBytesRaw { get; init; }
+        public long? NetworkTxBytesRaw { get; init; }
+        public long? BlockReadBytesRaw { get; init; }
+        public long? BlockWriteBytesRaw { get; init; }
+
+        // Absolute container counters are only available for live SignalR samples.
+        public long? NetworkRxCounterBytes { get; init; }
+        public long? NetworkTxCounterBytes { get; init; }
+        public long? BlockReadCounterBytes { get; init; }
+        public long? BlockWriteCounterBytes { get; init; }
 
         // Cumulative totals converted to MB (for aggregate charts)
-        public double NetworkRxMB => Math.Round(NetworkRxBytesRaw / 1024.0 / 1024.0, 2);
-        public double NetworkTxMB => Math.Round(NetworkTxBytesRaw / 1024.0 / 1024.0, 2);
-        public double BlockReadMB => Math.Round(BlockReadBytesRaw / 1024.0 / 1024.0, 2);
-        public double BlockWriteMB => Math.Round(BlockWriteBytesRaw / 1024.0 / 1024.0, 2);
+        public double? NetworkRxMB => NetworkRxBytesRaw.HasValue ? Math.Round(NetworkRxBytesRaw.Value / 1024.0 / 1024.0, 2) : null;
+        public double? NetworkTxMB => NetworkTxBytesRaw.HasValue ? Math.Round(NetworkTxBytesRaw.Value / 1024.0 / 1024.0, 2) : null;
+        public double? BlockReadMB => BlockReadBytesRaw.HasValue ? Math.Round(BlockReadBytesRaw.Value / 1024.0 / 1024.0, 2) : null;
+        public double? BlockWriteMB => BlockWriteBytesRaw.HasValue ? Math.Round(BlockWriteBytesRaw.Value / 1024.0 / 1024.0, 2) : null;
 
         // Computed instantaneous throughput between this and the previous sample (KB/s)
-        public double NetworkRxKBps { get; set; }
-        public double NetworkTxKBps { get; set; }
-        public double BlockReadKBps { get; set; }
-        public double BlockWriteKBps { get; set; }
+        public double? NetworkRxKBps { get; set; }
+        public double? NetworkTxKBps { get; set; }
+        public double? BlockReadKBps { get; set; }
+        public double? BlockWriteKBps { get; set; }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -539,21 +567,29 @@
                 }
             }
 
-            var result = await GameServerApiV2.GetResourceHistoryAsync(ServerId, from: fromUtc, to: toUtc, limit: 5000);
-            chartPoints = result.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
+            var result = await GameServerApiV2.GetResourceHistoryAsync(
+                ServerId,
+                from: fromUtc,
+                to: toUtc,
+                maxDataPoints: selectedPointCap,
+                calculation: selectedCalculation);
+
+            chartPoints = result.Points.OrderBy(r => r.Timestamp).Select(r => new ResourceHistoryChartPoint
             {
                 Timestamp = r.Timestamp,
                 FullTimestamp = TimeZoneService.FormatLocalDateTime(r.Timestamp, "yyyy-MM-dd HH:mm:ss"),
-                CpuPercent = Math.Round(r.CpuUsagePercent ?? 0, 1),
-                MemoryPercent = Math.Round(r.MemoryUsagePercent ?? 0, 1),
-                MemoryMB = Math.Round((r.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
-                NetworkRxBytesRaw = r.NetworkRxBytes ?? 0,
-                NetworkTxBytesRaw = r.NetworkTxBytes ?? 0,
-                BlockReadBytesRaw = r.BlockReadBytes ?? 0,
-                BlockWriteBytesRaw = r.BlockWriteBytes ?? 0
+                CpuPercent = r.CpuUsagePercent is double cpu ? Math.Round(cpu, 1) : null,
+                MemoryPercent = r.MemoryUsagePercent is double memoryPercent ? Math.Round(memoryPercent, 1) : null,
+                MemoryMB = r.MemoryUsageBytes is long memoryBytes ? Math.Round(memoryBytes / (1024.0 * 1024.0), 2) : null,
+                NetworkRxBytesRaw = r.NetworkRxTotalBytes,
+                NetworkTxBytesRaw = r.NetworkTxTotalBytes,
+                BlockReadBytesRaw = r.BlockReadTotalBytes,
+                BlockWriteBytesRaw = r.BlockWriteTotalBytes,
+                NetworkRxKBps = r.NetworkRxKBps,
+                NetworkTxKBps = r.NetworkTxKBps,
+                BlockReadKBps = r.BlockReadKBps,
+                BlockWriteKBps = r.BlockWriteKBps
             }).ToList();
-
-            ComputeThroughput(chartPoints);
             ComputeAxisLabels(chartPoints);
         }
         catch (Exception ex)
@@ -616,26 +652,27 @@
 
     private string GetAvgCpu()
     {
-        if (!chartPoints.Any()) return "0.0";
-        return chartPoints.Average(c => c.CpuPercent).ToString("F1");
+        var cpuValues = chartPoints.Where(c => c.CpuPercent.HasValue).Select(c => c.CpuPercent!.Value).ToList();
+        if (cpuValues.Count == 0) return "n/a";
+        return cpuValues.Average().ToString("F1");
     }
 
-    private string GetLatestMemoryMB()
+    private string GetLatestMemoryBadge()
     {
-        if (!chartPoints.Any()) return "0";
-        return chartPoints.Last().MemoryMB.ToString("0.##");
+        var latestMemory = chartPoints.LastOrDefault()?.MemoryMB;
+        return latestMemory.HasValue ? $"{latestMemory.Value:0.##} MB" : "n/a";
     }
 
-    private string GetLatestCpu()
+    private string GetLatestCpuBadge()
     {
-        if (!chartPoints.Any()) return "0";
-        return chartPoints.Last().CpuPercent.ToString("F1");
+        var latestCpu = chartPoints.LastOrDefault()?.CpuPercent;
+        return latestCpu.HasValue ? $"{latestCpu.Value:F1}%" : "n/a";
     }
 
     private double GetCpuAxisMax()
     {
         if (!chartPoints.Any()) return 100.0;
-        var maxCpu = chartPoints.Max(c => c.CpuPercent);
+        var maxCpu = chartPoints.Max(c => c.CpuPercent) ?? 0;
         if (maxCpu <= 100.0) return 100.0;
         return Math.Ceiling(maxCpu / 100.0) * 100.0;
     }
@@ -644,14 +681,14 @@
 
     private string GetCpuMaxAxisLabel() => $"{GetCpuAxisMax():0}%";
 
-    private string GetLatestNetRxKBps() => chartPoints.LastOrDefault()?.NetworkRxKBps.ToString("F1") ?? "0";
-    private string GetLatestNetTxKBps() => chartPoints.LastOrDefault()?.NetworkTxKBps.ToString("F1") ?? "0";
-    private string GetLatestDiskReadKBps() => chartPoints.LastOrDefault()?.BlockReadKBps.ToString("F1") ?? "0";
-    private string GetLatestDiskWriteKBps() => chartPoints.LastOrDefault()?.BlockWriteKBps.ToString("F1") ?? "0";
-    private string GetLatestNetRxMB() => chartPoints.LastOrDefault()?.NetworkRxMB.ToString("F1") ?? "0";
-    private string GetLatestNetTxMB() => chartPoints.LastOrDefault()?.NetworkTxMB.ToString("F1") ?? "0";
-    private string GetLatestDiskReadMB() => chartPoints.LastOrDefault()?.BlockReadMB.ToString("F1") ?? "0";
-    private string GetLatestDiskWriteMB() => chartPoints.LastOrDefault()?.BlockWriteMB.ToString("F1") ?? "0";
+    private string GetLatestNetRxKBps() => chartPoints.LastOrDefault(p => p.NetworkRxKBps.HasValue)?.NetworkRxKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestNetTxKBps() => chartPoints.LastOrDefault(p => p.NetworkTxKBps.HasValue)?.NetworkTxKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestDiskReadKBps() => chartPoints.LastOrDefault(p => p.BlockReadKBps.HasValue)?.BlockReadKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestDiskWriteKBps() => chartPoints.LastOrDefault(p => p.BlockWriteKBps.HasValue)?.BlockWriteKBps?.ToString("F1") ?? "n/a";
+    private string GetLatestNetRxMB() => chartPoints.LastOrDefault(p => p.NetworkRxMB.HasValue)?.NetworkRxMB?.ToString("F1") ?? "n/a";
+    private string GetLatestNetTxMB() => chartPoints.LastOrDefault(p => p.NetworkTxMB.HasValue)?.NetworkTxMB?.ToString("F1") ?? "n/a";
+    private string GetLatestDiskReadMB() => chartPoints.LastOrDefault(p => p.BlockReadMB.HasValue)?.BlockReadMB?.ToString("F1") ?? "n/a";
+    private string GetLatestDiskWriteMB() => chartPoints.LastOrDefault(p => p.BlockWriteMB.HasValue)?.BlockWriteMB?.ToString("F1") ?? "n/a";
 
     private string GetNetThroughputBadge() => $"Rx {GetLatestNetRxKBps()} / Tx {GetLatestNetTxKBps()} KB/s";
     private string GetDiskThroughputBadge() => $"R {GetLatestDiskReadKBps()} / W {GetLatestDiskWriteKBps()} KB/s";
@@ -722,17 +759,26 @@
 
     private bool AppendLiveUsage(ServerResourceUsage usage)
     {
+        var previousPoint = chartPoints.LastOrDefault();
         var point = new ResourceHistoryChartPoint
         {
             Timestamp = usage.Timestamp,
             FullTimestamp = TimeZoneService.FormatLocalDateTime(usage.Timestamp, "yyyy-MM-dd HH:mm:ss"),
-            CpuPercent = Math.Round(usage.CpuUsagePercent ?? 0, 1),
-            MemoryPercent = Math.Round(usage.MemoryUsagePercent ?? 0, 1),
-            MemoryMB = Math.Round((usage.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0), 2),
-            NetworkRxBytesRaw = usage.NetworkRxBytes ?? 0,
-            NetworkTxBytesRaw = usage.NetworkTxBytes ?? 0,
-            BlockReadBytesRaw = usage.BlockReadBytes ?? 0,
-            BlockWriteBytesRaw = usage.BlockWriteBytes ?? 0
+            CpuPercent = usage.CpuUsagePercent is double cpu ? Math.Round(cpu, 1) : null,
+            MemoryPercent = usage.MemoryUsagePercent is double memoryPercent ? Math.Round(memoryPercent, 1) : null,
+            MemoryMB = usage.MemoryUsageBytes is long memoryBytes ? Math.Round(memoryBytes / (1024.0 * 1024.0), 2) : null,
+            NetworkRxBytesRaw = GetLiveRelativeTotal(previousPoint?.NetworkRxBytesRaw, previousPoint?.NetworkRxCounterBytes, usage.NetworkRxBytes),
+            NetworkTxBytesRaw = GetLiveRelativeTotal(previousPoint?.NetworkTxBytesRaw, previousPoint?.NetworkTxCounterBytes, usage.NetworkTxBytes),
+            BlockReadBytesRaw = GetLiveRelativeTotal(previousPoint?.BlockReadBytesRaw, previousPoint?.BlockReadCounterBytes, usage.BlockReadBytes),
+            BlockWriteBytesRaw = GetLiveRelativeTotal(previousPoint?.BlockWriteBytesRaw, previousPoint?.BlockWriteCounterBytes, usage.BlockWriteBytes),
+            NetworkRxCounterBytes = usage.NetworkRxBytes,
+            NetworkTxCounterBytes = usage.NetworkTxBytes,
+            BlockReadCounterBytes = usage.BlockReadBytes,
+            BlockWriteCounterBytes = usage.BlockWriteBytes,
+            NetworkRxKBps = CalculateLiveRate(previousPoint?.NetworkRxCounterBytes, usage.NetworkRxBytes, previousPoint?.Timestamp, usage.Timestamp),
+            NetworkTxKBps = CalculateLiveRate(previousPoint?.NetworkTxCounterBytes, usage.NetworkTxBytes, previousPoint?.Timestamp, usage.Timestamp),
+            BlockReadKBps = CalculateLiveRate(previousPoint?.BlockReadCounterBytes, usage.BlockReadBytes, previousPoint?.Timestamp, usage.Timestamp),
+            BlockWriteKBps = CalculateLiveRate(previousPoint?.BlockWriteCounterBytes, usage.BlockWriteBytes, previousPoint?.Timestamp, usage.Timestamp)
         };
 
         // If not already in the collection (within 1 second)
@@ -751,42 +797,47 @@
             chartPoints.RemoveAll(p => p.Timestamp < cutoff);
         }
 
-        ComputeThroughput(chartPoints);
         ComputeAxisLabels(chartPoints);
         return true;
     }
 
-    private static void ComputeThroughput(List<ResourceHistoryChartPoint> points)
+    private static long? GetLiveRelativeTotal(long? previousRelativeTotal, long? previousAbsoluteCounter, long? currentAbsoluteCounter)
     {
-        for (int i = 0; i < points.Count; i++)
+        if (!currentAbsoluteCounter.HasValue || !previousAbsoluteCounter.HasValue)
         {
-            var cur = points[i];
-            if (i == 0)
-            {
-                cur.NetworkRxKBps = 0;
-                cur.NetworkTxKBps = 0;
-                cur.BlockReadKBps = 0;
-                cur.BlockWriteKBps = 0;
-                continue;
-            }
-
-            var prev = points[i - 1];
-            var seconds = (cur.Timestamp - prev.Timestamp).TotalSeconds;
-            if (seconds <= 0)
-            {
-                cur.NetworkRxKBps = 0;
-                cur.NetworkTxKBps = 0;
-                cur.BlockReadKBps = 0;
-                cur.BlockWriteKBps = 0;
-                continue;
-            }
-
-            // Counters are monotonic; a negative delta indicates a container restart -> treat as 0
-            cur.NetworkRxKBps = Math.Round(Math.Max(0, (cur.NetworkRxBytesRaw - prev.NetworkRxBytesRaw) / 1024.0 / seconds), 2);
-            cur.NetworkTxKBps = Math.Round(Math.Max(0, (cur.NetworkTxBytesRaw - prev.NetworkTxBytesRaw) / 1024.0 / seconds), 2);
-            cur.BlockReadKBps = Math.Round(Math.Max(0, (cur.BlockReadBytesRaw - prev.BlockReadBytesRaw) / 1024.0 / seconds), 2);
-            cur.BlockWriteKBps = Math.Round(Math.Max(0, (cur.BlockWriteBytesRaw - prev.BlockWriteBytesRaw) / 1024.0 / seconds), 2);
+            return null;
         }
+
+        var delta = currentAbsoluteCounter.Value - previousAbsoluteCounter.Value;
+        if (delta < 0)
+        {
+            return null;
+        }
+
+        var baseline = previousRelativeTotal ?? 0L;
+        return baseline + delta;
+    }
+
+    private static double? CalculateLiveRate(long? previousAbsoluteCounter, long? currentAbsoluteCounter, DateTime? previousTimestamp, DateTime currentTimestamp)
+    {
+        if (!previousAbsoluteCounter.HasValue || !currentAbsoluteCounter.HasValue || !previousTimestamp.HasValue)
+        {
+            return null;
+        }
+
+        var seconds = (currentTimestamp - previousTimestamp.Value).TotalSeconds;
+        if (seconds <= 0)
+        {
+            return null;
+        }
+
+        var delta = currentAbsoluteCounter.Value - previousAbsoluteCounter.Value;
+        if (delta < 0)
+        {
+            return null;
+        }
+
+        return Math.Round(delta / 1024d / seconds, 2);
     }
 
     private void OnError(object? sender, string error)

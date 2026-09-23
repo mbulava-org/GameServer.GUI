@@ -53,8 +53,27 @@ namespace GameServer.API.Models
     public class AgentHeartbeatInfo
     {
         public string NodeId { get; set; } = string.Empty;
-        public List<string> ContainerIds { get; set; } = new();
         public string Health { get; set; } = "healthy";
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Managed container identity details reported by an agent.
+    /// </summary>
+    public class AgentManagedContainerInfo
+    {
+        public string ContainerId { get; set; } = string.Empty;
+        public string ServerId { get; set; } = string.Empty;
+        public string ManagedLabelValue { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Snapshot of managed containers currently running on an agent node.
+    /// </summary>
+    public class AgentManagedContainerSnapshot
+    {
+        public string NodeId { get; set; } = string.Empty;
+        public List<AgentManagedContainerInfo> Containers { get; set; } = new();
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 

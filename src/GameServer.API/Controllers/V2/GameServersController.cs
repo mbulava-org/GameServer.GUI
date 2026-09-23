@@ -359,16 +359,17 @@ public sealed class GameServersController(
     }
 
     /// <summary>
-    /// Gets the historical resource utilization records for a V2 GameServer.
+    /// Gets calculated historical resource utilization points for a V2 GameServer.
     /// </summary>
     [HttpGet("{serverId}/resources/history")]
-    [ProducesResponseType(200, Type = typeof(IEnumerable<GameServerResourceHistoryDto>))]
+    [ProducesResponseType(200, Type = typeof(GameServerCalculatedResourceHistoryDto))]
     [ProducesResponseType(403)]
-    public async Task<ActionResult<IReadOnlyList<GameServerResourceHistoryDto>>> GetResourceHistory(
+    public async Task<ActionResult<GameServerCalculatedResourceHistoryDto>> GetResourceHistory(
         string serverId,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
-        [FromQuery] int limit = 5000,
+        [FromQuery] int maxDataPoints = 5000,
+        [FromQuery] string calculation = "avg",
         CancellationToken cancellationToken = default)
     {
         if (serverAuthorizationService is not null && !await serverAuthorizationService.CanViewServerAsync(User, serverId, cancellationToken))
@@ -376,31 +377,78 @@ public sealed class GameServersController(
             return Forbid();
         }
 
-        if (resourceUtilizationRepository is null)
+        if (to.HasValue && from.HasValue && to.Value < from.Value)
         {
-            return Ok(Array.Empty<GameServerResourceHistoryDto>());
+            return BadRequest("The 'to' timestamp must be greater than or equal to 'from'.");
         }
 
-        var records = await resourceUtilizationRepository.GetHistoryAsync(serverId, from, to, limit, cancellationToken);
-        var dtos = records.Select(r => new GameServerResourceHistoryDto
-        {
-            Id = r.Id,
-            ServerId = r.ServerId,
-            Timestamp = r.Timestamp,
-            CpuUsagePercent = r.CpuUsagePercent,
-            MemoryUsageBytes = r.MemoryUsageBytes,
-            MemoryLimitBytes = r.MemoryLimitBytes,
-            MemoryUsagePercent = r.MemoryUsagePercent,
-            NetworkRxBytes = r.NetworkRxBytes,
-            NetworkTxBytes = r.NetworkTxBytes,
-            BlockReadBytes = r.BlockReadBytes,
-            BlockWriteBytes = r.BlockWriteBytes,
-            DesiredReplicas = r.DesiredReplicas,
-            RunningReplicas = r.RunningReplicas,
-            ContainerId = r.ContainerId
-        }).ToList();
+        const int maxAllowed = 10000;
+        maxDataPoints = Math.Clamp(maxDataPoints, 1, maxAllowed);
 
-        return Ok(dtos);
+        var normalizedCalculation = calculation?.Trim() ?? string.Empty;
+        var supportedCalculations = Enum.GetNames<Repositories.V2.ResourceHistoryCalculation>();
+        if (string.IsNullOrWhiteSpace(normalizedCalculation) ||
+            int.TryParse(normalizedCalculation, out _) ||
+            !supportedCalculations.Any(name => name.Equals(normalizedCalculation, StringComparison.OrdinalIgnoreCase)))
+        {
+            var supportedValues = string.Join(
+                ", ",
+                supportedCalculations.Select(v => v.ToLowerInvariant()));
+            return BadRequest($"Invalid calculation '{calculation}'. Supported values: {supportedValues}.");
+        }
+
+        var parsedCalculation = Enum.Parse<Repositories.V2.ResourceHistoryCalculation>(normalizedCalculation, ignoreCase: true);
+
+        if (resourceUtilizationRepository is null)
+        {
+            return Ok(new GameServerCalculatedResourceHistoryDto
+            {
+                ServerId = serverId,
+                MaxDataPoints = maxDataPoints,
+                Calculation = parsedCalculation.ToString().ToLowerInvariant(),
+                Points = []
+            });
+        }
+
+        var result = await resourceUtilizationRepository.GetCalculatedHistoryAsync(
+            serverId,
+            from,
+            to,
+            maxDataPoints,
+            parsedCalculation,
+            cancellationToken);
+
+        var dto = new GameServerCalculatedResourceHistoryDto
+        {
+            ServerId = result.ServerId,
+            ActualFromUtc = result.ActualFromUtc,
+            ActualToUtc = result.ActualToUtc,
+            EffectiveBucketWidthMs = result.EffectiveBucketWidthMs,
+            MaxDataPoints = result.MaxDataPoints,
+            Calculation = parsedCalculation.ToString().ToLowerInvariant(),
+            RawSampleCount = result.RawSampleCount,
+            RatesIncomplete = result.RatesIncomplete,
+            TotalsIncomplete = result.TotalsIncomplete,
+            Points = result.Points.Select(p => new GameServerCalculatedResourceHistoryPointDto
+            {
+                Timestamp = p.Timestamp,
+                SampleCount = p.SampleCount,
+                CpuUsagePercent = p.CpuUsagePercent,
+                MemoryUsageBytes = p.MemoryUsageBytes,
+                MemoryLimitBytes = p.MemoryLimitBytes,
+                MemoryUsagePercent = p.MemoryUsagePercent,
+                NetworkRxKBps = p.NetworkRxKBps,
+                NetworkTxKBps = p.NetworkTxKBps,
+                BlockReadKBps = p.BlockReadKBps,
+                BlockWriteKBps = p.BlockWriteKBps,
+                NetworkRxTotalBytes = p.NetworkRxTotalBytes,
+                NetworkTxTotalBytes = p.NetworkTxTotalBytes,
+                BlockReadTotalBytes = p.BlockReadTotalBytes,
+                BlockWriteTotalBytes = p.BlockWriteTotalBytes
+            }).ToList()
+        };
+
+        return Ok(dto);
     }
 
     /// <summary>
@@ -685,7 +733,7 @@ public sealed class GameServersController(
                 if (service != null)
                 {
                     var tasks = await serviceOperations.ListTasksAsync(
-                        new Docker.DotNet.Models.TasksListParameters
+                        new global::Docker.DotNet.Models.TasksListParameters
                         {
                             Filters = new Dictionary<string, IDictionary<string, bool>>
                             {
@@ -802,7 +850,7 @@ public sealed class GameServersController(
                     if (service != null)
                     {
                         var tasks = await serviceOperations.ListTasksAsync(
-                            new Docker.DotNet.Models.TasksListParameters
+                            new global::Docker.DotNet.Models.TasksListParameters
                             {
                                 Filters = new Dictionary<string, IDictionary<string, bool>>
                                 {

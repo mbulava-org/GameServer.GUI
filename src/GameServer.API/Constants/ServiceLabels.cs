@@ -1,4 +1,4 @@
-namespace GameServer.API.Constants;
+namespace GameServer.Docker.Constants;
 
 /// <summary>
 /// Docker Swarm service label keys used to identify and manage GameServer services.

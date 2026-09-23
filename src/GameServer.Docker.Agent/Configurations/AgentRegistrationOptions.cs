@@ -72,5 +72,11 @@ namespace GameServer.Docker.Agent.Configurations
         /// Default: 5 seconds
         /// </summary>
         public int StartupRetryDelaySeconds { get; set; } = 5;
+
+        /// <summary>
+        /// Interval in seconds for full managed-container reconciliation snapshots sent to the Primary Service.
+        /// Default: 30 seconds.
+        /// </summary>
+        public int ManagedContainerReconciliationIntervalSeconds { get; set; } = 30;
     }
 }

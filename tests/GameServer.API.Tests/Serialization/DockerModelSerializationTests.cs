@@ -1,5 +1,5 @@
 using Docker.DotNet.Models;
-using GameServer.API.Constants;
+using GameServer.Docker.Constants;
 using System.Text.Json;
 
 namespace GameServer.API.Tests.Serialization;

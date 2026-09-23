@@ -272,6 +272,58 @@ public class GameServersControllerTests
         Assert.IsType<NotFoundResult>(result);
     }
 
+    [Fact]
+    public async Task GetResourceHistory_WhenRepositoryUnavailable_StillRejectsInvalidDateRange()
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetResourceHistory(
+            "srv-1",
+            from: new DateTime(2026, 9, 1, 1, 0, 0, DateTimeKind.Utc),
+            to: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("The 'to' timestamp must be greater than or equal to 'from'.", badRequest.Value);
+    }
+
+    [Fact]
+    public async Task GetResourceHistory_WhenCalculationIsNumeric_ReturnsBadRequest()
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetResourceHistory("srv-1", calculation: "1");
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("Invalid calculation '1'. Supported values: min, max, avg, median.", badRequest.Value);
+    }
+
+    [Fact]
+    public async Task GetResourceHistory_WhenRepositoryUnavailable_ClampsMaxDataPointsAndNormalizesCalculation()
+    {
+        var controller = CreateController();
+
+        var result = await controller.GetResourceHistory("srv-1", maxDataPoints: 500_000, calculation: "AVG");
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var payload = Assert.IsType<GameServerCalculatedResourceHistoryDto>(ok.Value);
+        Assert.Equal(10_000, payload.MaxDataPoints);
+        Assert.Equal("avg", payload.Calculation);
+        Assert.Empty(payload.Points);
+    }
+
+    private static GameServersController CreateController()
+    {
+        var serverRepository = new Mock<IGameServerRepository>();
+        serverRepository.Setup(x => x.GetAllAsync(false)).ReturnsAsync([]);
+        var gameTypeRepository = new Mock<IGameTypeRepository>();
+        gameTypeRepository.Setup(x => x.GetAllAsync(true)).ReturnsAsync([]);
+
+        var queryService = new GameServerQueryService(serverRepository.Object, gameTypeRepository.Object);
+        var validationService = CreateValidationService(gameTypeRepository);
+        var commandService = CreateCommandService(serverRepository, gameTypeRepository, queryService, validationService);
+        return new GameServersController(queryService, commandService, Mock.Of<ILogger<GameServersController>>());
+    }
+
     private static GameServerValidationService CreateValidationService(Mock<IGameTypeRepository> gameTypeRepository)
     {
         var serviceOperations = new Mock<IServiceOperations>();
@@ -316,4 +368,3 @@ public class GameServersControllerTests
             deploymentService);
     }
 }
-

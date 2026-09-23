@@ -1,5 +1,7 @@
 using Docker.DotNet;
+using Docker.DotNet.Models;
 using GameServer.Docker.Agent.Configurations;
+using GameServer.Docker.Constants;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Options;
 
@@ -12,8 +14,9 @@ namespace GameServer.Docker.Agent.Services
     public class AgentRegistrationService : BackgroundService
     {
         private readonly IDockerClient _dockerClient;
+        private readonly AgentDistributedConfigurationApplier _distributedConfigurationApplier;
         private readonly ILogger<AgentRegistrationService> _logger;
-        private readonly AgentRegistrationOptions _options;
+        private readonly IOptionsMonitor<AgentRegistrationOptions> _optionsMonitor;
         private HubConnection? _hubConnection;
         private string? _nodeId;
         private string? _nodeName;
@@ -23,23 +26,27 @@ namespace GameServer.Docker.Agent.Services
 
         public AgentRegistrationService(
             IDockerClient dockerClient,
+            AgentDistributedConfigurationApplier distributedConfigurationApplier,
             ILogger<AgentRegistrationService> logger,
-            IOptions<AgentRegistrationOptions> options)
+            IOptionsMonitor<AgentRegistrationOptions> optionsMonitor)
         {
             _dockerClient = dockerClient;
+            _distributedConfigurationApplier = distributedConfigurationApplier;
             _logger = logger;
-            _options = options.Value;
+            _optionsMonitor = optionsMonitor;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (!_options.Enabled)
+            var bootstrapOptions = _optionsMonitor.CurrentValue;
+
+            if (!bootstrapOptions.Enabled)
             {
                 _logger.LogInformation("Agent registration is disabled in configuration");
                 return;
             }
 
-            if (string.IsNullOrEmpty(_options.PrimaryServiceUrl))
+            if (string.IsNullOrEmpty(bootstrapOptions.PrimaryServiceUrl))
             {
                 _logger.LogError("PrimaryServiceUrl is not configured. Agent registration cannot proceed");
                 return;
@@ -47,13 +54,13 @@ namespace GameServer.Docker.Agent.Services
 
             _logger.LogInformation(
                 "Agent Registration Service starting (Primary URL: {PrimaryUrl}, Heartbeat interval: {Interval}s)",
-                _options.PrimaryServiceUrl,
-                _options.HeartbeatIntervalSeconds);
+                bootstrapOptions.PrimaryServiceUrl,
+                bootstrapOptions.HeartbeatIntervalSeconds);
 
             // Diagnostic: Log network connectivity details
             try
             {
-                var primaryUri = new Uri(_options.PrimaryServiceUrl);
+                var primaryUri = new Uri(bootstrapOptions.PrimaryServiceUrl);
                 _logger.LogDebug(
                     "Primary Service connectivity check: Host={Host}, Port={Port}, Scheme={Scheme}",
                     primaryUri.Host,
@@ -81,12 +88,12 @@ namespace GameServer.Docker.Agent.Services
             }
 
             // Build SignalR connection to Primary Service
-            var hubUrl = $"{_options.PrimaryServiceUrl.TrimEnd('/')}/hubs/agentregistration";
+            var hubUrl = $"{bootstrapOptions.PrimaryServiceUrl.TrimEnd('/')}/hubs/agentregistration";
             _logger.LogInformation("Connecting to Primary Service at {HubUrl}", hubUrl);
 
             _hubConnection = new HubConnectionBuilder()
                 .WithUrl(hubUrl)
-                .WithAutomaticReconnect(_options.ReconnectDelaySeconds.Select(s => TimeSpan.FromSeconds(s)).ToArray())
+                .WithAutomaticReconnect(bootstrapOptions.ReconnectDelaySeconds.Select(s => TimeSpan.FromSeconds(s)).ToArray())
                 .Build();
 
             _hubConnection.On<string>("PrimaryServiceShuttingDown", message => HandlePrimaryServiceShutdownAsync(message, stoppingToken));
@@ -99,15 +106,20 @@ namespace GameServer.Docker.Agent.Services
             // Connect and register with retry logic
             await ConnectAndRegisterWithRetryAsync(stoppingToken);
 
-            // Start heartbeat loop
-            await HeartbeatLoopAsync(stoppingToken);
+            await PublishManagedContainerSnapshotAsync(stoppingToken);
+
+            // Start heartbeat and reconciliation loops
+            await Task.WhenAll(
+                HeartbeatLoopAsync(stoppingToken),
+                ManagedContainerReconciliationLoopAsync(stoppingToken));
         }
 
         private async Task ConnectAndRegisterWithRetryAsync(CancellationToken cancellationToken)
         {
-            var maxRetries = _options.MaxStartupRetries > 0 ? _options.MaxStartupRetries : 30;
+            var bootstrapOptions = _optionsMonitor.CurrentValue;
+            var maxRetries = bootstrapOptions.MaxStartupRetries > 0 ? bootstrapOptions.MaxStartupRetries : 30;
             var currentRetry = 0;
-            var baseDelay = TimeSpan.FromSeconds(_options.StartupRetryDelaySeconds > 0 ? _options.StartupRetryDelaySeconds : 5);
+            var baseDelay = TimeSpan.FromSeconds(bootstrapOptions.StartupRetryDelaySeconds > 0 ? bootstrapOptions.StartupRetryDelaySeconds : 5);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -299,13 +311,15 @@ namespace GameServer.Docker.Agent.Services
         {
             try
             {
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.ConnectionTimeoutSeconds));
+                var currentOptions = _optionsMonitor.CurrentValue;
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(currentOptions.ConnectionTimeoutSeconds));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
                 await _hubConnection!.StartAsync(linkedCts.Token);
                 _logger.LogInformation("Connected to Primary Service SignalR hub");
 
-                // Send initial registration
+                await RegisterAsync();
+                await SyncDistributedConfigurationAsync(linkedCts.Token);
                 await RegisterAsync();
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -315,21 +329,25 @@ namespace GameServer.Docker.Agent.Services
             }
             catch (OperationCanceledException)
             {
-                _logger.LogError("Connection to Primary Service timed out after {Timeout}s", _options.ConnectionTimeoutSeconds);
+                await ResetHubConnectionAfterInitializationFailureAsync();
+                _logger.LogError("Connection to Primary Service timed out after {Timeout}s", _optionsMonitor.CurrentValue.ConnectionTimeoutSeconds);
                 throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to connect to Primary Service at {Url}", _options.PrimaryServiceUrl);
+                await ResetHubConnectionAfterInitializationFailureAsync();
+                _logger.LogError(ex, "Failed to connect to Primary Service at {Url}", _optionsMonitor.CurrentValue.PrimaryServiceUrl);
                 throw;
             }
         }
 
         private async Task RegisterAsync()
         {
+            var currentOptions = _optionsMonitor.CurrentValue;
+
             // Filter capabilities based on node role
             // Only manager nodes can perform service/swarm operations
-            var capabilities = FilterCapabilitiesByNodeRole(_options.Capabilities, _isManagerNode);
+            var capabilities = FilterCapabilitiesByNodeRole(currentOptions.Capabilities, _isManagerNode);
 
             var registration = new
             {
@@ -349,6 +367,31 @@ namespace GameServer.Docker.Agent.Services
                 _nodeId,
                 string.Join(", ", capabilities),
                 _isManagerNode);
+        }
+
+        private async Task SyncDistributedConfigurationAsync(CancellationToken cancellationToken)
+        {
+            var settings = await _hubConnection!
+                .InvokeAsync<Dictionary<string, string?>?>("GetDistributedConfiguration", cancellationToken);
+
+            _distributedConfigurationApplier.Apply(settings ?? new Dictionary<string, string?>());
+        }
+
+        private async Task ResetHubConnectionAfterInitializationFailureAsync()
+        {
+            if (_hubConnection?.State != HubConnectionState.Connected)
+            {
+                return;
+            }
+
+            try
+            {
+                await _hubConnection.StopAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to reset SignalR connection after initialization failure");
+            }
         }
 
         private static List<string> FilterCapabilitiesByNodeRole(List<string> configuredCapabilities, bool isManagerNode)
@@ -382,18 +425,35 @@ namespace GameServer.Docker.Agent.Services
 
         private async Task HeartbeatLoopAsync(CancellationToken stoppingToken)
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.HeartbeatIntervalSeconds));
-
             try
             {
-                while (await timer.WaitForNextTickAsync(stoppingToken))
+                while (!stoppingToken.IsCancellationRequested)
                 {
+                    var heartbeatIntervalSeconds = Math.Max(1, _optionsMonitor.CurrentValue.HeartbeatIntervalSeconds);
+                    await Task.Delay(TimeSpan.FromSeconds(heartbeatIntervalSeconds), stoppingToken);
                     await SendHeartbeatAsync(stoppingToken);
                 }
             }
             catch (OperationCanceledException)
             {
                 _logger.LogInformation("Agent heartbeat loop stopped");
+            }
+        }
+
+        private async Task ManagedContainerReconciliationLoopAsync(CancellationToken stoppingToken)
+        {
+            try
+            {
+                while (!stoppingToken.IsCancellationRequested)
+                {
+                    var intervalSeconds = Math.Clamp(_optionsMonitor.CurrentValue.ManagedContainerReconciliationIntervalSeconds, 5, 300);
+                    await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
+                    await PublishManagedContainerSnapshotAsync(stoppingToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Managed container reconciliation loop stopped");
             }
         }
 
@@ -415,20 +475,9 @@ namespace GameServer.Docker.Agent.Services
                     return;
                 }
 
-                // Get current containers from local Docker
-                var containers = await _dockerClient.Containers.ListContainersAsync(
-                    new global::Docker.DotNet.Models.ContainersListParameters
-                    {
-                        All = false // Only running containers
-                    },
-                    cancellationToken);
-
-                var containerIds = containers.Select(c => c.ID).ToList();
-
                 var heartbeat = new
                 {
                     NodeId = _nodeId,
-                    ContainerIds = containerIds,
                     Health = "healthy",
                     Timestamp = DateTime.UtcNow
                 };
@@ -436,9 +485,8 @@ namespace GameServer.Docker.Agent.Services
                 await _hubConnection.InvokeAsync("SendHeartbeat", heartbeat, cancellationToken);
 
                 _logger.LogTrace(
-                    "Heartbeat sent: Node={NodeName}, Containers={ContainerCount}",
-                    _nodeName,
-                    containerIds.Count);
+                    "Heartbeat sent: Node={NodeName}",
+                    _nodeName);
             }
             catch (Exception ex)
             {
@@ -487,10 +535,13 @@ namespace GameServer.Docker.Agent.Services
             _primaryServiceShutdownInProgress = false;
             _logger.LogInformation("Reconnected to Primary Service with ConnectionId={ConnectionId}", connectionId);
 
-            // Re-register after reconnection
+            // Refresh distributed configuration and re-register after reconnection
             try
             {
                 await RegisterAsync();
+                await SyncDistributedConfigurationAsync(CancellationToken.None);
+                await RegisterAsync();
+                await PublishManagedContainerSnapshotAsync(CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -545,8 +596,9 @@ namespace GameServer.Docker.Agent.Services
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.HeartbeatIntervalSeconds)), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _optionsMonitor.CurrentValue.HeartbeatIntervalSeconds)), stoppingToken);
                 await ConnectAndRegisterWithRetryAsync(stoppingToken);
+                await PublishManagedContainerSnapshotAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -579,6 +631,73 @@ namespace GameServer.Docker.Agent.Services
             }
 
             await base.StopAsync(cancellationToken);
+        }
+
+        private async Task PublishManagedContainerSnapshotAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (_hubConnection?.State != HubConnectionState.Connected || string.IsNullOrWhiteSpace(_nodeId))
+                {
+                    return;
+                }
+
+                var filterValue = $"{ServiceLabels.Managed}={ServiceLabels.ManagedValue}";
+                var containers = await _dockerClient.Containers.ListContainersAsync(
+                    new ContainersListParameters
+                    {
+                        All = false,
+                        Filters = new Dictionary<string, IDictionary<string, bool>>
+                        {
+                            ["label"] = new Dictionary<string, bool>
+                            {
+                                [filterValue] = true
+                            }
+                        }
+                    },
+                    cancellationToken);
+
+                var managedContainers = containers
+                    .Select(c => new
+                    {
+                        ContainerId = c.ID ?? string.Empty,
+                        Labels = c.Labels ?? new Dictionary<string, string>(StringComparer.Ordinal)
+                    })
+                    .Where(c =>
+                        !string.IsNullOrWhiteSpace(c.ContainerId) &&
+                        c.Labels.TryGetValue(ServiceLabels.Managed, out var managedValue) &&
+                        string.Equals(managedValue, ServiceLabels.ManagedValue, StringComparison.OrdinalIgnoreCase) &&
+                        c.Labels.TryGetValue(ServiceLabels.ServerId, out var serverId) &&
+                        !string.IsNullOrWhiteSpace(serverId))
+                    .Select(c => new
+                    {
+                        ContainerId = c.ContainerId,
+                        ServerId = c.Labels[ServiceLabels.ServerId],
+                        ManagedLabelValue = c.Labels[ServiceLabels.Managed]
+                    })
+                    .ToList();
+
+                var payload = new
+                {
+                    NodeId = _nodeId,
+                    Containers = managedContainers,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                await _hubConnection.InvokeAsync("UpdateManagedContainers", payload, cancellationToken);
+
+                _logger.LogTrace(
+                    "Published managed-container snapshot for node {NodeId}. Accepted containers: {Count}",
+                    _nodeId,
+                    managedContainers.Count);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish managed-container snapshot");
+            }
         }
     }
 }

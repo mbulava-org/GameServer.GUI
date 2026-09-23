@@ -37,6 +37,9 @@ jobs:
       dotnet_version: ${{ steps.config.outputs.dotnet_version }}
       semantic_version: ${{ steps.config.outputs.semantic_version }}
       primary_branch: ${{ steps.config.outputs.primary_branch }}
+      branch_name: ${{ steps.branch-tag-check.outputs.branch_name }}
+      branch_tag_publishable: ${{ steps.branch-tag-check.outputs.branch_tag_publishable }}
+      branch_tag_publish_reason: ${{ steps.branch-tag-check.outputs.branch_tag_publish_reason }}
       push_client_output: ${{ steps.detect-api-changes.outputs.push_client_output }}
       new_version: ${{ steps.config.outputs.new_version }}
       # Project change detection outputs (actual changes)
@@ -99,12 +102,22 @@ jobs:
             BASE_REF="${{ github.event.before }}"
             HEAD_REF="${{ github.sha }}"
           fi
+
+          # workflow_dispatch has no 'before', and the first push to a branch reports the
+          # all-zero SHA. Fall back to the previous commit so the diff still resolves.
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            BASE_REF="$(git rev-parse ${HEAD_REF}^ 2>/dev/null || echo '')"
+          fi
           
-          echo "Comparing $BASE_REF...$HEAD_REF"
-          
-          # Check if API-related files changed (Controllers, Models, DTOs, Interfaces that define contracts)
-          API_FILES_CHANGED=$(git diff --name-only $BASE_REF $HEAD_REF | grep -E '(Controllers/|Models/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
-          
+          if [ -z "$BASE_REF" ]; then
+            echo "::notice::No comparable base commit - treating API files as changed based on tracked files"
+            API_FILES_CHANGED=$(git ls-files | grep -E '^src/GameServer\.API/(Controllers/|Models/|Dtos/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
+          else
+            echo "Comparing $BASE_REF...$HEAD_REF"
+            # Check if API-related files changed (Controllers, Models, DTOs, Interfaces that define contracts)
+            API_FILES_CHANGED=$(git diff --name-only "$BASE_REF" "$HEAD_REF" | grep -E '^src/GameServer\.API/(Controllers/|Models/|Dtos/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
+          fi
+
           if [ -n "$API_FILES_CHANGED" ]; then
             echo "::warning::?? API signature changes detected - Client package will be published! HOPE YOU DIDN'T BREAK COMPATIBILITY!!!"
             echo "API-related files changed:"
@@ -116,6 +129,37 @@ jobs:
           else
             echo "? No API-related files changed - skipping client publish"
             echo "push_client_output=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect branch tag publish support
+        id: branch-tag-check
+        run: |
+          BRANCH_NAME="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          PRIMARY_BRANCH="${{ steps.config.outputs.primary_branch }}"
+          BRANCH_TAG_PUBLISHABLE="true"
+          BRANCH_TAG_PUBLISH_REASON="branch tag is valid"
+
+          if [ -z "$BRANCH_NAME" ]; then
+            BRANCH_TAG_PUBLISHABLE="false"
+            BRANCH_TAG_PUBLISH_REASON="branch name is empty"
+          elif [ "$BRANCH_NAME" != "$PRIMARY_BRANCH" ]; then
+            if [ ${#BRANCH_NAME} -gt 128 ]; then
+              BRANCH_TAG_PUBLISHABLE="false"
+              BRANCH_TAG_PUBLISH_REASON="branch name exceeds Docker tag length limit"
+            elif [[ ! "$BRANCH_NAME" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+              BRANCH_TAG_PUBLISHABLE="false"
+              BRANCH_TAG_PUBLISH_REASON="branch name contains characters Docker tags do not allow"
+            fi
+          fi
+
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "branch_tag_publishable=$BRANCH_TAG_PUBLISHABLE" >> $GITHUB_OUTPUT
+          echo "branch_tag_publish_reason=$BRANCH_TAG_PUBLISH_REASON" >> $GITHUB_OUTPUT
+
+          if [ "$BRANCH_TAG_PUBLISHABLE" = "true" ]; then
+            echo "::notice::Docker branch-tag publishing is enabled for '$BRANCH_NAME'"
+          else
+            echo "::warning::Docker publish jobs will be skipped because branch '$BRANCH_NAME' cannot be used as a Docker tag: $BRANCH_TAG_PUBLISH_REASON"
           fi
 
       - name: Detect project folder changes
@@ -209,39 +253,50 @@ jobs:
           WEB_CHANGED="${{ steps.detect-project-changes.outputs.web_changed }}"
           CLIENT_CHANGED="${{ steps.detect-project-changes.outputs.client_changed }}"
           TESTS_CHANGED="${{ steps.detect-project-changes.outputs.tests_changed }}"
+          API_CHANGED="${{ steps.detect-api-changes.outputs.push_client_output }}"
+          BRANCH_TAG_PUBLISHABLE="${{ steps.branch-tag-check.outputs.branch_tag_publishable }}"
+          BRANCH_NAME="${{ steps.branch-tag-check.outputs.branch_name }}"
+          BRANCH_TAG_PUBLISH_REASON="${{ steps.branch-tag-check.outputs.branch_tag_publish_reason }}"
 
           echo "🔍 Push Decision Calculation:"
           echo "  - Force Publish: $FORCE_PUBLISH"
           echo "  - Tests Changed: $TESTS_CHANGED"
+          echo "  - Branch Tag Publishable: $BRANCH_TAG_PUBLISHABLE"
+
+          DOCKER_PUBLISH_ALLOWED="true"
+          if [ "$BRANCH_TAG_PUBLISHABLE" != "true" ]; then
+            DOCKER_PUBLISH_ALLOWED="false"
+            echo "::warning::Docker publish jobs disabled for branch '$BRANCH_NAME': $BRANCH_TAG_PUBLISH_REASON"
+          fi
 
           # Calculate push decisions: (project changed) OR (tests changed) OR (force publish)
-          if [ "$BACKEND_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$DOCKER_PUBLISH_ALLOWED" = "true" ] && { [ "$BACKEND_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; }; then
             echo "push_backend=true" >> $GITHUB_OUTPUT
             echo "  ✅ Backend will be pushed (changed=$BACKEND_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_backend=false" >> $GITHUB_OUTPUT
-            echo "  ⏭️  Backend push skipped (no changes, not forced)"
+            echo "  ⏭️  Backend push skipped (docker_allowed=$DOCKER_PUBLISH_ALLOWED, changed=$BACKEND_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           fi
 
-          if [ "$AGENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$DOCKER_PUBLISH_ALLOWED" = "true" ] && { [ "$AGENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; }; then
             echo "push_agent=true" >> $GITHUB_OUTPUT
             echo "  ✅ Agent will be pushed (changed=$AGENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_agent=false" >> $GITHUB_OUTPUT
-            echo "  ⏭️  Agent push skipped (no changes, not forced)"
+            echo "  ⏭️  Agent push skipped (docker_allowed=$DOCKER_PUBLISH_ALLOWED, changed=$AGENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           fi
 
-          if [ "$WEB_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$DOCKER_PUBLISH_ALLOWED" = "true" ] && { [ "$WEB_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; }; then
             echo "push_web=true" >> $GITHUB_OUTPUT
             echo "  ✅ Web will be pushed (changed=$WEB_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_web=false" >> $GITHUB_OUTPUT
-            echo "  ⏭️  Web push skipped (no changes, not forced)"
+            echo "  ⏭️  Web push skipped (docker_allowed=$DOCKER_PUBLISH_ALLOWED, changed=$WEB_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           fi
 
-          if [ "$CLIENT_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
+          if [ "$CLIENT_CHANGED" = "true" ] || [ "$API_CHANGED" = "true" ] || [ "$TESTS_CHANGED" = "true" ] || [ "$FORCE_PUBLISH" = "true" ]; then
             echo "push_client=true" >> $GITHUB_OUTPUT
-            echo "  ✅ Client will be pushed (changed=$CLIENT_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
+            echo "  ✅ Client will be pushed (client=$CLIENT_CHANGED, api=$API_CHANGED, tests=$TESTS_CHANGED, force=$FORCE_PUBLISH)"
           else
             echo "push_client=false" >> $GITHUB_OUTPUT
             echo "  ⏭️  Client push skipped (no changes, not forced)"
@@ -261,6 +316,9 @@ jobs:
           | **Semantic Base** | ${{ env.SEMANTIC_VERSION }} |
           | **Run Number** | ${{ github.run_number }} |
           | **.NET Version** | ${{ env.DOTNET_VERSION }} |
+          | **Branch** | ${{ steps.branch-tag-check.outputs.branch_name }} |
+          | **Branch Tag Publishable** | ${{ steps.branch-tag-check.outputs.branch_tag_publishable }} |
+          | **Branch Tag Reason** | ${{ steps.branch-tag-check.outputs.branch_tag_publish_reason }} |
 
           ---
 
