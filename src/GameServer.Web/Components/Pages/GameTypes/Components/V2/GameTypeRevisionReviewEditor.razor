@@ -41,6 +41,34 @@
                     <div class="small"><strong>Constraints:</strong> @ResourcesDraft.Constraints.Count rule(s)</div>
                 }
             }
+            @if (HealthcheckDraft is not null && HealthcheckDraft.HasAnyValue())
+            {
+                <hr class="my-2" />
+                <div class="fw-semibold small mb-1">Healthcheck:</div>
+                @if (HealthcheckDraft.Disable)
+                {
+                    <div class="small"><span class="badge bg-danger">Disabled (NONE)</span></div>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(HealthcheckDraft.TestCommand))
+                    {
+                        <div class="small text-truncate" title="@HealthcheckDraft.TestCommand"><strong>Command:</strong> <code>@HealthcheckDraft.TestCommand</code></div>
+                    }
+                    @if (HealthcheckDraft.StartPeriodSeconds.HasValue)
+                    {
+                        <div class="small"><strong>Start Period:</strong> @HealthcheckDraft.StartPeriodSeconds.Value s (@(TimeSpan.FromSeconds(HealthcheckDraft.StartPeriodSeconds.Value).ToString(@"m\:ss")))</div>
+                    }
+                    @if (HealthcheckDraft.IntervalSeconds.HasValue || HealthcheckDraft.TimeoutSeconds.HasValue)
+                    {
+                        <div class="small"><strong>Interval / Timeout:</strong> @(HealthcheckDraft.IntervalSeconds.HasValue ? $"{HealthcheckDraft.IntervalSeconds.Value}s" : "default") / @(HealthcheckDraft.TimeoutSeconds.HasValue ? $"{HealthcheckDraft.TimeoutSeconds.Value}s" : "default")</div>
+                    }
+                    @if (HealthcheckDraft.Retries.HasValue)
+                    {
+                        <div class="small"><strong>Retries:</strong> @HealthcheckDraft.Retries.Value</div>
+                    }
+                }
+            }
             <div class="small text-muted mt-2">Primary mappings point directly at declared GameType ports. Related mappings store the default related port/protocol plus the offset or multiplier that derives it.</div>
         </RadzenCard>
     </div>
@@ -170,4 +198,7 @@
 
     [Parameter]
     public GameTypeRevisionResourcesDraft? ResourcesDraft { get; set; }
+
+    [Parameter]
+    public GameTypeRevisionHealthcheckDraft? HealthcheckDraft { get; set; }
 }

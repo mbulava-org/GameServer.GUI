@@ -55,6 +55,11 @@ public sealed record PortableGameTypeRevisionDto
     /// </summary>
     public string? ResourcesJson { get; init; }
 
+    /// <summary>
+    /// Raw JSON representation of container healthcheck configuration (start_period, interval, timeout, retries, test command).
+    /// </summary>
+    public string? HealthcheckJson { get; init; }
+
     public List<PortableGameTypePortDto> Ports { get; init; } = [];
 
     public List<PortableGameTypeVolumeDto> Volumes { get; init; } = [];

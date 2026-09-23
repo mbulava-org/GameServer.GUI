@@ -215,13 +215,27 @@ namespace GameServer.Docker.Agent.Controllers
                     currentSpec.Mode.Replicated.Replicas = request.Replicas.Value;
                 }
 
-                var updateParams = new ServiceUpdateParameters
+                const int maxAttempts = 3;
+                for (var attempt = 1; attempt <= maxAttempts; attempt++)
                 {
-                    Service = currentSpec,
-                    Version = (long)service.Version.Index
-                };
+                    try
+                    {
+                        var updateParams = new ServiceUpdateParameters
+                        {
+                            Service = currentSpec,
+                            Version = (long)service.Version.Index
+                        };
 
-                await _dockerClient.Swarm.UpdateServiceAsync(serviceId, updateParams);
+                        await _dockerClient.Swarm.UpdateServiceAsync(serviceId, updateParams);
+                        break;
+                    }
+                    catch (DockerApiException ex) when (attempt < maxAttempts && (ex.ResponseBody?.Contains("update out of sequence", StringComparison.OrdinalIgnoreCase) == true || ex.Message.Contains("update out of sequence", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _logger.LogWarning("Docker Swarm update out of sequence on attempt {Attempt} for {ServiceId}, refreshing service version and retrying...", attempt, serviceId);
+                        await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt));
+                        service = await _dockerClient.Swarm.InspectServiceAsync(serviceId);
+                    }
+                }
 
                 _logger.LogInformation("Service updated successfully: {ServiceId}", serviceId);
 

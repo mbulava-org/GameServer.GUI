@@ -35,6 +35,11 @@
                               Icon="close"
                               ButtonStyle="ButtonStyle.Light"
                               Click="@GoBack" />
+                <RadzenButton Text="Refresh"
+                              Icon="refresh"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@RefreshFromServerAsync"
+                              Disabled="@(isNew && createdGameTypeKey is null)" />
                 <RadzenButton Text="Export"
                               Icon="download"
                               ButtonStyle="ButtonStyle.Light"
@@ -47,6 +52,26 @@
             </div>
         </div>
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(lastSaveErrorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Filled" Shade="Shade.Lighter" AllowClose="true" Close="@(() => lastSaveErrorMessage = null)" class="my-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div style="word-break: break-word;">
+                    <strong>Save Error:</strong> @lastSaveErrorMessage
+                </div>
+                @if (!isNew || createdGameTypeKey is not null)
+                {
+                    <RadzenButton Text="Reload from Server"
+                                  Icon="refresh"
+                                  Size="ButtonSize.Small"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Click="@RefreshFromServerAsync"
+                                  class="flex-shrink-0" />
+                }
+            </div>
+        </RadzenAlert>
+    }
 
     <div class="game-type-details-content">
         @if (isLoading)
@@ -147,6 +172,7 @@
                     <RadzenTabsItem Text="Basic">
                         <div class="p-4">
                             <GameTypeBasicInfoV2Editor IsNew="isNew"
+                                                       ValidationIssues="@GetBasicInfoValidationIssues()"
                                                        @bind-KeyValue="keyValue"
                                                        @bind-DisplayName="displayName"
                                                        @bind-Type="gameTypeType"
@@ -161,7 +187,7 @@
                     <RadzenTabsItem Text="Revisions">
                         <div class="p-4">
                             <GameTypeRevisionEditor RevisionRows="@GetRevisionRows()"
-                                                   ValidationIssues="Array.Empty<string>()"
+                                                   ValidationIssues="@GetRevisionDraftIssues()"
                                                    Warnings="@GetRevisionWarnings()"
                                                    @bind-ImageReference="revisionImageReference"
                                                    @bind-VersionTag="revisionVersionTag"
@@ -223,9 +249,17 @@
                         </div>
                     </RadzenTabsItem>
 
+                    <RadzenTabsItem Text="Healthcheck">
+                        <div class="p-4">
+                            <GameTypeRevisionHealthcheckEditor Healthcheck="revisionHealthcheck"
+                                                               OnDraftChanged="HandleRevisionDraftChangedAsync" />
+                        </div>
+                    </RadzenTabsItem>
+
                     <RadzenTabsItem Text="UI Extensions">
                         <div class="p-4">
                             <GameTypeRevisionUiExtensionsEditor Extensions="revisionUiExtensions"
+                                                                AvailableSettings="revisionSettingDefinitions"
                                                                 OnDraftChanged="HandleRevisionDraftChangedAsync" />
                         </div>
                     </RadzenTabsItem>
@@ -242,6 +276,7 @@
                                                           WebHostCount="revisionWebHosts.Count"
                                                           PortMappingCount="revisionSettingDefinitions.Sum(x => x.Metadata.PortMappings.Count)"
                                                           ResourcesDraft="@revisionResources"
+                                                          HealthcheckDraft="@revisionHealthcheck"
                                                           DetectionResult="detectionResult"
                                                           DetectionComparison="detectionComparison"
                                                           ValidationIssues="Array.Empty<string>()"
@@ -262,6 +297,7 @@
 
     private const int UnsavedDraftRevisionSelectionId = 0;
     private string? createdGameTypeKey;
+    private string? lastSaveErrorMessage;
 
     private GameTypeDetail? gameType;
     private bool isLoading = true;
@@ -290,6 +326,7 @@
     private List<GameTypeRevisionWebHostDraft> revisionWebHosts = [];
     private List<GameTypeRevisionUiExtensionDraft> revisionUiExtensions = [];
     private GameTypeRevisionResourcesDraft revisionResources = new();
+    private GameTypeRevisionHealthcheckDraft revisionHealthcheck = new();
     private List<VolumeMountTypeOption> mountTypeOptions = [];
     private string detectionImageReference = string.Empty;
     private string detectionVersionTag = string.Empty;
@@ -432,15 +469,27 @@
 
     private async Task SavePageAsync()
     {
-        if (string.IsNullOrWhiteSpace(keyValue) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(gameTypeType))
+        lastSaveErrorMessage = null;
+        var basicIssues = GetBasicInfoValidationIssues();
+        if (basicIssues.Count > 0)
         {
-            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation", "Key, Display Name, and Type are required.");
+            NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation", basicIssues[0]);
             return;
         }
 
         var wasNewGameType = isNew;
         var shouldSaveRevision = ShouldSaveRevisionWithPageSave();
         var revisionSaved = false;
+
+        if (shouldSaveRevision)
+        {
+            var revisionIssues = GetRevisionSaveValidationIssues();
+            if (revisionIssues.Count > 0)
+            {
+                NotificationService.NotifyTimed(NotificationSeverity.Warning, "Validation", revisionIssues[0]);
+                return;
+            }
+        }
 
         var result = await OperationDialog.ExecuteAsync(
             isNew ? "Creating Game Type..." : "Saving Game Type...",
@@ -461,6 +510,7 @@
                     ? await GameTypeApiV2.CreateAsync(request)
                     : await GameTypeApiV2.UpdateAsync(keyValue, request);
                 createdGameTypeKey = gameType.Key;
+                Key = gameType.Key;
 
                 PopulateForm(gameType);
                 if (!shouldSaveRevision)
@@ -476,9 +526,44 @@
             subtitle: isNew ? "Registering GameType definition..." : "Updating GameType details...",
             errorTitle: "Save Failed");
 
-        if (result.Success && wasNewGameType && (!shouldSaveRevision || revisionSaved) && gameType is not null)
+        if (!result.Success)
+        {
+            lastSaveErrorMessage = result.ErrorMessage;
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save Failed", result.ErrorMessage ?? "An error occurred while saving.");
+            StateHasChanged();
+            return;
+        }
+
+        if (wasNewGameType && (!shouldSaveRevision || revisionSaved) && gameType is not null)
         {
             Navigation.NavigateTo($"/gametypes-v2/{Uri.EscapeDataString(gameType.Key)}");
+        }
+    }
+
+    private async Task RefreshFromServerAsync()
+    {
+        var targetKey = createdGameTypeKey ?? Key ?? gameType?.Key;
+        if (string.IsNullOrWhiteSpace(targetKey))
+        {
+            return;
+        }
+
+        try
+        {
+            isLoading = true;
+            lastSaveErrorMessage = null;
+            await ReloadGameTypeAsync(targetKey);
+            Key = targetKey;
+            NotificationService.NotifyTimed(NotificationSeverity.Info, "Refreshed", "GameType data reloaded from server.");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Refresh Failed", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -518,6 +603,7 @@
 
     private async Task SaveRevisionAsync()
     {
+        lastSaveErrorMessage = null;
         if (gameType is null || string.IsNullOrWhiteSpace(gameType.Key))
         {
             NotificationService.NotifyTimed(NotificationSeverity.Warning, "Save GameType first", "Create the V2 GameType before adding revisions.");
@@ -531,7 +617,7 @@
             return;
         }
 
-        await OperationDialog.ExecuteAsync(
+        var result = await OperationDialog.ExecuteAsync(
             "Saving Revision...",
             async () =>
             {
@@ -539,6 +625,13 @@
             },
             subtitle: "Updating revision definition...",
             errorTitle: "Save Revision Failed");
+
+        if (!result.Success)
+        {
+            lastSaveErrorMessage = result.ErrorMessage;
+            NotificationService.NotifyTimed(NotificationSeverity.Error, "Save Revision Failed", result.ErrorMessage ?? "An error occurred while saving revision.");
+            StateHasChanged();
+        }
     }
 
     private async Task<bool> SaveRevisionInternalCoreAsync()
@@ -647,7 +740,20 @@
                         Strategy = p.Strategy,
                         Descriptor = p.LabelKey
                     }).ToList()
-            }
+            },
+            Healthcheck = revisionHealthcheck.HasAnyValue()
+                ? new GameTypeRevisionHealthcheck
+                {
+                    Disable = revisionHealthcheck.Disable,
+                    TestType = revisionHealthcheck.TestType,
+                    TestCommand = string.IsNullOrWhiteSpace(revisionHealthcheck.TestCommand) ? null : revisionHealthcheck.TestCommand.Trim(),
+                    StartPeriodSeconds = revisionHealthcheck.StartPeriodSeconds,
+                    IntervalSeconds = revisionHealthcheck.IntervalSeconds,
+                    TimeoutSeconds = revisionHealthcheck.TimeoutSeconds,
+                    StartIntervalSeconds = revisionHealthcheck.StartIntervalSeconds,
+                    Retries = revisionHealthcheck.Retries
+                }
+                : null
         };
 
         var revision = editingRevisionId is null
@@ -1107,6 +1213,26 @@
             revisionResources = new GameTypeRevisionResourcesDraft();
         }
 
+        if (revision?.Healthcheck is not null)
+        {
+            var hc = revision.Healthcheck;
+            revisionHealthcheck = new GameTypeRevisionHealthcheckDraft
+            {
+                Disable = hc.Disable,
+                TestType = hc.TestType ?? "CMD-SHELL",
+                TestCommand = hc.TestCommand,
+                StartPeriodSeconds = hc.StartPeriodSeconds,
+                IntervalSeconds = hc.IntervalSeconds,
+                TimeoutSeconds = hc.TimeoutSeconds,
+                StartIntervalSeconds = hc.StartIntervalSeconds,
+                Retries = hc.Retries
+            };
+        }
+        else
+        {
+            revisionHealthcheck = new GameTypeRevisionHealthcheckDraft();
+        }
+
         detectionImageReference = string.IsNullOrWhiteSpace(revisionImageReference) ? detectionImageReference : revisionImageReference;
         detectionVersionTag = string.IsNullOrWhiteSpace(revisionVersionTag) ? detectionVersionTag : revisionVersionTag;
         detectionComparison = null;
@@ -1172,7 +1298,8 @@
             || revisionResources.MemoryLimitValue.HasValue
             || revisionResources.PidsLimit.HasValue
             || revisionResources.Constraints.Count > 0
-            || revisionResources.Preferences.Count > 0;
+            || revisionResources.Preferences.Count > 0
+            || revisionHealthcheck.HasAnyValue();
     }
 
     private static string InferDataType(string key, string? value)
@@ -1640,14 +1767,19 @@
         return gameType is not null && !isNew && GetRevisionSaveValidationIssues().Count == 0;
     }
 
+    private List<string> GetBasicInfoValidationIssues()
+    {
+        return GameTypeDraftRules.ValidateBasicInfo(keyValue, displayName, gameTypeType, thumbnailUrl, documentationUrl);
+    }
+
     private List<string> GetVisibleCrossTabValidationIssues()
     {
+        var issues = new List<string>(GetBasicInfoValidationIssues());
+
         if (editingRevisionId is null && selectedRevisionId == UnsavedDraftRevisionSelectionId && !HasRevisionDraftContent())
         {
-            return [];
+            return issues;
         }
-
-        var issues = new List<string>();
 
         if (revisionPorts.Count == 0)
         {
@@ -1687,10 +1819,23 @@
         {
             issues.Add("Revision version tag is required.");
         }
+        else if (revisionVersionTag?.Length > GameTypeDraftRules.VersionTagMaxLength)
+        {
+            issues.Add($"Revision version tag cannot exceed {GameTypeDraftRules.VersionTagMaxLength} characters (currently {revisionVersionTag.Length}).");
+        }
 
         if (includeSaveRequirements && string.IsNullOrWhiteSpace(revisionImageReference))
         {
             issues.Add("Revision image reference is required.");
+        }
+        else if (revisionImageReference?.Length > GameTypeDraftRules.ImageReferenceMaxLength)
+        {
+            issues.Add($"Revision image reference cannot exceed {GameTypeDraftRules.ImageReferenceMaxLength} characters (currently {revisionImageReference.Length}).");
+        }
+
+        if (revisionReadyLogPattern?.Length > GameTypeDraftRules.ReadyLogPatternMaxLength)
+        {
+            issues.Add($"Ready log pattern cannot exceed {GameTypeDraftRules.ReadyLogPatternMaxLength} characters (currently {revisionReadyLogPattern.Length}).");
         }
 
         if (includeSaveRequirements && revisionPorts.Count == 0)
@@ -1714,6 +1859,47 @@
             issues.Add($"Duplicate port mapping detected for '{duplicatePort}'.");
         }
 
+        foreach (var port in revisionPorts)
+        {
+            if (port.Protocol?.Length > GameTypeDraftRules.PortProtocolMaxLength)
+            {
+                issues.Add($"Port protocol '{port.Protocol}' cannot exceed {GameTypeDraftRules.PortProtocolMaxLength} characters.");
+            }
+        }
+
+        foreach (var volume in revisionVolumes)
+        {
+            if (volume.Source?.Length > GameTypeDraftRules.VolumeSourceMaxLength)
+            {
+                issues.Add($"Volume source '{volume.Source}' cannot exceed {GameTypeDraftRules.VolumeSourceMaxLength} characters.");
+            }
+
+            if (volume.Usage?.Length > GameTypeDraftRules.VolumeUsageMaxLength)
+            {
+                issues.Add($"Volume usage '{volume.Usage}' cannot exceed {GameTypeDraftRules.VolumeUsageMaxLength} characters.");
+            }
+
+            if (volume.MountType?.Length > GameTypeDraftRules.VolumeMountTypeMaxLength)
+            {
+                issues.Add($"Volume mount type '{volume.MountType}' cannot exceed {GameTypeDraftRules.VolumeMountTypeMaxLength} characters.");
+            }
+
+            if (volume.OwnerUidVariable?.Length > GameTypeDraftRules.VolumeVariableMaxLength)
+            {
+                issues.Add($"Volume owner UID variable '{volume.OwnerUidVariable}' cannot exceed {GameTypeDraftRules.VolumeVariableMaxLength} characters.");
+            }
+
+            if (volume.OwnerGidVariable?.Length > GameTypeDraftRules.VolumeVariableMaxLength)
+            {
+                issues.Add($"Volume owner GID variable '{volume.OwnerGidVariable}' cannot exceed {GameTypeDraftRules.VolumeVariableMaxLength} characters.");
+            }
+
+            if (volume.Permissions?.Length > GameTypeDraftRules.VolumePermissionsMaxLength)
+            {
+                issues.Add($"Volume permissions '{volume.Permissions}' cannot exceed {GameTypeDraftRules.VolumePermissionsMaxLength} characters.");
+            }
+        }
+
         var duplicateSettingKeys = revisionSettingDefinitions
             .Where(x => !string.IsNullOrWhiteSpace(x.SettingKey))
             .GroupBy(x => x.SettingKey, StringComparer.OrdinalIgnoreCase)
@@ -1734,6 +1920,29 @@
                 continue;
             }
 
+            if (setting.SettingKey.Length > GameTypeDraftRules.SettingKeyMaxLength)
+            {
+                issues.Add($"Setting key '{setting.SettingKey}' cannot exceed {GameTypeDraftRules.SettingKeyMaxLength} characters.");
+            }
+
+            if (setting.Metadata.DataType?.Length > GameTypeDraftRules.SettingDataTypeMaxLength)
+            {
+                issues.Add($"Setting '{setting.SettingKey}' data type cannot exceed {GameTypeDraftRules.SettingDataTypeMaxLength} characters.");
+            }
+
+            if (setting.Metadata.Category?.Length > GameTypeDraftRules.SettingCategoryMaxLength)
+            {
+                issues.Add($"Setting '{setting.SettingKey}' category cannot exceed {GameTypeDraftRules.SettingCategoryMaxLength} characters.");
+            }
+
+            foreach (var mapping in setting.Metadata.PortMappings)
+            {
+                if (mapping.TargetProtocol?.Length > GameTypeDraftRules.PortProtocolMaxLength)
+                {
+                    issues.Add($"Setting '{setting.SettingKey}' target protocol '{mapping.TargetProtocol}' cannot exceed {GameTypeDraftRules.PortProtocolMaxLength} characters.");
+                }
+            }
+
             if (setting.Metadata.IsRequired && setting.Metadata.CannotBeEmpty && string.IsNullOrWhiteSpace(setting.DefaultValue))
             {
                 issues.Add($"Required setting '{setting.SettingKey}' cannot have an empty default value.");
@@ -1748,6 +1957,7 @@
         }
 
         issues.AddRange(GameTypeRevisionResourcesDraftRules.ValidateResources(revisionResources));
+        issues.AddRange(GameTypeRevisionHealthcheckDraftRules.ValidateHealthcheck(revisionHealthcheck));
 
         return issues.Distinct(StringComparer.Ordinal).ToList();
     }
@@ -1761,6 +1971,26 @@
         var hostLabel = string.IsNullOrWhiteSpace(host.Name) ? "(unnamed)" : host.Name;
         var hasStaticPort = host.ContainerPort.HasValue;
         var hasVariablePort = !string.IsNullOrWhiteSpace(host.ContainerPortVariable);
+
+        if (host.Name?.Length > GameTypeDraftRules.WebHostNameMaxLength)
+        {
+            issues.Add($"Web Host '{hostLabel}' name cannot exceed {GameTypeDraftRules.WebHostNameMaxLength} characters.");
+        }
+
+        if (host.PathSegment?.Length > GameTypeDraftRules.WebHostPathSegmentMaxLength)
+        {
+            issues.Add($"Web Host '{hostLabel}' path segment cannot exceed {GameTypeDraftRules.WebHostPathSegmentMaxLength} characters.");
+        }
+
+        if (host.ContainerPortVariable?.Length > GameTypeDraftRules.WebHostPortVariableMaxLength)
+        {
+            issues.Add($"Web Host '{hostLabel}' port variable cannot exceed {GameTypeDraftRules.WebHostPortVariableMaxLength} characters.");
+        }
+
+        if (host.EnabledWhen?.Length > GameTypeDraftRules.WebHostEnabledWhenMaxLength)
+        {
+            issues.Add($"Web Host '{hostLabel}' enabled condition cannot exceed {GameTypeDraftRules.WebHostEnabledWhenMaxLength} characters.");
+        }
 
         if (!hasStaticPort && !hasVariablePort)
         {

@@ -15,7 +15,7 @@ public sealed class GameTypeV2ApiService(
     {
         using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gametypes?includeInactive={includeInactive}", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         var payload = await response.Content.ReadFromJsonAsync<List<GameTypeListItem>>(cancellationToken);
         return payload ?? [];
@@ -38,7 +38,7 @@ public sealed class GameTypeV2ApiService(
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
         return await response.Content.ReadFromJsonAsync<GameTypeDetail>(cancellationToken);
     }
 
@@ -51,7 +51,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gametypes", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeDetail>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 create response did not contain a game type payload.");
@@ -67,7 +67,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.PutAsJsonAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeDetail>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 update response did not contain a game type payload.");
@@ -82,7 +82,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.DeleteAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.GetAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/export", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<PortableGameTypePackage>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 export response did not contain a portable package payload.");
@@ -109,7 +109,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync("api/v2/gametypes/import", package, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeDetail>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 import response did not contain a game type payload.");
@@ -125,7 +125,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.PostAsJsonAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeRevision>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 add-revision response did not contain a revision payload.");
@@ -141,7 +141,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.PutAsJsonAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions/{revisionId}", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeRevision>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 update-revision response did not contain a revision payload.");
@@ -159,7 +159,7 @@ public sealed class GameTypeV2ApiService(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions/{revisionId}/publish",
             new PublishRevisionRequest { SetAsCurrentRevision = setAsCurrentRevision },
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeRevision>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 publish-revision response did not contain a revision payload.");
@@ -174,7 +174,7 @@ public sealed class GameTypeV2ApiService(
 
         using var client = await CreateClientAsync();
         using var response = await client.PostAsync($"api/v2/gametypes/{Uri.EscapeDataString(key)}/revisions/{revisionId}/set-current", null, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
     }
 
     /// <summary>
@@ -189,7 +189,7 @@ public sealed class GameTypeV2ApiService(
             "api/v2/gametypes/detection/scan-tag",
             new DetectGameTypeSetupRequest { ImageReference = imageReference, VersionTag = versionTag },
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeSetupDetectionResult>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 detection response did not contain a payload.");
@@ -208,7 +208,7 @@ public sealed class GameTypeV2ApiService(
             $"api/v2/gametypes/{Uri.EscapeDataString(key)}/detection/scan-tag",
             new DetectGameTypeSetupRequest { ImageReference = imageReference, VersionTag = versionTag },
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeSetupDetectionResult>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 detection response did not contain a payload.");
@@ -232,7 +232,7 @@ public sealed class GameTypeV2ApiService(
                 RevisionId = revisionId
             },
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithDetailsAsync(cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<GameTypeSetupComparisonResult>(cancellationToken)
             ?? throw new InvalidOperationException("The V2 comparison response did not contain a payload.");

@@ -24,6 +24,11 @@ public sealed record SaveGameTypeRevisionRequest
 
     public GameTypeRevisionResources? Resources { get; init; }
 
+    /// <summary>Raw JSON representation of container healthcheck configuration (start_period, interval, timeout, retries, test command).</summary>
+    public string? HealthcheckJson { get; init; }
+
+    public GameTypeRevisionHealthcheck? Healthcheck { get; init; }
+
     public List<GameTypePort> Ports { get; init; } = [];
 
     public List<GameTypeVolume> Volumes { get; init; } = [];
@@ -87,6 +92,9 @@ public sealed record PortableGameTypeRevision
 
     /// <summary>Raw JSON representation of CPU, memory reservations/limits, pids limits, and placement constraints.</summary>
     public string? ResourcesJson { get; init; }
+
+    /// <summary>Raw JSON representation of container healthcheck configuration.</summary>
+    public string? HealthcheckJson { get; init; }
 
     public List<PortableGameTypePort> Ports { get; init; } = [];
 

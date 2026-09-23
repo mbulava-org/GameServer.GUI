@@ -241,4 +241,151 @@ public class GameTypeRepositoryTests : IDisposable
         Assert.False(volume.EnsureNfsPathExists);
         Assert.True(volume.Required);
     }
+
+    [Fact]
+    public async Task CreateAsync_WhenThumbnailUrlExceeds500_ShouldThrowArgumentException()
+    {
+        var gameType = new GameType
+        {
+            Key = "test-game",
+            DisplayName = "Test Game",
+            Type = "docker",
+            ThumbnailUrl = new string('a', 501)
+        };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _repository.CreateAsync(gameType));
+        Assert.Contains("thumbnail URL cannot exceed 500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenKeyExceeds100_ShouldThrowArgumentException()
+    {
+        var gameType = new GameType
+        {
+            Key = new string('k', 101),
+            DisplayName = "Test Game",
+            Type = "docker"
+        };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _repository.CreateAsync(gameType));
+        Assert.Contains("key cannot exceed 100 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenDisplayNameExceeds200_ShouldThrowArgumentException()
+    {
+        var gameType = new GameType
+        {
+            Key = "test-game",
+            DisplayName = new string('n', 201),
+            Type = "docker"
+        };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _repository.CreateAsync(gameType));
+        Assert.Contains("display name cannot exceed 200 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRevisionImageReferenceExceeds500_ShouldThrowArgumentException()
+    {
+        var gameType = new GameType
+        {
+            Key = "test-game",
+            DisplayName = "Test Game",
+            Type = "docker",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    VersionTag = "latest",
+                    ImageReference = new string('i', 501)
+                }
+            ]
+        };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _repository.CreateAsync(gameType));
+        Assert.Contains("image reference cannot exceed 500 characters", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateRevisionAsync_WhenUpdatingExistingSettingDefinitions_ShouldReplaceDefinitionsWithoutUniqueConstraintViolation()
+    {
+        var gameType = await _repository.CreateAsync(new GameType
+        {
+            Key = "settings-replace-test",
+            DisplayName = "Settings Replace Test",
+            Type = "docker",
+            Revisions =
+            [
+                new GameTypeRevision
+                {
+                    ImageReference = "test/image",
+                    VersionTag = "1.0",
+                    SettingDefinitions =
+                    [
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "SERVER_NAME",
+                            DefaultValue = "Initial Server",
+                            DisplayOrder = 0
+                        },
+                        new GameTypeSettingDefinition
+                        {
+                            SettingKey = "MAX_PLAYERS",
+                            DefaultValue = "10",
+                            DisplayOrder = 1
+                        }
+                    ]
+                }
+            ]
+        });
+
+        var loaded = await _repository.GetByKeyAsync(gameType.Key);
+        Assert.NotNull(loaded);
+        var revision = loaded!.Revisions.Single();
+
+        // Update with the same keys and an additional key
+        revision = revision with
+        {
+            SettingDefinitions =
+            [
+                new GameTypeSettingDefinition
+                {
+                    SettingKey = "SERVER_NAME",
+                    DefaultValue = "Updated Server Name",
+                    DisplayOrder = 0
+                },
+                new GameTypeSettingDefinition
+                {
+                    SettingKey = "MAX_PLAYERS",
+                    DefaultValue = "20",
+                    DisplayOrder = 1
+                },
+                new GameTypeSettingDefinition
+                {
+                    SettingKey = "MOTD",
+                    DefaultValue = "Welcome to the server",
+                    DisplayOrder = 2
+                }
+            ]
+        };
+
+        await _repository.UpdateRevisionAsync(gameType.Key, revision);
+
+        var reloaded = await _repository.GetByKeyAsync(gameType.Key);
+        Assert.NotNull(reloaded);
+        var updatedRevision = reloaded!.Revisions.Single();
+        Assert.Equal(3, updatedRevision.SettingDefinitions.Count);
+        var serverNameDef = updatedRevision.SettingDefinitions.FirstOrDefault(s => s.SettingKey == "SERVER_NAME");
+        Assert.NotNull(serverNameDef);
+        Assert.Equal("Updated Server Name", serverNameDef.DefaultValue);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenGameTypeDoesNotExistOrAlreadyDeleted_ShouldNotThrow()
+    {
+        // Should complete without throwing DbUpdateConcurrencyException or other errors
+        await _repository.DeleteAsync("non-existent-game-type-key");
+    }
 }
+

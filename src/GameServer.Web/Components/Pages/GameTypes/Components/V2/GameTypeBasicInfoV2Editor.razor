@@ -1,15 +1,30 @@
 @using Radzen
 @using Radzen.Blazor
 
+@if (ValidationIssues.Count > 0)
+{
+    <div class="col-12">
+        <RadzenAlert AlertStyle="AlertStyle.Danger" Shade="Shade.Light" class="mb-2">
+            <div class="fw-semibold mb-1">Basic information validation</div>
+            <ul class="mb-0 ps-3">
+                @foreach (var issue in ValidationIssues)
+                {
+                    <li>@issue</li>
+                }
+            </ul>
+        </RadzenAlert>
+    </div>
+}
+
 <div class="row g-3">
     <div class="col-md-6">
         <RadzenFormField Text="Key" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@KeyValue" ValueChanged="@OnKeyValueChanged" Disabled="@(!IsNew)" class="w-100" />
+            <RadzenTextBox Value="@KeyValue" ValueChanged="@OnKeyValueChanged" Disabled="@(!IsNew)" MaxLength="@GameTypeDraftRules.KeyMaxLength" class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-md-6">
         <RadzenFormField Text="Display Name" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@DisplayName" ValueChanged="@OnDisplayNameChanged" class="w-100" />
+            <RadzenTextBox Value="@DisplayName" ValueChanged="@OnDisplayNameChanged" MaxLength="@GameTypeDraftRules.DisplayNameMaxLength" class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-md-6">
@@ -23,12 +38,12 @@
     </div>
     <div class="col-md-6">
         <RadzenFormField Text="Thumbnail URL" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@ThumbnailUrl" ValueChanged="@OnThumbnailUrlChanged" class="w-100" />
+            <RadzenTextBox Value="@ThumbnailUrl" ValueChanged="@OnThumbnailUrlChanged" MaxLength="@GameTypeDraftRules.ThumbnailUrlMaxLength" class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-md-6">
         <RadzenFormField Text="Documentation URL" Variant="Variant.Outlined" class="w-100">
-            <RadzenTextBox Value="@DocumentationUrl" ValueChanged="@OnDocumentationUrlChanged" class="w-100" />
+            <RadzenTextBox Value="@DocumentationUrl" ValueChanged="@OnDocumentationUrlChanged" MaxLength="@GameTypeDraftRules.DocumentationUrlMaxLength" class="w-100" />
         </RadzenFormField>
     </div>
     <div class="col-12">
@@ -45,6 +60,9 @@
 </div>
 
 @code {
+    [Parameter]
+    public IReadOnlyList<string> ValidationIssues { get; set; } = [];
+
     [Parameter]
     public bool IsNew { get; set; }
 

@@ -19,9 +19,7 @@ else if (!IsRconEnabled)
             <RadzenText TextStyle="TextStyle.H6" Style="margin: 0;">RCON Console</RadzenText>
             <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" Icon="warning" AllowClose="false">
                 <RadzenText TextStyle="TextStyle.Body2" Style="margin: 0;">
-                    RCON is disabled for this server. Set <code>RCON_ENABLED=True</code>,
-                    <code>RCON_PORT</code>, and <code>ADMIN_PASSWORD</code> (or <code>RCON_PASSWORD</code>)
-                    in the server settings, then restart the server.
+                    RCON is disabled for this server. Set <code>@(EnabledSettingKey)=True</code> in the server settings, then restart the server.
                 </RadzenText>
             </RadzenAlert>
         </RadzenStack>
@@ -30,7 +28,7 @@ else if (!IsRconEnabled)
 else if (RequestContext is null)
 {
     <RadzenAlert AlertStyle="AlertStyle.Warning" Shade="Shade.Light" AllowClose="false">
-        RCON is enabled but <code>RCON_PORT</code> or the RCON password setting is missing on the server.
+        @ConfigurationWarningMessage
     </RadzenAlert>
 }
 else
@@ -92,11 +90,30 @@ else
     private string? GetSetting(string key)
         => Server?.Settings.FirstOrDefault(s => string.Equals(s.SettingKey, key, StringComparison.OrdinalIgnoreCase))?.Value;
 
+    private string? EnabledSettingKey =>
+        ExtensionParameters is not null && ExtensionParameters.TryGetValue("enabledSettingKey", out var k) && !string.IsNullOrWhiteSpace(k)
+            ? k
+            : null;
+
     private bool IsRconEnabled
     {
         get
         {
-            var raw = GetSetting("RCON_ENABLED");
+            if (ExtensionParameters is not null &&
+                ExtensionParameters.TryGetValue("requireEnabled", out var req) &&
+                req.Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var key = EnabledSettingKey;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                // If not supplied, it's not used for the container trying to use it
+                return true;
+            }
+
+            var raw = GetSetting(key);
             return !string.IsNullOrWhiteSpace(raw)
                 && (raw.Equals("True", StringComparison.OrdinalIgnoreCase)
                     || raw.Equals("1", StringComparison.OrdinalIgnoreCase)
@@ -119,6 +136,102 @@ else
         }
     }
 
+    private bool TryGetPort(out int port, out string? portSource)
+    {
+        port = 0;
+        portSource = null;
+
+        string? portText = null;
+        if (ExtensionParameters is not null &&
+            ExtensionParameters.TryGetValue("port", out var hardcodedPort) &&
+            !string.IsNullOrWhiteSpace(hardcodedPort))
+        {
+            portText = hardcodedPort;
+            portSource = $"hardcoded port '{hardcodedPort}'";
+        }
+        else if (ExtensionParameters is not null &&
+            ExtensionParameters.TryGetValue("portSettingKey", out var customPortKey) &&
+            !string.IsNullOrWhiteSpace(customPortKey))
+        {
+            portText = GetSetting(customPortKey);
+            portSource = $"setting '{customPortKey}'";
+        }
+
+        if (string.IsNullOrWhiteSpace(portText))
+        {
+            return false;
+        }
+
+        return int.TryParse(portText, out port) && port > 0 && port <= 65535;
+    }
+
+    private bool TryGetPassword(out string password, out string? passwordSource)
+    {
+        password = string.Empty;
+        passwordSource = null;
+
+        if (ExtensionParameters is not null &&
+            ExtensionParameters.TryGetValue("password", out var hardcodedPassword) &&
+            !string.IsNullOrWhiteSpace(hardcodedPassword))
+        {
+            password = hardcodedPassword;
+            passwordSource = "hardcoded password";
+            return true;
+        }
+
+        if (ExtensionParameters is not null &&
+            ExtensionParameters.TryGetValue("passwordSettingKey", out var customPassKey) &&
+            !string.IsNullOrWhiteSpace(customPassKey))
+        {
+            var val = GetSetting(customPassKey);
+            if (!string.IsNullOrWhiteSpace(val))
+            {
+                password = val;
+                passwordSource = $"setting '{customPassKey}'";
+                return true;
+            }
+
+            passwordSource = $"setting '{customPassKey}' (not set on server)";
+            return false;
+        }
+
+        return false;
+    }
+
+    private string ConfigurationWarningMessage
+    {
+        get
+        {
+            var issues = new List<string>();
+
+            if (!TryGetPort(out _, out var portSource))
+            {
+                if (portSource is not null)
+                {
+                    issues.Add($"port from {portSource} is missing or invalid");
+                }
+                else
+                {
+                    issues.Add("port is not configured (select a port setting or enter a hardcoded port)");
+                }
+            }
+
+            if (!TryGetPassword(out _, out var passwordSource))
+            {
+                if (passwordSource is not null)
+                {
+                    issues.Add($"password from {passwordSource} is empty");
+                }
+                else
+                {
+                    issues.Add("password is not configured (select a password setting or enter a hardcoded password)");
+                }
+            }
+
+            return $"RCON cannot connect: {string.Join(" and ", issues)}.";
+        }
+    }
+
     private RconRequestContext? RequestContext
     {
         get
@@ -128,19 +241,7 @@ else
                 return null;
             }
 
-            var portText = GetSetting("RCON_PORT");
-            var password = GetSetting("RCON_PASSWORD");
-            if (string.IsNullOrWhiteSpace(password))
-            {
-                password = GetSetting("ADMIN_PASSWORD");
-            }
-
-            if (!int.TryParse(portText, out var port) || port <= 0 || port > 65535)
-            {
-                return null;
-            }
-
-            if (string.IsNullOrWhiteSpace(password))
+            if (!TryGetPort(out var port, out _) || !TryGetPassword(out var password, out _))
             {
                 return null;
             }

@@ -604,3 +604,157 @@ public static class GameTypeRevisionResourcesDraftRules
         return issues;
     }
 }
+
+public sealed class GameTypeRevisionHealthcheckDraft
+{
+    public bool Disable { get; set; }
+
+    public string? TestType { get; set; } = "CMD-SHELL";
+
+    public string? TestCommand { get; set; }
+
+    public int? IntervalSeconds { get; set; }
+
+    public int? TimeoutSeconds { get; set; }
+
+    public int? StartPeriodSeconds { get; set; }
+
+    public int? StartIntervalSeconds { get; set; }
+
+    public long? Retries { get; set; }
+
+    public bool HasAnyValue() =>
+        Disable
+        || !string.IsNullOrWhiteSpace(TestCommand)
+        || IntervalSeconds.HasValue
+        || TimeoutSeconds.HasValue
+        || StartPeriodSeconds.HasValue
+        || StartIntervalSeconds.HasValue
+        || Retries.HasValue;
+
+    public GameTypeRevisionHealthcheckDraft Clone()
+    {
+        return new GameTypeRevisionHealthcheckDraft
+        {
+            Disable = Disable,
+            TestType = TestType,
+            TestCommand = TestCommand,
+            IntervalSeconds = IntervalSeconds,
+            TimeoutSeconds = TimeoutSeconds,
+            StartPeriodSeconds = StartPeriodSeconds,
+            StartIntervalSeconds = StartIntervalSeconds,
+            Retries = Retries
+        };
+    }
+}
+
+public static class GameTypeRevisionHealthcheckDraftRules
+{
+    public static List<string> ValidateHealthcheck(GameTypeRevisionHealthcheckDraft? draft)
+    {
+        var issues = new List<string>();
+        if (draft is null)
+        {
+            return issues;
+        }
+
+        if (draft.Disable)
+        {
+            return issues;
+        }
+
+        if (draft.IntervalSeconds is < 1)
+        {
+            issues.Add("Healthcheck interval must be at least 1 second.");
+        }
+
+        if (draft.TimeoutSeconds is < 1)
+        {
+            issues.Add("Healthcheck timeout must be at least 1 second.");
+        }
+
+        if (draft.StartPeriodSeconds is < 0)
+        {
+            issues.Add("Healthcheck start period cannot be negative.");
+        }
+
+        if (draft.StartIntervalSeconds is < 1)
+        {
+            issues.Add("Healthcheck start interval must be at least 1 second.");
+        }
+
+        if (draft.Retries is < 0)
+        {
+            issues.Add("Healthcheck retries cannot be negative.");
+        }
+
+        if (draft.IntervalSeconds.HasValue && draft.TimeoutSeconds.HasValue
+            && draft.TimeoutSeconds.Value > draft.IntervalSeconds.Value)
+        {
+            issues.Add($"Healthcheck timeout ({draft.TimeoutSeconds.Value}s) should not exceed interval ({draft.IntervalSeconds.Value}s).");
+        }
+
+        return issues;
+    }
+
+    public static readonly IReadOnlyList<HealthcheckPresetOption> Presets =
+    [
+        new()
+        {
+            Name = "Slow Starting Server (5m start period)",
+            Description = "Extends initial grace period to 5 minutes for heavy game servers to boot before health failures register",
+            StartPeriodSeconds = 300,
+            IntervalSeconds = 30,
+            TimeoutSeconds = 10,
+            Retries = 3
+        },
+        new()
+        {
+            Name = "Heavy Modded Game (10m start period)",
+            Description = "Extends initial grace period to 10 minutes with 5 retries for servers that download mods/assets on startup",
+            StartPeriodSeconds = 600,
+            IntervalSeconds = 30,
+            TimeoutSeconds = 15,
+            Retries = 5
+        },
+        new()
+        {
+            Name = "Standard / Fast Probe (30s start period)",
+            Description = "Standard 30s start period, 10s interval, 5s timeout, 3 retries",
+            StartPeriodSeconds = 30,
+            IntervalSeconds = 10,
+            TimeoutSeconds = 5,
+            Retries = 3
+        },
+        new()
+        {
+            Name = "Disable Healthcheck",
+            Description = "Completely disable container health checks (sets test to NONE)",
+            Disable = true
+        }
+    ];
+}
+
+public sealed record HealthcheckPresetOption
+{
+    public string Name { get; init; } = string.Empty;
+
+    public string? Description { get; init; }
+
+    public bool Disable { get; init; }
+
+    public string? TestType { get; init; } = "CMD-SHELL";
+
+    public string? TestCommand { get; init; }
+
+    public int? StartPeriodSeconds { get; init; }
+
+    public int? IntervalSeconds { get; init; }
+
+    public int? TimeoutSeconds { get; init; }
+
+    public int? StartIntervalSeconds { get; init; }
+
+    public long? Retries { get; init; }
+}
+

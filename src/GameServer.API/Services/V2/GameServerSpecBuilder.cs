@@ -124,7 +124,8 @@ public sealed class GameServerSpecBuilder
                         Mounts = volumes.Select(ToMount).ToList(),
                         TTY = revision.EnableTTY,
                         DNSConfig = dnsConfig,
-                        User = containerUser
+                        User = containerUser,
+                        Healthcheck = BuildHealthcheck(revision)
                     },
                     Networks = networks
                         .Select(network => new NetworkAttachmentConfig { Target = network.Name })
@@ -582,6 +583,70 @@ public sealed class GameServerSpecBuilder
             Constraints = constraints.Count > 0 ? constraints : null,
             Preferences = preferences.Count > 0 ? preferences : null,
             MaxReplicas = resources.MaxReplicasPerNode.GetValueOrDefault()
+        };
+    }
+
+    private static HealthcheckConfig? BuildHealthcheck(GameTypeRevision revision)
+    {
+        var healthcheck = revision.Healthcheck ?? GameTypeHealthcheckSerializer.ParseModel(revision.HealthcheckJson);
+        if (healthcheck is null)
+        {
+            return null;
+        }
+
+        if (healthcheck.Disable)
+        {
+            return new HealthcheckConfig
+            {
+                Test = new List<string> { "NONE" }
+            };
+        }
+
+        List<string>? testList = null;
+        if (!string.IsNullOrWhiteSpace(healthcheck.TestCommand))
+        {
+            var command = healthcheck.TestCommand.Trim();
+            if (string.Equals(healthcheck.TestType, "CMD", StringComparison.OrdinalIgnoreCase))
+            {
+                testList = new List<string> { "CMD", command };
+            }
+            else
+            {
+                testList = new List<string> { "CMD-SHELL", command };
+            }
+        }
+
+        var startPeriod = healthcheck.StartPeriodSeconds.HasValue
+            ? (TimeSpan?)TimeSpan.FromSeconds(healthcheck.StartPeriodSeconds.Value)
+            : null;
+
+        var interval = healthcheck.IntervalSeconds.HasValue
+            ? (TimeSpan?)TimeSpan.FromSeconds(healthcheck.IntervalSeconds.Value)
+            : null;
+
+        var timeout = healthcheck.TimeoutSeconds.HasValue
+            ? (TimeSpan?)TimeSpan.FromSeconds(healthcheck.TimeoutSeconds.Value)
+            : null;
+
+        var startInterval = healthcheck.StartIntervalSeconds.HasValue
+            ? (TimeSpan?)TimeSpan.FromSeconds(healthcheck.StartIntervalSeconds.Value)
+            : null;
+
+        var retries = healthcheck.Retries;
+
+        if (testList is null && !startPeriod.HasValue && !interval.HasValue && !timeout.HasValue && !startInterval.HasValue && !retries.HasValue)
+        {
+            return null;
+        }
+
+        return new HealthcheckConfig
+        {
+            Test = testList,
+            StartPeriod = startPeriod,
+            Interval = interval,
+            Timeout = timeout,
+            StartInterval = startInterval,
+            Retries = retries
         };
     }
 }

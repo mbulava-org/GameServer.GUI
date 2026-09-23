@@ -53,4 +53,39 @@ public sealed class GameTypeBasicInfoV2EditorTests : BunitContext
             Assert.True(keyInput.HasAttribute("disabled"));
         });
     }
+
+    [Fact]
+    public void GameTypeBasicInfoV2Editor_ShouldRenderMaxLengthAttributes()
+    {
+        // Arrange & Act
+        var cut = Render<GameTypeBasicInfoV2Editor>(parameters => parameters
+            .Add(p => p.IsNew, true)
+            .Add(p => p.KeyValue, "valheim")
+            .Add(p => p.DisplayName, "Valheim"));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            var inputs = cut.FindAll("input");
+            Assert.Contains(inputs, i => i.GetAttribute("maxlength") == "100");
+            Assert.Contains(inputs, i => i.GetAttribute("maxlength") == "200");
+            Assert.Contains(inputs, i => i.GetAttribute("maxlength") == "500");
+        });
+    }
+
+    [Fact]
+    public void GameTypeBasicInfoV2Editor_WhenValidationIssuesProvided_ShouldRenderAlert()
+    {
+        // Arrange & Act
+        var cut = Render<GameTypeBasicInfoV2Editor>(parameters => parameters
+            .Add(p => p.IsNew, true)
+            .Add(p => p.ValidationIssues, new[] { "Thumbnail URL cannot exceed 500 characters." }));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Basic information validation", cut.Markup);
+            Assert.Contains("Thumbnail URL cannot exceed 500 characters.", cut.Markup);
+        });
+    }
 }

@@ -107,17 +107,36 @@ per-request context, server-side only, no browser-exposed secrets.
 ## RCON Extension
 
 `RconTab` is a generic Source-RCON (Valve protocol) console usable by any
-GameType exposing an RCON port (Palworld, Minecraft Java, Source engine games):
+GameType exposing an internal RCON port (Palworld, Minecraft Java, Source engine games):
 
 - `IRconClient` / `RconClient` — raw TCP client with per-command
   connect/auth/execute/disconnect, connect and read timeouts, and structured
   `RconCommandResult` errors. The password is never logged.
-- Settings resolved from `Server.Settings`: `RCON_ENABLED` (truthy gate),
-  `RCON_PORT`, and `RCON_PASSWORD` (falls back to `ADMIN_PASSWORD`).
-- Optional descriptor parameter `presetCommands` — comma-separated list
-  rendered as one-click buttons (e.g. `"Info, ShowPlayers, Save"`).
+- **Internal Network Architecture**: The Web GUI connects directly to the container over the shared Docker internal network via `{ServiceName}:{Port}` (e.g. `srv-minecraft-v2:25575`). **RCON should never be mapped to the host or exposed publicly**.
+  - Do **NOT** add the RCON port to the revision's published `ports: [...]` list (which would publish host ports).
+  - Do **NOT** configure `portMappings` on the setting definition (which would trigger host port allocation).
+- **Port Resolution**: Resolved either from the extension descriptor's `port` parameter (hardcoded internal port) or from `Server.Settings` via `portSettingKey` (as a standard unmapped setting). If neither is supplied, port is unconfigured.
+- **Password Resolution**: Resolved either from the extension descriptor's `password` parameter (hardcoded password) or from `Server.Settings` via `passwordSettingKey`. If neither is supplied, password is unconfigured.
+- **Enable Gate**: If `enabledSettingKey` is provided, RCON requires that setting to be truthy. If omitted, no enable setting is checked (RCON connects directly).
 
-Example descriptor:
+### Descriptor Parameters Reference
+
+Parameters start completely empty by default. Only parameters explicitly selected or typed are stored:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `port` | string (int) | One of `port` or `portSettingKey` | **Hardcoded internal port** (e.g. `"25575"`). Connects directly to `{ServiceName}:{port}` over the internal network without requiring any server port setting. |
+| `portSettingKey` | string | One of `port` or `portSettingKey` | Setting key to read the internal port number from `Server.Settings` (e.g. `"RCON_PORT"`). |
+| `password` | string | One of `password` or `passwordSettingKey` | **Hardcoded password**. Connects using this fixed password. |
+| `passwordSettingKey` | string | One of `password` or `passwordSettingKey` | Setting key to read the RCON password from `Server.Settings` (e.g. `"ADMIN_PASSWORD"`). |
+| `enabledSettingKey` | string | Optional | Setting key to check if RCON is enabled (e.g. `"RCON_ENABLED"`). If omitted, no enable check is performed. |
+| `presetCommands` | string | Optional | Comma-separated list rendered as one-click action buttons (e.g. `"Info, ShowPlayers, Save"`). |
+
+---
+
+### Pattern 1: Hardcoded Internal Port in Descriptor (Recommended)
+
+When the container image listens on a fixed internal RCON port (e.g. `25575`), specify `port` directly in the descriptor parameters and map `passwordSettingKey` to the server's password setting:
 
 ```json
 {
@@ -126,9 +145,63 @@ Example descriptor:
   "title": "RCON",
   "icon": "terminal",
   "order": 20,
-  "parameters": { "presetCommands": "Info, ShowPlayers, Save" }
+  "parameters": {
+    "port": "25575",
+    "passwordSettingKey": "ADMIN_PASSWORD",
+    "presetCommands": "Info, ShowPlayers, Save"
+  }
 }
 ```
+
+The GUI connects to `tcp://{ServiceName}:25575` on the internal network.
+
+---
+
+### Pattern 2: Internal Port via Environment Variable (Unmapped)
+
+When the server image requires an environment variable (like `RCON_PORT=25575`) to configure the port it listens on internally, define a regular `dataType: "number"` setting **without** `portMappings`:
+
+#### Sample `settingDefinitions` in GameType Revision:
+
+```json
+[
+  {
+    "settingKey": "RCON_PORT",
+    "defaultValue": "25575",
+    "description": "Internal TCP RCON port for container to listen on. Not exposed publicly.",
+    "displayOrder": 2,
+    "metadata": {
+      "dataType": "number",
+      "category": "Administration"
+    }
+  },
+  {
+    "settingKey": "RCON_ENABLED",
+    "defaultValue": "true",
+    "description": "Enable the RCON administration interface.",
+    "displayOrder": 3,
+    "metadata": {
+      "dataType": "boolean",
+      "category": "Administration"
+    }
+  },
+  {
+    "settingKey": "ADMIN_PASSWORD",
+    "defaultValue": "",
+    "description": "Password used for RCON administration.",
+    "displayOrder": 4,
+    "metadata": {
+      "dataType": "string",
+      "category": "Security",
+      "placeholder": "Required for RCON login"
+    }
+  }
+]
+```
+
+> [!NOTE]
+> Because `RCON_PORT` has **no** `portMappings` and is **not** included in the revision's `ports` list, Docker passes `RCON_PORT=25575` as an environment variable into the container, but does **not** map or publish the port to the host or internet. The GUI accesses it strictly via `{ServiceName}:25575` on the internal Docker network.
+
 
 
 ## Security Notes

@@ -1,17 +1,27 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace GameServer.API.Dtos.V2;
 
 public sealed record SaveGameTypeRequestDto
 {
+    [Required]
+    [MaxLength(100)]
     public string Key { get; init; } = string.Empty;
 
+    [Required]
+    [MaxLength(200)]
     public string DisplayName { get; init; } = string.Empty;
 
     public string? Description { get; init; }
 
+    [Required]
+    [MaxLength(50)]
     public string Type { get; init; } = "docker";
 
+    [MaxLength(500)]
     public string? ThumbnailUrl { get; init; }
 
+    [MaxLength(500)]
     public string? DocumentationUrl { get; init; }
 
     public bool IsActive { get; init; } = true;
@@ -19,14 +29,20 @@ public sealed record SaveGameTypeRequestDto
 
 public sealed record SaveGameTypeRevisionRequestDto
 {
+    [Required]
+    [MaxLength(100)]
     public string VersionTag { get; init; } = string.Empty;
 
+    [Required]
+    [MaxLength(500)]
     public string ImageReference { get; init; } = string.Empty;
 
+    [MaxLength(250)]
     public string? ImageDigest { get; init; }
 
     public bool EnableTTY { get; init; }
 
+    [MaxLength(500)]
     public string? ReadyLogPattern { get; init; }
 
     public string? Notes { get; init; }
@@ -46,6 +62,13 @@ public sealed record SaveGameTypeRevisionRequestDto
     public string? ResourcesJson { get; init; }
 
     public GameTypeRevisionResourcesDto? Resources { get; init; }
+
+    /// <summary>
+    /// Raw JSON representation of container healthcheck configuration (start_period, interval, timeout, retries, test command).
+    /// </summary>
+    public string? HealthcheckJson { get; init; }
+
+    public GameTypeRevisionHealthcheckDto? Healthcheck { get; init; }
 
     public List<GameTypePortDto> Ports { get; init; } = [];
 

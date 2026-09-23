@@ -133,6 +133,8 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
             UiExtensions = GameTypeUiExtensionsSerializer.Parse(revision.UiExtensionsJson),
             ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources),
             Resources = revision.Resources is not null ? GameTypeResourcesSerializer.MapToDto(revision.Resources) : GameTypeResourcesSerializer.ParseDto(revision.ResourcesJson),
+            HealthcheckJson = revision.HealthcheckJson ?? GameTypeHealthcheckSerializer.Serialize(revision.Healthcheck),
+            Healthcheck = revision.Healthcheck is not null ? GameTypeHealthcheckSerializer.MapToDto(revision.Healthcheck) : GameTypeHealthcheckSerializer.ParseDto(revision.HealthcheckJson),
             Ports = revision.Ports
                 .OrderBy(x => x.DisplayOrder)
                 .Select(x => new GameTypePortDto
@@ -261,6 +263,7 @@ public sealed class GameTypeQueryService(IGameTypeRepository repository)
             IsPublished = revision.IsPublished,
             UiExtensionsJson = revision.UiExtensionsJson,
             ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources),
+            HealthcheckJson = revision.HealthcheckJson ?? GameTypeHealthcheckSerializer.Serialize(revision.Healthcheck),
             Ports = revision.Ports
                 .OrderBy(port => port.DisplayOrder)
                 .Select(port => new PortableGameTypePortDto

@@ -69,4 +69,36 @@ public sealed class GameTypeRevisionEditorTests : BunitContext
         // Assert
         Assert.True(newDraftClicked);
     }
+
+    [Fact]
+    public void RevisionEditor_ShouldRenderMaxLengthAttributes()
+    {
+        // Arrange & Act
+        var cut = Render<GameTypeRevisionEditor>(parameters => parameters
+            .Add(p => p.RevisionRows, []));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            var inputs = cut.FindAll("input");
+            Assert.Contains(inputs, i => i.GetAttribute("maxlength") == "100");
+            Assert.Contains(inputs, i => i.GetAttribute("maxlength") == "500");
+        });
+    }
+
+    [Fact]
+    public void RevisionEditor_WhenValidationIssuesProvided_ShouldRenderAlert()
+    {
+        // Arrange & Act
+        var cut = Render<GameTypeRevisionEditor>(parameters => parameters
+            .Add(p => p.RevisionRows, [])
+            .Add(p => p.ValidationIssues, new[] { "Revision image reference cannot exceed 500 characters." }));
+
+        // Assert
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Revision validation", cut.Markup);
+            Assert.Contains("Revision image reference cannot exceed 500 characters.", cut.Markup);
+        });
+    }
 }

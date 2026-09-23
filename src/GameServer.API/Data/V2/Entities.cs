@@ -80,6 +80,12 @@ public class GameTypeRevisionEntity
     /// </summary>
     public string? ResourcesJson { get; set; }
 
+    /// <summary>
+    /// JSON-serialized GameTypeRevisionHealthcheck declaring start_period, interval, timeout,
+    /// retries, custom test command, or disabling container healthcheck.
+    /// </summary>
+    public string? HealthcheckJson { get; set; }
+
     [ForeignKey(nameof(GameTypeId))]
     public virtual GameTypeEntity GameType { get; set; } = null!;
 

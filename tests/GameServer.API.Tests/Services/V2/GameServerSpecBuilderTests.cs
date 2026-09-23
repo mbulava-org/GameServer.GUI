@@ -474,6 +474,151 @@ public sealed class GameServerSpecBuilderTests
         Assert.NotNull(parameters.Service?.TaskTemplate?.ContainerSpec);
         Assert.Equal("1001:1002", parameters.Service!.TaskTemplate!.ContainerSpec!.User);
     }
+
+    [Fact]
+    public void BuildCreateParameters_WhenHealthcheckNull_LeavesHealthcheckNull()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-nohc",
+            ServiceName = "srv-nohc-svc",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "valheim" },
+            Revision = new GameTypeRevision
+            {
+                Id = 1,
+                ImageReference = "repo/valheim:latest",
+                Healthcheck = null
+            },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        Assert.NotNull(parameters.Service?.TaskTemplate?.ContainerSpec);
+        Assert.Null(parameters.Service!.TaskTemplate!.ContainerSpec!.Healthcheck);
+    }
+
+    [Fact]
+    public void BuildCreateParameters_WhenHealthcheckDisabled_SetsTestToNone()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-dishc",
+            ServiceName = "srv-dishc-svc",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "valheim" },
+            Revision = new GameTypeRevision
+            {
+                Id = 1,
+                ImageReference = "repo/valheim:latest",
+                Healthcheck = new GameTypeRevisionHealthcheck
+                {
+                    Disable = true,
+                    StartPeriodSeconds = 300
+                }
+            },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        var healthcheck = parameters.Service?.TaskTemplate?.ContainerSpec?.Healthcheck;
+        Assert.NotNull(healthcheck);
+        Assert.NotNull(healthcheck.Test);
+        Assert.Equal(["NONE"], healthcheck.Test);
+    }
+
+    [Fact]
+    public void BuildCreateParameters_WhenHealthcheckOverridesStartPeriodOnly_InheritsCommandWithDuration()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-startperiod",
+            ServiceName = "srv-startperiod-svc",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "7DaysToDie" },
+            Revision = new GameTypeRevision
+            {
+                Id = 1,
+                ImageReference = "vinanrra/7dtd-server:latest",
+                Healthcheck = new GameTypeRevisionHealthcheck
+                {
+                    StartPeriodSeconds = 480,
+                    IntervalSeconds = 30,
+                    TimeoutSeconds = 15,
+                    Retries = 5
+                }
+            },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        var healthcheck = parameters.Service?.TaskTemplate?.ContainerSpec?.Healthcheck;
+        Assert.NotNull(healthcheck);
+        Assert.Null(healthcheck.Test);
+        Assert.Equal(TimeSpan.FromSeconds(480), healthcheck.StartPeriod);
+        Assert.Equal(TimeSpan.FromSeconds(30), healthcheck.Interval);
+        Assert.Equal(TimeSpan.FromSeconds(15), healthcheck.Timeout);
+        Assert.Equal(5, healthcheck.Retries);
+    }
+
+    [Fact]
+    public void BuildCreateParameters_WhenHealthcheckCustomCommand_SetsCmdShellTestDirective()
+    {
+        var specBuilder = new GameServerSpecBuilder(new NetworkOptions());
+
+        var request = new SaveGameServerRequestDto
+        {
+            ServerId = "srv-customhc",
+            ServiceName = "srv-customhc-svc",
+            GameTypeRevisionId = 1
+        };
+
+        var resolution = new GameServerResolutionContext
+        {
+            GameType = new GameType { Key = "factorio" },
+            Revision = new GameTypeRevision
+            {
+                Id = 1,
+                ImageReference = "factoriotools/factorio:stable",
+                Healthcheck = new GameTypeRevisionHealthcheck
+                {
+                    TestType = "CMD-SHELL",
+                    TestCommand = "curl -f http://localhost:8080/health || exit 1",
+                    StartPeriodSeconds = 120
+                }
+            },
+            Result = new GameServerValidationResultDto { IsValid = true }
+        };
+
+        var parameters = specBuilder.BuildCreateParameters(request, resolution);
+
+        var healthcheck = parameters.Service?.TaskTemplate?.ContainerSpec?.Healthcheck;
+        Assert.NotNull(healthcheck);
+        Assert.NotNull(healthcheck.Test);
+        Assert.Equal(["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"], healthcheck.Test);
+        Assert.Equal(TimeSpan.FromSeconds(120), healthcheck.StartPeriod);
+    }
 }
 
 

@@ -492,6 +492,9 @@ namespace GameServer.API.Data.V2.Migrations.SqliteMigrations
                     b.Property<int>("GameTypeId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("HealthcheckJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ImageDigest")
                         .HasMaxLength(250)
                         .HasColumnType("TEXT");

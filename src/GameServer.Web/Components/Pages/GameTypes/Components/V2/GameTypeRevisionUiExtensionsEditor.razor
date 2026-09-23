@@ -1,5 +1,6 @@
 @using Radzen
 @using Radzen.Blazor
+@using GameServer.Web.Components.Pages.GameTypes.Components.V2
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -9,11 +10,18 @@
             <code>GameTypeExtensions:AllowedAssemblies</code> in the GUI's appsettings.
         </small>
     </div>
-    <RadzenButton Text="Add Extension"
-                  Icon="add"
-                  ButtonStyle="ButtonStyle.Light"
-                  Click="@AddExtensionAsync"
-                  Disabled="@AtMax" />
+    <div class="d-flex gap-2">
+        <RadzenButton Text="Add RCON Extension"
+                      Icon="terminal"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Click="@AddRconExtensionAsync"
+                      Disabled="@AtMax" />
+        <RadzenButton Text="Add Extension"
+                      Icon="add"
+                      ButtonStyle="ButtonStyle.Light"
+                      Click="@AddExtensionAsync"
+                      Disabled="@AtMax" />
+    </div>
 </div>
 
 @if (AtMax)
@@ -29,6 +37,13 @@
 }
 else
 {
+    <datalist id="available-settings-list">
+        @foreach (var s in AvailableSettings.Where(s => !string.IsNullOrWhiteSpace(s.SettingKey)))
+        {
+            <option value="@s.SettingKey">@(s.SettingKey) (@(s.Metadata?.DataType ?? "string"))</option>
+        }
+    </datalist>
+
     @foreach (var extension in Extensions)
     {
         <RadzenCard class="mb-3">
@@ -86,6 +101,99 @@ else
                 </div>
             </div>
 
+            @if (IsRconExtension(extension))
+            {
+                <div class="p-3 my-3 border rounded" style="background-color: var(--rz-base-50, #f8f9fa);">
+                    <div class="d-flex align-items-center mb-2">
+                        <RadzenIcon Icon="terminal" class="me-2 text-primary" />
+                        <strong class="text-primary">RCON Configuration</strong>
+                        <span class="ms-2 badge bg-primary-subtle text-primary border">Internal Network</span>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <RadzenFormField Text="Port Setting" Variant="Variant.Outlined" class="w-100">
+                                <RadzenDropDown TValue="string"
+                                                Data="@GetSettingKeyOptions()"
+                                                TextProperty="Label"
+                                                ValueProperty="Key"
+                                                Value="@GetParam(extension, "portSettingKey")"
+                                                Change="@(val => OnPortSettingChanged(extension, (string?)val))"
+                                                Disabled="@(!string.IsNullOrWhiteSpace(GetParam(extension, "port")))"
+                                                AllowClear="true"
+                                                Placeholder="Select setting (e.g. RCON_PORT)"
+                                                class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted d-block mt-1">Select an existing setting that provides the port.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <RadzenFormField Text="Or Hardcoded Port" Variant="Variant.Outlined" class="w-100">
+                                <RadzenTextBox Value="@GetParam(extension, "port")"
+                                               @oninput="@(e => OnHardcodedPortChanged(extension, e.Value?.ToString()))"
+                                               Disabled="@(!string.IsNullOrWhiteSpace(GetParam(extension, "portSettingKey")))"
+                                               Placeholder="e.g. 25575"
+                                               class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted d-block mt-1">Or enter a fixed internal container port.</small>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <RadzenFormField Text="Password Setting" Variant="Variant.Outlined" class="w-100">
+                                <RadzenDropDown TValue="string"
+                                                Data="@GetSettingKeyOptions()"
+                                                TextProperty="Label"
+                                                ValueProperty="Key"
+                                                Value="@GetParam(extension, "passwordSettingKey")"
+                                                Change="@(val => OnPasswordSettingChanged(extension, (string?)val))"
+                                                Disabled="@(!string.IsNullOrWhiteSpace(GetParam(extension, "password")))"
+                                                AllowClear="true"
+                                                Placeholder="Select setting (e.g. ADMIN_PASSWORD)"
+                                                class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted d-block mt-1">Select setting for RCON password.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <RadzenFormField Text="Or Hardcoded Password" Variant="Variant.Outlined" class="w-100">
+                                <RadzenTextBox Value="@GetParam(extension, "password")"
+                                               @oninput="@(e => OnHardcodedPasswordChanged(extension, e.Value?.ToString()))"
+                                               Disabled="@(!string.IsNullOrWhiteSpace(GetParam(extension, "passwordSettingKey")))"
+                                               Placeholder="e.g. secret"
+                                               class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted d-block mt-1">Or enter a fixed password.</small>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-1">
+                        <div class="col-md-6">
+                            <RadzenFormField Text="Enable Setting" Variant="Variant.Outlined" class="w-100">
+                                <RadzenDropDown TValue="string"
+                                                Data="@GetSettingKeyOptions()"
+                                                TextProperty="Label"
+                                                ValueProperty="Key"
+                                                Value="@GetParam(extension, "enabledSettingKey")"
+                                                Change="@(val => SetParam(extension, "enabledSettingKey", (string?)val))"
+                                                AllowClear="true"
+                                                Placeholder="Select setting (e.g. RCON_ENABLED)"
+                                                class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted d-block mt-1">Optional. Select setting to gate RCON. If not supplied, no enable check is performed.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <RadzenFormField Text="Preset Buttons" Variant="Variant.Outlined" class="w-100">
+                                <RadzenTextBox Value="@GetParam(extension, "presetCommands")"
+                                               @oninput="@(e => SetParam(extension, "presetCommands", e.Value?.ToString()))"
+                                               Placeholder="e.g. Info, ShowPlayers, Save (optional)"
+                                               class="w-100" />
+                            </RadzenFormField>
+                            <small class="text-muted d-block mt-1">Optional comma-separated one-click buttons. If not supplied, none are displayed.</small>
+                        </div>
+                    </div>
+                </div>
+            }
+
             <div class="mt-2">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <strong class="small">Parameters</strong>
@@ -114,6 +222,7 @@ else
                             <div class="col-md-7">
                                 <RadzenTextBox @bind-Value="parameter.Value"
                                                @bind-Value:after="NotifyChangedAsync"
+                                               list="available-settings-list"
                                                Placeholder="value"
                                                class="w-100" />
                             </div>
@@ -137,9 +246,103 @@ else
 
     [Parameter] public List<GameTypeRevisionUiExtensionDraft> Extensions { get; set; } = new();
 
+    [Parameter] public List<GameTypeRevisionSettingDraft> AvailableSettings { get; set; } = [];
+
     [Parameter] public EventCallback OnDraftChanged { get; set; }
 
+    public sealed record SettingKeyOption(string Key, string Label);
+
     private bool AtMax => Extensions.Count >= MaxExtensions;
+
+    private static bool IsRconExtension(GameTypeRevisionUiExtensionDraft ext) =>
+        ext.ComponentTypeName?.Contains("RconTab", StringComparison.OrdinalIgnoreCase) == true;
+
+    private List<SettingKeyOption> GetSettingKeyOptions() =>
+        AvailableSettings
+            .Where(s => !string.IsNullOrWhiteSpace(s.SettingKey))
+            .Select(s => new SettingKeyOption(
+                s.SettingKey,
+                string.IsNullOrWhiteSpace(s.Metadata?.DataType)
+                    ? s.SettingKey
+                    : $"{s.SettingKey} ({s.Metadata.DataType})"))
+            .ToList();
+
+    private void OnPortSettingChanged(GameTypeRevisionUiExtensionDraft ext, string? settingKey)
+    {
+        SetParam(ext, "portSettingKey", settingKey, removeKey: "port");
+    }
+
+    private void OnHardcodedPortChanged(GameTypeRevisionUiExtensionDraft ext, string? portValue)
+    {
+        SetParam(ext, "port", portValue, removeKey: "portSettingKey");
+    }
+
+    private void OnPasswordSettingChanged(GameTypeRevisionUiExtensionDraft ext, string? settingKey)
+    {
+        SetParam(ext, "passwordSettingKey", settingKey, removeKey: "password");
+    }
+
+    private void OnHardcodedPasswordChanged(GameTypeRevisionUiExtensionDraft ext, string? passwordValue)
+    {
+        SetParam(ext, "password", passwordValue, removeKey: "passwordSettingKey");
+    }
+
+    private static string? GetParam(GameTypeRevisionUiExtensionDraft ext, string key)
+    {
+        var p = ext.Parameters.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
+        return p?.Value;
+    }
+
+    private void SetParam(GameTypeRevisionUiExtensionDraft ext, string key, string? value, string? removeKey = null)
+    {
+        if (!string.IsNullOrWhiteSpace(removeKey))
+        {
+            ext.Parameters.RemoveAll(x => string.Equals(x.Key, removeKey, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var existing = ext.Parameters.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            if (existing is not null)
+            {
+                ext.Parameters.Remove(existing);
+            }
+        }
+        else
+        {
+            if (existing is not null)
+            {
+                existing.Value = value.Trim();
+            }
+            else
+            {
+                ext.Parameters.Add(new GameTypeRevisionUiExtensionParameterDraft { Key = key, Value = value.Trim() });
+            }
+        }
+
+        _ = NotifyChangedAsync();
+    }
+
+    private async Task AddRconExtensionAsync()
+    {
+        if (AtMax)
+        {
+            return;
+        }
+
+        var rconDraft = new GameTypeRevisionUiExtensionDraft
+        {
+            Title = "RCON",
+            ComponentTypeName = "GameServer.Web.Components.Server.Extensions.RconTab",
+            AssemblyName = "GameServer.Web",
+            Icon = "terminal",
+            Order = Extensions.Count,
+            Parameters = []
+        };
+
+        Extensions.Add(rconDraft);
+        await NotifyChangedAsync();
+    }
 
     private async Task AddExtensionAsync()
     {
@@ -181,3 +384,4 @@ else
         }
     }
 }
+

@@ -474,6 +474,9 @@ namespace GameServer.API.Data.V2.Migrations.MySqlMigrations
                     b.Property<int>("GameTypeId")
                         .HasColumnType("int");
 
+                    b.Property<string>("HealthcheckJson")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("ImageDigest")
                         .HasMaxLength(250)
                         .HasColumnType("varchar(250)");

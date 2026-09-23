@@ -351,6 +351,33 @@ namespace GameServer.API
                 mainLogger.LogInformation("GameServer.API runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
                 mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
 
+                // Add global exception handler returning standard RFC 7807 ProblemDetails with root-cause detail
+                app.UseExceptionHandler(errorApp =>
+                {
+                    errorApp.Run(async context =>
+                    {
+                        var exceptionFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
+                        var ex = exceptionFeature?.Error;
+                        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                        context.Response.ContentType = "application/problem+json";
+
+                        var detail = ex switch
+                        {
+                            Microsoft.EntityFrameworkCore.DbUpdateException dbEx => dbEx.InnerException?.Message ?? dbEx.Message,
+                            _ => ex?.Message ?? "An unexpected error occurred."
+                        };
+
+                        var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "An error occurred while processing your request.",
+                            Detail = detail
+                        };
+
+                        await context.Response.WriteAsJsonAsync(problem);
+                    });
+                });
+
                 // Add Serilog request logging with clean handling for client-aborted requests
                 app.UseSerilogRequestLogging(options =>
                 {

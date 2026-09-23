@@ -3,6 +3,7 @@ using GameServer.API.Services.V2;
 using GameServer.API.Services.V2.Detection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace GameServer.API.Controllers.V2;
 
@@ -19,36 +20,30 @@ public sealed class GameTypesController(
     /// Gets the V2 GameType list.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(200, Type = typeof(IEnumerable<GameTypeListItemDto>))]
+    [ProducesResponseType(200, Type = typeof(IReadOnlyList<GameTypeListItemDto>))]
     public async Task<ActionResult<IReadOnlyList<GameTypeListItemDto>>> GetAll([FromQuery] bool includeInactive = false, CancellationToken cancellationToken = default)
     {
-        logger.LogDebug("Getting V2 game types (IncludeInactive={IncludeInactive})", includeInactive);
-        var gameTypes = await queryService.GetListAsync(includeInactive, cancellationToken);
-        return Ok(gameTypes);
+        var items = await queryService.GetListAsync(includeInactive, cancellationToken);
+        return Ok(items);
     }
 
     /// <summary>
-    /// Gets the V2 GameType editor payload for a specific key.
+    /// Gets a V2 GameType by its key.
     /// </summary>
     [HttpGet("{key}")]
     [ProducesResponseType(200, Type = typeof(GameTypeDetailDto))]
     [ProducesResponseType(404)]
     public async Task<ActionResult<GameTypeDetailDto>> GetByKey(string key, CancellationToken cancellationToken = default)
     {
-        var gameType = await queryService.GetByKeyAsync(key, cancellationToken);
-        if (gameType is null)
-        {
-            logger.LogDebug("V2 game type '{GameTypeKey}' was not found", key);
-            return NotFound();
-        }
-
-        return Ok(gameType);
+        var item = await queryService.GetByKeyAsync(key, cancellationToken);
+        return item is null ? NotFound() : Ok(item);
     }
 
     /// <summary>
-    /// Exports a V2 GameType as a portable JSON package without persisted integer ids.
+    /// Exports a V2 GameType as a portable JSON package.
     /// </summary>
     [HttpGet("{key}/export")]
+    [Authorize(Roles = "Admin,GameManager")]
     [ProducesResponseType(200, Type = typeof(PortableGameTypePackageDto))]
     [ProducesResponseType(404)]
     public async Task<ActionResult<PortableGameTypePackageDto>> Export(string key, CancellationToken cancellationToken = default)
@@ -56,7 +51,6 @@ public sealed class GameTypesController(
         var package = await queryService.ExportAsync(key, cancellationToken);
         if (package is null)
         {
-            logger.LogDebug("V2 game type '{GameTypeKey}' was not found for export", key);
             return NotFound();
         }
 
@@ -81,6 +75,16 @@ public sealed class GameTypesController(
         {
             logger.LogDebug(ex, "Invalid create request for V2 game type");
             return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogDebug(ex, "Invalid operation for V2 game type create");
+            return BadRequest(ex.Message);
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during V2 game type create");
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -108,6 +112,11 @@ public sealed class GameTypesController(
             logger.LogDebug(ex, "Unable to import V2 game type package");
             return BadRequest(ex.Message);
         }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during V2 game type import");
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     /// <summary>
@@ -130,9 +139,19 @@ public sealed class GameTypesController(
             logger.LogDebug(ex, "Invalid update request for V2 game type {GameTypeKey}", key);
             return BadRequest(ex.Message);
         }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogDebug(ex, "Invalid operation for V2 game type update {GameTypeKey}", key);
+            return BadRequest(ex.Message);
+        }
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during V2 game type update {GameTypeKey}", key);
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -167,9 +186,18 @@ public sealed class GameTypesController(
         {
             return BadRequest(ex.Message);
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during AddRevision for V2 game type {GameTypeKey}", key);
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -192,9 +220,18 @@ public sealed class GameTypesController(
         {
             return BadRequest(ex.Message);
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during UpdateRevision for V2 game type {GameTypeKey}", key);
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -212,9 +249,18 @@ public sealed class GameTypesController(
             var published = await commandService.PublishRevisionAsync(key, revisionId, request?.SetAsCurrentRevision == true, cancellationToken);
             return Ok(published);
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during PublishRevision for V2 game type {GameTypeKey}", key);
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -232,9 +278,18 @@ public sealed class GameTypesController(
             await commandService.SetCurrentRevisionAsync(key, revisionId, cancellationToken);
             return NoContent();
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Database update error during SetCurrentRevision for V2 game type {GameTypeKey}", key);
+            return Problem(detail: ex.InnerException?.Message ?? ex.Message, statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 

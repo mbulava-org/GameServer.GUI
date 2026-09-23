@@ -316,6 +316,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             Notes = revision.Notes,
             IsPublished = revision.IsPublished,
             UiExtensionsJson = revision.UiExtensionsJson,
+            ResourcesJson = revision.ResourcesJson,
+            HealthcheckJson = revision.HealthcheckJson,
             Ports = revision.Ports.Select(port => new GameTypePortDto
             {
                 ContainerPort = port.ContainerPort,
@@ -547,6 +549,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             UiExtensionsJson = request.UiExtensionsJson,
             ResourcesJson = request.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(request.Resources),
             Resources = request.Resources is not null ? GameTypeResourcesSerializer.MapToModel(request.Resources) : GameTypeResourcesSerializer.ParseModel(request.ResourcesJson),
+            HealthcheckJson = request.HealthcheckJson ?? GameTypeHealthcheckSerializer.Serialize(request.Healthcheck),
+            Healthcheck = request.Healthcheck is not null ? GameTypeHealthcheckSerializer.MapToModel(request.Healthcheck) : GameTypeHealthcheckSerializer.ParseModel(request.HealthcheckJson),
             Ports = request.Ports.Select(x => new GameTypePort
             {
                 Id = x.Id,
@@ -657,6 +661,8 @@ public sealed class GameTypeCommandService(IGameTypeRepository repository)
             UiExtensions = GameTypeUiExtensionsSerializer.Parse(revision.UiExtensionsJson),
             ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources),
             Resources = revision.Resources is not null ? GameTypeResourcesSerializer.MapToDto(revision.Resources) : GameTypeResourcesSerializer.ParseDto(revision.ResourcesJson),
+            HealthcheckJson = revision.HealthcheckJson ?? GameTypeHealthcheckSerializer.Serialize(revision.Healthcheck),
+            Healthcheck = revision.Healthcheck is not null ? GameTypeHealthcheckSerializer.MapToDto(revision.Healthcheck) : GameTypeHealthcheckSerializer.ParseDto(revision.HealthcheckJson),
             Ports = revision.Ports.Select(x => new GameTypePortDto
             {
                 Id = x.Id,

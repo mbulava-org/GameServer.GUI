@@ -1,0 +1,289 @@
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="mb-1">Container Healthcheck</h5>
+        <small class="text-muted">Extend or override the service container's healthcheck, adjust initial start-up grace period, or disable health checks entirely.</small>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <RadzenDropDown TValue="HealthcheckPresetOption"
+                        Data="@GameTypeRevisionHealthcheckDraftRules.Presets"
+                        TextProperty="Name"
+                        Placeholder="Apply Preset..."
+                        Change="@(args => ApplyPreset((HealthcheckPresetOption)args))"
+                        Style="width: 280px;" />
+        <RadzenButton Text="Clear"
+                      Icon="clear_all"
+                      ButtonStyle="ButtonStyle.Light"
+                      Size="ButtonSize.Small"
+                      Click="@ClearHealthcheck"
+                      title="Clear all healthcheck overrides to inherit Docker image defaults" />
+    </div>
+</div>
+
+@if (ValidationIssues.Count > 0)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Shade="Shade.Light" class="mb-3" AllowClose="false">
+        <div class="fw-semibold mb-1">Healthcheck Validation Issues</div>
+        <ul class="mb-0 ps-3">
+            @foreach (var issue in ValidationIssues)
+            {
+                <li>@issue</li>
+            }
+        </ul>
+    </RadzenAlert>
+}
+
+<div class="alert alert-info py-2 px-3 small mb-3">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Start Period:</strong> Many game servers require several minutes to load large world files, compile shaders, or download assets on first startup. Setting a generous <code>Start Period</code> prevents Docker from prematurely restarting or marking the service task unhealthy while it is still initializing.
+</div>
+
+<div class="row g-3 mb-4">
+    <!-- Test Command & Mode -->
+    <div class="col-lg-6">
+        <RadzenCard class="h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <RadzenIcon Icon="health_and_safety" Style="color: var(--rz-primary);" />
+                <h6 class="mb-0 fw-semibold">Check Mode & Command</h6>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input"
+                       type="checkbox"
+                       id="disableHealthcheckSwitch"
+                       checked="@Healthcheck.Disable"
+                       @onchange="@(async e => { Healthcheck.Disable = (bool)(e.Value ?? false); await NotifyChangedAsync(); })" />
+                <label class="form-check-label fw-semibold" for="disableHealthcheckSwitch">
+                    Disable Healthcheck (<code>NONE</code>)
+                </label>
+                <div class="form-text small text-muted">
+                    Completely disables health checks for this service container.
+                </div>
+            </div>
+
+            @if (!Healthcheck.Disable)
+            {
+                <div class="mb-3">
+                    <RadzenFormField Text="Test Type" Variant="Variant.Outlined" class="w-100 mb-2">
+                        <RadzenDropDown TValue="string"
+                                        Data="@(new[] { "CMD-SHELL", "CMD" })"
+                                        Value="@(Healthcheck.TestType ?? "CMD-SHELL")"
+                                        ValueChanged="@(async val => { Healthcheck.TestType = val; await NotifyChangedAsync(); })"
+                                        class="w-100" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block">
+                        <code>CMD-SHELL</code> runs the command in the container's default shell (e.g. <code>/bin/sh -c</code>). <code>CMD</code> executes directly.
+                    </small>
+                </div>
+
+                <div class="mb-3">
+                    <RadzenFormField Text="Test Command" Variant="Variant.Outlined" class="w-100">
+                        <RadzenTextBox Value="@Healthcheck.TestCommand"
+                                       ValueChanged="@(async val => { Healthcheck.TestCommand = val; await NotifyChangedAsync(); })"
+                                       Placeholder="e.g. curl -f http://localhost:8080/health || exit 1"
+                                       class="w-100 font-monospace" />
+                    </RadzenFormField>
+                    <small class="text-muted d-block mt-1">
+                        Optional. If left blank, Docker will inherit the base image's test command while applying your timing overrides below.
+                    </small>
+                </div>
+            }
+        </RadzenCard>
+    </div>
+
+    <!-- Timing & Retries -->
+    <div class="col-lg-6">
+        <RadzenCard class="h-100">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <RadzenIcon Icon="timer" Style="color: var(--rz-primary);" />
+                <h6 class="mb-0 fw-semibold">Timing & Retries</h6>
+            </div>
+
+            @if (Healthcheck.Disable)
+            {
+                <div class="text-muted small py-4 text-center">
+                    <em>Healthcheck is disabled. Timing parameters do not apply.</em>
+                </div>
+            }
+            else
+            {
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <RadzenFormField Text="Start Period (Seconds)" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric TValue="int?"
+                                           Value="@Healthcheck.StartPeriodSeconds"
+                                           ValueChanged="@(async val => { Healthcheck.StartPeriodSeconds = val; await NotifyChangedAsync(); })"
+                                           Min="0"
+                                           Max="3600"
+                                           Step="10"
+                                           Placeholder="e.g. 300"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted d-block mt-1">Grace period on container startup.</small>
+                    </div>
+                    <div class="col-md-6">
+                        <RadzenFormField Text="Interval (Seconds)" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric TValue="int?"
+                                           Value="@Healthcheck.IntervalSeconds"
+                                           ValueChanged="@(async val => { Healthcheck.IntervalSeconds = val; await NotifyChangedAsync(); })"
+                                           Min="1"
+                                           Max="3600"
+                                           Step="5"
+                                           Placeholder="e.g. 30"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted d-block mt-1">Time between probe checks.</small>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <RadzenFormField Text="Timeout (Seconds)" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric TValue="int?"
+                                           Value="@Healthcheck.TimeoutSeconds"
+                                           ValueChanged="@(async val => { Healthcheck.TimeoutSeconds = val; await NotifyChangedAsync(); })"
+                                           Min="1"
+                                           Max="300"
+                                           Step="1"
+                                           Placeholder="e.g. 10"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted d-block mt-1">Maximum duration for one probe.</small>
+                    </div>
+                    <div class="col-md-6">
+                        <RadzenFormField Text="Retries" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric TValue="long?"
+                                           Value="@Healthcheck.Retries"
+                                           ValueChanged="@(async val => { Healthcheck.Retries = val; await NotifyChangedAsync(); })"
+                                           Min="1"
+                                           Max="50"
+                                           Step="1"
+                                           Placeholder="e.g. 3"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted d-block mt-1">Failures before marking unhealthy.</small>
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <RadzenFormField Text="Start Interval (Seconds)" Variant="Variant.Outlined" class="w-100">
+                            <RadzenNumeric TValue="int?"
+                                           Value="@Healthcheck.StartIntervalSeconds"
+                                           ValueChanged="@(async val => { Healthcheck.StartIntervalSeconds = val; await NotifyChangedAsync(); })"
+                                           Min="1"
+                                           Max="300"
+                                           Step="1"
+                                           Placeholder="e.g. 5"
+                                           class="w-100" />
+                        </RadzenFormField>
+                        <small class="text-muted d-block mt-1">Probe interval during start period.</small>
+                    </div>
+                </div>
+            }
+        </RadzenCard>
+    </div>
+</div>
+
+@if (Healthcheck.HasAnyValue())
+{
+    <RadzenCard class="mb-3">
+        <h6 class="fw-semibold mb-2">Effective Healthcheck Configuration</h6>
+        <div class="p-3 bg-light border rounded small">
+            @if (Healthcheck.Disable)
+            {
+                <span class="badge bg-danger">Disabled</span>
+                <span class="ms-2">Docker test directive: <code>["NONE"]</code></span>
+            }
+            else
+            {
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <strong>Test Command:</strong>
+                        @if (!string.IsNullOrWhiteSpace(Healthcheck.TestCommand))
+                        {
+                            <code>["@Healthcheck.TestType", "@Healthcheck.TestCommand"]</code>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Inherited from base image</span>
+                        }
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Start Period:</strong>
+                        @(Healthcheck.StartPeriodSeconds.HasValue ? $"{Healthcheck.StartPeriodSeconds}s ({TimeSpan.FromSeconds(Healthcheck.StartPeriodSeconds.Value):m\\:ss})" : "Inherited from image")
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Interval:</strong>
+                        @(Healthcheck.IntervalSeconds.HasValue ? $"{Healthcheck.IntervalSeconds}s" : "Inherited from image")
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Timeout:</strong>
+                        @(Healthcheck.TimeoutSeconds.HasValue ? $"{Healthcheck.TimeoutSeconds}s" : "Inherited from image")
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Retries:</strong>
+                        @(Healthcheck.Retries.HasValue ? $"{Healthcheck.Retries}" : "Inherited from image")
+                    </div>
+                    @if (Healthcheck.StartIntervalSeconds.HasValue)
+                    {
+                        <div class="col-md-6">
+                            <strong>Start Interval:</strong>
+                            @($"{Healthcheck.StartIntervalSeconds}s")
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </RadzenCard>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public GameTypeRevisionHealthcheckDraft Healthcheck { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnDraftChanged { get; set; }
+
+    public IReadOnlyList<string> ValidationIssues => GameTypeRevisionHealthcheckDraftRules.ValidateHealthcheck(Healthcheck);
+
+    private async Task NotifyChangedAsync()
+    {
+        await OnDraftChanged.InvokeAsync();
+    }
+
+    private async Task ApplyPreset(HealthcheckPresetOption preset)
+    {
+        if (preset is null)
+        {
+            return;
+        }
+
+        Healthcheck.Disable = preset.Disable;
+        Healthcheck.TestType = preset.TestType ?? "CMD-SHELL";
+        Healthcheck.TestCommand = preset.TestCommand;
+        Healthcheck.StartPeriodSeconds = preset.StartPeriodSeconds;
+        Healthcheck.IntervalSeconds = preset.IntervalSeconds;
+        Healthcheck.TimeoutSeconds = preset.TimeoutSeconds;
+        Healthcheck.StartIntervalSeconds = preset.StartIntervalSeconds;
+        Healthcheck.Retries = preset.Retries;
+
+        await NotifyChangedAsync();
+    }
+
+    private async Task ClearHealthcheck()
+    {
+        Healthcheck.Disable = false;
+        Healthcheck.TestType = "CMD-SHELL";
+        Healthcheck.TestCommand = null;
+        Healthcheck.StartPeriodSeconds = null;
+        Healthcheck.IntervalSeconds = null;
+        Healthcheck.TimeoutSeconds = null;
+        Healthcheck.StartIntervalSeconds = null;
+        Healthcheck.Retries = null;
+
+        await NotifyChangedAsync();
+    }
+}

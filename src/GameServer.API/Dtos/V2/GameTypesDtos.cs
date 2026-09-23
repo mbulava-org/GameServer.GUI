@@ -108,6 +108,35 @@ public sealed record GameTypeRevisionDto
     /// Typed view of <see cref="ResourcesJson"/> parsed server-side.
     /// </summary>
     public GameTypeRevisionResourcesDto? Resources { get; init; }
+
+    /// <summary>
+    /// Raw JSON representation of container healthcheck configuration (start_period, interval, timeout, retries, test command).
+    /// </summary>
+    public string? HealthcheckJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="HealthcheckJson"/> parsed server-side.
+    /// </summary>
+    public GameTypeRevisionHealthcheckDto? Healthcheck { get; init; }
+}
+
+public sealed record GameTypeRevisionHealthcheckDto
+{
+    public bool Disable { get; init; }
+
+    public string? TestType { get; init; }
+
+    public string? TestCommand { get; init; }
+
+    public int? IntervalSeconds { get; init; }
+
+    public int? TimeoutSeconds { get; init; }
+
+    public int? StartPeriodSeconds { get; init; }
+
+    public int? StartIntervalSeconds { get; init; }
+
+    public long? Retries { get; init; }
 }
 
 public sealed record GameTypeRevisionResourcesDto

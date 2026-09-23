@@ -98,6 +98,16 @@ public sealed record GameTypeRevision
     /// </summary>
     public GameTypeRevisionResources? Resources { get; init; }
 
+    /// <summary>
+    /// Raw JSON representation of container healthcheck configuration (start_period, interval, timeout, retries, test command).
+    /// </summary>
+    public string? HealthcheckJson { get; init; }
+
+    /// <summary>
+    /// Typed view of <see cref="HealthcheckJson"/> as parsed by the API.
+    /// </summary>
+    public GameTypeRevisionHealthcheck? Healthcheck { get; init; }
+
     public List<GameTypePort> Ports { get; init; } = [];
 
     public List<GameTypeVolume> Volumes { get; init; } = [];
@@ -303,4 +313,23 @@ public sealed record PlacementPreference
     public string Strategy { get; init; } = "spread";
 
     public string Descriptor { get; init; } = string.Empty;
+}
+
+public sealed record GameTypeRevisionHealthcheck
+{
+    public bool Disable { get; init; }
+
+    public string? TestType { get; init; }
+
+    public string? TestCommand { get; init; }
+
+    public int? IntervalSeconds { get; init; }
+
+    public int? TimeoutSeconds { get; init; }
+
+    public int? StartPeriodSeconds { get; init; }
+
+    public int? StartIntervalSeconds { get; init; }
+
+    public long? Retries { get; init; }
 }
