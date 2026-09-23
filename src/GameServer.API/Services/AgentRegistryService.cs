@@ -192,8 +192,7 @@ namespace GameServer.API.Services
                 if (!IsAgentHealthy(agent))
                 {
                     _logger.LogDebug(
-                        "Mapped agent for container {ContainerId} is unhealthy or stale: Node={NodeName} ({NodeId})",
-                        containerId.Substring(0, Math.Min(12, containerId.Length)),
+                        "Mapped agent for requested container is unhealthy or stale: Node={NodeName} ({NodeId})",
                         agent.NodeName,
                         agent.NodeId);
                     return null;
