@@ -803,14 +803,9 @@
 
     private static long? GetLiveRelativeTotal(long? previousRelativeTotal, long? previousAbsoluteCounter, long? currentAbsoluteCounter)
     {
-        if (!currentAbsoluteCounter.HasValue)
+        if (!currentAbsoluteCounter.HasValue || !previousAbsoluteCounter.HasValue)
         {
             return null;
-        }
-
-        if (!previousAbsoluteCounter.HasValue || !previousRelativeTotal.HasValue)
-        {
-            return previousRelativeTotal;
         }
 
         var delta = currentAbsoluteCounter.Value - previousAbsoluteCounter.Value;
@@ -819,7 +814,8 @@
             return null;
         }
 
-        return previousRelativeTotal.Value + delta;
+        var baseline = previousRelativeTotal ?? 0L;
+        return baseline + delta;
     }
 
     private static double? CalculateLiveRate(long? previousAbsoluteCounter, long? currentAbsoluteCounter, DateTime? previousTimestamp, DateTime currentTimestamp)

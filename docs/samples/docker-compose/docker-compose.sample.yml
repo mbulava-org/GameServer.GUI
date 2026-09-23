@@ -31,7 +31,7 @@ services:
       - gameserver-api
     environment:
       <<: *gameserver-api-common-env
-      BackgroundProcessing__EnableResourceCollector: "true"
+      BackgroundProcessing__EnableResourceCollector: "false"
     volumes:
       - gameserver-data:/data
     networks:

@@ -1,4 +1,4 @@
-using GameServer.API.Constants;
+using GameServer.Docker.Constants;
 
 namespace GameServer.API.Tests.Constants;
 

@@ -538,6 +538,7 @@ namespace GameServer.Docker.Agent.Services
             // Refresh distributed configuration and re-register after reconnection
             try
             {
+                await RegisterAsync();
                 await SyncDistributedConfigurationAsync(CancellationToken.None);
                 await RegisterAsync();
                 await PublishManagedContainerSnapshotAsync(CancellationToken.None);

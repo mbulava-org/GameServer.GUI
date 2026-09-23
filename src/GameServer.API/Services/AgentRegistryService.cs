@@ -189,6 +189,16 @@ namespace GameServer.API.Services
             if (_containerToConnection.TryGetValue(containerId, out var connectionId) &&
                 _agentsByConnection.TryGetValue(connectionId, out var agent))
             {
+                if (!IsAgentHealthy(agent))
+                {
+                    _logger.LogDebug(
+                        "Mapped agent for container {ContainerId} is unhealthy or stale: Node={NodeName} ({NodeId})",
+                        containerId.Substring(0, Math.Min(12, containerId.Length)),
+                        agent.NodeName,
+                        agent.NodeId);
+                    return null;
+                }
+
                 _logger.LogTrace(
                     "Found agent for container {ContainerId}: Node={NodeName} ({NodeId})",
                     containerId.Substring(0, Math.Min(12, containerId.Length)),

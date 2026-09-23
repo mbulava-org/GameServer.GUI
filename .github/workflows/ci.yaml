@@ -134,7 +134,7 @@ jobs:
       - name: Detect branch tag publish support
         id: branch-tag-check
         run: |
-          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+          BRANCH_NAME="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           PRIMARY_BRANCH="${{ steps.config.outputs.primary_branch }}"
           BRANCH_TAG_PUBLISHABLE="true"
           BRANCH_TAG_PUBLISH_REASON="branch tag is valid"

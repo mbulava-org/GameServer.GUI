@@ -114,7 +114,7 @@ Then start the sample stack:
 docker compose -f docs/samples/docker-compose/docker-compose.sample.yml up -d
 ```
 
-This sample keeps `gameserver-api` as the single in-network endpoint the other services use: `gameserver-web` calls the API through `GameServerDockerApi__BaseUri`, and `gameserver-agent` registers back to that same API via `AgentRegistration__PrimaryServiceUrl`. A separate `gameserver-api-background` container (same API image) runs continuous resource collection and status-sync writes so those loops can continue during Primary API rollouts.
+This sample keeps `gameserver-api` as the single in-network endpoint the other services use: `gameserver-web` calls the API through `GameServerDockerApi__BaseUri`, and `gameserver-agent` registers back to that same API via `AgentRegistration__PrimaryServiceUrl`. The optional `gameserver-api-background` container uses the same API image but keeps background collection disabled in this sample because agent registrations are process-local.
 
 Then verify:
 
@@ -233,7 +233,7 @@ services:
         delay: 5s
         max_attempts: 3
 
-  # Background Processor (resource monitoring cache + DB writes)
+  # Optional second API container (collector stays disabled in this topology)
   gameserver-api-background:
     image: your-registry/gameserver-docker:latest
     environment:
@@ -244,7 +244,7 @@ services:
       - V2Database__ConnectionStringName=GameServerV2Db
       - PortAllocation__StartPort=25565
       - PortAllocation__EndPort=35565
-      - BackgroundProcessing__EnableResourceCollector=true
+      - BackgroundProcessing__EnableResourceCollector=false
     volumes:
       - gameserver-data:/data
     networks:
@@ -387,7 +387,7 @@ Once deployed, access:
 | `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
 | `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | â€” |
 | `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
-| `BackgroundProcessing__EnableResourceCollector` | Enables the continuous resource cache/status-sync collector loop in this container instance. Set `false` on the public API container and `true` on a dedicated background container. | `true` |
+| `BackgroundProcessing__EnableResourceCollector` | Enables the continuous resource cache/status-sync collector loop in this container instance. Keep this `false` when running multiple API containers unless each collector has independent agent discovery/registry data. | `true` |
 
 **V2 SQLite example:**
 
