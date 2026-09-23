@@ -257,8 +257,13 @@ namespace GameServer.API
                 // V2-compatible resource monitor/aggregator for SignalR streaming hubs
                 builder.Services.AddScoped<Interfaces.IServerResourceMonitor, ServicesV2.ServerResourceMonitor>();
                 builder.Services.AddSingleton<Interfaces.IServerResourceAggregator, ServicesV2.ServerResourceAggregator>();
-                builder.Services.AddSingleton<ServicesV2.IGameServerResourceCollector, ServicesV2.GameServerResourceCollectorService>();
-                builder.Services.AddHostedService(sp => (ServicesV2.GameServerResourceCollectorService)sp.GetRequiredService<ServicesV2.IGameServerResourceCollector>());
+                var enableResourceCollector = builder.Configuration.GetValue("BackgroundProcessing:EnableResourceCollector", true);
+                if (enableResourceCollector)
+                {
+                    builder.Services.AddSingleton<ServicesV2.IGameServerResourceCollector, ServicesV2.GameServerResourceCollectorService>();
+                    builder.Services.AddHostedService(sp => (ServicesV2.GameServerResourceCollectorService)sp.GetRequiredService<ServicesV2.IGameServerResourceCollector>());
+                }
+
                 builder.Services.AddSingleton<Interfaces.IServerLogAggregator, ServicesV2.ServerLogAggregator>();
                 builder.Services.AddSingleton<Interfaces.IContainerAttachAggregator, ServicesV2.ContainerAttachAggregator>();
                 builder.Services.AddSingleton<Interfaces.IGameServerReadinessWatcherService, ServicesV2.GameServerReadinessWatcherService>();
@@ -350,6 +355,7 @@ namespace GameServer.API
 
                 var mainLogger = app.Services.GetRequiredService<ILogger<Program>>();
                 mainLogger.LogInformation("GameServer.API runtime version {AssemblyVersion} (Informational: {InformationalVersion})", assemblyVersion, informationalVersion);
+                mainLogger.LogInformation("Background resource collector enabled: {Enabled}", enableResourceCollector);
                 mainLogger.LogInformation($"🚀 WebHost built successfully. Configuring middleware...");
 
                 // Add global exception handler returning standard RFC 7807 ProblemDetails with root-cause detail

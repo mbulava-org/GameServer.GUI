@@ -1,19 +1,37 @@
+x-gameserver-api-common-env: &gameserver-api-common-env
+  ASPNETCORE_ENVIRONMENT: Production
+  NodeAgentOptions__EnableBackgroundDiscovery: "false"
+  ConnectionStrings__GameServerV2Db: Data Source=/data/gameserver-v2.db
+  V2Database__Provider: Sqlite
+  V2Database__ConnectionStringName: GameServerV2Db
+  PortAllocation__StartPort: "25565"
+  PortAllocation__EndPort: "35565"
+
 services:
   # This sample still requires the host to be a Docker Swarm manager because
   # game server lifecycle operations are delegated to a manager-capable agent.
+
   gameserver-api:
     image: ghcr.io/mbulava-org/gameserver-api:latest
     container_name: gameserver-api
     ports:
       - "5164:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      NodeAgentOptions__EnableBackgroundDiscovery: "false"
-      ConnectionStrings__GameServerV2Db: Data Source=/data/gameserver-v2.db
-      V2Database__Provider: Sqlite
-      V2Database__ConnectionStringName: GameServerV2Db
-      PortAllocation__StartPort: "25565"
-      PortAllocation__EndPort: "35565"
+      <<: *gameserver-api-common-env
+      BackgroundProcessing__EnableResourceCollector: "false"
+    volumes:
+      - gameserver-data:/data
+    networks:
+      - gameserver-network
+
+  gameserver-api-background:
+    image: ghcr.io/mbulava-org/gameserver-api:latest
+    container_name: gameserver-api-background
+    depends_on:
+      - gameserver-api
+    environment:
+      <<: *gameserver-api-common-env
+      BackgroundProcessing__EnableResourceCollector: "true"
     volumes:
       - gameserver-data:/data
     networks:
