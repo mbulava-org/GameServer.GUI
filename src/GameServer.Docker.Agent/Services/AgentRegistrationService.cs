@@ -400,27 +400,27 @@ namespace GameServer.Docker.Agent.Services
                     await SendHeartbeatAsync(stoppingToken);
                 }
             }
-
-            private async Task ManagedContainerReconciliationLoopAsync(CancellationToken stoppingToken)
+            catch (OperationCanceledException)
             {
-                var intervalSeconds = Math.Clamp(_options.ManagedContainerReconciliationIntervalSeconds, 5, 300);
-                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+                _logger.LogInformation("Agent heartbeat loop stopped");
+            }
+        }
 
-                try
+        private async Task ManagedContainerReconciliationLoopAsync(CancellationToken stoppingToken)
+        {
+            var intervalSeconds = Math.Clamp(_options.ManagedContainerReconciliationIntervalSeconds, 5, 300);
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stoppingToken))
                 {
-                    while (await timer.WaitForNextTickAsync(stoppingToken))
-                    {
-                        await PublishManagedContainerSnapshotAsync(stoppingToken);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    _logger.LogInformation("Managed container reconciliation loop stopped");
+                    await PublishManagedContainerSnapshotAsync(stoppingToken);
                 }
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Agent heartbeat loop stopped");
+                _logger.LogInformation("Managed container reconciliation loop stopped");
             }
         }
 
