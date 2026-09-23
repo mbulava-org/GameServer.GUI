@@ -254,156 +254,175 @@ public class GameTypeRepository(DataV2.GameServerV2DbContext context, ILogger<Ga
     {
         ValidateRevision(revision);
 
-        var entity = await context.GameTypeRevisions
-            .Include(x => x.GameType)
-            .Include(x => x.Ports)
-            .Include(x => x.Volumes)
-            .Include(x => x.SettingDefinitions)
-                .ThenInclude(x => x.Metadata)
-                    .ThenInclude(x => x!.PortMappings)
-            .Include(x => x.WebHosts)
-            .AsSplitQuery()
-            .FirstOrDefaultAsync(x => x.Id == revision.Id && x.GameType.Key == gameTypeKey);
+        const int maxAttempts = 3;
 
-        if (entity is null)
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            throw new KeyNotFoundException($"V2 GameType revision '{revision.Id}' was not found for '{gameTypeKey}'");
-        }
+            var entity = await context.GameTypeRevisions
+                .Include(x => x.GameType)
+                .Include(x => x.Ports)
+                .Include(x => x.Volumes)
+                .Include(x => x.SettingDefinitions)
+                    .ThenInclude(x => x.Metadata)
+                        .ThenInclude(x => x!.PortMappings)
+                .Include(x => x.WebHosts)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(x => x.Id == revision.Id && x.GameType.Key == gameTypeKey);
 
-        var duplicateVersionTagExists = await context.GameTypeRevisions
-            .AnyAsync(x => x.GameTypeId == entity.GameTypeId
-                && x.Id != revision.Id
-                && x.VersionTag == revision.VersionTag
-                && x.ImageReference == revision.ImageReference);
-
-        if (duplicateVersionTagExists)
-        {
-            throw new InvalidOperationException($"Image reference '{revision.ImageReference}' with version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
-        }
-
-        var strategy = context.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
-        {
-            using var transaction = await context.Database.BeginTransactionAsync();
-
-            entity.VersionTag = revision.VersionTag;
-            entity.ImageReference = revision.ImageReference;
-            entity.ImageDigest = revision.ImageDigest;
-            entity.EnableTTY = revision.EnableTTY;
-            entity.ReadyLogPattern = revision.ReadyLogPattern;
-            entity.Notes = revision.Notes;
-            entity.IsPublished = revision.IsPublished;
-            entity.UiExtensionsJson = revision.UiExtensionsJson;
-            entity.ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources);
-            entity.HealthcheckJson = revision.HealthcheckJson ?? GameTypeHealthcheckSerializer.Serialize(revision.Healthcheck);
-            entity.GameType.UpdatedAt = DateTime.UtcNow;
-
-            // Remove old child entities and flush deletes to the database first
-            // to avoid unique key collisions (e.g. IX_GameTypeSettingDefinitions_GameTypeRevisionId_SettingKey)
-            context.GameTypePorts.RemoveRange(entity.Ports);
-            context.GameTypeVolumes.RemoveRange(entity.Volumes);
-            context.GameTypeSettingDefinitions.RemoveRange(entity.SettingDefinitions);
-            context.GameTypeWebHosts.RemoveRange(entity.WebHosts);
-            await context.SaveChangesAsync();
-
-            // Clear tracked navigation collections in memory
-            entity.Ports.Clear();
-            entity.Volumes.Clear();
-            entity.SettingDefinitions.Clear();
-            entity.WebHosts.Clear();
-
-            // Add new child entities
-            foreach (var p in revision.Ports.Select(x => new DataV2.GameTypePortEntity
+            if (entity is null)
             {
-                GameTypeRevisionId = entity.Id,
-                ContainerPort = x.ContainerPort,
-                Protocol = x.Protocol,
-                AdvertisedPort = x.AdvertisedPort,
-                Description = x.Description,
-                DisplayOrder = x.DisplayOrder
-            }))
-            {
-                entity.Ports.Add(p);
+                throw new KeyNotFoundException($"V2 GameType revision '{revision.Id}' was not found for '{gameTypeKey}'");
             }
 
-            foreach (var v in revision.Volumes.Select(x => new DataV2.GameTypeVolumeEntity
+            var duplicateVersionTagExists = await context.GameTypeRevisions
+                .AnyAsync(x => x.GameTypeId == entity.GameTypeId
+                    && x.Id != revision.Id
+                    && x.VersionTag == revision.VersionTag
+                    && x.ImageReference == revision.ImageReference);
+
+            if (duplicateVersionTagExists)
             {
-                GameTypeRevisionId = entity.Id,
-                Source = x.Source,
-                Description = x.Description,
-                DisplayOrder = x.DisplayOrder,
-                Usage = x.Usage,
-                MountType = x.MountType,
-                ReadOnly = x.ReadOnly,
-                OwnerUid = x.OwnerUid,
-                OwnerGid = x.OwnerGid,
-                OwnerUidVariable = x.OwnerUidVariable,
-                OwnerGidVariable = x.OwnerGidVariable,
-                Permissions = x.Permissions,
-                EnsureNfsPathExists = x.EnsureNfsPathExists,
-                Required = x.Required
-            }))
-            {
-                entity.Volumes.Add(v);
+                throw new InvalidOperationException($"Image reference '{revision.ImageReference}' with version tag '{revision.VersionTag}' already exists for '{gameTypeKey}'");
             }
 
-            foreach (var s in revision.SettingDefinitions.Select(x => new DataV2.GameTypeSettingDefinitionEntity
+            try
             {
-                GameTypeRevisionId = entity.Id,
-                SettingKey = x.SettingKey,
-                DefaultValue = x.DefaultValue,
-                Description = x.Description,
-                DisplayOrder = x.DisplayOrder,
-                Metadata = x.Metadata is null ? null : new DataV2.GameTypeSettingMetadataEntity
+                var strategy = context.Database.CreateExecutionStrategy();
+                await strategy.ExecuteAsync(async () =>
                 {
-                    DataType = NormalizeDataType(x.Metadata.DataType),
-                    Category = x.Metadata.Category,
-                    IsRequired = x.Metadata.IsRequired,
-                    CannotBeEmpty = x.Metadata.CannotBeEmpty,
-                    Placeholder = x.Metadata.Placeholder,
-                    ValidationPattern = x.Metadata.ValidationPattern,
-                    ValidationMessage = x.Metadata.ValidationMessage,
-                    AutoAllocatePort = x.Metadata.AutoAllocatePort,
-                    ValidateRelatedPortsAvailability = x.Metadata.ValidateRelatedPortsAvailability,
-                    AllowedValuesJson = NormalizeJson(x.Metadata.AllowedValuesJson),
-                    ValueMappingsJson = NormalizeJson(x.Metadata.ValueMappingsJson),
-                    PortMappings = x.Metadata.PortMappings.Select(pm => new DataV2.GameTypeSettingPortMappingEntity
+                    using var transaction = await context.Database.BeginTransactionAsync();
+
+                    entity.VersionTag = revision.VersionTag;
+                    entity.ImageReference = revision.ImageReference;
+                    entity.ImageDigest = revision.ImageDigest;
+                    entity.EnableTTY = revision.EnableTTY;
+                    entity.ReadyLogPattern = revision.ReadyLogPattern;
+                    entity.Notes = revision.Notes;
+                    entity.IsPublished = revision.IsPublished;
+                    entity.UiExtensionsJson = revision.UiExtensionsJson;
+                    entity.ResourcesJson = revision.ResourcesJson ?? GameTypeResourcesSerializer.Serialize(revision.Resources);
+                    entity.HealthcheckJson = revision.HealthcheckJson ?? GameTypeHealthcheckSerializer.Serialize(revision.Healthcheck);
+                    entity.GameType.UpdatedAt = DateTime.UtcNow;
+
+                    // Remove old child entities and flush deletes to the database first
+                    // to avoid unique key collisions (e.g. IX_GameTypeSettingDefinitions_GameTypeRevisionId_SettingKey)
+                    context.GameTypePorts.RemoveRange(entity.Ports);
+                    context.GameTypeVolumes.RemoveRange(entity.Volumes);
+                    context.GameTypeSettingDefinitions.RemoveRange(entity.SettingDefinitions);
+                    context.GameTypeWebHosts.RemoveRange(entity.WebHosts);
+                    await context.SaveChangesAsync();
+
+                    // Clear tracked navigation collections in memory
+                    entity.Ports.Clear();
+                    entity.Volumes.Clear();
+                    entity.SettingDefinitions.Clear();
+                    entity.WebHosts.Clear();
+
+                    // Add new child entities
+                    foreach (var p in revision.Ports.Select(x => new DataV2.GameTypePortEntity
                     {
-                        MappingRole = pm.MappingRole,
-                        RelationType = pm.RelationType,
-                        TargetContainerPort = pm.TargetContainerPort,
-                        TargetProtocol = pm.TargetProtocol,
-                        CalculationValue = pm.CalculationValue,
-                        IsRequired = pm.IsRequired,
-                        DisplayOrder = pm.DisplayOrder
-                    }).ToList()
-                }
-            }))
-            {
-                entity.SettingDefinitions.Add(s);
+                        GameTypeRevisionId = entity.Id,
+                        ContainerPort = x.ContainerPort,
+                        Protocol = x.Protocol,
+                        AdvertisedPort = x.AdvertisedPort,
+                        Description = x.Description,
+                        DisplayOrder = x.DisplayOrder
+                    }))
+                    {
+                        entity.Ports.Add(p);
+                    }
+
+                    foreach (var v in revision.Volumes.Select(x => new DataV2.GameTypeVolumeEntity
+                    {
+                        GameTypeRevisionId = entity.Id,
+                        Source = x.Source,
+                        Description = x.Description,
+                        DisplayOrder = x.DisplayOrder,
+                        Usage = x.Usage,
+                        MountType = x.MountType,
+                        ReadOnly = x.ReadOnly,
+                        OwnerUid = x.OwnerUid,
+                        OwnerGid = x.OwnerGid,
+                        OwnerUidVariable = x.OwnerUidVariable,
+                        OwnerGidVariable = x.OwnerGidVariable,
+                        Permissions = x.Permissions,
+                        EnsureNfsPathExists = x.EnsureNfsPathExists,
+                        Required = x.Required
+                    }))
+                    {
+                        entity.Volumes.Add(v);
+                    }
+
+                    foreach (var s in revision.SettingDefinitions.Select(x => new DataV2.GameTypeSettingDefinitionEntity
+                    {
+                        GameTypeRevisionId = entity.Id,
+                        SettingKey = x.SettingKey,
+                        DefaultValue = x.DefaultValue,
+                        Description = x.Description,
+                        DisplayOrder = x.DisplayOrder,
+                        Metadata = x.Metadata is null ? null : new DataV2.GameTypeSettingMetadataEntity
+                        {
+                            DataType = NormalizeDataType(x.Metadata.DataType),
+                            Category = x.Metadata.Category,
+                            IsRequired = x.Metadata.IsRequired,
+                            CannotBeEmpty = x.Metadata.CannotBeEmpty,
+                            Placeholder = x.Metadata.Placeholder,
+                            ValidationPattern = x.Metadata.ValidationPattern,
+                            ValidationMessage = x.Metadata.ValidationMessage,
+                            AutoAllocatePort = x.Metadata.AutoAllocatePort,
+                            ValidateRelatedPortsAvailability = x.Metadata.ValidateRelatedPortsAvailability,
+                            AllowedValuesJson = NormalizeJson(x.Metadata.AllowedValuesJson),
+                            ValueMappingsJson = NormalizeJson(x.Metadata.ValueMappingsJson),
+                            PortMappings = x.Metadata.PortMappings.Select(pm => new DataV2.GameTypeSettingPortMappingEntity
+                            {
+                                MappingRole = pm.MappingRole,
+                                RelationType = pm.RelationType,
+                                TargetContainerPort = pm.TargetContainerPort,
+                                TargetProtocol = pm.TargetProtocol,
+                                CalculationValue = pm.CalculationValue,
+                                IsRequired = pm.IsRequired,
+                                DisplayOrder = pm.DisplayOrder
+                            }).ToList()
+                        }
+                    }))
+                    {
+                        entity.SettingDefinitions.Add(s);
+                    }
+
+                    foreach (var w in revision.WebHosts.Select(x => new DataV2.GameTypeWebHostEntity
+                    {
+                        GameTypeRevisionId = entity.Id,
+                        Name = x.Name,
+                        Description = x.Description,
+                        PathSegment = x.PathSegment,
+                        ContainerPort = x.ContainerPort,
+                        ContainerPortVariable = x.ContainerPortVariable,
+                        EnabledWhen = x.EnabledWhen,
+                        DisplayOrder = x.DisplayOrder
+                    }))
+                    {
+                        entity.WebHosts.Add(w);
+                    }
+
+                    await context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                });
+
+                logger.LogInformation("Updated V2 GameType revision {GameTypeKey}:{VersionTag}", gameTypeKey, revision.VersionTag);
+                return await GetRevisionAsync(entity.Id) ?? throw new InvalidOperationException("Failed to reload updated V2 GameTypeRevision");
             }
-
-            foreach (var w in revision.WebHosts.Select(x => new DataV2.GameTypeWebHostEntity
+            catch (DbUpdateConcurrencyException ex) when (attempt < maxAttempts)
             {
-                GameTypeRevisionId = entity.Id,
-                Name = x.Name,
-                Description = x.Description,
-                PathSegment = x.PathSegment,
-                ContainerPort = x.ContainerPort,
-                ContainerPortVariable = x.ContainerPortVariable,
-                EnabledWhen = x.EnabledWhen,
-                DisplayOrder = x.DisplayOrder
-            }))
-            {
-                entity.WebHosts.Add(w);
+                logger.LogWarning(ex,
+                    "Concurrency conflict while updating V2 GameType revision {GameTypeKey}:{RevisionId} on attempt {Attempt}; retrying.",
+                    gameTypeKey,
+                    revision.Id,
+                    attempt);
+                context.ChangeTracker.Clear();
             }
+        }
 
-            await context.SaveChangesAsync();
-            await transaction.CommitAsync();
-        });
-
-        logger.LogInformation("Updated V2 GameType revision {GameTypeKey}:{VersionTag}", gameTypeKey, revision.VersionTag);
-        return await GetRevisionAsync(entity.Id) ?? throw new InvalidOperationException("Failed to reload updated V2 GameTypeRevision");
+        throw new DbUpdateConcurrencyException($"Failed to update V2 GameType revision '{revision.Id}' for '{gameTypeKey}' due to concurrent modifications.");
     }
 
     public async Task SetCurrentRevisionAsync(string gameTypeKey, int revisionId)
