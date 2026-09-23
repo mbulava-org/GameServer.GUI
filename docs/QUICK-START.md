@@ -108,6 +108,8 @@ If you want a quick non-swarm local container setup, use:
 docker compose -f docs/samples/docker-compose/docker-compose.sample.yml up -d
 ```
 
+This sample keeps `gameserver-api` as the single in-network endpoint the other services use: `gameserver-web` calls the API through `GameServerDockerApi__BaseUri`, and `gameserver-agent` registers back to that same API via `AgentRegistration__PrimaryServiceUrl`.
+
 Then verify:
 
 - Web UI: `http://localhost:5102`
@@ -195,7 +197,7 @@ version: "3.8"
 
 services:
   # Primary Service (API & Orchestration)
-  gameserver-docker:
+  gameserver-api:
     image: your-registry/gameserver-docker:latest
     ports:
       - "5164:8080"  # API port
@@ -203,6 +205,8 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - NodeAgentOptions__EnableBackgroundDiscovery=false
       - ConnectionStrings__GameServerV2Db=Data Source=/data/gameserver-v2.db
+      - V2Database__Provider=Sqlite
+      - V2Database__ConnectionStringName=GameServerV2Db
       - PortAllocation__StartPort=25565
       - PortAllocation__EndPort=35565
     volumes:
@@ -226,7 +230,7 @@ services:
       - "5102:8080"  # Web UI port
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - GameServerApiUrl=http://gameserver-docker:8080
+      - GameServerDockerApi__BaseUri=http://gameserver-api:8080/
     networks:
       - gameserver-network
     deploy:
@@ -239,14 +243,14 @@ services:
         delay: 5s
         max_attempts: 3
     depends_on:
-      - gameserver-docker
+      - gameserver-api
 
   # Node Agents (one per node)
   gameserver-agent:
     image: your-registry/gameserver-agent:latest
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - AgentRegistration__PrimaryServiceUrl=http://gameserver-docker:8080
+      - AgentRegistration__PrimaryServiceUrl=http://gameserver-api:8080
       - AgentRegistration__HeartbeatIntervalSeconds=30
       - AgentRegistration__Enabled=true
       - AGENT_HOST={{.Node.Hostname}}
@@ -285,7 +289,7 @@ docker stack services gameserver
 **Expected output:**
 ```
 ID             NAME                            MODE         REPLICAS   IMAGE
-abc123def456   gameserver_gameserver-docker    replicated   1/1        your-registry/gameserver-docker:latest
+abc123def456   gameserver_gameserver-api       replicated   1/1        your-registry/gameserver-docker:latest
 ghi789jkl012   gameserver_gameserver-web       replicated   1/1        your-registry/gameserver-web:latest
 mno345pqr678   gameserver_gameserver-agent     global       3/3        your-registry/gameserver-agent:latest
 ```
@@ -296,7 +300,7 @@ mno345pqr678   gameserver_gameserver-agent     global       3/3        your-regi
 
 ```bash
 # Primary Service logs
-docker service logs gameserver_gameserver-docker --follow
+docker service logs gameserver_gameserver-api --follow
 
 # Web UI logs
 docker service logs gameserver_gameserver-web --follow
@@ -318,7 +322,7 @@ docker service logs gameserver_gameserver-agent --follow
 **Agents:**
 ```
 [INFO] Agent initialized: IsManager=True, Hostname=manager-1
-[INFO] Connected to Primary Service at http://gameserver-docker:8080
+[INFO] Connected to Primary Service at http://gameserver-api:8080
 [INFO] Heartbeat sent: Containers=0, Status=Healthy
 ```
 
@@ -392,7 +396,7 @@ environment:
 |----------|-------------|---------|
 | `GameServerDockerApi__BaseUri` | Base URL of `GameServer.Docker` API | `http://localhost:5164/` |
 
-**The agent only needs `AgentRegistration__PrimaryServiceUrl` to register with the Primary Service. See the swarm deployment section above for a complete stack file.**
+**Point both `GameServer.Web` and the node agents at the same in-network API service (`gameserver-api` in the samples).** The Web UI should only call that API directly, while agents register back through `AgentRegistration__PrimaryServiceUrl`.
 
 ### Scaling
 
@@ -621,7 +625,7 @@ curl http://localhost:5164/api/containers/{containerId}/logs
 1. Verify network connectivity:
    ```bash
    # From agent container
-   docker exec <agent-container> curl http://gameserver-docker:8080/health
+   docker exec <agent-container> curl http://gameserver-api:8080/health
    ```
 
 2. Check overlay network:
@@ -685,19 +689,19 @@ environment:
 docker stack services gameserver
 
 # View service tasks (replicas)
-docker service ps gameserver_gameserver-docker
+docker service ps gameserver_gameserver-api
 
 # Scale a service
 docker service scale gameserver_gameserver-web=2
 
 # Update a service (rolling update)
-docker service update --image your-registry/gameserver-docker:v2 gameserver_gameserver-docker
+docker service update --image your-registry/gameserver-docker:v2 gameserver_gameserver-api
 
 # Remove the stack
 docker stack rm gameserver
 
 # View logs from all replicas
-docker service logs gameserver_gameserver-docker --follow --tail 100
+docker service logs gameserver_gameserver-api --follow --tail 100
 ```
 
 ---
@@ -748,7 +752,7 @@ docker stack deploy -c docker-stack.yml gameserver
 docker stack services gameserver
 
 # Logs
-docker service logs gameserver_gameserver-docker --follow
+docker service logs gameserver_gameserver-api --follow
 ```
 
 ### Access URLs
