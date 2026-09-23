@@ -102,7 +102,13 @@ Navigate to `/login` if not automatically redirected. Once logged in as `Admin`,
 
 ### Optional: Sample Docker Compose Setup
 
-If you want a quick non-swarm local container setup, use:
+If you want a quick local setup for the Web UI/API/agent containers, initialize single-node Swarm mode first so the agent can perform service operations from a manager node:
+
+```bash
+docker swarm init
+```
+
+Then start the sample stack:
 
 ```bash
 docker compose -f docs/samples/docker-compose/docker-compose.sample.yml up -d
@@ -112,6 +118,9 @@ Then verify:
 
 - Web UI: `http://localhost:5102`
 - API: `http://localhost:5164/swagger`
+
+> [!IMPORTANT]
+> The sample compose stack is not a non-swarm mode. Server create/update/start/stop flows still require the host Docker engine to be a Swarm manager.
 
 ---
 

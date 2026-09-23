@@ -12,6 +12,7 @@ namespace GameServer.API.Services
     /// </summary>
     public class AgentRegistryService : IAgentRegistry
     {
+        private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(90);
         private readonly ILogger<AgentRegistryService> _logger;
 
         // connectionId → NodeAgentEndpoint
@@ -210,7 +211,7 @@ namespace GameServer.API.Services
         public List<NodeAgentEndpoint> GetHealthyAgents()
         {
             return _agentsByConnection.Values
-                .Where(a => a.IsHealthy)
+                .Where(IsAgentHealthy)
                 .ToList();
         }
 
@@ -239,18 +240,31 @@ namespace GameServer.API.Services
         public NodeAgentEndpoint? GetHealthyManagerAgent()
         {
             var managerAgent = _agentsByConnection.Values
-                .FirstOrDefault(a => a.IsManagerNode && a.IsHealthy);
+                .FirstOrDefault(a => a.IsManagerNode && IsAgentHealthy(a));
 
             if (managerAgent == null)
             {
+                var healthyManagers = _agentsByConnection.Values
+                    .Count(a => a.IsManagerNode && IsAgentHealthy(a));
+
                 _logger.LogWarning(
                     "No healthy manager agent found. Total agents: {Total}, Manager agents: {Managers}, Healthy managers: {HealthyManagers}",
                     _agentsByConnection.Count,
                     _agentsByConnection.Values.Count(a => a.IsManagerNode),
-                    _agentsByConnection.Values.Count(a => a.IsManagerNode && a.IsHealthy));
+                    healthyManagers);
             }
 
             return managerAgent;
+        }
+
+        private static bool IsAgentHealthy(NodeAgentEndpoint agent)
+        {
+            if (!agent.IsHealthy)
+            {
+                return false;
+            }
+
+            return DateTime.UtcNow - agent.LastHeartbeat <= HeartbeatTimeout;
         }
     }
 }

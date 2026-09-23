@@ -341,6 +341,19 @@ public class AgentRegistryServiceTests
         Assert.Equal(2, healthy.Count);
     }
 
+    [Fact]
+    public void GetHealthyAgents_StaleHeartbeat_IsExcluded()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("node-1", "n1", "http://10.0.1.1:8080"), "conn-1");
+        var agent = _service.GetAgentByConnectionId("conn-1");
+        Assert.NotNull(agent);
+        agent!.LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        var healthy = _service.GetHealthyAgents();
+
+        Assert.Empty(healthy);
+    }
+
     // -----------------------------------------------------------------------
     // GetManagerAgents / GetHealthyManagerAgent
     // -----------------------------------------------------------------------
@@ -366,6 +379,19 @@ public class AgentRegistryServiceTests
 
         Assert.NotNull(manager);
         Assert.Equal("manager-1", manager.NodeId);
+    }
+
+    [Fact]
+    public void GetHealthyManagerAgent_StaleHeartbeat_ReturnsNull()
+    {
+        _service.RegisterAgent(MakeRegistrationInfo("manager-1", "mgr", "http://10.0.1.5:8080", isManager: true), "conn-mgr");
+        var agent = _service.GetAgentByConnectionId("conn-mgr");
+        Assert.NotNull(agent);
+        agent!.LastHeartbeat = DateTime.UtcNow.AddMinutes(-5);
+
+        var manager = _service.GetHealthyManagerAgent();
+
+        Assert.Null(manager);
     }
 
     [Fact]

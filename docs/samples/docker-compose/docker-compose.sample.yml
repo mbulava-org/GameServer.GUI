@@ -1,4 +1,6 @@
 services:
+  # This sample still requires the host to be a Docker Swarm manager because
+  # game server lifecycle operations are delegated to a manager-capable agent.
   gameserver-api:
     image: ghcr.io/mbulava-org/gameserver-api:latest
     container_name: gameserver-api

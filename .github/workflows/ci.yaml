@@ -99,12 +99,22 @@ jobs:
             BASE_REF="${{ github.event.before }}"
             HEAD_REF="${{ github.sha }}"
           fi
+
+          # workflow_dispatch has no 'before', and the first push to a branch reports the
+          # all-zero SHA. Fall back to the previous commit so the diff still resolves.
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            BASE_REF="$(git rev-parse ${HEAD_REF}^ 2>/dev/null || echo '')"
+          fi
           
-          echo "Comparing $BASE_REF...$HEAD_REF"
-          
-          # Check if API-related files changed (Controllers, Models, DTOs, Interfaces that define contracts)
-          API_FILES_CHANGED=$(git diff --name-only $BASE_REF $HEAD_REF | grep -E '^src/GameServer\.API/(Controllers/|Models/|Dtos/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
-          
+          if [ -z "$BASE_REF" ]; then
+            echo "::notice::No comparable base commit - treating API files as changed based on tracked files"
+            API_FILES_CHANGED=$(git ls-files | grep -E '^src/GameServer\.API/(Controllers/|Models/|Dtos/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
+          else
+            echo "Comparing $BASE_REF...$HEAD_REF"
+            # Check if API-related files changed (Controllers, Models, DTOs, Interfaces that define contracts)
+            API_FILES_CHANGED=$(git diff --name-only "$BASE_REF" "$HEAD_REF" | grep -E '^src/GameServer\.API/(Controllers/|Models/|Dtos/|DTOs/|Interfaces/.*Manager|Interfaces/.*Monitor|Interfaces/.*Registry)' || true)
+          fi
+
           if [ -n "$API_FILES_CHANGED" ]; then
             echo "::warning::?? API signature changes detected - Client package will be published! HOPE YOU DIDN'T BREAK COMPATIBILITY!!!"
             echo "API-related files changed:"
