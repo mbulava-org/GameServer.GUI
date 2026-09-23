@@ -672,10 +672,10 @@ builder.Services.AddGameServerClients(
 
 The Client Library provides:
 
-? **Easy Registration** - Simple extension methods for DI  
-? **REST API Clients** - Auto-generated from OpenAPI  
-? **SignalR Clients** - Real-time monitoring and console access  
-? **Flexible Configuration** - Customize HttpClient and SignalR connections  
-? **Complete Integration** - Works with ASP.NET Core, Console apps, Blazor, etc.  
+✅ **Easy Registration** - Simple extension methods for DI  
+✅ **REST API Clients** - Auto-generated from OpenAPI  
+✅ **SignalR Clients** - Real-time monitoring and console access  
+✅ **Flexible Configuration** - Customize HttpClient and SignalR connections  
+✅ **Complete Integration** - Works with ASP.NET Core, Console apps, Blazor, etc.  
 
-All features work seamlessly together through dependency injection! ??
+All features work seamlessly together through dependency injection! 🚀

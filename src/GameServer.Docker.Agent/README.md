@@ -14,53 +14,53 @@ This solves the problem of accessing container-level metrics in Docker Swarm, wh
 ## Architecture
 
 ```
-???????????????????????????????????????????
-?     GameServer.Docker API (Manager)     ?
-?                                         ?
-?  AgentRegistry                          ?
-?  ??> Tracks registered agents          ?
-?     and container-to-agent mappings     ?
-???????????????????????????????????????????
-               ?
-               ? SignalR Registration
-               ? + Heartbeats
-               ?
-????????????????????????????????????????????
-?   GameServer.Docker.Agent (Every Node)  ?
-?                                          ?
-?   Controllers/                           ?
-?   ?? HealthController                   ?
-?   ?? ContainersController                ?
-?                                          ?
-?   Services/                              ?
-?   ?? AgentRegistrationService            ?
-?   ?? ContainerService                    ?
-?      ??> Docker.DotNet Client           ?
-????????????????????????????????????????????
-               ?
-               ? Unix Socket
-               ?
-        ???????????????????
-        ?  Docker Daemon  ?
-        ?  (Local Node)   ?
-        ???????????????????
+┌───────────────────────────────────────────┐
+│     GameServer.Docker API (Manager)       │
+│                                           │
+│  AgentRegistry                            │
+│  └──> Tracks registered agents            │
+│       and container-to-agent mappings     │
+└───────────────────────────────────────────┘
+               ▲
+               │ SignalR Registration
+               │ + Heartbeats
+               │
+┌───────────────────────────────────────────┐
+│   GameServer.Docker.Agent (Every Node)    │
+│                                           │
+│   Controllers/                            │
+│   ├── HealthController                    │
+│   └── ContainersController                │
+│                                           │
+│   Services/                               │
+│   ├── AgentRegistrationService            │
+│   └── ContainerService                    │
+│       └──> Docker.DotNet Client           │
+└───────────────────────────────────────────┘
+               ▲
+               │ Unix Socket
+               │
+        ┌───────────────────┐
+        │   Docker Daemon   │
+        │   (Local Node)    │
+        └───────────────────┘
 ```
 
 ## Project Structure
 
 ```
 GameServer.Docker.Agent/
-??? Program.cs                      # Application entry point
-??? Controllers/
-?   ??? HealthController.cs         # Health check endpoint
-?   ??? ContainersController.cs     # Container operations
-??? Services/
-?   ??? AgentRegistrationService.cs # Primary Service registration/heartbeats
-?   ??? ContainerService.cs         # Docker container interaction
-??? Interfaces/
-?   ??? IContainerService.cs        # Service interface
-??? Models/
-    ??? ResponseModels.cs           # Response DTOs
+├── Program.cs                      # Application entry point
+├── Controllers/
+│   ├── HealthController.cs         # Health check endpoint
+│   └── ContainersController.cs     # Container operations
+├── Services/
+│   ├── AgentRegistrationService.cs # Primary Service registration/heartbeats
+│   └── ContainerService.cs         # Docker container interaction
+├── Interfaces/
+│   └── IContainerService.cs        # Service interface
+└── Models/
+    └── ResponseModels.cs           # Response DTOs
 ```
 
 ## API Endpoints
@@ -246,7 +246,7 @@ For a complete stack that includes the Primary Service, the Web UI, and the Node
 
 ### Security Considerations
 
-?? **Important Security Notes:**
+⚠️ **Important Security Notes:**
 
 1. **Read-Only Docker Socket**: The agent mounts the Docker socket as read-only (`:ro`)
 2. **Limited Permissions**: Only container stats, logs, and inspection - no container creation/deletion

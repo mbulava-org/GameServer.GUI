@@ -5,28 +5,28 @@ A comprehensive .NET client library for managing game servers running in Docker 
 ## Features
 
 ### REST API Clients
-- ? **Server Management** - Deploy, start, stop, restart, and list game servers
-- ? **File Management** - Upload, download, delete files and create directories
-- ? **Resource Monitoring** - Get server resource usage (CPU, memory, network, disk)
-- ? **Log Access** - Retrieve service logs with optional tail parameter
-- ? **Game Type Registry** - Manage game server templates and configurations
-- ? **Extended Metadata** - Advanced game type configuration with validation, enums, and dynamic port mapping
-- ? **Port Management** - Allocate and release network ports for servers
-- ? **Dashboard** - Get overview of all servers with status information
+- 🎮 **Server Management** - Deploy, start, stop, restart, and list game servers
+- 📁 **File Management** - Upload, download, delete files and create directories
+- 📊 **Resource Monitoring** - Get server resource usage (CPU, memory, network, disk)
+- 📋 **Log Access** - Retrieve service logs with optional tail parameter
+- 🎯 **Game Type Registry** - Manage game server templates and configurations
+- ⚙️ **Extended Metadata** - Advanced game type configuration with validation, enums, and dynamic port mapping
+- 🔌 **Port Management** - Allocate and release network ports for servers
+- 📈 **Dashboard** - Get overview of all servers with status information
 
-### Real-Time Features (SignalR) ? NEW
-- ? **Live Resource Monitoring** - Real-time CPU, memory, network, and disk usage streaming
-- ? **Interactive Console** - Bidirectional shell access to containers
-- ? **Interactive Command Execution** - Run commands with stdin/stdout/stderr via WebSocket
-- ? **TTY Support** - Full terminal emulation for vim, nano, htop, etc.
-- ? **Command Execution** - Execute commands and receive output in real-time
+### Real-Time Features (SignalR) ⚡ NEW
+- 📊 **Live Resource Monitoring** - Real-time CPU, memory, network, and disk usage streaming
+- 🖥️ **Interactive Console** - Bidirectional shell access to containers
+- 💻 **Interactive Command Execution** - Run commands with stdin/stdout/stderr via WebSocket
+- 🖥️ **TTY Support** - Full terminal emulation for vim, nano, htop, etc.
+- ⚡ **Command Execution** - Execute commands and receive output in real-time
 
 ### Built-In Features
-- ?? **Type-Safe** - Strongly-typed clients auto-generated from OpenAPI specification using NSwag
-- ?? **Dependency Injection** - First-class DI support for ASP.NET Core
-- ? **Async/Await** - Modern async patterns throughout
-- ?? **HttpClient Integration** - Uses standard HttpClient for HTTP communication
-- ? **True Streaming** - End-to-end SignalR streaming with zero polling
+- 🛡️ **Type-Safe** - Strongly-typed clients auto-generated from OpenAPI specification using NSwag
+- 💉 **Dependency Injection** - First-class DI support for ASP.NET Core
+- ⚡ **Async/Await** - Modern async patterns throughout
+- 🌐 **HttpClient Integration** - Uses standard HttpClient for HTTP communication
+- 🔄 **True Streaming** - End-to-end SignalR streaming with zero polling
 
 ## Installation
 
@@ -38,7 +38,7 @@ dotnet add package GameServer.API.Client
 
 ## Recent Architectural Improvements
 
-### v0.1.0 (Latest) - Real-Time Streaming & Interactive Exec ??
+### v0.1.0 (Latest) - Real-Time Streaming & Interactive Exec 🚀
 
 #### End-to-End SignalR Streaming Architecture
 The system now uses **true streaming** from Docker containers to external clients with **zero HTTP polling**:
@@ -102,16 +102,16 @@ The extended metadata system now stores each game type in its own individual fil
 **Storage Structure:**
 ```
 /data/game-types-extended/
-  ?? minecraft.json
-  ?? valheim.json
-  ?? hytale.json
+  ├── minecraft.json
+  ├── valheim.json
+  └── hytale.json
 ```
 
 **Benefits:**
-- ? **Faster Updates** - Only affected game type file is written
-- ? **Better Concurrency** - Per-file locking reduces contention
-- ? **Easier Maintenance** - Inspect/edit individual game types
-- ? **Scalable** - No single file size limits
+- ⚡ **Faster Updates** - Only affected game type file is written
+- 🔒 **Better Concurrency** - Per-file locking reduces contention
+- 🛠️ **Easier Maintenance** - Inspect/edit individual game types
+- 📈 **Scalable** - No single file size limits
 
 **API Impact:** None - All API endpoints work identically.
 
@@ -1453,14 +1453,14 @@ The client generation is configured in `nswag.json`:
 
 ```
 GameServer.API.Client/
-??? GameServer.API.Client.csproj  # Project file
-??? nswag.json                        # NSwag configuration
-??? GameServer.API.Client.v1.g.cs  # Generated API clients
-??? ReadMe.md                         # This file
-??? Examples/                         # Example code
-?   ??? SignalRClientExamples.md     # SignalR examples (future)
-??? Interfaces/                       # Client interfaces (future)
-??? Services/                         # Client implementations (future)
+├── GameServer.API.Client.csproj  # Project file
+├── nswag.json                    # NSwag configuration
+├── GameServer.API.Client.v1.g.cs # Generated API clients
+├── ReadMe.md                     # This file
+├── Examples/                     # Example code
+│   └── SignalRClientExamples.md  # SignalR examples (future)
+├── Interfaces/                   # Client interfaces (future)
+└── Services/                     # Client implementations (future)
 ```
 
 ## Future Features
@@ -1468,9 +1468,9 @@ GameServer.API.Client/
 The following features are planned for future releases:
 
 ### SignalR Real-Time Features
-- ?? **Console Client** - Interactive shell access to game server containers
-- ?? **Resource Monitoring Client** - Real-time CPU, memory, network, and disk metrics
-- ?? **Logs Client** - Live log streaming from Docker Swarm services
+- 🖥️ **Console Client** - Interactive shell access to game server containers
+- 📊 **Resource Monitoring Client** - Real-time CPU, memory, network, and disk metrics
+- 📋 **Logs Client** - Live log streaming from Docker Swarm services
 
 These features will provide:
 - Real-time bidirectional communication
@@ -1482,13 +1482,13 @@ These features will provide:
 
 ### v0.0.1-beta (Current)
 
-#### ?? Performance Improvements
+#### 🚀 Performance Improvements
 - **Node Agent Communication**: Implemented per-node HttpClient instances for optimal connection pooling in Docker Swarm environments
   - Better performance in multi-node clusters
   - Improved throughput for concurrent operations
   - Enhanced reliability through node isolation
 
-#### ?? Extended Metadata Enhancements
+#### ✨ Extended Metadata Enhancements
 - **Multi-File Storage**: Each game type now stored in individual files
   - `minecraft.json`, `valheim.json`, etc. instead of single monolithic file
   - Faster updates (only affected file written)
@@ -1496,20 +1496,20 @@ These features will provide:
   - Easier maintenance and inspection
   - No single-file size limits
 
-#### ?? Build & CI/CD
+#### 📦 Build & CI/CD
 - **Smart API Change Detection**: CI pipeline now detects API contract changes
   - Automatically publishes client only when API changes
   - GitHub Actions warnings for breaking changes
   - Manual override option via workflow dispatch
   - Reduces noise from non-API updates
 
-#### ?? Code Quality
+#### 🎯 Code Quality
 - Removed migration logic (no legacy data to migrate)
 - Removed hardcoded built-in game types
 - Simplified service initialization
 - 34% code reduction in extended metadata service (~111 lines removed)
 
-#### ?? Documentation
+#### 📝 Documentation
 - Enhanced README with architectural improvements
 - Added performance optimization notes
 - Updated examples with best practices

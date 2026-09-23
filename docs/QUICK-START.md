@@ -4,7 +4,7 @@ Get up and running with GameServer.Docker in minutes! This guide covers both loc
 
 ---
 
-## ðŸ“‹ Table of Contents
+## 📋 Table of Contents
 
 1. [Local Development Setup](#-local-development-setup)
 2. [Docker Swarm Deployment](#-docker-swarm-deployment)
@@ -14,7 +14,7 @@ Get up and running with GameServer.Docker in minutes! This guide covers both loc
 
 ---
 
-## ðŸ  Local Development Setup
+## 🏠 Local Development Setup
 
 ### Prerequisites
 
@@ -126,7 +126,7 @@ Then verify:
 
 ---
 
-## ðŸ³ Docker Swarm Deployment
+## 🐳 Docker Swarm Deployment
 
 This section covers deploying GameServer.Docker to a Docker Swarm cluster for production use.
 
@@ -139,28 +139,28 @@ This section covers deploying GameServer.Docker to a Docker Swarm cluster for pr
 ### Architecture Overview
 
 ```
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚              Docker Swarm Cluster               â”‚
-â”‚                                                 â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
-â”‚  â”‚  Manager Node                            â”‚   â”‚
-â”‚  â”‚  â€¢ GameServer.Docker (Primary Service)   â”‚   â”‚
-â”‚  â”‚  â€¢ GameServer.Web (Web UI)               â”‚   â”‚
-â”‚  â”‚  â€¢ GameServer.Docker.Agent               â”‚   â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
-â”‚                                                 â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
-â”‚  â”‚  Worker Node 1                           â”‚   â”‚
-â”‚  â”‚  â€¢ GameServer.Docker.Agent               â”‚   â”‚
-â”‚  â”‚  â€¢ Game Server Containers                â”‚   â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
-â”‚                                                 â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€-â”€â”  â”‚
-â”‚  â”‚  Worker Node 2                            â”‚  â”‚
-â”‚  â”‚  â€¢ GameServer.Docker.Agent                â”‚  â”‚
-â”‚  â”‚  â€¢ Game Server Containers                 â”‚  â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€-â”€â”˜  â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+┌─────────────────────────────────────────────────┐
+│              Docker Swarm Cluster               │
+│                                                 │
+│  ┌──────────────────────────────────────────┐   │
+│  │  Manager Node                            │   │
+│  │  • GameServer.Docker (Primary Service)   │   │
+│  │  • GameServer.Web (Web UI)               │   │
+│  │  • GameServer.Docker.Agent               │   │
+│  └──────────────────────────────────────────┘   │
+│                                                 │
+│  ┌──────────────────────────────────────────┐   │
+│  │  Worker Node 1                           │   │
+│  │  • GameServer.Docker.Agent               │   │
+│  │  • Game Server Containers                │   │
+│  └──────────────────────────────────────────┘   │
+│                                                 │
+│  ┌──────────────────────────────────────────┐   │
+│  │  Worker Node 2                           │   │
+│  │  • GameServer.Docker.Agent               │   │
+│  │  • Game Server Containers                │   │
+│  └──────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────┘
 ```
 
 ### Step 1: Build Docker Images
@@ -385,7 +385,7 @@ Once deployed, access:
 | `V2Database__ConnectionStringName` | Connection string key to use | `GameServerV2Db` |
 | `NetworkOptions__LoadBalancerNetwork` | Docker overlay network for Traefik | `traefik-public` |
 | `NetworkOptions__LoadBalancerProvider` | Load balancer provider | `traefik` |
-| `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | â€” |
+| `MountTypeConfigs` | Mount-type configuration is stored in the V2 database and managed through the `/settings/mount-types` UI; no environment variable override exists. Known defaults are seeded automatically for `volume`, `bind`, `tmpfs`, and `nfs`. | — |
 | `NodeAgentOptions__EnableBackgroundDiscovery` | Enable Swarm polling-based agent discovery | `false` |
 | `BackgroundProcessing__EnableResourceCollector` | Enables the continuous resource cache/status-sync collector loop in this container instance. Keep this `false` when running multiple API containers unless each collector has independent agent discovery/registry data. | `true` |
 
@@ -457,22 +457,22 @@ Agents will automatically deploy to new nodes (global mode).
 
 ---
 
-## ðŸŽ® V2 GameType & GameServer Workflow
+## 🎮 V2 GameType & GameServer Workflow
 
 The V2 system adds revision-based GameType management and a more normalized server model. Use the V2 paths for all new work.
 
 ### Creating a V2 GameType
 
 1. **Navigate to**: http://localhost:5102/gametypes-v2/new
-2. **Basic tab** â€” Set a unique key (slug), display name, type, and optional thumbnail/docs URLs.
-3. **Revisions tab** â€” The new draft revision is auto-selected; fill in the Docker image reference and version tag.
-4. **Ports tab** â€” Add the container ports your image exposes.
-5. **Volumes tab** â€” Define volume mounts with a usage category (`config`, `saves`, `backups`, `gamefiles`, `logs`).
-6. **Settings tab** â€” Add environment variable definitions with data types and optional port mapping rules.
-7. **Web Hosts tab** _(optional)_ â€” Add web endpoint definitions (e.g. map a setting port to a web UI path).
-8. **Detection tab** _(optional)_ â€” Enter the image reference and scan Docker image metadata to auto-populate ports and volumes.
-9. **Review tab** â€” Review cross-tab validation and the diff against the saved state.
-10. Click **Save** â€” persists both the GameType and the draft revision in one step.
+2. **Basic tab** — Set a unique key (slug), display name, type, and optional thumbnail/docs URLs.
+3. **Revisions tab** — The new draft revision is auto-selected; fill in the Docker image reference and version tag.
+4. **Ports tab** — Add the container ports your image exposes.
+5. **Volumes tab** — Define volume mounts with a usage category (`config`, `saves`, `backups`, `gamefiles`, `logs`).
+6. **Settings tab** — Add environment variable definitions with data types and optional port mapping rules.
+7. **Web Hosts tab** _(optional)_ — Add web endpoint definitions (e.g. map a setting port to a web UI path).
+8. **Detection tab** _(optional)_ — Enter the image reference and scan Docker image metadata to auto-populate ports and volumes.
+9. **Review tab** — Review cross-tab validation and the diff against the saved state.
+10. Click **Save** — persists both the GameType and the draft revision in one step.
 11. Click **Publish** on the revision to make it available for server creation.
 
 ### Creating a V2 Game Server
@@ -480,7 +480,7 @@ The V2 system adds revision-based GameType management and a more normalized serv
 1. **Navigate to**: http://localhost:5102/gameservers-v2/new
 2. Select a V2 GameType and a published revision.
 3. Override any settings you need (ports and volumes come from the revision).
-4. Click **Create** â€” the server is validated then deployed.
+4. Click **Create** — the server is validated then deployed.
 
 ### Using the V2 API
 
@@ -549,7 +549,7 @@ curl -X POST http://localhost:5164/api/v2/gametypes/import \
 
 ---
 
-## ðŸŽ® Creating Your First Game Server (V2)
+## 🎮 Creating Your First Game Server (V2)
 
 ### Using the Web UI
 
@@ -599,7 +599,7 @@ docker service logs <service-id> --follow
 
 ---
 
-## âœ… Verification & Testing
+## ✅ Verification & Testing
 
 ### Health Checks
 
@@ -650,7 +650,7 @@ curl http://localhost:5164/api/containers/{containerId}/logs
 
 ---
 
-## ðŸ”§ Troubleshooting
+## 🔧 Troubleshooting
 
 ### Common Issues
 
@@ -745,7 +745,7 @@ docker service logs gameserver_gameserver-api --follow --tail 100
 
 ---
 
-## ðŸ“š Next Steps
+## 📚 Next Steps
 
 ### Learn More
 
@@ -765,7 +765,7 @@ docker service logs gameserver_gameserver-api --follow --tail 100
 
 ---
 
-## ðŸŽ¯ Quick Reference
+## 🎯 Quick Reference
 
 ### Start Services Locally
 
@@ -802,6 +802,6 @@ docker service logs gameserver_gameserver-api --follow
 
 ---
 
-**Happy Gaming!** ðŸŽ®ðŸš€
+**Happy Gaming!** 🎮🚀
 
 For issues or questions, see [CONTRIBUTING.md](CONTRIBUTING.md) or open a GitHub issue.
