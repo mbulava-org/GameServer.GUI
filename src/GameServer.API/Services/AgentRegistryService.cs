@@ -75,6 +75,29 @@ namespace GameServer.API.Services
                 health);
         }
 
+        // Backward-compatible path used by tests and legacy callers that still publish container maps.
+        public void UpdateAgentContainers(string connectionId, List<string> containerIds)
+        {
+            UpdateAgentHeartbeat(connectionId, "healthy");
+
+            // Remove old container mappings for this agent
+            var oldContainers = _containerToConnection
+                .Where(kvp => kvp.Value == connectionId)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var oldId in oldContainers)
+            {
+                _containerToConnection.TryRemove(oldId, out _);
+            }
+
+            // Add new container mappings
+            foreach (var containerId in containerIds)
+            {
+                _containerToConnection[containerId] = connectionId;
+            }
+        }
+
         public void MarkAgentDisconnected(string connectionId)
         {
             if (!_agentsByConnection.TryRemove(connectionId, out var agent))

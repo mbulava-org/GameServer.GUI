@@ -139,8 +139,8 @@ public class GameServerResourceUtilizationRepository(
         }
         else
         {
-            var durationMs = Math.Max(1d, (last - first).TotalMilliseconds);
-            var widthMs = Math.Max(1L, (long)Math.Ceiling(durationMs / maxDataPoints));
+            var durationMsInclusive = Math.Max(1d, (last - first).TotalMilliseconds + 1d);
+            var widthMs = Math.Max(1L, (long)Math.Ceiling(durationMsInclusive / maxDataPoints));
             effectiveBucketWidthMs = widthMs;
             points = BuildBucketedPoints(records, widthMs, calculation);
         }
